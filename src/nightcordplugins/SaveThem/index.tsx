@@ -268,14 +268,23 @@ function SaveThemSettings({ closePluginSettings }: { closePluginSettings: () => 
     );
 }
 
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }: UserContextProps) => {
     if (!user) return;
 
+    const Icon = iconsModule?.UserPlusIcon || iconsModule?.SaveIcon;
     children.push(
         <Menu.MenuGroup key="vc-savethem-group">
             <Menu.MenuItem
                 id="vc-savethem-save"
                 label={t("Save to SaveThem")}
+                icon={Icon}
+                iconLeft={Icon}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: Icon
+                }}
                 action={() => {
                     void handleSaveUser(user);
                 }}

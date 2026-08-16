@@ -18,6 +18,7 @@ import { showApiKeyWarning } from "@utils/apiKeyWarning";
 import { ModalCloseButton,ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
 import { findByPropsLazy } from "@webpack";
+import { iconsModule } from "@plugins/_core/concatenatedModules";
 import { ChannelStore, FluxDispatcher, IconUtils, Menu,React, ReactDOM, RelationshipStore, RestAPI, useEffect, useRef, UserStore, useState } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
@@ -342,6 +343,17 @@ function NightcordAIChat({ rootProps, panelMode, initialMessage }: { rootProps?:
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const isMounted = useRef(true);
+    const pendingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+    useEffect(() => {
+        isMounted.current = true;
+        return () => {
+            isMounted.current = false;
+            pendingTimers.current.forEach(clearTimeout);
+            pendingTimers.current = [];
+        };
+    }, []);
 
     // Auto-envoie si initialMessage fourni
     const didAutoSend = useRef(false);
@@ -349,7 +361,8 @@ function NightcordAIChat({ rootProps, panelMode, initialMessage }: { rootProps?:
         if (initialMessage && !didAutoSend.current) {
             didAutoSend.current = true;
             // Court délai pour que le composant soit monté
-            setTimeout(() => send(initialMessage), 120);
+            const t = setTimeout(() => send(initialMessage), 120);
+            pendingTimers.current.push(t);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -382,8 +395,8 @@ function NightcordAIChat({ rootProps, panelMode, initialMessage }: { rootProps?:
 
     useEffect(() => {
         DataStore.get(DS_KEY).then((saved: Message[] | null) => {
-            if (saved?.length) setMessages(saved);
-        });
+            if (isMounted.current && saved?.length) setMessages(saved);
+        }).catch(e => console.error("[NightcordAI] failed to load history", e));
     }, []);
 
     useEffect(() => {
@@ -487,13 +500,15 @@ Rules:
             }
 
             const final = withPending.slice(0, -1).concat({ id: pendingId, role: "assistant", content: reply, timestamp: Date.now() });
-            setMessages(final);
+            if (isMounted.current) setMessages(final);
             await DataStore.set(DS_KEY, final.slice(-100));
         } catch (e: any) {
-            setMessages(withPending.slice(0, -1).concat({ id: pendingId, role: "assistant", content: `❌ ${e.message}`, timestamp: Date.now(), error: true }));
+            if (isMounted.current)
+                setMessages(withPending.slice(0, -1).concat({ id: pendingId, role: "assistant", content: `❌ ${e.message}`, timestamp: Date.now(), error: true }));
         } finally {
-            setLoading(false);
-            setTimeout(() => inputRef.current?.focus(), 50);
+            if (isMounted.current) setLoading(false);
+            const t = setTimeout(() => inputRef.current?.focus(), 50);
+            pendingTimers.current.push(t);
         }
     }
 
@@ -925,18 +940,25 @@ export default definePlugin({
                 ? group.findIndex((c: any) => c?.props?.id === "copy-text") + 1
                 : target.length;
 
-            const NightcordIcon = () => (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            const NightcordIcon = (props: any) => (
+                <svg aria-hidden="true" role="img" width={18} height={18} viewBox="0 0 24 24" fill="currentColor" {...props}>
                     <path d="M7.89 13.46a1 1 0 0 1-1.78-.9L7 13l-.9-.45.01-.01.01-.02a2.24 2.24 0 0 1 .14-.23c.1-.14.23-.31.4-.5.37-.36.98-.79 1.84-.79.86 0 1.47.43 1.83.8a3.28 3.28 0 0 1 .55.72v.02h.01v.01L10 13l.9-.45a1 1 0 0 1-1.79.9 1.28 1.28 0 0 0-.19-.25c-.14-.13-.28-.2-.42-.2-.14 0-.28.07-.42.2a1.28 1.28 0 0 0-.19.25ZM13.55 13.9a1 1 0 0 0 1.34-.44c0-.02.02-.04.04-.06.03-.05.08-.13.15-.2.14-.13.28-.2.42-.2.14 0 .28.07.42.2a1.28 1.28 0 0 1 .19.25 1 1 0 0 0 1.78-.9L17 13l.9-.45-.01-.01-.01-.02a2.1 2.1 0 0 0-.14-.23 3.28 3.28 0 0 0-.4-.5c-.37-.36-.98-.79-1.84-.79-.86 0-1.47.43-1.83.8a3.28 3.28 0 0 0-.55.72v.02h-.01v.01L14 13l-.9-.45a1 1 0 0 0 .45 1.34Z" />
                     <path fillRule="evenodd" d="M12 21c5.52 0 10-1.86 10-6 0-5.59-2.8-10.07-4.26-11.67a1 1 0 1 0-1.48 1.34 14.8 14.8 0 0 1 2.35 3.86A10.23 10.23 0 0 0 12 6C9.47 6 7.15 7.02 5.4 8.53a14.8 14.8 0 0 1 2.34-3.86 1 1 0 1 0-1.48-1.34A18.65 18.65 0 0 0 2 15c0 4.14 4.48 6 10 6Zm0-12c3.87 0 7 2 7 4.2S15.87 17 12 17s-7-1.6-7-3.8C5 11 8.13 9 12 9Z" clipRule="evenodd" />
                 </svg>
             );
 
+            const NIcon = iconsModule?.ChatSparkleIcon || iconsModule?.SparklesIcon || NightcordIcon;
+
             target.splice(idx, 0, (
                 <Menu.MenuItem
                     id="nai-ask"
                     label={t("Ask Nightcord AI")}
-                    icon={NightcordIcon}
+                    icon={NIcon}
+                    iconLeft={NIcon}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: NIcon
+                    }}
                     action={() => {
                         openModal(p => (
                             <NightcordAIChat

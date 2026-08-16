@@ -337,14 +337,15 @@
 }
 
 .el-attachment-img {
-    max-width: 280px;
-    max-height: 200px;
+    max-width: 200px;
+    max-height: 150px;
     border-radius: 6px;
-    object-fit: cover;
+    object-fit: contain;
     border: 1px solid rgba(255, 255, 255, 0.15);
     cursor: pointer;
     transition: transform 0.15s ease, border-color 0.15s ease;
     display: block;
+    background: rgba(0, 0, 0, 0.15);
 }
 
 .el-attachment-img:hover {
@@ -369,4 +370,19 @@
 .el-attachment-link:hover {
     text-decoration: underline;
     background: rgba(0, 0, 0, 0.45);
+}
+
+.el-attachment-video {
+    max-width: 260px;
+    max-height: 160px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    display: block;
+    background: #000;
+    outline: none;
+    cursor: default;
+}
+
+.el-attachment-video:hover {
+    border-color: rgba(255, 255, 255, 0.35);
 }

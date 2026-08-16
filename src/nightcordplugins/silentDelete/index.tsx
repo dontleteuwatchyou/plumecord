@@ -40,14 +40,18 @@ const settings = definePluginSettings({
     }
 });
 
-const SilentDeleteIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M15 3.999V2H9V3.999H3V5.999H21V3.999H15Z" />
-        <path d="M5 6.99902V18.999C5 20.101 5.897 20.999 7 20.999H17C18.103 20.999 19 20.101 19 18.999V6.99902H5ZM11 17H9V11H11V17ZM15 17H13V11H15V17Z" />
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
+const SilentDeleteIcon = (props: any) => (
+    <svg aria-hidden="true" role="img" width={18} height={18} viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M14.25 1c.41 0 .75.34.75.75V3h5.25c.41 0 .75.34.75.75v.5c0 .41-.34.75-.75.75H3.75A.75.75 0 0 1 3 4.25v-.5c0-.41.34-.75.75-.75H9V1.75c0-.41.34-.75.75-.75h4.5Z" />
+        <path fillRule="evenodd" d="M5.06 7a1 1 0 0 0-1 1.06l.76 12.13a3 3 0 0 0 3 2.81h8.36a3 3 0 0 0 3-2.81l.75-12.13a1 1 0 0 0-1-1.06H5.07ZM11 12a1 1 0 1 0-2 0v6a1 1 0 1 0 2 0v-6Zm3-1a1 1 0 0 1 1 1v6a1 1 0 1 1-2 0v-6a1 1 0 0 1 1-1Z" clipRule="evenodd" />
     </svg>
 );
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+let _silentPurgeActive = false;
 
 async function silentDeleteMessage(channelId: string, messageId: string, deleteOriginal = true): Promise<boolean> {
     try {
@@ -82,6 +86,7 @@ async function silentDeleteMessage(channelId: string, messageId: string, deleteO
 const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { message }) => {
     if (!message || message.author?.id !== UserStore.getCurrentUser()?.id) return;
 
+    const Icon = iconsModule?.TrashIcon || SilentDeleteIcon;
     const group = findGroupChildrenByChildId("edit", children) ?? children;
     group.push(
         <Menu.MenuItem
@@ -89,7 +94,12 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { messag
             color="danger"
             label={t("Silent Delete")}
             action={() => silentDeleteMessage(message.channel_id, message.id, !message.deleted)}
-            icon={SilentDeleteIcon}
+            icon={Icon}
+            iconLeft={Icon}
+            leadingAccessory={{
+                type: "icon",
+                icon: Icon
+            }}
         />
     );
 };
@@ -135,6 +145,7 @@ export default definePlugin({
                         let lastMessageId: string | undefined;
 
                         while (userMessages.length < count) {
+                            if (!_silentPurgeActive) return;
                             const response = await RestAPI.get({
                                 url: Constants.Endpoints.MESSAGES(channelId),
                                 query: { limit: 100, ...(lastMessageId && { before: lastMessageId }) }
@@ -161,6 +172,7 @@ export default definePlugin({
                         let successCount = 0;
 
                         for (let i = 0; i < userMessages.length; i++) {
+                            if (!_silentPurgeActive) return;
                             if (await silentDeleteMessage(channelId, userMessages[i].id)) successCount++;
                             if (i < userMessages.length - 1) await sleep(purgeInterval);
                         }
@@ -175,6 +187,7 @@ export default definePlugin({
     ],
 
     start() {
+        _silentPurgeActive = true;
         addButton("SilentDelete", msg => {
             if (msg.author?.id !== UserStore.getCurrentUser()?.id || msg.deleted) return null;
 
@@ -190,6 +203,7 @@ export default definePlugin({
     },
 
     stop() {
+        _silentPurgeActive = false;
         removeButton("SilentDelete");
     }
 });

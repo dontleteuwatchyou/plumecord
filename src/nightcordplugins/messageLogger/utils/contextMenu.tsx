@@ -66,8 +66,18 @@ function renderOpenLogs(idType: idKeys, props: any) {
     );
 }
 
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
+const MessageLoggerContextMenuIcon = (props: any) => (
+    <svg aria-hidden="true" role="img" width={18} height={18} viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M2 4a1 1 0 0 1 1-1h18a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1ZM2 8a1 1 0 0 1 1-1h15a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1ZM3 11a1 1 0 1 0 0 2h11a1 1 0 1 0 0-2H3ZM2 16a1 1 0 0 1 1-1h18a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1ZM3 19a1 1 0 1 0 0 2h15a1 1 0 1 0 0-2H3Z" />
+    </svg>
+);
+
 export const contextMenuPath: NavContextMenuPatchCallback = (children, props) => {
     if (!props) return;
+
+    const Icon = iconsModule?.EyeIcon || iconsModule?.HistoryIcon || MessageLoggerContextMenuIcon;
 
     if (!children.some(child => child?.props?.id === "message-logger")) {
         children.push(
@@ -75,6 +85,12 @@ export const contextMenuPath: NavContextMenuPatchCallback = (children, props) =>
             <Menu.MenuItem
                 id="message-logger"
                 label="Message Logger"
+                icon={Icon}
+                iconLeft={Icon}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: Icon
+                }}
             >
 
                 <Menu.MenuItem

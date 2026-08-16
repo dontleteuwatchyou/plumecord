@@ -815,95 +815,16 @@ function HeaderButton() {
     );
 }
 
-async function closeChannelReliably(channelId: string): Promise<boolean> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-            await RestAPI.del({ url: `/channels/${channelId}` });
-            return true;
-        } catch (e: any) {
-            const status = e?.status || e?.statusCode;
-            if (status === 429) {
-                const retryAfter = e?.body?.retry_after ?? 1.5;
-                const delay = retryAfter < 100 ? retryAfter * 1000 : retryAfter;
-                await new Promise(r => setTimeout(r, delay + 100));
-            } else {
-                console.error(`[MessageCleaner] Failed to close channel ${channelId}:`, e);
-                return false;
-            }
-        }
-    }
-    return false;
-}
-
-async function clearAllDMs() {
-    const channels = Object.values(ChannelStore.getMutablePrivateChannels()).filter((c: any) => c.type === 1);
-    if (channels.length === 0) {
-        showToast(t("No DMs to close"), Toasts.Type.INFO);
-        return;
-    }
-
-    Alerts.show({
-        title: t("Close all DMs"),
-        confirmText: t("Close"),
-        cancelText: t("Cancel"),
-        body: (
-            <div style={{ color: "#dbdee1" }}>
-                {t("Are you sure you want to close all your DMs? Your messages will not be deleted, but the conversations will disappear from your list.")}
-            </div>
-        ),
-        onConfirm: async () => {
-            showToast(`Closing ${channels.length} DMs...`, Toasts.Type.INFO);
-            let closedCount = 0;
-            for (const ch of channels) {
-                const success = await closeChannelReliably(ch.id);
-                if (success) closedCount++;
-                await new Promise(r => setTimeout(r, 100));
-            }
-            showToast(`Closed ${closedCount}/${channels.length} DMs`, Toasts.Type.SUCCESS);
-        }
-    });
-}
-
-async function clearAllGroups() {
-    const channels = Object.values(ChannelStore.getMutablePrivateChannels()).filter((c: any) => c.type === 3);
-    if (channels.length === 0) {
-        showToast(t("No groups to leave"), Toasts.Type.INFO);
-        return;
-    }
-
-    Alerts.show({
-        title: t("Leave all groups"),
-        confirmText: t("Leave"),
-        cancelText: t("Cancel"),
-        body: (
-            <div style={{ color: "#dbdee1" }}>
-                {t("Are you sure you want to leave all your group DMs? This will remove you from all group conversations.")}
-            </div>
-        ),
-        onConfirm: async () => {
-            showToast(`Leaving ${channels.length} groups...`, Toasts.Type.INFO);
-            let leftCount = 0;
-            for (const ch of channels) {
-                const success = await closeChannelReliably(ch.id);
-                if (success) leftCount++;
-                await new Promise(r => setTimeout(r, 100));
-            }
-            showToast(`Left ${leftCount}/${channels.length} groups`, Toasts.Type.SUCCESS);
-        }
-    });
-}
-
 function handleContextClean(type: "channel" | "server" | "dm", targetId: string, name: string) {
     addToQueue([{ type, targetId, name, id: Math.random().toString(36).substring(7) }]);
     showToast(t("Added to Message Cleaner Queue"), Toasts.Type.SUCCESS);
 }
 
 const ChannelContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { channel?: any; message?: any; } = {}) => {
-    const { channel, message } = ctx;
+    const { channel } = ctx;
     if (!channel) return;
 
     const isPrivateDM = channel.type === 1 || channel.type === 3 || (typeof channel.isPrivate === "function" && channel.isPrivate());
-
     const menuItems: any[] = [];
 
     if (isQueueRunning) {
@@ -912,18 +833,6 @@ const ChannelContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { c
                 label={t("Stop Cleaning")} color="danger" action={stopQueue} />
         );
     } else {
-        // "Close all DMs" and "Leave all groups" at the VERY TOP of DM sidebar list
-        if (isPrivateDM && !message) {
-            menuItems.push(
-                <Menu.MenuItem key="clear-all-dms" id="vc-clear-all-dms"
-                    label={t("Close all DMs")} color="danger"
-                    action={clearAllDMs} />,
-                <Menu.MenuItem key="clear-all-groups" id="vc-clear-all-groups"
-                    label={t("Leave all groups")} color="danger"
-                    action={clearAllGroups} />
-            );
-        }
-
         menuItems.push(
             <Menu.MenuItem key="clean-messages" id="vc-clean-messages"
                 label={t("Clean messages")} color="danger"
@@ -943,10 +852,10 @@ const ChannelContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { c
 };
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { channel?: any; message?: any; user?: any; } = {}) => {
-    const { channel, message, user } = ctx;
+    const { channel, user } = ctx;
+    if (!channel) return;
 
-    const isPrivateDM = channel && (channel.type === 1 || channel.type === 3 || (typeof channel.isPrivate === "function" && channel.isPrivate()));
-
+    const isPrivateDM = channel.type === 1 || channel.type === 3 || (typeof channel.isPrivate === "function" && channel.isPrivate());
     const menuItems: any[] = [];
 
     if (isQueueRunning) {
@@ -955,25 +864,11 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { chan
                 label={t("Stop Cleaning")} color="danger" action={stopQueue} />
         );
     } else {
-        // "Close all DMs" and "Leave all groups" at the VERY TOP if right-clicking DM list entry
-        if (isPrivateDM && !message) {
-            menuItems.push(
-                <Menu.MenuItem key="clear-all-dms" id="vc-clear-all-dms"
-                    label={t("Close all DMs")} color="danger"
-                    action={clearAllDMs} />,
-                <Menu.MenuItem key="clear-all-groups" id="vc-clear-all-groups"
-                    label={t("Leave all groups")} color="danger"
-                    action={clearAllGroups} />
-            );
-        }
-
-        if (channel) {
-            menuItems.push(
-                <Menu.MenuItem key="clean-messages-user" id="vc-clean-messages-user"
-                    label={t("Clean messages")} color="danger"
-                    action={() => handleContextClean(isPrivateDM ? "dm" : "channel", channel.id, channel.name || user?.username || "User")} />
-            );
-        }
+        menuItems.push(
+            <Menu.MenuItem key="clean-messages-user" id="vc-clean-messages-user"
+                label={t("Clean messages")} color="danger"
+                action={() => handleContextClean(isPrivateDM ? "dm" : "channel", channel.id, channel.name || user?.username || "User")} />
+        );
     }
 
     if (menuItems.length === 0) return;

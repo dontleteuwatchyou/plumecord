@@ -264,6 +264,8 @@ async function downloadMedia(media: MediaItem[]) {
     }
 }
 
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
 const MessageContextMenuPatch = (children: any[], props: MessageContextProps) => {
     const message = props?.message;
     if (!message) return;
@@ -274,17 +276,30 @@ const MessageContextMenuPatch = (children: any[], props: MessageContextProps) =>
     const media = getMediaFromMessage(message);
     if (!media.length) return;
 
+    const Icon = iconsModule?.DownloadIcon || SaveIcon;
     children.push(
         <Menu.MenuGroup key="save-videos-msg-group">
             <Menu.MenuItem
                 id="save-videos-download-message-media"
                 label={t("Download Message Media")}
+                icon={Icon}
+                iconLeft={Icon}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: Icon
+                }}
                 action={() => { void downloadMedia(media); }}
             />
             {channel && (
                 <Menu.MenuItem
                     id="save-videos-download-user-channel-media"
                     label={t("Download User's Media in Channel")}
+                    icon={Icon}
+                    iconLeft={Icon}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: Icon
+                    }}
                     action={() => {
                         const allMessages = getChannelMessages(channel.id);
                         const userMessages = allMessages.filter((m: any) => m.author?.id === message.author.id);

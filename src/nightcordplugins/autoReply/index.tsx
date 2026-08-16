@@ -98,6 +98,7 @@ const settings = definePluginSettings({
 
 const lastReplied = new Map<string, number>();
 let sequentialIndex = 0;
+const _pendingReplyTimers = new Set<ReturnType<typeof setTimeout>>();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -258,12 +259,23 @@ export default definePlugin({
                 const minDelay = settings.store.minDelayMs ?? 300;
                 const maxDelay = Math.max(settings.store.maxDelayMs ?? 1500, minDelay);
                 const delay = minDelay + Math.random() * (maxDelay - minDelay);
-                setTimeout(() => sendAutoReply(message), delay);
+                const _t = setTimeout(() => {
+                    _pendingReplyTimers.delete(_t);
+                    if (!settings.store.active) return;
+                    sendAutoReply(message);
+                }, delay);
+                _pendingReplyTimers.add(_t);
             }
         },
     },
 
     start() {
+        _pendingReplyTimers.clear();
         // Always OFF at startup — the button toggle is session-only
+    },
+
+    stop() {
+        _pendingReplyTimers.forEach(clearTimeout);
+        _pendingReplyTimers.clear();
     },
 });

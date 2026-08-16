@@ -1,13 +1,7 @@
-/*
- * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
-
 import { proxyLazy } from "@utils/lazy";
 import { sleep } from "@utils/misc";
 import { Queue } from "@utils/Queue";
-import { ChannelActionCreators, Flux, FluxDispatcher, GuildChannelStore } from "@webpack/common";
+import { ChannelActionCreators, ChannelStore, Flux, FluxDispatcher, GuildChannelStore } from "@webpack/common";
 
 export const OnlineMemberCountStore = proxyLazy(() => {
     const preloadQueue = new Queue();
@@ -22,7 +16,25 @@ export const OnlineMemberCountStore = proxyLazy(() => {
         async _ensureCount(guildId: string) {
             if (onlineMemberMap.has(guildId)) return;
 
-            await ChannelActionCreators.preload(guildId, GuildChannelStore.getDefaultChannel(guildId)!.id);
+            let channel = GuildChannelStore.getDefaultChannel(guildId);
+            if (!channel) {
+                const channels = GuildChannelStore.getChannels(guildId);
+                const flat: any[] = [];
+                for (const arr of Object.values(channels ?? {})) {
+                    if (Array.isArray(arr)) for (const item of arr) flat.push(item?.channel ?? item);
+                }
+                channel = flat.find(c => c?.id) ?? null;
+            }
+            if (!channel) {
+                const all = ChannelStore.getChannels?.() ?? {};
+                const list = Array.isArray(all) ? all : Object.values(all);
+                channel = list.find((c: any) => c?.guild_id === guildId) ?? null;
+            }
+            if (!channel?.id) return;
+
+            try {
+                await ChannelActionCreators.preload(guildId, channel.id);
+            } catch { }
         }
 
         ensureCount(guildId?: string) {
@@ -40,13 +52,15 @@ export const OnlineMemberCountStore = proxyLazy(() => {
 
     return new OnlineMemberCountStore(FluxDispatcher, {
         GUILD_MEMBER_LIST_UPDATE({ guildId, groups }: { guildId: string, groups: { count: number; id: string; }[]; }) {
+            if (!groups || !Array.isArray(groups)) return;
             onlineMemberMap.set(
                 guildId,
                 groups.reduce((total, curr) => total + (curr.id === "offline" ? 0 : curr.count), 0)
             );
         },
         ONLINE_GUILD_MEMBER_COUNT_UPDATE({ guildId, count }) {
-            onlineMemberMap.set(guildId, count);
+            if (typeof count === "number") onlineMemberMap.set(guildId, count);
         }
     });
 });
+

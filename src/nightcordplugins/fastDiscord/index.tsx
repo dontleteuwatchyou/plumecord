@@ -318,6 +318,16 @@ function patchedDispatch(event: any) {
         return origFluxDispatch?.call(FluxDispatcher, event);
     }
 
+    // Never throttle activity clearance (stopping/pausing track, disabling rich presence, removing activity)
+    if (event.type === "LOCAL_ACTIVITY_UPDATE" && !event.activity) {
+        const existing = pendingPresenceDispatch.get(event.type);
+        if (existing) {
+            clearTimeout(existing.timer);
+            pendingPresenceDispatch.delete(event.type);
+        }
+        return origFluxDispatch?.call(FluxDispatcher, event);
+    }
+
     const existing = pendingPresenceDispatch.get(event.type);
     if (existing) clearTimeout(existing.timer);
 

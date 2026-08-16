@@ -37,6 +37,8 @@ import { translate } from "./utils";
 import { t } from "../autoTranslateNightcord";
 
 
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
 const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { message: Message; }) => {
     const content = getMessageContent(message);
     if (!content) return;
@@ -44,11 +46,18 @@ const messageCtxPatch: NavContextMenuPatchCallback = (children, { message }: { m
     const group = findGroupChildrenByChildId("copy-text", children);
     if (!group) return;
 
+    const Icon = iconsModule?.TranslateIcon || iconsModule?.GlobeEarthIcon || TranslateIcon;
+
     group.splice(group.findIndex(c => c?.props?.id === "copy-text") + 1, 0, (
         <Menu.MenuItem
             id="vc-trans"
             label={t("Translate")}
-            icon={TranslateIcon}
+            icon={Icon}
+            iconLeft={Icon}
+            leadingAccessory={{
+                type: "icon",
+                icon: Icon
+            }}
             action={async () => {
                 const trans = await translate("received", content);
                 handleTranslate(message.id, trans);

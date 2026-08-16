@@ -73,7 +73,7 @@ async function checkForUpdates() {
             notify();
         }
     } catch (e: any) {
-        console.error("[NightcordUpdater] Error:", e);
+        console.debug("[NightcordUpdater] Check skipped:", e?.message || e);
     }
 }
 

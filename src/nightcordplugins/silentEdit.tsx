@@ -32,9 +32,12 @@ const settings = definePluginSettings({
     }
 });
 
-const SilentEditIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M19.2929 9.8299L19.9409 9.18278C21.353 7.77064 21.353 5.47197 19.9409 4.05892C18.5287 2.64678 16.2292 2.64678 14.817 4.05892L14.1699 4.70694L19.2929 9.8299ZM12.8962 5.97688L5.18469 13.6906L10.3085 18.813L18.0201 11.0992L12.8962 5.97688ZM4.11851 20.9704L8.75906 19.8112L4.18692 15.239L3.02678 19.8796C2.95028 20.1856 3.04028 20.5105 3.26349 20.7337C3.48669 20.9569 3.8116 21.046 4.11851 20.9704Z" />
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
+const SilentEditIcon = (props: any) => (
+    <svg aria-hidden="true" role="img" width={18} height={18} viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path d="M14.25 1c.41 0 .75.34.75.75V3h5.25c.41 0 .75.34.75.75v.5c0 .41-.34.75-.75.75H3.75A.75.75 0 0 1 3 4.25v-.5c0-.41.34-.75.75-.75H9V1.75c0-.41.34-.75.75-.75h4.5Z" />
+        <path fillRule="evenodd" d="M5.06 7a1 1 0 0 0-1 1.06l.76 12.13a3 3 0 0 0 3 2.81h8.36a3 3 0 0 0 3-2.81l.75-12.13a1 1 0 0 0-1-1.06H5.07ZM11 12a1 1 0 1 0-2 0v6a1 1 0 1 0 2 0v-6Zm3-1a1 1 0 0 1 1 1v6a1 1 0 1 1-2 0v-6a1 1 0 0 1 1-1Z" clipRule="evenodd" />
     </svg>
 );
 
@@ -103,6 +106,7 @@ const triggerSilentEdit = async (msg: any) => {
 const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { message }) => {
     if (!message || message.author?.id !== UserStore.getCurrentUser()?.id || message.deleted) return;
 
+    const Icon = iconsModule?.PencilIcon || iconsModule?.EditIcon || SilentEditIcon;
     const group = findGroupChildrenByChildId("edit", children) ?? children;
     group.push(
         <Menu.MenuItem
@@ -110,7 +114,12 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { messag
             color="danger"
             label={t("Silent Edit")}
             action={() => triggerSilentEdit(message)}
-            icon={SilentEditIcon}
+            icon={Icon}
+            iconLeft={Icon}
+            leadingAccessory={{
+                type: "icon",
+                icon: Icon
+            }}
         />
     );
 };

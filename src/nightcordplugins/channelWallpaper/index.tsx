@@ -371,6 +371,24 @@ function WallpaperIcon() {
     );
 }
 
+const FolderIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
+    </svg>
+);
+
+const LinkIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+    </svg>
+);
+
+const TrashIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+    </svg>
+);
+
 function buildWallpaperMenu(channelId: string): React.ReactElement {
     const has = hasWallpaper(channelId);
     const channel = ChannelStore.getChannel(channelId);
@@ -381,15 +399,20 @@ function buildWallpaperMenu(channelId: string): React.ReactElement {
             id="channel-wallpaper"
             label={t("Wallpaper")}
             icon={WallpaperIcon}
+            leadingAccessory={WallpaperIcon}
         >
             <Menu.MenuItem
                 id="wallpaper-from-file"
-                label={t("📁 From a file...")}
+                label={t("From a file...")}
+                icon={FolderIcon}
+                leadingAccessory={FolderIcon}
                 action={() => setWallpaperFromFile(channelId)}
             />
             <Menu.MenuItem
                 id="wallpaper-from-url"
-                label={t("🔗 From a URL...")}
+                label={t("From a URL...")}
+                icon={LinkIcon}
+                leadingAccessory={LinkIcon}
                 action={() => setWallpaperFromUrl(channelId)}
             />
             {has && (
@@ -397,8 +420,10 @@ function buildWallpaperMenu(channelId: string): React.ReactElement {
                     <Menu.MenuSeparator />
                     <Menu.MenuItem
                         id="wallpaper-remove"
-                        label={isDM ? t("🗑️ Delete for both") : t("🗑️ Delete wallpaper")}
+                        label={isDM ? t("Delete for both") : t("Delete wallpaper")}
                         color="danger"
+                        icon={TrashIcon}
+                        leadingAccessory={TrashIcon}
                         action={() => removeWallpaper(channelId)}
                     />
                 </>
@@ -456,7 +481,7 @@ const channelContextMenuPatch: NavContextMenuPatchCallback = (children, { channe
 
 export default definePlugin({
     name: "ChannelWallpaper",
-    enabledByDefault: true,
+    enabledByDefault: false,
     authors: [Devs.rushii, Devs.Nickyux],
     description: "Allows for custom backgrounds for every individual channel.",
     settings,
@@ -534,7 +559,11 @@ export default definePlugin({
 
     stop() {
         removeWallpaperElements();
-        vpsSocket?.close();
+        if (vpsSocket) {
+            vpsSocket.onclose = null; // prevent reconnect loop
+            vpsSocket.close();
+            vpsSocket = null;
+        }
         document.removeEventListener("visibilitychange", handleVisChange);
         window.removeEventListener("focus", handleFocusChange);
         window.removeEventListener("blur", handleFocusChange);

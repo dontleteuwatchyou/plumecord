@@ -227,6 +227,21 @@ function isBlacklistedUserInChannel(channelId: string): boolean {
     return blacklist.some((id: string) => states[id] !== undefined);
 }
 
+function startUIInterval() {
+    if (!domUpdateInterval) {
+        updateUI();
+        domUpdateInterval = setInterval(updateUI, 1000);
+    }
+}
+
+function stopUIInterval() {
+    if (domUpdateInterval) {
+        clearInterval(domUpdateInterval);
+        domUpdateInterval = null;
+    }
+    updateUI();
+}
+
 async function handleVoiceStateUpdates(e: any) {
     if (!isCurrentlyRecording() || !lastChannelId) return;
     
@@ -236,6 +251,7 @@ async function handleVoiceStateUpdates(e: any) {
         if (update.userId === UserStore?.getCurrentUser?.()?.id) {
             if (!update.channelId) {
                 await stopRecording();
+                stopUIInterval();
                 lastChannelId = null;
                 return;
             }
@@ -245,6 +261,7 @@ async function handleVoiceStateUpdates(e: any) {
             if (isBlacklistedUserInChannel(lastChannelId)) {
                 Toasts.show(Toasts.create(t("Blacklisted user in channel."), Toasts.Type.WARNING));
                 await stopRecording();
+                stopUIInterval();
                 break;
             }
         }
@@ -256,6 +273,7 @@ async function handleVoiceChannelSelect(e: any) {
 
     if (lastChannelId && lastChannelId !== newChannelId) {
         await stopRecording();
+        stopUIInterval();
     }
 
     if (newChannelId && lastChannelId !== newChannelId) {
@@ -273,6 +291,7 @@ async function handleVoiceChannelSelect(e: any) {
                 savePath: settings.store.savePath,
                 showSaveToast: settings.store.showSaveToast
             });
+            startUIInterval();
         }
     }
 
@@ -302,19 +321,20 @@ export default definePlugin({
                     autoSave: settings.store.autoSave,
                     savePath: settings.store.savePath,
                     showSaveToast: settings.store.showSaveToast
+                }).then(() => {
+                    startUIInterval();
                 });
             }
         }
 
         FluxDispatcher.subscribe("VOICE_CHANNEL_SELECT", handleVoiceChannelSelect);
         FluxDispatcher.subscribe("VOICE_STATE_UPDATES", handleVoiceStateUpdates);
-        domUpdateInterval = setInterval(updateUI, 1000);
     },
 
     stop() {
         FluxDispatcher.unsubscribe("VOICE_CHANNEL_SELECT", handleVoiceChannelSelect);
         FluxDispatcher.unsubscribe("VOICE_STATE_UPDATES", handleVoiceStateUpdates);
-        clearInterval(domUpdateInterval);
+        stopUIInterval();
         
         if (isCurrentlyRecording()) {
             stopRecording();

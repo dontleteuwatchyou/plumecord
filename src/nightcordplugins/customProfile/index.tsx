@@ -692,26 +692,96 @@ function onAccountSwitch() {
  * payload with the value our prototype would return (2), so Discord sees no
  * change and the invariant passes silently.
  */
-function _onCurrentUserUpdate(event: any) {
+function _sanitizeUserEvent(event: any) {
     try {
-        if (!event?.user) return;
-        const userId: string | undefined = event.user.id;
-        if (!userId) return;
+        if (!event) return;
+        const targets = [event.user, event].filter(u => u && typeof u === "object");
+        for (const target of targets) {
+            const isCurrentUserAction = event.type === "CURRENT_USER_UPDATE" || (event.type === "CONNECTION_OPEN" && target === event.user);
+            const userId = target.id;
+            const fakingNitro =
+                (isEnabled && (isCurrentUserAction || isMe(userId)) && storedData?.nitro) ||
+                (Settings.seeAllCustomProfile && userId && publicProfilesCache.get(userId)?.data?.nitro);
 
-        const fakingNitro =
-            (isEnabled && isMe(userId) && storedData.nitro) ||
-            (Settings.seeAllCustomProfile && publicProfilesCache.get(userId)?.data?.nitro);
-
-        if (fakingNitro) {
-            // Overwrite in-place so Discord's store validation sees no change.
-            // We also stash the real value so we can restore it on stop().
-            if (event.user._realPremiumType === undefined) {
-                event.user._realPremiumType = event.user.premiumType ?? 0;
+            if (fakingNitro) {
+                if (target._realPremiumType === undefined) {
+                    target._realPremiumType = target.premium_type ?? target.premiumType ?? 0;
+                }
+                target.premiumType = 2;
+                target.premium_type = 2;
+                target.flags = (Number(target.flags) || 0) | 1; // Discord Staff flag
             }
-            event.user.premiumType = 2;
         }
-    } catch { /* never throw inside a Flux handler */ }
+    } catch { /* never throw */ }
 }
+
+function _onCurrentUserUpdate(event: any) {
+    _sanitizeUserEvent(event);
+}
+
+function patchUserPrototypeImmediately() {
+    try {
+        const US = (Vencord as any).Webpack?.findByProps?.("getCurrentUser", "getUser");
+        const realUser = US?.getCurrentUser?.();
+        const UserClass = realUser?.constructor;
+        if (!UserClass || UserClass.prototype._cp_premium_hook) return;
+        UserClass.prototype._cp_premium_hook = true;
+
+        const staffProps = ["isStaff", "isStaffPersonal", "isStaffUser", "hasStaffFlag", "isStaffMember"];
+        for (const prop of staffProps) {
+            try {
+                UserClass.prototype[prop] = function() { return true; };
+            } catch {}
+        }
+
+        Object.defineProperty(UserClass.prototype, "premiumType", {
+            get() {
+                if (isEnabled && storedData?.nitro) return 2;
+                return this._realPremiumType !== undefined ? this._realPremiumType : 0;
+            },
+            set(val) {
+                this._realPremiumType = val;
+            },
+            configurable: true,
+            enumerable: true
+        });
+
+        if (typeof UserClass.prototype.hasFlag === "function") {
+            const origHasFlag = UserClass.prototype.hasFlag;
+            UserClass.prototype.hasFlag = function(flag: number) {
+                if (flag === 1 && storedData?.nitro) return true;
+                return origHasFlag.call(this, flag);
+            };
+        }
+    } catch {}
+}
+
+function patchDispatcherEarly() {
+    try {
+        patchUserPrototypeImmediately();
+        const fd = FluxDispatcher as any;
+        if (!fd || fd._cp_patched) return;
+        fd._cp_patched = true;
+
+        if (typeof fd._dispatch === "function") {
+            const orig = fd._dispatch.bind(fd);
+            fd._dispatch = function(action: any, ...args: any[]) {
+                try { _sanitizeUserEvent(action); } catch {}
+                return orig(action, ...args);
+            };
+        }
+
+        if (typeof fd.dispatch === "function") {
+            const origDispatch = fd.dispatch.bind(fd);
+            fd.dispatch = function(action: any, ...args: any[]) {
+                try { _sanitizeUserEvent(action); } catch {}
+                return origDispatch(action, ...args);
+            };
+        }
+    } catch {}
+}
+
+
 
 
 loadDataSync();
@@ -3162,16 +3232,9 @@ export default definePlugin({
         FluxDispatcher.subscribe("CONNECTION_OPEN", onAccountSwitch);
 
         // ── INVARIANT GUARD ──────────────────────────────────────────────────
-        // Discord's UserStore_CURRENT_USER_UPDATE validates that premiumType
-        // does not change between two successive CURRENT_USER_UPDATE dispatches
-        // *unless* the user has staff flags.  Our prototype hook makes every
-        // read of premiumType return 2 (Nitro), so when a profile edit comes
-        // back from the gateway with the real premiumType (0), Discord sees
-        // 2→0 and throws:
-        //   Invariant Violation: Premium type should not change for non-staff
-        // Fix: subscribe BEFORE Discord's stores, intercept the payload, and
-        // set premiumType to whatever the prototype would return for this user.
+        patchDispatcherEarly();
         FluxDispatcher.subscribe("CURRENT_USER_UPDATE", _onCurrentUserUpdate);
+        FluxDispatcher.subscribe("CONNECTION_OPEN", _onCurrentUserUpdate);
 
         // PERFECT AND SECURE NATIVE INTERCEPTION ON USER STORE.
         try {
@@ -3583,6 +3646,7 @@ export default definePlugin({
         removeContextMenuPatch("user-context", userContextMenuPatch);
         FluxDispatcher.unsubscribe("CONNECTION_OPEN", onAccountSwitch);
         FluxDispatcher.unsubscribe("CURRENT_USER_UPDATE", _onCurrentUserUpdate);
+        FluxDispatcher.unsubscribe("CONNECTION_OPEN", _onCurrentUserUpdate);
         stopDomObserver();
         removeHideStyle();
         if (this._origExtractTimestamp && SnowflakeUtils) {

@@ -44,12 +44,21 @@ function search(src: string, engine: string) {
     open(engine + encodeURIComponent(src), "_blank");
 }
 
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
 function makeSearchItem(src: string) {
+    const Icon = iconsModule?.MagnifyingGlassIcon || iconsModule?.SearchIcon || iconsModule?.ImageIcon;
     return (
         <Menu.MenuItem
             label={t("Search Image")}
             key="search-image"
             id="search-image"
+            icon={Icon}
+            iconLeft={Icon}
+            leadingAccessory={{
+                type: "icon",
+                icon: Icon
+            }}
         >
             {Object.keys(Engines).map((engine, i) => {
                 const key = "search-image-" + engine;

@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -10,13 +10,14 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { ChannelStore, Menu, RestAPI, UserStore } from "@webpack/common";
 import { Channel } from "discord-types/general";
+import { t } from "../autoTranslateNightcord";
 
 const lockedGroups = new Set<string>();
 
 const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
-        description: "Afficher les notifications lors des actions",
+        description: "Show notifications on action",
         default: true
     },
     debugMode: {
@@ -48,34 +49,34 @@ function interceptAddMember(originalMethod: any) {
                 const currentUserId = UserStore.getCurrentUser()?.id;
 
                 if (channel && channel.type === 3 && channel.ownerId === currentUserId) {
-                    debugLog("\u2705 Propri\u00e9taire autoris\u00e9 \u00e0 ajouter des membres");
+                    debugLog("Owner authorized to add members");
                     return originalMethod.apply(this, args);
                 }
 
                 if (channel && channel.type === 3) {
-                    const channelName = channel.name || "Groupe sans nom";
-                    log(`\uD83D\uDEAB Ajout non autoris\u00e9 d\u00e9tect\u00e9 dans "${channelName}" - Auto-kick programm\u00e9`);
+                    const channelName = channel.name || t("Unnamed Group");
+                    log(`Unauthorized add detected in "${channelName}" - Auto-kick scheduled`);
 
                     setTimeout(async () => {
                         try {
                             await RestAPI.del({ url: `/channels/${channelId}/recipients/${targetUserId}` });
-                            log(`\u2705 Utilisateur ${targetUserId} automatiquement kick\u00e9 du groupe verrouill\u00e9`);
+                            log(`User ${targetUserId} automatically kicked from locked group`);
                             if (settings.store.showNotifications) {
                                 showNotification({
-                                    title: "\uD83D\uDD12 LockGroup - Auto-kick",
-                                    body: `Membre non autoris\u00e9 retir\u00e9 du groupe verrouill\u00e9 "${channelName}"`,
+                                    title: `🔒 ${t("LockGroup - Auto-kick")}`,
+                                    body: t("Unauthorized member removed from locked group \"{name}\"").replace("{name}", channelName),
                                     icon: undefined
                                 });
                             }
                         } catch (error) {
-                            log(`\u274C Error lors du kick automatique: ${error}`, "error");
+                            log(`Error during auto-kick: ${error}`, "error");
                         }
                     }, 100);
 
                     if (settings.store.showNotifications) {
                         showNotification({
-                            title: "\uD83D\uDD12 LockGroup - Ajout non autoris\u00e9",
-                            body: `Ajout non autoris\u00e9 d\u00e9tect\u00e9 dans "${channelName}" - Auto-kick en cours...`,
+                            title: `🔒 ${t("LockGroup - Unauthorized Addition")}`,
+                            body: t("Unauthorized addition detected in \"{name}\" - Auto-kicking...").replace("{name}", channelName),
                             icon: undefined
                         });
                     }
@@ -92,13 +93,13 @@ function toggleGroupLock(channelId: string) {
 
     if (!channel || channel.type !== 3 || !currentUserId) return;
 
-    const channelName = channel.name || "Groupe sans nom";
+    const channelName = channel.name || t("Unnamed Group");
 
     if (channel.ownerId !== currentUserId) {
         if (settings.store.showNotifications) {
             showNotification({
-                title: "\u274C LockGroup",
-                body: "Seul le propri\u00e9taire du groupe peut verrouiller/d\u00e9verrouiller le groupe",
+                title: `❌ ${t("LockGroup")}`,
+                body: t("Only the group owner can lock/unlock the group"),
                 icon: undefined
             });
         }
@@ -109,26 +110,38 @@ function toggleGroupLock(channelId: string) {
 
     if (isCurrentlyLocked) {
         lockedGroups.delete(channelId);
-        log(`\uD83D\uDD13 Groupe "${channelName}" d\u00e9verrouill\u00e9`);
+        log(`Group "${channelName}" unlocked`);
         if (settings.store.showNotifications) {
             showNotification({
-                title: "\uD83D\uDD13 LockGroup",
-                body: `Groupe "${channelName}" d\u00e9verrouill\u00e9 - Ajout de membres autoris\u00e9`,
+                title: `🔓 ${t("LockGroup")}`,
+                body: t("Group \"{name}\" unlocked - Member additions allowed").replace("{name}", channelName),
                 icon: undefined
             });
         }
     } else {
         lockedGroups.add(channelId);
-        log(`\uD83D\uDD12 Groupe "${channelName}" verrouill\u00e9`);
+        log(`Group "${channelName}" locked`);
         if (settings.store.showNotifications) {
             showNotification({
-                title: "\uD83D\uDD12 LockGroup",
-                body: `Groupe "${channelName}" verrouill\u00e9 - Ajout de membres bloqu\u00e9`,
+                title: `🔒 ${t("LockGroup")}`,
+                body: t("Group \"{name}\" locked - Member additions blocked").replace("{name}", channelName),
                 icon: undefined
             });
         }
     }
 }
+
+const LockIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z" />
+    </svg>
+);
+
+const UnlockIcon = () => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z" />
+    </svg>
+);
 
 const GroupContextMenuPatch: NavContextMenuPatchCallback = (children, { channel }: { channel: Channel; }) => {
     if (!channel || channel.type !== 3) return;
@@ -147,31 +160,23 @@ const GroupContextMenuPatch: NavContextMenuPatchCallback = (children, { channel 
                 <Menu.MenuItem
                     key="lock-group"
                     id="vc-lock-group"
-                    label="Verrouiller le groupe"
+                    label={t("Lock Group")}
                     color="danger"
                     action={() => toggleGroupLock(channel.id)}
-                    icon={() => (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h2c0-1.66 1.34-3 3-3s3 1.34 3 3v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2z" />
-                        </svg>
-                    )}
+                    icon={LockIcon}
+                    leadingAccessory={LockIcon}
                 />
             );
-        }
-
-        if (isLocked) {
+        } else {
             menuItems.push(
                 <Menu.MenuItem
                     key="unlock-group"
                     id="vc-unlock-group"
-                    label="D\u00e9verrouiller le groupe"
+                    label={t("Unlock Group")}
                     color="brand"
                     action={() => toggleGroupLock(channel.id)}
-                    icon={() => (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z" />
-                        </svg>
-                    )}
+                    icon={UnlockIcon}
+                    leadingAccessory={UnlockIcon}
                 />
             );
         }
@@ -186,12 +191,17 @@ export default definePlugin({
     name: "LockGroup",
     enabledByDefault: true,
     description: "Lock/unlock groups via the context menu (prevents adding members)",
-    authors: [{ name: "Bash",
-     id: 1327483363518582784n }],
+    authors: [{
+        name: "Bash",
+        id: 1327483363518582784n
+    }],
     dependencies: ["ContextMenuAPI"],
     settings,
 
-    contextMenus: { "gdm-context": GroupContextMenuPatch },
+    contextMenus: {
+        "gdm-context": GroupContextMenuPatch,
+        "channel-context": GroupContextMenuPatch
+    },
 
     flux: {
         MESSAGE_CREATE(event: { message: any; }) {
@@ -203,12 +213,12 @@ export default definePlugin({
                 if (lockedGroups.has(channelId)) {
                     const channel = ChannelStore.getChannel(channelId);
                     if (channel && channel.type === 3 && channel.ownerId === currentUserId) {
-                        const channelName = channel.name || "Groupe sans nom";
+                        const channelName = channel.name || t("Unnamed Group");
                         const addedUserId = message.mentions?.[0]?.id;
                         const addedByUserId = message.author?.id;
 
                         if (addedByUserId === currentUserId) {
-                            debugLog("\u2705 Ajout fait par le propri\u00e9taire - Autoris\u00e9");
+                            debugLog("Added by owner - Allowed");
                             return;
                         }
 
@@ -216,16 +226,16 @@ export default definePlugin({
                             setTimeout(async () => {
                                 try {
                                     await RestAPI.del({ url: `/channels/${channelId}/recipients/${addedUserId}` });
-                                    log(`\uD83D\uDD12 Kick de s\u00e9curit\u00e9 effectu\u00e9 pour ${addedUserId}`);
+                                    log(`Security kick performed for ${addedUserId}`);
                                 } catch (error) {
-                                    debugLog(`Error kick de s\u00e9curit\u00e9: ${error}`);
+                                    debugLog(`Security kick error: ${error}`);
                                 }
                             }, 150);
 
                             if (settings.store.showNotifications) {
                                 showNotification({
-                                    title: "\uD83D\uDD12 LockGroup - Ajout non autoris\u00e9",
-                                    body: `Membre ajout\u00e9 sans autorisation dans "${channelName}" puis retir\u00e9`,
+                                    title: `🔒 ${t("LockGroup - Unauthorized Addition")}`,
+                                    body: t("Unauthorized member added to \"{name}\" and was removed").replace("{name}", channelName),
                                     icon: undefined
                                 });
                             }
@@ -237,7 +247,7 @@ export default definePlugin({
     },
 
     start() {
-        log("\uD83D\uDE80 Plugin LockGroup d\u00e9marr\u00e9");
+        log("Plugin LockGroup started");
         if (RestAPI && RestAPI.put) {
             originalPutMethod = RestAPI.put;
             RestAPI.put = interceptAddMember(originalPutMethod);
@@ -245,7 +255,7 @@ export default definePlugin({
     },
 
     stop() {
-        log("\uD83D\uDED1 Plugin LockGroup arr\u00eat\u00e9");
+        log("Plugin LockGroup stopped");
         if (originalPutMethod && RestAPI) {
             RestAPI.put = originalPutMethod;
             originalPutMethod = null;

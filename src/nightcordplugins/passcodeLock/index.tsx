@@ -27,6 +27,9 @@ import {
     UserStore
 } from "@webpack/common";
 
+let _lockStartupTimer1: ReturnType<typeof setTimeout> | undefined;
+let _lockStartupTimer2: ReturnType<typeof setTimeout> | undefined;
+
 function getUserAssets() {
     const user = UserStore.getCurrentUser();
     if (!user) return { avatarUrl: "", username: "User" };
@@ -815,12 +818,12 @@ export default definePlugin({
         // lockOnStartup defaults to true — trapping the user behind a lock screen
         // with no passcode they ever chose.
         if (data.hash && (settings.store.lockOnStartup || data.locked)) {
-            setTimeout(() => {
+            _lockStartupTimer1 = setTimeout(() => {
                 lock(document.body);
                 // If the first attempt failed (isLocked still false, meaning
                 // openLocker threw), retry once after modules have had more
                 // time to initialize.
-                setTimeout(() => {
+                _lockStartupTimer2 = setTimeout(() => {
                     if (!isLocked) lock(document.body);
                 }, 2000);
             }, 300);
@@ -828,6 +831,10 @@ export default definePlugin({
     },
 
     stop() {
+        clearTimeout(_lockStartupTimer1);
+        clearTimeout(_lockStartupTimer2);
+        _lockStartupTimer1 = undefined;
+        _lockStartupTimer2 = undefined;
         if (originalShowNotification && NotificationModule) {
             NotificationModule.showNotification = originalShowNotification;
             originalShowNotification = null;
