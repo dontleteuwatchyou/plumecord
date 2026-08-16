@@ -69,7 +69,6 @@ function NoCapsIcon({ enabled }: { enabled: boolean; }) {
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ opacity: enabled ? 1 : 0.4 }}
         >
             {/* Letter 'a' and 'A' typography representation */}
             <path d="M4 19L8 5l4 14" />

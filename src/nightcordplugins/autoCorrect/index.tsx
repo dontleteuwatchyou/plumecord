@@ -115,12 +115,16 @@ function AutoCorrectIcon({ enabled }: { enabled: boolean; }) {
             <path
                 fill="currentColor"
                 d="M8.87 2.31A.5.5 0 0 1 9.34 2h10.92c.36 0 .6.36.47.69l-.6 1.5a.5.5 0 0 1-.47.31h-4.28l-4.17 15h4.05c.36 0 .6.36.47.69l-.6 1.5a.5.5 0 0 1-.47.31H3.74a.5.5 0 0 1-.47-.69l.6-1.5a.5.5 0 0 1 .47-.31h4.28l4.17-15H8.74a.5.5 0 0 1-.47-.69l.6-1.5Z"
-                opacity={enabled ? 1 : 0.35}
             />
             {!enabled && (
-                <path
-                    fill="var(--status-danger)"
-                    d="M21.178 1.707 22.592 3.12 4.12 21.593l-1.414-1.415L21.178 1.707Z"
+                <line
+                    x1="22"
+                    y1="2"
+                    x2="2"
+                    y2="22"
+                    stroke="var(--status-danger, #ed4245)"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
                 />
             )}
         </svg>
