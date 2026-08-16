@@ -125,7 +125,7 @@ function DevCard({ id, role, description }: { id: string; role: string; descript
                             width: "fit-content",
                             marginTop: "2px",
                             marginBottom: "4px",
-                            userSelect: "all",
+                            userSelect: "none",
                             transition: "all 0.15s ease"
                         }}
                     >

@@ -27,6 +27,7 @@ import { detailedPluginDescriptions } from "@api/detailedPluginDescriptions";
 import { TUTORIAL_CACHE } from "./components/Common";
 import { openPluginModal } from "./PluginModal";
 import { getTutorialVideoName, TUTORIAL_PLUGIN_NAMES } from "./tutorialList";
+import { getPluginIcon } from "./pluginIcons";
 import { PluginMeta } from "~plugins";
 
 export function removeEmojis(text: string): string {
@@ -364,10 +365,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
     const hasSettings = !!plugin.settingsAboutComponent || (plugin.settings?.def && Object.values(plugin.settings.def).some(s => s.type !== OptionType.CUSTOM && !s.hidden));
     
-    const PluginIcon = plugin.headerBarButton?.icon || 
-                       plugin.chatBarButton?.icon || 
-                       plugin.messagePopoverButton?.icon || 
-                       plugin.userAreaButton?.icon;
+    const PluginIcon = getPluginIcon(plugin);
 
     return (
         <AddonCard

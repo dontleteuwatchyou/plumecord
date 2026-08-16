@@ -39,6 +39,16 @@
     align-items: center;
     justify-content: center;
     color: var(--text-muted);
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.vc-addon-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+    max-width: 18px;
+    max-height: 18px;
 }
 
 .vc-addon-bottom-row {

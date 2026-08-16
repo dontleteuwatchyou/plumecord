@@ -123,8 +123,10 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
     const pluginMeta = PluginMeta[plugin.name];
     const isEquicordPlugin = pluginMeta.folderName.startsWith("src/equicordplugins/") ?? false;
 
+    const modalSize = plugin.settingsAboutComponent ? ModalSize.LARGE : ModalSize.MEDIUM;
+
     return (
-        <ModalRoot transitionState={transitionState} size={ModalSize.MEDIUM}>
+        <ModalRoot transitionState={transitionState} size={modalSize}>
             <ModalHeader separator={false} className={cl("header")}>
                 <div className={cl("header-content")}>
                     <BaseText size="lg" weight="semibold" className={cl("title")}>{removeEmojis(tPlugin(plugin.name))}</BaseText>
@@ -142,16 +144,18 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
                 </div>
             </ModalHeader>
 
-            <ModalContent className={"vc-settings-modal-content"}>
-                <section>
-                    <BaseText size="lg" weight="semibold" color="text-strong" className={classes(Margins.bottom8)}>{t("Settings")}</BaseText>
-                    {renderSettings()}
-                </section>
-            </ModalContent>
-            <ModalFooter>
-                <Flex flexDirection="column" style={{ width: "100%" }}>
-                    <Flex style={{ justifyContent: "space-between", alignItems: "center" }}>
-                        {hasSettings ? (
+            {hasSettings && (
+                <ModalContent className={"vc-settings-modal-content"}>
+                    <section>
+                        <BaseText size="lg" weight="semibold" color="text-strong" className={classes(Margins.bottom8)}>{t("Settings")}</BaseText>
+                        {renderSettings()}
+                    </section>
+                </ModalContent>
+            )}
+            {hasSettings && (
+                <ModalFooter>
+                    <Flex flexDirection="column" style={{ width: "100%" }}>
+                        <Flex style={{ justifyContent: "space-between", alignItems: "center" }}>
                             <Tooltip text={t("Reset to default settings")} shouldShow={!isObjectEmpty(pluginSettings)}>
                                 {({ onMouseEnter, onMouseLeave }) => (
                                     <Button
@@ -166,10 +170,10 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
                                     </Button>
                                 )}
                             </Tooltip>
-                        ) : <div />}
+                        </Flex>
                     </Flex>
-                </Flex>
-            </ModalFooter>
+                </ModalFooter>
+            )}
         </ModalRoot >
     );
 }
