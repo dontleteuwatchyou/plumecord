@@ -1,21 +1,15 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * AUTO-GENERATED — do not edit by hand.
- * Update by running: node scripts/generateTutorialList.mjs
+ * Update by running: node scripts/updateTutorialList.mjs
  */
 
 /**
  * Maps a plugin's `name` to the basename (without extension) of its tutorial
  * video in https://source.nightcord.st/nightcord/nightcord-tutorials/src/branch/main/videos
- *
- * These are NOT always identical: several videos were uploaded with a different
- * casing (or, in one case, a completely different name) than the plugin's actual
- * `name` field. Since the video URL has to match the file on disk exactly (the
- * Gitea file server is case-sensitive), we keep this explicit mapping instead of
- * always assuming `${plugin.name}.mp4`.
  */
 export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["Abbreviation", "Abbreviation"],
@@ -24,14 +18,20 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["AntiMoveDeco", "AntiMoveDeco"],
     ["AntiNickname", "AntiNickname"],
     ["AudioLimiter", "AudioLimiter"],
+    ["AutoCallRecorder", "AutoCallRecorder"],
     ["AutoCorrect", "AutoCorrect"],
     ["AutoReply", "AutoReply"],
     ["AutoResponder", "AutoResponder"],
     ["AutoUnmute", "AutoUnmute"],
     ["Backpack", "BackPack"],
+    ["BigFileUpload", "BigFileUpload"],
     ["BulkFriendRemove", "BulkFriendRemove"],
     ["CallTimer", "CallTimer"],
+    ["CancelFriendRequest", "CancelFriendRequest"],
     ["ChannelWallpaper", "ChannelWallpaper"],
+    ["ClearDMs", "ClearDMs"],
+    ["ClearGroups", "ClearGroups"],
+    ["CloseGroup", "CloseGroup"],
     ["CrashHandler", "CrashHandler"],
     ["CreateTheme", "CreateTheme"],
     ["CursorMacOS", "CursorMacOS"],
@@ -43,11 +43,14 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["EventLogs", "EventLogs"],
     ["ExportDM", "ExportDM"],
     ["Fake Voice Option", "Fake Voice Option"],
+    ["FakeDeafen", "FakeDeafen"],
     ["FakeDM", "FakeDM"],
     ["FakeFriends", "FakeFriends"],
     ["FakeNitro", "Fakenitro"],
     ["FakePerm", "FakePerm"],
     ["FakeSwitcher", "FakeSwitcher"],
+    ["FakeVoice", "FakeVoice"],
+    ["FastPFP", "FastPFP"],
     ["FastPing", "FastPing"],
     ["FloodPanel", "FloodPanel"],
     ["FollowMe", "Followme"],
@@ -57,6 +60,7 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["HideMedia", "HideMedia"],
     ["IgnoreCalls", "IgnoreCalls"],
     ["ImageZoom", "ImageZoom"],
+    ["Impersonate", "Impersonate"],
     ["LastSeen", "lastseen"],
     ["LeaveAllServers", "leaveallservers"],
     ["LiveWallpaper", "LiveWallpaper"],
@@ -69,10 +73,19 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["MultiInstance", "MultiInstance"],
     ["MuteAllServers", "MuteAllServers"],
     ["NightcordAI", "nightcordai"],
-    ["PasscodeLock", "passcodeLock"],
+    ["NoCaps", "NoCaps"],
+    ["passcodeLock", "passcodeLock"],
     ["PlatformIndicators", "PlatformIndicators"],
+    ["PreviewHTML", "PreviewHTML"],
+    ["PreviewWebsite", "PreviewWebsite"],
     ["PrevNames", "prevnames"],
+    ["QxChat", "QxChat"],
     ["RealtimeTimestamps", "realtimetimestamps"],
+    ["ReverseImageSearch", "ReverseImageSearch"],
+    ["SaveProfile", "SaveProfile"],
+    ["SaveThem", "SaveThem"],
+    ["SaveVideos", "SaveVideos"],
+    ["SecureBookmarks", "SecureBookMarks"],
     ["SelfDestruct", "SelfDestruct"],
     ["ServerCloner", "ServerCloner"],
     ["SharePerms", "SharePerms"],
@@ -83,6 +96,7 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["SilentEdit", "SilentEdit"],
     ["SmoothType", "smoothtype"],
     ["SoundCordPlayer", "SoundCordPlayer"],
+    ["StatusCycler", "StatusCycler"],
     ["StreamProof", "StreamProof"],
     ["TokenImporter", "TokenImporter"],
     ["Translate", "Translate"],
@@ -96,29 +110,15 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["VoiceMessages", "VoiceMessages"],
     ["VolumeBooster", "VolumeBooster"],
     ["WhosWatching", "WhosWatching"],
-    ["YoutubeInDiscord", "youtubeplayer"],
+    ["youtubePlayer", "youtubeplayer"],
 ]);
 
-/**
- * Set of plugin names that have a tutorial video available in nightcord-tutorials.
- * Derived from TUTORIAL_VIDEOS so there's a single source of truth.
- */
-export const TUTORIAL_PLUGIN_NAMES: ReadonlySet<string> = new Set(TUTORIAL_VIDEOS.keys());
+export const TUTORIAL_PLUGIN_NAMES = new Set(TUTORIAL_VIDEOS.keys());
 
-/**
- * Returns the video basename (no extension) to use in the tutorial URL for a
- * given plugin name, falling back to the plugin name itself if there's no
- * explicit mapping (covers the common case where they're identical).
- */
-export function getTutorialVideoName(pluginName: string): string | undefined {
-    if (TUTORIAL_VIDEOS.has(pluginName)) return TUTORIAL_VIDEOS.get(pluginName);
-    return undefined;
+export function hasTutorial(pluginName: string): boolean {
+    return TUTORIAL_VIDEOS.has(pluginName);
 }
 
-/**
- * Synchronously populates the cache from the static list and calls onProgress.
- * No network requests — instant, no CORS issues.
- */
-export function loadTutorials(_pluginNames: string[], onProgress: (found: Set<string>) => void) {
-    onProgress(new Set(TUTORIAL_PLUGIN_NAMES));
+export function getTutorialVideoName(pluginName: string): string | undefined {
+    return TUTORIAL_VIDEOS.get(pluginName);
 }
