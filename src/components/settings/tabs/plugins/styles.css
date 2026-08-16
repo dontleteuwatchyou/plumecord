@@ -436,7 +436,24 @@
 }
 
 .nc-tutorial-modal {
-    width: 80vw !important;
-    max-width: 920px !important;
-    min-width: 560px !important;
+    width: 82vw !important;
+    max-width: 940px !important;
+    min-width: 580px !important;
+    background: var(--background-primary, #1e1f22) !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+.nc-tutorial-modal h1,
+.nc-tutorial-modal h2,
+.nc-tutorial-modal h3,
+.nc-tutorial-modal [class*="heading-"],
+.nc-tutorial-modal [class*="title_"] {
+    color: #ffffff !important;
+}
+
+.nc-tutorial-modal [class*="text-sm"],
+.nc-tutorial-modal [class*="subtitle_"],
+.nc-tutorial-modal [class*="description_"] {
+    color: #949ba4 !important;
 }

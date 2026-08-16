@@ -184,19 +184,19 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
         openModal(props => (
             <ModalRoot {...props} size={ModalSize.DYNAMIC} className="nc-tutorial-modal">
-                <ModalHeader separator={false}>
+                <ModalHeader separator={false} style={{ padding: "20px 24px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 4 }}>
-                        <Text variant="heading-lg/bold" style={{ color: "var(--header-primary)" }}>
+                        <Text variant="heading-xl/bold" style={{ color: "#ffffff", fontSize: "20px", fontWeight: 700, margin: 0 }}>
                             {plugin.name} – {t("Tutorial")}
                         </Text>
-                        <Text variant="text-sm/normal" style={{ color: "var(--header-secondary)" }}>
+                        <Text variant="text-sm/normal" style={{ color: "#949ba4", fontSize: "14px", margin: 0 }}>
                             {t("Watch full plugin guide and feature demonstration")}
                         </Text>
                     </div>
                     <ModalCloseButton onClick={props.onClose} />
                 </ModalHeader>
-                <ModalContent style={{ padding: "0 16px 8px" }}>
-                    <div style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: "8px", overflow: "hidden", background: "#000000" }}>
+                <ModalContent style={{ padding: "0 24px 16px" }}>
+                    <div style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: "10px", overflow: "hidden", background: "#000000", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
                         <video
                             src={videoUrl}
                             controls
@@ -219,55 +219,57 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                                 width: "100%",
                                 height: "100%",
                                 padding: "32px 16px",
-                                color: "var(--text-muted)",
+                                color: "#949ba4",
                                 gap: "8px",
                                 textAlign: "center"
                             }}
                         >
-                            <Text variant="text-md/medium">{t("No video tutorial available for this plugin.")}</Text>
+                            <Text variant="text-md/medium" style={{ color: "#949ba4" }}>{t("No video tutorial available for this plugin.")}</Text>
                         </div>
                     </div>
                 </ModalContent>
-                <ModalFooter style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                        <Button
-                            variant="secondary"
-                            size="small"
-                            onClick={() => VencordNative.native.openExternal(videoUrl)}
-                        >
-                            {t("Open in Browser")}
-                        </Button>
-                        <Button
-                            variant="secondary"
-                            size="small"
-                            onClick={() => {
-                                VencordNative.clipboard.copy(videoUrl);
-                                showToast(t("Video link copied to clipboard!"), Toasts.Type.SUCCESS);
-                            }}
-                        >
-                            {t("Copy Link")}
-                        </Button>
-                    </div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                        {hasSettings && (
+                <ModalFooter style={{ padding: "16px 24px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+                        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                             <Button
-                                variant="primary"
+                                variant="secondary"
+                                size="small"
+                                onClick={() => VencordNative.native.openExternal(videoUrl)}
+                            >
+                                {t("Open in Browser")}
+                            </Button>
+                            <Button
+                                variant="secondary"
                                 size="small"
                                 onClick={() => {
-                                    props.onClose();
-                                    openPluginModal(plugin);
+                                    VencordNative.clipboard.copy(videoUrl);
+                                    showToast(t("Video link copied to clipboard!"), Toasts.Type.SUCCESS);
                                 }}
                             >
-                                {t("Plugin Settings")}
+                                {t("Copy Link")}
                             </Button>
-                        )}
-                        <Button
-                            variant="secondary"
-                            size="small"
-                            onClick={props.onClose}
-                        >
-                            {t("Close")}
-                        </Button>
+                        </div>
+                        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                            {hasSettings && (
+                                <Button
+                                    variant="primary"
+                                    size="small"
+                                    onClick={() => {
+                                        props.onClose();
+                                        openPluginModal(plugin);
+                                    }}
+                                >
+                                    {t("Plugin Settings")}
+                                </Button>
+                            )}
+                            <Button
+                                variant="secondary"
+                                size="small"
+                                onClick={props.onClose}
+                            >
+                                {t("Close")}
+                            </Button>
+                        </div>
                     </div>
                 </ModalFooter>
             </ModalRoot>
