@@ -37,7 +37,17 @@ let failedAttempts = 0;
 let lockoutEndTime = 0;
 let lastDecryptionAttempt = 0;
 
+const MAX_DECRYPTED_CACHE = 500;
 const decryptedMessageIds = new Set<string>();
+const originalEncryptedMessages = new Map<string, { channelId: string; content: string; }>();
+
+function addDecryptedId(id: string) {
+    decryptedMessageIds.add(id);
+    if (decryptedMessageIds.size > MAX_DECRYPTED_CACHE) {
+        // Delete the oldest entry (first inserted)
+        decryptedMessageIds.delete(decryptedMessageIds.values().next().value!);
+    }
+}
 const decryptingMessageIds = new Set<string>();
 
 function validatePassword(password: string): string[] {
@@ -145,28 +155,40 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     return copy.buffer;
 }
 
-async function deriveAESKey(password: string, salt: Uint8Array, iterations: number, usages: KeyUsage[]): Promise<CryptoKey> {
-    const keyMaterial = await crypto.subtle.importKey(
-        "raw",
-        toArrayBuffer(encoder.encode(password)),
-        { name: "PBKDF2" },
-        false,
-        ["deriveKey"]
-    );
+const derivedKeyCache = new Map<string, Promise<CryptoKey>>();
+const decryptedPlaintextCache = new Map<string, string>();
 
-    return crypto.subtle.deriveKey(
-        {
-            name: "PBKDF2",
-            salt: toArrayBuffer(salt),
-            iterations,
-            hash: "SHA-256"
-        },
-        keyMaterial,
-        { name: "AES-GCM",
-     length: 256 },
-        false,
-        usages
-    );
+async function deriveAESKey(password: string, salt: Uint8Array, iterations: number, usages: KeyUsage[]): Promise<CryptoKey> {
+    const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
+    const cacheKey = `${password}:${saltHex}:${iterations}:${usages.join(",")}`;
+    const cached = derivedKeyCache.get(cacheKey);
+    if (cached) return cached;
+
+    const promise = (async () => {
+        const keyMaterial = await crypto.subtle.importKey(
+            "raw",
+            toArrayBuffer(encoder.encode(password)),
+            { name: "PBKDF2" },
+            false,
+            ["deriveKey"]
+        );
+
+        return crypto.subtle.deriveKey(
+            {
+                name: "PBKDF2",
+                salt: toArrayBuffer(salt),
+                iterations,
+                hash: "SHA-256"
+            },
+            keyMaterial,
+            { name: "AES-GCM", length: 256 },
+            false,
+            usages
+        );
+    })();
+
+    derivedKeyCache.set(cacheKey, promise);
+    return promise;
 }
 
 async function encryptAES(text: string, password: string): Promise<string> {
@@ -225,10 +247,19 @@ async function encryptAES(text: string, password: string): Promise<string> {
         throw new Error("Encrypted message is too long for Discord.");
     }
 
+    decryptedPlaintextCache.set(`${password}:${encryptedMessage}`, text);
+    decryptedPlaintextCache.set(`${password}:${wrappedMessage}`, text);
+
     return encryptedMessage;
 }
 
 async function decryptAES(encrypted: string, password: string): Promise<string> {
+    const cacheKey = `${password}:${encrypted}`;
+    const cached = decryptedPlaintextCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
     const data = base64ToBytes(encrypted);
     const minLegacyLength = 1 + SECURITY_CONSTANTS.SALT_LENGTH + SECURITY_CONSTANTS.IV_LENGTH;
 
@@ -267,14 +298,15 @@ async function decryptAES(encrypted: string, password: string): Promise<string> 
     const encryptedData = data.slice(offset);
     const key = await deriveAESKey(password, salt, iterations, ["decrypt"]);
     const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM",
-     iv: toArrayBuffer(iv), additionalData },
+        { name: "AES-GCM", iv: toArrayBuffer(iv), additionalData },
         key,
         toArrayBuffer(encryptedData)
     );
 
     resetSecurityState();
-    return decoder.decode(decrypted);
+    const result = decoder.decode(decrypted);
+    decryptedPlaintextCache.set(cacheKey, result);
+    return result;
 }
 
 const EncryptionEnabledIcon: IconComponent = ({ height = 20, width = 20, className }) => {
@@ -369,16 +401,15 @@ function setEncryptionEnabledForChannel(channelId: string, enabled: boolean) {
 }
 
 function triggerDecryptForChannel(channelId: string) {
+    if (!channelId || !isEncryptionEnabledForChannel(channelId) || !getChannelPassword(channelId)) return;
     try {
-        const MessageCache = findByProps("clearCache", "_channelMessages");
-        if (MessageCache && MessageCache._channelMessages) {
-            const channelMessages = MessageCache._channelMessages[channelId];
-            if (channelMessages && channelMessages._array) {
-                for (const msg of channelMessages._array) {
-                    if (msg && msg.content && isEncryptedMessage(msg.content)) {
-                        decryptMessage(msg);
-                    }
-                }
+        const collection = MessageStore.getMessages(channelId);
+        const messages = collection?.toArray?.() ?? collection?._array ?? [];
+        for (const msg of messages) {
+            if (!msg) continue;
+            const isEncrypted = isEncryptedMessage(msg.content) || (msg.originalEncryptedContent && isEncryptedMessage(msg.originalEncryptedContent)) || (originalEncryptedMessages.has(msg.id) && isEncryptedMessage(originalEncryptedMessages.get(msg.id)!.content));
+            if (isEncrypted) {
+                decryptMessage(msg, channelId);
             }
         }
     } catch (e) {
@@ -386,41 +417,90 @@ function triggerDecryptForChannel(channelId: string) {
     }
 }
 
-function triggerEncryptForChannel(channelId: string) {
-    try {
-        const MessageCache = findByProps("clearCache", "_channelMessages");
-        if (MessageCache && MessageCache._channelMessages) {
-            const channelMessages = MessageCache._channelMessages[channelId];
-            if (channelMessages && channelMessages._array) {
-                for (const msg of channelMessages._array) {
-                    if (msg && msg.originalEncryptedContent) {
-                        // Restore encrypted content in the live MessageStore object
-                        const storeMsg = MessageStore.getMessage(channelId, msg.id);
-                        const target = storeMsg || msg;
-                        target.content = msg.originalEncryptedContent;
-                        try { delete target._contentParsed; } catch {}
-                        try { delete target._contentParsedNodes; } catch {}
-                        try { target._contentParsed = undefined; } catch {}
-                        try { target._contentParsedNodes = undefined; } catch {}
-                        decryptedMessageIds.delete(msg.id);
+function revertAllDecrypted(targetChannelId?: string) {
+    const origDispatch = (FluxDispatcher as any)._nc_orig_dispatch || FluxDispatcher.dispatch;
 
-                        // Use original dispatch to bypass our intercept so we don't re-decrypt
-                        const origDispatch = (FluxDispatcher as any)._nc_orig_dispatch || FluxDispatcher.dispatch;
-                        const event = { type: "MESSAGE_UPDATE", message: target, _nc_skip_scan: true };
-                        origDispatch.call(FluxDispatcher, event);
+    // Reset pending decryption flags so next toggle doesn't get blocked
+    decryptingMessageIds.clear();
+
+    const channelIds = new Set<string>();
+    if (targetChannelId) {
+        channelIds.add(targetChannelId);
+    } else {
+        const selected = SelectedChannelStore.getChannelId();
+        if (selected) channelIds.add(selected);
+        for (const data of originalEncryptedMessages.values()) {
+            if (data.channelId) channelIds.add(data.channelId);
+        }
+        try {
+            const MessageCache = findByProps("clearCache", "_channelMessages");
+            if (MessageCache?._channelMessages) {
+                for (const ch in MessageCache._channelMessages) {
+                    channelIds.add(ch);
+                }
+            }
+        } catch {}
+    }
+
+    for (const chId of channelIds) {
+        try {
+            const collection = MessageStore.getMessages(chId);
+            const messages = collection?.toArray?.() ?? collection?._array ?? [];
+            for (const msg of messages) {
+                if (!msg) continue;
+                const orig = msg.originalEncryptedContent || originalEncryptedMessages.get(msg.id)?.content;
+                if (orig) {
+                    if (!msg.originalEncryptedContent) {
+                        msg.originalEncryptedContent = orig;
+                    }
+                    if (!originalEncryptedMessages.has(msg.id)) {
+                        originalEncryptedMessages.set(msg.id, { channelId: chId, content: orig });
+                    }
+                    if (msg.content !== orig || decryptedMessageIds.has(msg.id)) {
+                        msg.content = orig;
+                        try { delete msg._contentParsed; } catch {}
+                        try { delete msg._contentParsedNodes; } catch {}
+                        try { (msg as any)._contentParsed = undefined; } catch {}
+                        try { (msg as any)._contentParsedNodes = undefined; } catch {}
+                        decryptedMessageIds.delete(msg.id);
+                        origDispatch.call(FluxDispatcher, { type: "MESSAGE_UPDATE", message: msg, _nc_skip_scan: true });
                     }
                 }
             }
+        } catch (e) {
+            console.error("[EncryptedMessage] Revert messages error for channel", chId, e);
         }
-    } catch (e) {
-        console.error("[EncryptedMessage] triggerEncryptForChannel error:", e);
     }
+
+    // Also update any messages from originalEncryptedMessages map that might not be in the current view array
+    for (const [messageId, data] of originalEncryptedMessages.entries()) {
+        if (targetChannelId && data.channelId !== targetChannelId) continue;
+        try {
+            const stored = MessageStore.getMessage(data.channelId, messageId);
+            if (stored && (stored.content !== data.content || decryptedMessageIds.has(messageId))) {
+                stored.content = data.content;
+                stored.originalEncryptedContent = data.content;
+                try { delete stored._contentParsed; } catch {}
+                try { delete stored._contentParsedNodes; } catch {}
+                try { (stored as any)._contentParsed = undefined; } catch {}
+                try { (stored as any)._contentParsedNodes = undefined; } catch {}
+                decryptedMessageIds.delete(messageId);
+                origDispatch.call(FluxDispatcher, { type: "MESSAGE_UPDATE", message: stored, _nc_skip_scan: true });
+            }
+        } catch {}
+    }
+}
+
+function triggerEncryptForChannel(channelId: string) {
+    revertAllDecrypted(channelId);
 }
 
 const EncryptionSettingsModal = ({ modalProps, close }: { modalProps: any; close: () => void }) => {
     const channelId = SelectedChannelStore.getChannelId();
     const [generatedPassword, setGeneratedPassword] = React.useState("");
     const [friendPassword, setFriendPassword] = React.useState("");
+    const [showGeneratedPassword, setShowGeneratedPassword] = React.useState(false);
+    const [showFriendPassword, setShowFriendPassword] = React.useState(false);
     const [isEncrypted, setIsEncrypted] = React.useState(false);
 
     const generateRandomPassword = () => {
@@ -508,12 +588,46 @@ const EncryptionSettingsModal = ({ modalProps, close }: { modalProps: any; close
                         {t("Generate Secure Password")}
                     </h2>
                     <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-                        <TextInput
-                            type="text"
-                            value={generatedPassword || ""}
-                            readOnly
-                            style={{ flex: 1 }}
-                        />
+                        <div style={{ position: "relative", display: "flex", alignItems: "center", flex: 1 }}>
+                            <TextInput
+                                type={showGeneratedPassword ? "text" : "password"}
+                                value={generatedPassword || ""}
+                                readOnly
+                                style={{ width: "100%", paddingRight: "36px" }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowGeneratedPassword(!showGeneratedPassword)}
+                                style={{
+                                    position: "absolute",
+                                    right: "8px",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    background: "transparent",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    color: "var(--interactive-normal, #b5bac1)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "4px",
+                                    borderRadius: "4px"
+                                }}
+                                title={showGeneratedPassword ? t("Hide password") : t("Show password")}
+                            >
+                                {showGeneratedPassword ? (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                ) : (
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
                         <Button color="secondary" onClick={generateRandomPassword} size="medium">
                             {t("Regenerate")}
                         </Button>
@@ -533,12 +647,47 @@ const EncryptionSettingsModal = ({ modalProps, close }: { modalProps: any; close
                     <h2 style={{ fontSize: "12px", textTransform: "uppercase", color: "var(--text-muted, #949ba4)", marginBottom: "8px", fontWeight: 700 }}>
                         {t("Partner's Encryption Password")}
                     </h2>
-                    <TextInput
-                        type="text"
-                        value={friendPassword || ""}
-                        placeholder={t("Paste your partner's password here...")}
-                        onChange={saveFriendPassword}
-                    />
+                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                        <TextInput
+                            type={showFriendPassword ? "text" : "password"}
+                            value={friendPassword || ""}
+                            placeholder={t("Paste your partner's password here...")}
+                            onChange={saveFriendPassword}
+                            style={{ width: "100%", paddingRight: "36px" }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowFriendPassword(!showFriendPassword)}
+                            style={{
+                                position: "absolute",
+                                right: "8px",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                color: "var(--interactive-normal, #b5bac1)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "4px",
+                                borderRadius: "4px"
+                            }}
+                            title={showFriendPassword ? t("Hide password") : t("Show password")}
+                        >
+                            {showFriendPassword ? (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                                </svg>
+                            ) : (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            )}
+                        </button>
+                    </div>
                     <p style={{ fontSize: "12px", color: "var(--text-muted, #949ba4)", marginTop: "6px", lineHeight: "1.4" }}>
                         {t("Paste the password received from your partner. Both of you must have the exact same password set to communicate securely.")}
                     </p>
@@ -585,79 +734,96 @@ const EncryptionToggleButton: ChatBarButtonFactory = ({ type }) => {
 };
 
 function triggerReRender(message: any) {
-    const current = MessageStore.getMessage(message.channel_id, message.id);
-    if (!current) return;
+    if (!message) return;
+    const channelId = message.channel_id || message.channelId;
+    const messageId = message.id;
 
-    FluxDispatcher.dispatch({
-        type: "MESSAGE_UPDATE",
-        message: current,
-    });
+    setTimeout(() => {
+        const current = MessageStore.getMessage(channelId, messageId);
+        const target = current || message;
+        const origDispatch = (FluxDispatcher as any)._nc_orig_dispatch || FluxDispatcher.dispatch;
+        origDispatch.call(FluxDispatcher, {
+            type: "MESSAGE_UPDATE",
+            message: target,
+            _nc_skip_scan: true
+        });
+    }, 0);
 }
 
 function decryptMessage(message: any, passedChannelId?: string) {
-    if (!message || !message.content || (!isEncryptedMessage(message.content) && (!message.originalEncryptedContent || !isEncryptedMessage(message.originalEncryptedContent)))) return;
-    
+    if (!message) return;
+
+    const channelId = message.channel_id || message.channelId || passedChannelId;
+    if (!channelId) return;
+
+    const password = getChannelPassword(channelId);
+    if (!password) return;
+
     if (!message.originalEncryptedContent) {
-        message.originalEncryptedContent = message.content;
+        if (isEncryptedMessage(message.content)) {
+            message.originalEncryptedContent = message.content;
+        } else if (originalEncryptedMessages.has(message.id)) {
+            message.originalEncryptedContent = originalEncryptedMessages.get(message.id)!.content;
+        }
+    }
+
+    if (!message.originalEncryptedContent || !isEncryptedMessage(message.originalEncryptedContent)) return;
+
+    originalEncryptedMessages.set(message.id, { channelId, content: message.originalEncryptedContent });
+
+    const encryptedPart = getEncryptedPart(message.originalEncryptedContent);
+    const cached = decryptedPlaintextCache.get(`${password}:${encryptedPart}`) ?? decryptedPlaintextCache.get(`${password}:${message.originalEncryptedContent}`);
+
+    if (cached !== undefined) {
+        message.content = cached;
+        try { delete message._contentParsed; } catch {}
+        try { delete message._contentParsedNodes; } catch {}
+        try { message._contentParsed = undefined; } catch {}
+        try { message._contentParsedNodes = undefined; } catch {}
+        addDecryptedId(message.id);
+
+        const current = MessageStore.getMessage(channelId, message.id);
+        if (current) {
+            current.content = cached;
+            if (!current.originalEncryptedContent) current.originalEncryptedContent = message.originalEncryptedContent;
+            try { delete current._contentParsed; } catch {}
+            try { delete current._contentParsedNodes; } catch {}
+            try { current._contentParsed = undefined; } catch {}
+            try { current._contentParsedNodes = undefined; } catch {}
+            addDecryptedId(message.id);
+            triggerReRender(current);
+        }
+        return;
     }
     
     // Prevent parallel decryptions of the same message
     if (decryptingMessageIds.has(message.id)) return;
     decryptingMessageIds.add(message.id);
 
-    const channelId = message.channel_id || message.channelId || passedChannelId;
-    if (!channelId) {
+    decryptAES(encryptedPart, password).then(decrypted => {
         decryptingMessageIds.delete(message.id);
-        return;
-    }
+        originalEncryptedMessages.set(message.id, { channelId, content: message.originalEncryptedContent });
 
-    const password = getChannelPassword(channelId);
-    if (!password) {
-        decryptingMessageIds.delete(message.id);
-        return;
-    }
-
-    decryptAES(getEncryptedPart(message.originalEncryptedContent), password).then(decrypted => {
-        const updateStore = () => {
-            const current = MessageStore.getMessage(channelId, message.id);
-            if (current) {
-                if (!current.originalEncryptedContent) {
-                    current.originalEncryptedContent = current.content;
-                }
-                current.content = decrypted;
-                try { delete current._contentParsed; } catch {}
-                try { delete current._contentParsedNodes; } catch {}
-                try { current._contentParsed = undefined; } catch {}
-                try { current._contentParsedNodes = undefined; } catch {}
-                
-                decryptedMessageIds.add(message.id);
-                triggerReRender(current);
-                return true;
-            }
-            return false;
-        };
-
-        // Always update the raw payload
         message.content = decrypted;
         try { delete message._contentParsed; } catch {}
         try { delete message._contentParsedNodes; } catch {}
         try { message._contentParsed = undefined; } catch {}
         try { message._contentParsedNodes = undefined; } catch {}
+        addDecryptedId(message.id);
 
-        if (updateStore()) {
-            decryptingMessageIds.delete(message.id);
-            return;
-        }
-
-        // Retry up to 20 times (1 second) to find the record in MessageStore
-        let attempts = 0;
-        const interval = setInterval(() => {
-            attempts++;
-            if (updateStore() || attempts > 20) {
-                clearInterval(interval);
-                decryptingMessageIds.delete(message.id);
+        const current = MessageStore.getMessage(channelId, message.id);
+        if (current) {
+            current.content = decrypted;
+            if (!current.originalEncryptedContent) {
+                current.originalEncryptedContent = message.originalEncryptedContent;
             }
-        }, 50);
+            try { delete current._contentParsed; } catch {}
+            try { delete current._contentParsedNodes; } catch {}
+            try { current._contentParsed = undefined; } catch {}
+            try { current._contentParsedNodes = undefined; } catch {}
+            addDecryptedId(message.id);
+            triggerReRender(current);
+        }
     }).catch(error => {
         decryptingMessageIds.delete(message.id);
         recordFailedAttempt();
@@ -679,13 +845,34 @@ function scanAndDecrypt(obj: any, parentChannelId?: string, depth = 0, visited =
         return;
     }
     if (typeof obj.content === "string" && typeof obj.id === "string") {
-        const isEncrypted = isEncryptedMessage(obj.content) || (obj.originalEncryptedContent && isEncryptedMessage(obj.originalEncryptedContent));
+        const isEncrypted = isEncryptedMessage(obj.content) || (obj.originalEncryptedContent && isEncryptedMessage(obj.originalEncryptedContent)) || (originalEncryptedMessages.has(obj.id) && isEncryptedMessage(originalEncryptedMessages.get(obj.id)!.content));
         if (isEncrypted) {
-            if (currentChannelId && isEncryptionEnabledForChannel(currentChannelId)) {
-                decryptMessage(obj, currentChannelId);
+            if (currentChannelId && isEncryptionEnabledForChannel(currentChannelId) && getChannelPassword(currentChannelId)) {
+                const password = getChannelPassword(currentChannelId);
+                const rawEncrypted = obj.originalEncryptedContent || (isEncryptedMessage(obj.content) ? obj.content : originalEncryptedMessages.get(obj.id)?.content);
+                const encryptedPart = rawEncrypted ? getEncryptedPart(rawEncrypted) : "";
+                const cached = encryptedPart ? (decryptedPlaintextCache.get(`${password}:${encryptedPart}`) ?? decryptedPlaintextCache.get(`${password}:${rawEncrypted}`)) : undefined;
+                
+                if (cached !== undefined) {
+                    if (!obj.originalEncryptedContent && rawEncrypted) {
+                        obj.originalEncryptedContent = rawEncrypted;
+                    }
+                    if (rawEncrypted) {
+                        originalEncryptedMessages.set(obj.id, { channelId: currentChannelId, content: rawEncrypted });
+                    }
+                    obj.content = cached;
+                    try { delete obj._contentParsed; } catch {}
+                    try { delete obj._contentParsedNodes; } catch {}
+                    try { obj._contentParsed = undefined; } catch {}
+                    try { obj._contentParsedNodes = undefined; } catch {}
+                    addDecryptedId(obj.id);
+                } else {
+                    decryptMessage(obj, currentChannelId);
+                }
             } else {
-                if (obj.originalEncryptedContent && obj.content !== obj.originalEncryptedContent) {
-                    obj.content = obj.originalEncryptedContent;
+                const orig = obj.originalEncryptedContent || originalEncryptedMessages.get(obj.id)?.content;
+                if (orig && (obj.content !== orig || decryptedMessageIds.has(obj.id))) {
+                    obj.content = orig;
                     try { delete obj._contentParsed; } catch {}
                     try { delete obj._contentParsedNodes; } catch {}
                     try { obj._contentParsed = undefined; } catch {}
@@ -705,22 +892,57 @@ function scanAndDecrypt(obj: any, parentChannelId?: string, depth = 0, visited =
     }
 }
 
+function onChannelSelect(event: { channelId?: string }) {
+    if (event?.channelId) {
+        if (isEncryptionEnabledForChannel(event.channelId) && getChannelPassword(event.channelId)) {
+            triggerDecryptForChannel(event.channelId);
+        } else {
+            revertAllDecrypted(event.channelId);
+        }
+    }
+}
+
+function onLoadMessagesSuccess(event: { channelId?: string }) {
+    if (event?.channelId) {
+        if (isEncryptionEnabledForChannel(event.channelId) && getChannelPassword(event.channelId)) {
+            triggerDecryptForChannel(event.channelId);
+        }
+    }
+}
+
 const settings = definePluginSettings({
     encryptionPassword: {
         type: OptionType.STRING,
         description: "AES-256 encryption password shared with trusted users.",
         default: "",
         placeholder: "Enter strong shared password...",
-        onChange() {
+        onChange(val) {
             resetSecurityState();
+            if (!val) {
+                revertAllDecrypted();
+            }
             decryptedMessageIds.clear();
             decryptingMessageIds.clear();
+            const currentChannelId = SelectedChannelStore.getChannelId();
+            if (currentChannelId && isEncryptionEnabledForChannel(currentChannelId) && getChannelPassword(currentChannelId)) {
+                triggerDecryptForChannel(currentChannelId);
+            }
         }
     },
     channelPasswords: {
         type: OptionType.STRING,
         description: "Map of channel IDs to specific passwords in JSON.",
-        default: "{}"
+        default: "{}",
+        onChange() {
+            const currentChannelId = SelectedChannelStore.getChannelId();
+            if (currentChannelId) {
+                if (isEncryptionEnabledForChannel(currentChannelId) && getChannelPassword(currentChannelId)) {
+                    triggerDecryptForChannel(currentChannelId);
+                } else {
+                    revertAllDecrypted(currentChannelId);
+                }
+            }
+        }
     },
     channelGeneratedPasswords: {
         type: OptionType.STRING,
@@ -730,7 +952,17 @@ const settings = definePluginSettings({
     channelEncryptionStates: {
         type: OptionType.STRING,
         description: "Map of channel IDs to their encryption active states in JSON.",
-        default: "{}"
+        default: "{}",
+        onChange() {
+            const currentChannelId = SelectedChannelStore.getChannelId();
+            if (currentChannelId) {
+                if (isEncryptionEnabledForChannel(currentChannelId) && getChannelPassword(currentChannelId)) {
+                    triggerDecryptForChannel(currentChannelId);
+                } else {
+                    revertAllDecrypted(currentChannelId);
+                }
+            }
+        }
     },
     enableEncryption: {
         type: OptionType.BOOLEAN,
@@ -843,6 +1075,8 @@ export default definePlugin({
 
     start() {
         decryptedMessageIds.clear();
+        originalEncryptedMessages.clear();
+        decryptingMessageIds.clear();
 
         const origDispatch = FluxDispatcher.dispatch;
         FluxDispatcher.dispatch = function (event: any) {
@@ -858,24 +1092,14 @@ export default definePlugin({
         };
         (FluxDispatcher as any)._nc_orig_dispatch = origDispatch;
 
-        // Perform initial memory cache scan to decrypt already loaded messages
-        try {
-            const MessageCache = findByProps("clearCache", "_channelMessages");
-            if (MessageCache && MessageCache._channelMessages) {
-                for (const channelId in MessageCache._channelMessages) {
-                    if (!isEncryptionEnabledForChannel(channelId)) continue;
-                    const channelMessages = MessageCache._channelMessages[channelId];
-                    if (channelMessages && channelMessages._array) {
-                        for (const msg of channelMessages._array) {
-                            if (msg && msg.content && isEncryptedMessage(msg.content)) {
-                                decryptMessage(msg, channelId);
-                            }
-                        }
-                    }
-                }
+        FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
+        FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+
+        const currentChannelId = SelectedChannelStore.getChannelId();
+        if (currentChannelId) {
+            if (isEncryptionEnabledForChannel(currentChannelId) && getChannelPassword(currentChannelId)) {
+                triggerDecryptForChannel(currentChannelId);
             }
-        } catch (e) {
-            console.error("[EncryptedMessage] Cache scan error:", e);
         }
     },
 
@@ -884,7 +1108,12 @@ export default definePlugin({
             FluxDispatcher.dispatch = (FluxDispatcher as any)._nc_orig_dispatch;
             delete (FluxDispatcher as any)._nc_orig_dispatch;
         }
+        FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);
+        FluxDispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+        revertAllDecrypted();
         decryptedMessageIds.clear();
+        originalEncryptedMessages.clear();
+        decryptingMessageIds.clear();
     },
 
     async onBeforeMessageSend(channelId, messageObj) {
@@ -904,8 +1133,12 @@ export default definePlugin({
         }
 
         try {
-            const encryptedMessage = await encryptAES(messageObj.content, password);
-            messageObj.content = `${SECURITY_CONSTANTS.ENCRYPTION_MARKER_START}${encryptedMessage}${SECURITY_CONSTANTS.ENCRYPTION_MARKER_END}`;
+            const originalPlaintext = messageObj.content;
+            const encryptedMessage = await encryptAES(originalPlaintext, password);
+            const wrapped = `${SECURITY_CONSTANTS.ENCRYPTION_MARKER_START}${encryptedMessage}${SECURITY_CONSTANTS.ENCRYPTION_MARKER_END}`;
+            decryptedPlaintextCache.set(`${password}:${encryptedMessage}`, originalPlaintext);
+            decryptedPlaintextCache.set(`${password}:${wrapped}`, originalPlaintext);
+            messageObj.content = wrapped;
         } catch (error) {
             const errorMessage = getErrorMessage(error);
             Toasts.show({
