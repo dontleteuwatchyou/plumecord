@@ -13,7 +13,7 @@ import { CogWheel, InfoIcon } from "@components/Icons";
 import { AddonCard } from "@components/settings/AddonCard";
 import { classNameFactory } from "@utils/css";
 import { Logger } from "@utils/Logger";
-import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, ModalSize,openModal } from "@utils/modal";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import { OptionType, Plugin } from "@utils/types";
 import { HeadingPrimary } from "@components/Heading";
 import { Button } from "@components/Button";
