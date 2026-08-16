@@ -36,7 +36,7 @@ async function kickAllMembersFromGroup(channelId: string) {
     if (channel.ownerId !== currentUserId) {
         if (settings.store.showNotifications) {
             showNotification({
-                title: `❌ ${t("CloseGroup")}`,
+                title: t("CloseGroup"),
                 body: t("Only the group owner can close the group"),
                 icon: undefined
             });
@@ -46,7 +46,7 @@ async function kickAllMembersFromGroup(channelId: string) {
     }
 
     const channelName = channel.name || t("Unnamed Group");
-    const rawRecipients: any[] = channel.recipients || [];
+    const rawRecipients: any[] = (channel as any).rawRecipients || channel.recipients || [];
     const targetUserIds: string[] = rawRecipients
         .map(u => (typeof u === "string" ? u : (u?.id || u?.userId)))
         .filter(id => Boolean(id) && String(id) !== String(currentUserId));
@@ -56,16 +56,48 @@ async function kickAllMembersFromGroup(channelId: string) {
         return;
     }
 
-    // Concurrently kick all other users extremely quickly (never kick current user)
-    const kickPromises = targetUserIds.map(userId =>
-        RestAPI.del({ url: `/channels/${channelId}/recipients/${userId}` }).catch(() => null)
-    );
+    showToast(t("Closing group and removing members..."), Toasts.Type.MESSAGE);
 
-    await Promise.allSettled(kickPromises);
+    // Iteratively kick members handling Discord rate limits cleanly
+    let kickedCount = 0;
+    for (const userId of targetUserIds) {
+        let attempts = 0;
+        let success = false;
+        while (attempts < 3 && !success) {
+            attempts++;
+            try {
+                const res = await RestAPI.del({ url: `/channels/${channelId}/recipients/${userId}` });
+                if (res?.ok || res?.status === 204 || res?.status === 200) {
+                    success = true;
+                    kickedCount++;
+                } else if (res?.status === 429) {
+                    const retryAfter = Number(res?.body?.retry_after || 0.5);
+                    await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                } else {
+                    success = true;
+                }
+            } catch (err: any) {
+                if (err?.status === 429 || err?.body?.retry_after) {
+                    const retryAfter = Number(err?.body?.retry_after || 0.5);
+                    await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                } else {
+                    // Ignored if user already left
+                    success = true;
+                }
+            }
+        }
+        // Small delay between requests to prevent flooding
+        await new Promise(r => setTimeout(r, 120));
+    }
+
+    // Finally, close/leave the empty group
+    try {
+        await RestAPI.del({ url: `/channels/${channelId}` });
+    } catch {}
 
     if (settings.store.showNotifications) {
         showNotification({
-            title: `💥 ${t("CloseGroup")}`,
+            title: t("CloseGroup"),
             body: t("Group \"{name}\" closed and members removed").replace("{name}", channelName),
             icon: undefined
         });

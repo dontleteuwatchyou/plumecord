@@ -1,7 +1,6 @@
-import { t } from "../autoTranslateNightcord";
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -10,6 +9,7 @@ import { CommandArgument, CommandContext } from "@vencord/discord-types";
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import { Flex } from "@components/Flex";
+import { FormSwitch } from "@components/FormSwitch";
 import { OpenExternalIcon } from "@components/Icons";
 import { Devs } from "@utils/constants";
 import { insertTextIntoChatInputBox, sendMessage } from "@utils/discord";
@@ -17,6 +17,7 @@ import { Margins } from "@utils/margins";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByPropsLazy } from "@webpack";
 import { Button, DraftType, Forms, Menu, PermissionsBits, PermissionStore, React, Select, SelectedChannelStore, showToast, TextInput, UploadManager, useEffect, useState } from "@webpack/common";
+import { t } from "../autoTranslateNightcord";
 
 const Native = VencordNative.pluginHelpers.BigFileUpload as PluginNative<typeof import("./native")>;
 
@@ -169,26 +170,23 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
                 />
             </Forms.FormSection>
 
-            <Forms.FormSection title={t("Auto-Send Link In Chat")}>
-                <Select
-                    options={[
-                        { label: "Yes", value: "Yes" },
-                        { label: "No", value: "No" },
-                    ]}
-                    placeholder="Select Auto-Send"
-                    className={Margins.bottom16}
-                    select={newValue => updateSetting("autoSend", newValue)}
-                    isSelected={v => v === settings.store.autoSend}
-                    serialize={v => v}
-                />
-            </Forms.FormSection>
+            <FormSwitch
+                title={t("Auto-Send Link In Chat")}
+                description={t("Automatically send the uploaded file link directly to the current chat")}
+                value={settings.store.autoSend === "Yes"}
+                onChange={v => {
+                    updateSetting("autoSend", v ? "Yes" : "No");
+                }}
+                hideBorder
+                className={Margins.bottom16}
+            />
 
             {fileUploader === "GoFile" && (
                 <>
                     <Forms.FormDivider />
                     <Forms.FormTitle>GoFile Settings</Forms.FormTitle>
                     <Forms.FormSection title={t("GoFile Token (optional)")}>
-                        <TextInput type="text" value={settings.store.gofileToken || ""} placeholder="Insert GoFile Token"
+                        <TextInput value={settings.store.gofileToken || ""} placeholder="Insert GoFile Token"
                             onChange={newValue => updateSetting("gofileToken", newValue)} className={Margins.bottom16} />
                     </Forms.FormSection>
                 </>
@@ -199,7 +197,7 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
                     <Forms.FormDivider />
                     <Forms.FormTitle>Catbox Settings</Forms.FormTitle>
                     <Forms.FormSection title={t("Catbox User hash (optional)")}>
-                        <TextInput type="text" value={settings.store.catboxUserHash || ""} placeholder="Insert User Hash"
+                        <TextInput value={settings.store.catboxUserHash || ""} placeholder="Insert User Hash"
                             onChange={newValue => updateSetting("catboxUserHash", newValue)} className={Margins.bottom16} />
                     </Forms.FormSection>
                 </>
@@ -230,11 +228,11 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
             {fileUploader === "Custom" && (
                 <>
                     <Forms.FormSection title={t("Request URL")}>
-                        <TextInput type="text" value={customUploaderStore.get().requestURL} placeholder="Request URL"
+                        <TextInput value={customUploaderStore.get().requestURL} placeholder="Request URL"
                             onChange={(v: string) => customUploaderStore.set({ requestURL: v })} className={Margins.bottom16} />
                     </Forms.FormSection>
                     <Forms.FormSection title={t("File form name")}>
-                        <TextInput type="text" value={customUploaderStore.get().fileFormName} placeholder="File Form Name"
+                        <TextInput value={customUploaderStore.get().fileFormName} placeholder="File Form Name"
                             onChange={(v: string) => customUploaderStore.set({ fileFormName: v })} className={Margins.bottom16} />
                     </Forms.FormSection>
                     <Forms.FormSection title={t("Response type")}>
@@ -248,7 +246,7 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
                         />
                     </Forms.FormSection>
                     <Forms.FormSection title={t("URL (JSON path)")}>
-                        <TextInput type="text" value={customUploaderStore.get().url} placeholder="URL (JSON path)"
+                        <TextInput value={customUploaderStore.get().url} placeholder="URL (JSON path)"
                             onChange={(v: string) => customUploaderStore.set({ url: v })} className={Margins.bottom16} />
                     </Forms.FormSection>
 
@@ -256,9 +254,9 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
                     <Forms.FormTitle>Custom Uploader Arguments</Forms.FormTitle>
                     {Object.entries(customUploaderStore.get().args).map(([key, value], index) => (
                         <div key={index}>
-                            <TextInput type="text" value={key} placeholder="Argument Key"
+                            <TextInput value={key} placeholder="Argument Key"
                                 onChange={(newKey: string) => handleArgChange(key, newKey, value as string)} className={Margins.bottom16} />
-                            <TextInput type="text" value={value as string} placeholder="Argument Value"
+                            <TextInput value={value as string} placeholder="Argument Value"
                                 onChange={(newValue: string) => handleArgChange(key, key, newValue)} className={Margins.bottom16} />
                         </div>
                     ))}
@@ -267,9 +265,9 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
                     <Forms.FormTitle>Headers</Forms.FormTitle>
                     {Object.entries(customUploaderStore.get().headers).map(([key, value], index) => (
                         <div key={index}>
-                            <TextInput type="text" value={key} placeholder="Header Key"
+                            <TextInput value={key} placeholder="Header Key"
                                 onChange={(newKey: string) => handleHeaderChange(key, newKey, value as string)} className={Margins.bottom16} />
-                            <TextInput type="text" value={value as string} placeholder="Header Value"
+                            <TextInput value={value as string} placeholder="Header Value"
                                 onChange={(newValue: string) => handleHeaderChange(key, key, newValue)} className={Margins.bottom16} />
                         </div>
                     ))}
@@ -471,13 +469,20 @@ function triggerFileUpload() {
     document.body.removeChild(fileInput);
 }
 
+const BigFileIcon = () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+    </svg>
+);
+
 const ctxMenuPatch: NavContextMenuPatchCallback = (children, props) => {
     if (props.channel.guild_id && !PermissionStore.can(PermissionsBits.SEND_MESSAGES, props.channel)) return;
     children.splice(1, 0,
         <Menu.MenuItem
             id="upload-big-file"
             label={t("Upload a Big File")}
-            iconLeft={OpenExternalIcon}
+            icon={BigFileIcon}
+            leadingAccessory={BigFileIcon}
             action={triggerFileUpload}
         />
     );

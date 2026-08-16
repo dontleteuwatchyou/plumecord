@@ -17,13 +17,21 @@
     justify-content: space-between;
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border-subtle);
+    gap: 12px;
+}
+
+.vc-savethem-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .vc-savethem-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
     margin-top: 8px;
+    width: 100%;
 }
 
 .vc-savethem-card {

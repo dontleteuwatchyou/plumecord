@@ -6,7 +6,7 @@
 
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
-import { React, ReactDOM, showToast, Toasts, UserStore } from "@webpack/common";
+import { React, ReactDOM, RestAPI, showToast, Toasts, UserStore } from "@webpack/common";
 
 function getDiscordLocale(): string {
     return (window as any).Vencord?.Webpack?.findByProps?.("getLocale")?.getLocale?.() || navigator.language || "fr";
@@ -18,13 +18,6 @@ const roots = new Map<string, any>(); // track React 18 roots for proper unmount
 
 export async function changeHypeSquadHouse(houseId: number) {
     try {
-        const TokenStore = (window as any).Vencord?.Webpack?.findByProps?.("getToken");
-        const token = TokenStore?.getToken?.() || (window as any).localStorage?.token?.replace(/"/g, "");
-        if (!token) {
-            showToast("Impossible de récupérer le token Discord", Toasts.Type.FAILURE);
-            return;
-        }
-
         const isFr = getDiscordLocale().toLowerCase().startsWith("fr");
         const houseNames: Record<number, string> = {
             1: "Bravery",
@@ -35,23 +28,42 @@ export async function changeHypeSquadHouse(houseId: number) {
 
         showToast(isFr ? "Changement de maison HypeSquad..." : "Updating HypeSquad house...", Toasts.Type.MESSAGE);
 
-        const res = await fetch("https://discord.com/api/v9/hypesquad/online", {
-            method: houseId === 0 ? "DELETE" : "POST",
-            headers: {
-                "Authorization": token,
-                "Content-Type": "application/json"
-            },
-            body: houseId === 0 ? undefined : JSON.stringify({ house_id: houseId })
-        });
+        let res: any;
+        if (RestAPI && (RestAPI.del || RestAPI.delete)) {
+            if (houseId === 0) {
+                const delFn = RestAPI.del || RestAPI.delete;
+                res = await delFn({ url: "/hypesquad/online" });
+            } else {
+                res = await RestAPI.post({ url: "/hypesquad/online", body: { house_id: houseId } });
+            }
+        } else {
+            const TokenStore = (window as any).Vencord?.Webpack?.findByProps?.("getToken");
+            const token = TokenStore?.getToken?.() || (window as any).localStorage?.token?.replace(/"/g, "");
+            if (!token) {
+                showToast("Impossible de récupérer le token Discord", Toasts.Type.FAILURE);
+                return;
+            }
 
-        if (res.ok) {
+            res = await fetch("https://discord.com/api/v9/hypesquad/online", {
+                method: houseId === 0 ? "DELETE" : "POST",
+                headers: {
+                    "Authorization": token,
+                    "Content-Type": "application/json"
+                },
+                body: houseId === 0 ? undefined : JSON.stringify({ house_id: houseId })
+            });
+        }
+
+        const isOk = res?.ok || res?.status === 204 || res?.status === 200 || (res?.body && !res?.body?.message);
+        if (isOk) {
             showToast(
                 isFr ? `Maison HypeSquad mise à jour : ${houseNames[houseId] ?? houseId} !` : `HypeSquad House updated: ${houseNames[houseId] ?? houseId}!`,
                 Toasts.Type.SUCCESS
             );
             setTimeout(() => location.reload(), 600);
         } else {
-            showToast(isFr ? `Erreur lors du changement de maison. Status: ${res.status}` : `Failed to change house. Status: ${res.status}`, Toasts.Type.FAILURE);
+            const status = res?.status || "Unknown";
+            showToast(isFr ? `Erreur lors du changement de maison. Status: ${status}` : `Failed to change house. Status: ${status}`, Toasts.Type.FAILURE);
         }
     } catch (err: any) {
         showToast(`Erreur HypeSquad: ${err?.message || err}`, Toasts.Type.FAILURE);
