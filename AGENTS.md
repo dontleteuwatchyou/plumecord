@@ -37,6 +37,7 @@
 ## 7. Git Commit & Versioning Workflow
 - **Smart Commit Timing**: Only create git commits once a requested feature, refactor, or bugfix is completely resolved, properly compiled (`pnpm build`), and verified. NEVER commit intermediate, incomplete, or broken debugging states.
 - **Strict English & Descriptive Commit Messages**: All git commit messages must ALWAYS be written in English, concise (a few short words), descriptive, and follow conventional commit formats (e.g., `fix(totpManager): resolve UserStore reference error`, `feat(plugins): add custom profile decorators`).
+- **Remote Push & VPN Tolerance**: If `git push` fails or if git shows `Your branch is ahead of 'origin/master' by X commits` due to SSH timeouts, unreachable network, or VPN requirements, this is completely normal. The user manages their own VPN connection to push to specific IP addresses. As long as the local commit is successfully created, do not get blocked or attempt endless push retries.
 
 ## 8. Internationalization & Translation System
 - **Mandatory Translation Coverage**: Every newly introduced feature, UI string, plugin setting description, button label, modal title, error message, or toast MUST be registered in Nightcord's translation system (`src/nightcordplugins/autoTranslateNightcord/index.ts`).
