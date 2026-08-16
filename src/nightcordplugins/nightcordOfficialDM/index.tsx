@@ -1600,20 +1600,34 @@ export default definePlugin({
         }
 
 function getChannelTimestamp(channelId: string): number {
+    if (!channelId) return 0;
     try {
+        // 1. Check ReadStateStore (always cached for all DMs in Discord)
+        const ReadStateStore = (findStore("ReadStateStore") || (findByPropsLazy("lastMessageId", "hasUnread") as any)) as any;
+        const lastMsgId = ReadStateStore?.lastMessageId?.(channelId);
+        if (lastMsgId) {
+            const ts = SnowflakeUtils.extractTimestamp(lastMsgId);
+            if (ts > 0) return ts;
+        }
+
+        // 2. Check ChannelStore
         const ChannelStore = findStore("ChannelStore") as any;
         const ch = ChannelStore?.getChannel?.(channelId);
-        if (ch) {
-            let ts = 0;
-            if (ch.lastMessageId) {
-                ts = SnowflakeUtils.extractTimestamp(ch.lastMessageId);
-            }
-            if (ch.lastPinTimestamp) {
-                const pinTs = new Date(ch.lastPinTimestamp).getTime();
-                if (pinTs > ts) ts = pinTs;
-            }
+        if (ch?.lastMessageId) {
+            const ts = SnowflakeUtils.extractTimestamp(ch.lastMessageId);
             if (ts > 0) return ts;
-            if (ch.id) return SnowflakeUtils.extractTimestamp(ch.id);
+        }
+        if (ch?.lastPinTimestamp) {
+            const pinTs = new Date(ch.lastPinTimestamp).getTime();
+            if (pinTs > 0) return pinTs;
+        }
+
+        // 3. Check MessageStore
+        const MessageStore = findStore("MessageStore") as any;
+        const lastMsg = MessageStore?.getLastMessage?.(channelId) || MessageStore?.getMessages?.(channelId)?.last?.();
+        if (lastMsg?.timestamp) {
+            const msgTs = new Date(lastMsg.timestamp).getTime();
+            if (msgTs > 0) return msgTs;
         }
     } catch {}
     return 0;
@@ -1642,11 +1656,6 @@ function getChannelTimestamp(channelId: string): number {
                         // If DM is closed, return without adding it back
                         if (settings.store.isDmClosed) return list;
 
-                        if (unreadCount > 0) {
-                            list.unshift(entryToInsert);
-                            return list;
-                        }
-
                         try {
                             let nightcordTs = lastPostTimestamp;
                             const ChannelStore = findStore("ChannelStore") as any;
@@ -1662,7 +1671,7 @@ function getChannelTimestamp(channelId: string): number {
                                     const item = list[i];
                                     const itemId = typeof item === "string" ? item : (item?.id || item?.channelId);
                                     const chTs = getChannelTimestamp(itemId);
-                                    if (nightcordTs >= chTs) {
+                                    if (chTs > 0 && nightcordTs >= chTs) {
                                         list.splice(i, 0, entryToInsert);
                                         inserted = true;
                                         break;
