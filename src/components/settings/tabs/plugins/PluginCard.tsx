@@ -177,31 +177,40 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
     const openTutorialVideo = (e: React.MouseEvent) => {
         e.stopPropagation();
-        // The video filename on disk does not always exactly match plugin.name
-        // (case differences, or a handful of fully different names), so resolve it
-        // through the mapping instead of assuming they are identical. Also always
-        // URL-encode the segment since some filenames contain spaces (e.g. "Fake Voice Option.mp4").
         const videoName = getTutorialVideoName(plugin.name) ?? plugin.name;
         const videoUrl = `https://git.${domain}/nightcord/nightcord-tutorials/raw/branch/main/videos/${encodeURIComponent(videoName)}.mp4`;
+        const hasSettings = plugin.settings && Object.keys(plugin.settings).length > 0;
+
         openModal(props => (
             <ModalRoot {...props} size={ModalSize.DYNAMIC} className="nc-tutorial-modal">
-                <ModalHeader separator={false}>
-                    <Text variant="heading-xl/bold" style={{ flex: 1, color: "#fff" }}>
-                        {plugin.name} – Tutorial
-                    </Text>
+                <ModalHeader separator={false} className="nc-tutorial-header">
+                    <div className="nc-tutorial-title-row">
+                        <div className="nc-tutorial-badge-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" />
+                            </svg>
+                        </div>
+                        <div className="nc-tutorial-title-text">
+                            <div className="nc-tutorial-name-wrapper">
+                                <Text variant="heading-lg/bold" className="nc-tutorial-name">
+                                    {plugin.name}
+                                </Text>
+                                <span className="nc-tutorial-tag">TUTORIAL</span>
+                            </div>
+                            <Text variant="text-sm/medium" color="text-muted">
+                                {t("Watch full plugin guide and feature demonstration")}
+                            </Text>
+                        </div>
+                    </div>
                     <ModalCloseButton onClick={props.onClose} />
                 </ModalHeader>
-                <ModalContent>
-                    <div style={{ padding: "0 16px 16px" }}>
+                <ModalContent className="nc-tutorial-content">
+                    <div className="nc-tutorial-video-wrapper">
                         <video
                             src={videoUrl}
                             controls
                             autoPlay
-                            style={{
-                                width: "100%",
-                                borderRadius: "8px",
-                                background: "#000",
-                            }}
+                            className="nc-tutorial-video"
                             onError={e => {
                                 const el = e.currentTarget;
                                 el.style.display = "none";
@@ -209,22 +218,64 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                                 if (msg) msg.style.display = "flex";
                             }}
                         />
-                        <div
-                            className="nc-video-error"
-                            style={{
-                                display: "none",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                padding: "48px 24px",
-                                color: "var(--text-muted)",
-                                gap: "8px",
-                            }}
-                        >
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="var(--text-muted)" />
+                        <div className="nc-video-error">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <line x1="12" y1="8" x2="12" y2="12" />
+                                <line x1="12" y1="16" x2="12.01" y2="16" />
                             </svg>
-                            <Text variant="text-md/medium">{t("No video tutorial available for this plugin.")}</Text>
+                            <Text variant="text-md/semibold">{t("Video tutorial unavailable")}</Text>
+                            <Text variant="text-sm/normal" color="text-muted">{t("The requested video could not be loaded from the tutorial server.")}</Text>
+                        </div>
+                    </div>
+                    <div className="nc-tutorial-footer">
+                        <div className="nc-tutorial-footer-left">
+                            <button
+                                className="nc-tutorial-btn nc-tutorial-btn-secondary"
+                                onClick={() => {
+                                    VencordNative.native.openExternal(videoUrl);
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                    <polyline points="15 3 21 3 21 9" />
+                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                                {t("Open in Browser")}
+                            </button>
+                            <button
+                                className="nc-tutorial-btn nc-tutorial-btn-secondary"
+                                onClick={() => {
+                                    VencordNative.clipboard.copy(videoUrl);
+                                    showToast(t("Video link copied to clipboard!"), Toasts.Type.SUCCESS);
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                </svg>
+                                {t("Copy Link")}
+                            </button>
+                        </div>
+                        <div className="nc-tutorial-footer-right">
+                            {hasSettings && (
+                                <button
+                                    className="nc-tutorial-btn nc-tutorial-btn-primary"
+                                    onClick={() => {
+                                        props.onClose();
+                                        openPluginModal(plugin);
+                                    }}
+                                >
+                                    <CogWheel width={16} height={16} />
+                                    {t("Plugin Settings")}
+                                </button>
+                            )}
+                            <button
+                                className="nc-tutorial-btn nc-tutorial-btn-secondary"
+                                onClick={props.onClose}
+                            >
+                                {t("Close")}
+                            </button>
                         </div>
                     </div>
                 </ModalContent>
