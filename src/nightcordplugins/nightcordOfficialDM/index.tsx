@@ -9,14 +9,25 @@ import "./styles.css";
 import { proxyLazy } from "@utils/lazy";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { StartAt, OptionType } from "@utils/types";
+import { closeModal, ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import { findAll, filters, findByCodeLazy, findByProps, findByPropsLazy, findComponentByCodeLazy, findStore, waitFor } from "@webpack";
-import { ChannelActionCreators, ChannelStore, DisplayProfileUtils, FluxDispatcher, i18n, IconUtils, React, SelectedChannelStore, SnowflakeUtils, UsernameUtils, UserProfileActions, UserStore } from "@webpack/common";
+import { ChannelActionCreators, ChannelStore, DisplayProfileUtils, FluxDispatcher, i18n, IconUtils, NavigationRouter, React, SelectedChannelStore, SnowflakeUtils, UsernameUtils, UserProfileActions, UserStore } from "@webpack/common";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { BaseText } from "@components/BaseText";
+import { t } from "../autoTranslateNightcord";
 import { NIGHTCORD_AVATAR_BASE64 } from "./avatarData";
 
 export const NIGHTCORD_USER_ID = "999999999999999999";
 export const NIGHTCORD_CHANNEL_ID = "999999999999999990";
+export const NIGHTCORD_CREATED_AT = new Date("2024-01-01T00:00:00Z");
+
+function formatDate(date: Date): string {
+    try {
+        return date.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    } catch {
+        return date.toISOString().slice(0, 10);
+    }
+}
 
 const LS_LAST_SEEN = "nightcord_official_dm_last_seen";
 const LS_LAST_TS = "nightcord_official_dm_last_ts";
@@ -65,103 +76,115 @@ function replaceDiscordWithNightcord(text: string): string {
     return text
         .replace(/Official Discord Message/gi, "Official Nightcord Message")
         .replace(/Message officiel de Discord/gi, "Message officiel de Nightcord")
+        .replace(/Message de discorde officiel/gi, "Message officiel de Nightcord")
         .replace(/Team Discord/gi, "Team Nightcord")
         .replace(/l'équipe Discord/gi, "l'équipe Nightcord")
         .replace(/official Discord notifications/gi, "official Nightcord notifications")
         .replace(/notifications officielles de Discord/gi, "notifications officielles de Nightcord")
         .replace(/Discord ne vous demandera/gi, "Nightcord ne vous demandera")
         .replace(/Discord ne te demandera/gi, "Nightcord ne te demandera")
-        .replace(/Discord will never ask/gi, "Nightcord will never ask");
+        .replace(/Discord will never ask/gi, "Nightcord will never ask")
+        .replace(/Official Discord/gi, "Official Nightcord")
+        .replace(/Discord Official/gi, "Nightcord Official");
 }
 
 function isNightcordContext(node: Node): boolean {
-    if (SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID) return true;
+    try {
+        if (SelectedChannelStore?.getChannelId?.() === NIGHTCORD_CHANNEL_ID) return true;
 
-    let curr: Element | null = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-    while (curr) {
-        if (curr.getAttribute) {
-            const href = curr.getAttribute("href");
-            if (href && (href.includes(NIGHTCORD_CHANNEL_ID) || href.includes(NIGHTCORD_USER_ID))) return true;
-            const ariaLabel = curr.getAttribute("aria-label");
-            if (ariaLabel && ariaLabel.toLowerCase().includes("nightcord")) return true;
-            const dataId = curr.getAttribute("data-list-item-id") || curr.getAttribute("data-channel-id");
-            if (dataId && (dataId.includes(NIGHTCORD_CHANNEL_ID) || dataId.includes(NIGHTCORD_USER_ID))) return true;
+        let curr: Element | null = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+
+        if (curr?.closest) {
+            const tooltip = curr.closest("[class*='tooltip'], [role='tooltip']");
+            if (tooltip && /Discord/i.test(tooltip.textContent || "") && /Official|Message|Officiel|System/i.test(tooltip.textContent || "")) {
+                return true;
+            }
         }
-        curr = curr.parentElement;
-    }
+
+        while (curr) {
+            if (curr.getAttribute) {
+                const href = curr.getAttribute("href");
+                if (href && (href.includes(NIGHTCORD_CHANNEL_ID) || href.includes(NIGHTCORD_USER_ID))) return true;
+                const ariaLabel = curr.getAttribute("aria-label");
+                if (ariaLabel && ariaLabel.toLowerCase().includes("nightcord")) return true;
+                const dataId = curr.getAttribute("data-list-item-id") || curr.getAttribute("data-channel-id");
+                if (dataId && (dataId.includes(NIGHTCORD_CHANNEL_ID) || dataId.includes(NIGHTCORD_USER_ID))) return true;
+            }
+
+            if (curr.querySelector) {
+                const hasNightcord = curr.querySelector(`[href*="${NIGHTCORD_CHANNEL_ID}"], [href*="${NIGHTCORD_USER_ID}"], [data-list-item-id*="${NIGHTCORD_CHANNEL_ID}"]`);
+                if (hasNightcord) return true;
+            }
+
+            if (curr.textContent && curr.textContent.includes("Nightcord") && (curr.classList?.contains?.("channel") || curr.getAttribute?.("role") === "listitem" || curr.classList?.contains?.("interactive") || curr.classList?.contains?.("layout"))) {
+                return true;
+            }
+
+            curr = curr.parentElement;
+        }
+    } catch {}
     return false;
 }
 
 let isUpdatingDom = false;
+let hoveredIsNightcord = false;
 
-function patchTextNodes(node: Node) {
+function scanAndFixNightcordDmElements() {
     if (isUpdatingDom) return;
-    if (!isNightcordContext(node)) return;
-
     isUpdatingDom = true;
     try {
-        if (node.nodeType === Node.TEXT_NODE) {
-            if (node.nodeValue && /Discord/i.test(node.nodeValue)) {
-                const newText = replaceDiscordWithNightcord(node.nodeValue);
-                if (newText !== node.nodeValue) {
-                    node.nodeValue = newText;
+        // 1. Target specifically the Nightcord DM list item
+        const nightcordDmElements = document.querySelectorAll(
+            `[href*="${NIGHTCORD_CHANNEL_ID}"], [href*="${NIGHTCORD_USER_ID}"], [data-list-item-id*="${NIGHTCORD_CHANNEL_ID}"]`
+        );
+
+        for (const el of Array.from(nightcordDmElements)) {
+            // Fix subtext inside this specific Nightcord DM element
+            const subtexts = el.querySelectorAll('[class*="subtext"], [class*="activityText"]');
+            for (const sub of Array.from(subtexts)) {
+                if (sub.textContent && /Official Discord Message|Message officiel de Discord|Message de discorde officiel/i.test(sub.textContent)) {
+                    sub.textContent = replaceDiscordWithNightcord(sub.textContent);
                 }
             }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-            const el = node as Element;
 
-            // Fix aria-label or title attributes if present (e.g. tooltips and aria-labels in DM list)
-            ["aria-label", "title"].forEach(attr => {
-                const val = el.getAttribute(attr);
-                if (val && /Discord/i.test(val)) {
-                    el.setAttribute(attr, replaceDiscordWithNightcord(val));
-                }
-            });
+            // Fix aria-labels
+            const aria = el.getAttribute("aria-label");
+            if (aria && /Discord/i.test(aria)) {
+                el.setAttribute("aria-label", replaceDiscordWithNightcord(aria));
+            }
 
-            const fixImg = (img: Element) => {
-                const currentSrc = (img as HTMLImageElement).src || img.getAttribute("href") || img.getAttribute("xlink:href");
-                if (currentSrc && !currentSrc.startsWith("data:image")) {
-                    if (currentSrc.includes(NIGHTCORD_USER_ID) || currentSrc.includes("nightcord_avatar") || currentSrc.includes("social.nightcord.st/favicon")) {
-                        if (img instanceof HTMLImageElement) img.src = nightcordAvatarUrl;
-                        img.setAttribute("href", nightcordAvatarUrl);
-                        img.setAttribute("xlink:href", nightcordAvatarUrl);
-                    }
-                }
-            };
-            const tag = el.tagName?.toUpperCase();
-            if (tag === "IMG" || tag === "IMAGE") fixImg(el);
-            el.querySelectorAll("img, image").forEach(fixImg);
-
-            for (const child of Array.from(el.childNodes)) {
-                patchTextNodes(child);
+            // Track hover for tooltip
+            if (!(el as any).__ncHoverBound) {
+                (el as any).__ncHoverBound = true;
+                el.addEventListener("mouseenter", () => { hoveredIsNightcord = true; });
+                el.addEventListener("mouseleave", () => { hoveredIsNightcord = false; });
             }
         }
-    } finally {
+
+        // 2. If tooltip is visible and hovered element is Nightcord, fix tooltip text
+        if (hoveredIsNightcord) {
+            const tooltips = document.querySelectorAll('[role="tooltip"], [class*="tooltip"]');
+            for (const tip of Array.from(tooltips)) {
+                if (tip.textContent && /Official Discord Message|Message officiel de Discord|Message de discorde officiel/i.test(tip.textContent)) {
+                    tip.textContent = replaceDiscordWithNightcord(tip.textContent);
+                }
+            }
+        }
+    } catch {} finally {
         isUpdatingDom = false;
     }
 }
 
 function startDomObserver() {
     if (domObserver) return;
-    domObserver = new MutationObserver(mutations => {
-        for (const mut of mutations) {
-            if (mut.type === "childList") {
-                mut.addedNodes.forEach(patchTextNodes);
-            } else if (mut.type === "characterData") {
-                patchTextNodes(mut.target);
-            } else if (mut.type === "attributes") {
-                patchTextNodes(mut.target);
-            }
-        }
+    scanAndFixNightcordDmElements();
+    domObserver = new MutationObserver(() => {
+        scanAndFixNightcordDmElements();
     });
     domObserver.observe(document.body, {
         childList: true,
-        subtree: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: ["aria-label", "title"],
+        subtree: true
     });
-    patchTextNodes(document.body);
 }
 
 function stopDomObserver() {
@@ -423,6 +446,195 @@ function htmlToMarkdown(html: string): string {
     return text.trim();
 }
 
+const knownPostIds = new Set<string>();
+let streamingSocket: WebSocket | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+const STREAMING_URLS = [
+    "wss://social.nightcord.st/api/v1/streaming?stream=public:local",
+    "wss://social.nightcord.st/api/v1/streaming?stream=public",
+    "wss://social.nightcord.st/api/v1/streaming/public/local",
+    "wss://social.nightcord.st/api/v1/streaming/public"
+];
+
+let streamUrlIdx = 0;
+
+function convertPostToMessage(post: any): any {
+    const postId = String(post.id);
+
+    const embeds: any[] = [];
+    if (Array.isArray(post.media_attachments)) {
+        for (const att of post.media_attachments) {
+            if (att.type === "image" || att.type === "gifv") {
+                const w = att.meta?.original?.width || att.meta?.small?.width;
+                const h = att.meta?.original?.height || att.meta?.small?.height;
+                const imageObj: any = { url: att.url, proxy_url: att.url };
+                if (w && h) {
+                    imageObj.width = w;
+                    imageObj.height = h;
+                }
+                embeds.push({
+                    type: "image",
+                    url: att.url,
+                    image: imageObj
+                });
+            }
+        }
+    }
+
+    const rawAuthor = {
+        id: NIGHTCORD_USER_ID,
+        username: "nightcord",
+        discriminator: "0",
+        global_name: "Nightcord",
+        avatar: "nightcord_avatar",
+        bot: true,
+        system: true,
+        public_flags: 1,
+        flags: 1,
+    };
+
+    const rawMsg = {
+        id: postId,
+        channel_id: NIGHTCORD_CHANNEL_ID,
+        author: rawAuthor,
+        content: htmlToMarkdown(post.content),
+        timestamp: new Date(post.created_at).toISOString(),
+        edited_timestamp: null,
+        tts: false,
+        mention_everyone: false,
+        mentions: [],
+        mention_roles: [],
+        attachments: [],
+        embeds,
+        pinned: false,
+        type: 0,
+        flags: 0,
+    };
+
+    let msgRecord = rawMsg;
+    try {
+        if (typeof createMessageRecord === "function") {
+            msgRecord = createMessageRecord(rawMsg);
+        }
+    } catch {}
+
+    return msgRecord;
+}
+
+function injectSinglePost(post: any) {
+    if (!post || !post.id || settings.store.isDmClosed) return;
+    const postId = String(post.id);
+    if (knownPostIds.has(postId)) return;
+    knownPostIds.add(postId);
+
+    const postDate = new Date(post.created_at).getTime();
+    if (postDate > lastPostTimestamp) {
+        lastPostTimestamp = postDate;
+        setItemSafe(LS_LAST_TS, String(lastPostTimestamp));
+    }
+
+    const isNew = Boolean(lastSeenPostId) && (function() {
+        try { return BigInt(postId) > BigInt(lastSeenPostId); } catch { return postId !== lastSeenPostId; }
+    })();
+
+    if (!lastSeenPostId || isNew) {
+        lastSeenPostId = postId;
+        setItemSafe(LS_LAST_SEEN, lastSeenPostId);
+    }
+
+    const msgRecord = convertPostToMessage(post);
+
+    // Make sure channel is created in store
+    try {
+        FluxDispatcher.dispatch({
+            type: "CHANNEL_CREATE",
+            channel: NIGHTCORD_CHANNEL,
+        });
+    } catch {}
+
+    // Instant zero-delay message creation in UI
+    try {
+        FluxDispatcher.dispatch({
+            type: "MESSAGE_CREATE",
+            channelId: NIGHTCORD_CHANNEL_ID,
+            message: msgRecord,
+            optimistic: false,
+            isPushNotification: true
+        });
+    } catch {}
+
+    if (SelectedChannelStore.getChannelId() !== NIGHTCORD_CHANNEL_ID) {
+        unreadCount++;
+        try { (findStore("ReadStateStore") as any)?.emitChange(); } catch {}
+        try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch {}
+        try { (findStore("ChannelStore") as any)?.emitChange(); } catch {}
+    }
+}
+
+let wsRetryCount = 0;
+
+function connectMastodonStreaming() {
+    if (streamingSocket || settings.store.isDmClosed) return;
+
+    try {
+        const url = STREAMING_URLS[streamUrlIdx % STREAMING_URLS.length];
+        const ws = new WebSocket(url);
+        streamingSocket = ws;
+
+        ws.onopen = () => {
+            wsRetryCount = 0;
+            try {
+                ws.send(JSON.stringify({ type: "subscribe", stream: "public:local" }));
+                ws.send(JSON.stringify({ type: "subscribe", stream: "public" }));
+            } catch {}
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.event === "update" && data.payload) {
+                    const post = typeof data.payload === "string" ? JSON.parse(data.payload) : data.payload;
+                    injectSinglePost(post);
+                }
+            } catch (err) {
+                console.warn("[NightcordOfficialDM] Error parsing streaming message:", err);
+            }
+        };
+
+        ws.onerror = () => {
+            streamUrlIdx++;
+        };
+
+        ws.onclose = () => {
+            streamingSocket = null;
+            if (!settings.store.isDmClosed) {
+                if (reconnectTimer) clearTimeout(reconnectTimer);
+                wsRetryCount++;
+                const delay = Math.min(30000 * Math.pow(1.5, Math.min(wsRetryCount, 4)), 120000);
+                reconnectTimer = setTimeout(connectMastodonStreaming, delay);
+            }
+        };
+    } catch (e) {
+        streamingSocket = null;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        wsRetryCount++;
+        const delay = Math.min(30000 * Math.pow(1.5, Math.min(wsRetryCount, 4)), 120000);
+        reconnectTimer = setTimeout(connectMastodonStreaming, delay);
+    }
+}
+
+function disconnectMastodonStreaming() {
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+    }
+    if (streamingSocket) {
+        try { streamingSocket.close(); } catch {}
+        streamingSocket = null;
+    }
+}
+
 async function fetchMastodonFeed(): Promise<any[]> {
     for (const url of API_URLS) {
         try {
@@ -436,11 +648,112 @@ async function fetchMastodonFeed(): Promise<any[]> {
     return [];
 }
 
+// ─── Urgent Message Modal (System Alert for Nightcord Messages) ──────────────
+
+interface UrgentMessageModalProps extends ModalProps {
+    onClose: () => void;
+}
+
+export function UrgentMessageModal({ onClose, transitionState }: UrgentMessageModalProps) {
+    const handleConfirm = () => {
+        onClose();
+        try {
+            NavigationRouter.transitionTo(`/channels/@me/${NIGHTCORD_CHANNEL_ID}`);
+        } catch {}
+    };
+
+    return (
+        <ModalRoot transitionState={transitionState} size={ModalSize.DYNAMIC} className="nightcord-urgent-modal-root">
+            <div data-mana-component="modal" className="nightcord-urgent-container container__8a031 size-md__8a031 padding-size-lg__8a031" style={{ opacity: 1, transform: "scale(1)" }}>
+                <div className="nightcord-urgent-header-gradient container_a62383 blue_a62383 headerGradient__8a031" style={{ "--custom-gradient-offset-bottom": "0%" } as any}>
+                    <header className="section__8a031 header__8a031 headerCentered__8a031">
+                        <div data-align="stretch" data-justify="start" data-direction="vertical" data-wrap="false" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8)", padding: "var(--space-0)" }}>
+                            <div className="nightcord-urgent-header-top headerLayout__8a031">
+                                <div className="headerLeading__8a031 headerLeadingAbsolute__8a031"></div>
+                                <div className="headerLeadingSpacer__8a031" style={{ height: 35, width: 45 }}></div>
+                                <div className="nightcord-urgent-graphic-wrap headerMain__8a031">
+                                    <div className="headerGraphic__8a031">
+                                        <div className="headerGraphicContainer__8a031">
+                                            <div className="container__8ef77 aspect-ratio-16/9__8ef77">
+                                                <img className="nightcord-urgent-img image__8ef77" alt="" draggable={false} src="https://cdn.discordapp.com/assets/content/88cde2b0ab4c8015cee8fdb8732b85b01df4fc78a75b3aa5e621539ea94b1803.svg" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="headerTrailingSpacer__8a031" style={{ height: 35, width: 45 }}></div>
+                                <div className="headerTrailing__8a031 headerTrailingAbsolute__8a031">
+                                    <button data-mana-component="button" role="button" className="nightcord-urgent-close-btn button_a22cb0 md_a22cb0 color-mix_a22cb0" type="button" aria-label="Close" onClick={onClose}>
+                                        <div className="buttonChildrenWrapper_a22cb0">
+                                            <div className="buttonChildren_a22cb0">
+                                                <svg className="icon_a22cb0" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                                                    <path fill="currentColor" d="M19.3 20.7a1 1 0 0 0 1.4-1.4L13.42 12l7.3-7.3a1 1 0 0 0-1.42-1.4L12 10.58l-7.3-7.3a1 1 0 0 0-1.4 1.42L10.58 12l-7.3 7.3a1 1 0 1 0 1.42 1.4L12 13.42l7.3 7.3Z"></path>
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                            <h1 className="nightcord-urgent-title heading-xl/semibold_cf4812 defaultColor__5345c headerTitle__8a031" id="heading-_r_53_" data-text-variant="heading-xl/semibold" style={{ color: "var(--text-strong, #ffffff)" }}>
+                                {t("Urgent Message")}
+                            </h1>
+                            <div className="headerSubtitleWrapper__8a031">
+                                <div className="nightcord-urgent-subtitle text-md/normal_cf4812 headerSubtitle__8a031" data-text-variant="text-md/normal" style={{ color: "var(--text-subtle, #dbdee1)" }}>
+                                    {t("There's an official message from the Nightcord team that needs your attention.")}
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+                </div>
+                <footer className="nightcord-urgent-footer actionBar__8a031 section__8a031">
+                    <div className="actionBarTrailing__8a031 actionBarTrailingFullWidth__8a031">
+                        <div data-align="stretch" data-justify="start" data-direction="horizontal" data-wrap="true" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8)", padding: "var(--space-0)" }}>
+                            <button
+                                data-mana-component="button"
+                                role="button"
+                                className="nightcord-urgent-ok-btn button_a22cb0 md_a22cb0 primary_a22cb0 hasText_a22cb0 fullWidth_a22cb0"
+                                type="button"
+                                onClick={handleConfirm}
+                            >
+                                <div className="buttonChildrenWrapper_a22cb0">
+                                    <div className="buttonChildren_a22cb0">
+                                        <span className="lineClamp1__4bd52 text-md/medium_cf4812" data-text-variant="text-md/medium">
+                                            {t("Okay")}
+                                        </span>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </footer>
+            </div>
+        </ModalRoot>
+    );
+}
+
+let activeUrgentModalKey: string | null = null;
+export function openUrgentMessageModal() {
+    if (activeUrgentModalKey) return;
+    activeUrgentModalKey = openModal(props => (
+        <UrgentMessageModal
+            {...props}
+            onClose={() => {
+                if (activeUrgentModalKey) {
+                    closeModal(activeUrgentModalKey);
+                    activeUrgentModalKey = null;
+                }
+            }}
+        />
+    ));
+}
+
 async function checkAndInjectPosts(isInitialLoad = false) {
     if (settings.store.isDmClosed) return;
     try {
         const posts = await fetchMastodonFeed();
         if (!Array.isArray(posts) || posts.length === 0) return;
+
+        const previousLastTs = Number(getItemSafe(LS_LAST_TS) || 0);
+        const previousLastSeenId = getItemSafe(LS_LAST_SEEN);
 
         if (!settings.store.isDmClosed) {
             setTimeout(() => {
@@ -460,6 +773,17 @@ async function checkAndInjectPosts(isInitialLoad = false) {
 
         if (sortedPosts.length > 0) {
             const newestDate = new Date(sortedPosts[0].created_at).getTime();
+
+            // Detect if new posts arrived while Discord was closed
+            if (isInitialLoad && previousLastTs > 0) {
+                const isNewerThanSaved = newestDate > previousLastTs || (previousLastSeenId && String(sortedPosts[0].id) !== previousLastSeenId);
+                if (isNewerThanSaved && !settings.store.isDmClosed) {
+                    setTimeout(() => {
+                        openUrgentMessageModal();
+                    }, 1200);
+                }
+            }
+
             if (newestDate > lastPostTimestamp) {
                 lastPostTimestamp = newestDate;
                 setItemSafe(LS_LAST_TS, String(lastPostTimestamp));
@@ -468,52 +792,9 @@ async function checkAndInjectPosts(isInitialLoad = false) {
 
         for (const post of sortedPosts) {
             const postId = String(post.id);
+            knownPostIds.add(postId);
 
-            const embeds: any[] = [];
-            if (Array.isArray(post.media_attachments)) {
-                for (const att of post.media_attachments) {
-                    if (att.type === "image" || att.type === "gifv") {
-                        const w = att.meta?.original?.width || att.meta?.small?.width;
-                        const h = att.meta?.original?.height || att.meta?.small?.height;
-                        const imageObj: any = { url: att.url, proxy_url: att.url };
-                        if (w && h) {
-                            imageObj.width = w;
-                            imageObj.height = h;
-                        }
-                        embeds.push({
-                            type: "image",
-                            url: att.url,
-                            image: imageObj
-                        });
-                    }
-                }
-            }
-
-            const rawMsg = {
-                id: postId,
-                channel_id: NIGHTCORD_CHANNEL_ID,
-                author: NIGHTCORD_USER,
-                content: htmlToMarkdown(post.content),
-                timestamp: new Date(post.created_at).toISOString(),
-                edited_timestamp: null,
-                tts: false,
-                mention_everyone: false,
-                mentions: [{ id: UserStore.getCurrentUser()?.id || "0" }],
-                mention_roles: [],
-                attachments: [],
-                embeds,
-                pinned: false,
-                type: 0,
-                flags: 0,
-            };
-
-            let msgRecord = rawMsg;
-            try {
-                if (typeof createMessageRecord === "function") {
-                    msgRecord = createMessageRecord(rawMsg);
-                }
-            } catch {}
-
+            const msgRecord = convertPostToMessage(post);
             messageRecords.push(msgRecord);
 
             const isNew = Boolean(lastSeenPostId) && (function() {
@@ -728,7 +1009,16 @@ export default definePlugin({
     },
 
     isNightcordChannel(props: any) {
-        return props?.channel?.id === NIGHTCORD_CHANNEL_ID || SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID;
+        const id = props?.channel?.id || props?.id;
+        if (id === NIGHTCORD_CHANNEL_ID) return true;
+        if (props?.channel?.name === "Nightcord" || props?.name === "Nightcord") return true;
+        if (props?.channel?.recipients?.includes?.(NIGHTCORD_USER_ID)) return true;
+        if (SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID) return true;
+        return false;
+    },
+
+    getNightcordSystemText() {
+        return "Official Nightcord Message";
     },
 
     renderBanner() {
@@ -743,9 +1033,9 @@ export default definePlugin({
         // reach Discord's stores, otherwise Discord caches it in IndexedDB and shows
         // it again on next startup even before our other patches fire.
         try {
-            const origDispatch = FluxDispatcher.dispatch.bind(FluxDispatcher);
-            (FluxDispatcher as any).dispatch = function(action: any) {
-                // Block CHANNEL_CREATE for our fake channel when the DM is closed
+            const fd = FluxDispatcher as any;
+            const origDispatch = fd.dispatch.bind(fd);
+            fd.dispatch = function(action: any, ...args: any[]) {
                 if (
                     action?.type === "CHANNEL_CREATE" &&
                     (action?.channel?.id === NIGHTCORD_CHANNEL_ID || action?.channelId === NIGHTCORD_CHANNEL_ID) &&
@@ -753,9 +1043,9 @@ export default definePlugin({
                 ) {
                     return Promise.resolve();
                 }
-                return origDispatch(action);
+                return origDispatch(action, ...args);
             };
-            unpatchFluxDispatch = () => { (FluxDispatcher as any).dispatch = origDispatch; };
+            unpatchFluxDispatch = () => { fd.dispatch = origDispatch; };
         } catch {}
 
         // If the DM was closed, purge any stale entry Discord may have cached
@@ -959,16 +1249,20 @@ export default definePlugin({
             }
         } catch {}
 
-        // Patch i18n intl methods ONLY for Nightcord channel
+        // Patch i18n intl methods for Nightcord official strings (only when in Nightcord context)
         try {
             if (i18n?.intl?.string) {
                 const origString = i18n.intl.string;
                 i18n.intl.string = function(descriptor: any) {
-                    const res = origString.apply(this, arguments as any);
-                    if (SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID) {
-                        if (typeof res === "string") return replaceDiscordWithNightcord(res);
+                    try {
+                        const res = origString.apply(this, arguments as any);
+                        if (typeof res === "string" && SelectedChannelStore?.getChannelId?.() === NIGHTCORD_CHANNEL_ID) {
+                            return replaceDiscordWithNightcord(res);
+                        }
+                        return res;
+                    } catch {
+                        return origString.apply(this, arguments as any);
                     }
-                    return res;
                 };
                 unpatchIntlString = () => { i18n.intl.string = origString; };
             }
@@ -976,12 +1270,20 @@ export default definePlugin({
             if (i18n?.intl?.format) {
                 const origFormat = i18n.intl.format;
                 i18n.intl.format = function(descriptor: any, values: any) {
-                    const res = origFormat.apply(this, arguments as any);
-                    if (SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID) {
-                        if (typeof res === "string") return replaceDiscordWithNightcord(res);
-                        if (Array.isArray(res)) return res.map(item => typeof item === "string" ? replaceDiscordWithNightcord(item) : item);
+                    try {
+                        const res = origFormat.apply(this, arguments as any);
+                        if (SelectedChannelStore?.getChannelId?.() === NIGHTCORD_CHANNEL_ID) {
+                            if (typeof res === "string") {
+                                return replaceDiscordWithNightcord(res);
+                            }
+                            if (Array.isArray(res)) {
+                                return res.map(item => typeof item === "string" ? replaceDiscordWithNightcord(item) : item);
+                            }
+                        }
+                        return res;
+                    } catch {
+                        return origFormat.apply(this, arguments as any);
                     }
-                    return res;
                 };
                 unpatchIntlFormat = () => { i18n.intl.format = origFormat; };
             }
@@ -1299,14 +1601,20 @@ export default definePlugin({
 
 function getChannelTimestamp(channelId: string): number {
     try {
-        const MessageStore = findStore("MessageStore") as any;
-        const lastMsg = MessageStore?.getLastMessage?.(channelId);
-        if (lastMsg?.timestamp) return new Date(lastMsg.timestamp).getTime();
-        if (lastMsg?.id) return SnowflakeUtils.extractTimestamp(lastMsg.id);
         const ChannelStore = findStore("ChannelStore") as any;
         const ch = ChannelStore?.getChannel?.(channelId);
-        if (ch?.lastMessageId) return SnowflakeUtils.extractTimestamp(ch.lastMessageId);
-        if (ch?.id) return SnowflakeUtils.extractTimestamp(ch.id);
+        if (ch) {
+            let ts = 0;
+            if (ch.lastMessageId) {
+                ts = SnowflakeUtils.extractTimestamp(ch.lastMessageId);
+            }
+            if (ch.lastPinTimestamp) {
+                const pinTs = new Date(ch.lastPinTimestamp).getTime();
+                if (pinTs > ts) ts = pinTs;
+            }
+            if (ts > 0) return ts;
+            if (ch.id) return SnowflakeUtils.extractTimestamp(ch.id);
+        }
     } catch {}
     return 0;
 }
@@ -1319,54 +1627,58 @@ function getChannelTimestamp(channelId: string): number {
             const patchSortFn = (fnName: string) => {
                 if (typeof SortStore[fnName] === "function") {
                     const orig = SortStore[fnName];
+                    const isObjectArray = fnName === "getSortedPrivateChannels";
+                    const entryToInsert = isObjectArray ? NIGHTCORD_CHANNEL : NIGHTCORD_CHANNEL_ID;
+
                     SortStore[fnName] = function(...args: any[]) {
-                        let ids: any = orig.apply(this, args) || [];
+                        let list: any = orig.apply(this, args) || [];
                         // Always filter our fake channel first
-                        if (Array.isArray(ids)) {
-                            ids = ids.filter((item: any) => {
+                        if (Array.isArray(list)) {
+                            list = list.filter((item: any) => {
                                 const id = typeof item === "string" ? item : (item?.id || item?.channelId);
                                 return id !== NIGHTCORD_CHANNEL_ID;
                             });
                         }
                         // If DM is closed, return without adding it back
-                        if (settings.store.isDmClosed) return ids;
+                        if (settings.store.isDmClosed) return list;
 
                         if (unreadCount > 0) {
-                            ids.unshift(NIGHTCORD_CHANNEL_ID);
-                            return ids;
+                            list.unshift(entryToInsert);
+                            return list;
                         }
 
                         try {
-                            const MessageStore = findStore("MessageStore") as any;
-                            const nightcordLastMsg = MessageStore?.getLastMessage?.(NIGHTCORD_CHANNEL_ID);
                             let nightcordTs = lastPostTimestamp;
-                            if (nightcordLastMsg?.timestamp) {
-                                nightcordTs = new Date(nightcordLastMsg.timestamp).getTime();
+                            const ChannelStore = findStore("ChannelStore") as any;
+                            const ncCh = ChannelStore?.getChannel?.(NIGHTCORD_CHANNEL_ID);
+                            if (ncCh?.lastMessageId) {
+                                const ncExtracted = SnowflakeUtils.extractTimestamp(ncCh.lastMessageId);
+                                if (ncExtracted > nightcordTs) nightcordTs = ncExtracted;
                             }
 
                             if (nightcordTs > 0) {
                                 let inserted = false;
-                                for (let i = 0; i < ids.length; i++) {
-                                    const item = ids[i];
+                                for (let i = 0; i < list.length; i++) {
+                                    const item = list[i];
                                     const itemId = typeof item === "string" ? item : (item?.id || item?.channelId);
                                     const chTs = getChannelTimestamp(itemId);
                                     if (nightcordTs >= chTs) {
-                                        ids.splice(i, 0, NIGHTCORD_CHANNEL_ID);
+                                        list.splice(i, 0, entryToInsert);
                                         inserted = true;
                                         break;
                                     }
                                 }
                                 if (!inserted) {
-                                    ids.push(NIGHTCORD_CHANNEL_ID);
+                                    list.push(entryToInsert);
                                 }
                             } else {
-                                ids.push(NIGHTCORD_CHANNEL_ID);
+                                list.push(entryToInsert);
                             }
                         } catch {
-                            ids.push(NIGHTCORD_CHANNEL_ID);
+                            list.push(entryToInsert);
                         }
 
-                        return ids;
+                        return list;
                     };
                     sortUnpatches.push(() => {
                         SortStore[fnName] = orig;
@@ -1416,14 +1728,18 @@ function getChannelTimestamp(channelId: string): number {
 
         setTimeout(() => {
             isAppLoaded = true;
-        }, 3000);
-
-        // Initial check and start polling
-        checkAndInjectPosts(true);
-        pollInterval = setInterval(() => checkAndInjectPosts(false), 30000);
+            checkAndInjectPosts(true);
+            connectMastodonStreaming();
+            pollInterval = setInterval(() => checkAndInjectPosts(false), 60000);
+        }, 1000);
     },
 
     stop() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        disconnectMastodonStreaming();
         window.removeEventListener("click", handleGlobalClick, true);
         stopDomObserver();
 

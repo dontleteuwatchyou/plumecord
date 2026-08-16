@@ -57,3 +57,107 @@
     height: 100%;
     width: 340px;
 }
+
+/* ─── Urgent Message Modal (Mana System System Alert Modal) ─────────────────── */
+
+.nightcord-urgent-modal-root {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.nightcord-urgent-container {
+    background: var(--background-floating, #2b2d31);
+    border-radius: 12px;
+    overflow: hidden;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-sizing: border-box;
+}
+
+.nightcord-urgent-header-gradient {
+    background: linear-gradient(180deg, rgba(88, 101, 242, 0.25) 0%, rgba(88, 101, 242, 0) 100%);
+    padding: 24px 24px 16px;
+    text-align: center;
+    position: relative;
+}
+
+.nightcord-urgent-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.nightcord-urgent-close-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: transparent;
+    border: none;
+    color: var(--interactive-normal, #b5bac1);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+
+.nightcord-urgent-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--interactive-hover, #ffffff);
+}
+
+.nightcord-urgent-graphic-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 0 auto 16px;
+}
+
+.nightcord-urgent-img {
+    width: 180px;
+    height: auto;
+    display: block;
+}
+
+.nightcord-urgent-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--header-primary, #ffffff);
+    margin: 0 0 8px 0;
+    line-height: 1.25;
+    font-family: var(--font-primary, "gg sans", sans-serif);
+}
+
+.nightcord-urgent-subtitle {
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--text-normal, #dbdee1);
+    margin: 0;
+}
+
+.nightcord-urgent-footer {
+    padding: 16px 24px 24px;
+    background: var(--background-floating, #2b2d31);
+}
+
+.nightcord-urgent-ok-btn {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--brand-500, #5865f2);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.nightcord-urgent-ok-btn:hover {
+    background: var(--brand-560, #4752c4);
+}
+
