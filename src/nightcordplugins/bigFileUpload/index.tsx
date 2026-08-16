@@ -153,204 +153,237 @@ function SettingsComponent(props: { setValue(v: any): void; }) {
     };
 
     return (
-        <Flex flexDirection="column">
-            <Forms.FormSection title={t("Select the file uploader service")}>
-                <Select
-                    options={[
-                        { label: "Custom Uploader", value: "Custom" },
-                        { label: "Catbox", value: "Catbox" },
-                        { label: "Litterbox", value: "Litterbox" },
-                        { label: "GoFile", value: "GoFile" },
-                    ]}
-                    placeholder="Select the file uploader service"
+        <div className="vc-bigfile-container">
+            <style>{`
+                .vc-bigfile-container input,
+                .vc-bigfile-container input[type="text"],
+                .vc-bigfile-container [class*="input_"],
+                .vc-bigfile-container [class*="inputDefault_"] {
+                    background: var(--input-background, #1e1f22) !important;
+                    background-color: var(--input-background, #1e1f22) !important;
+                    color: var(--text-normal, #dbdee1) !important;
+                    border: 1px solid var(--input-border, transparent) !important;
+                    box-shadow: none !important;
+                }
+            `}</style>
+            <Flex flexDirection="column">
+                <Forms.FormSection title={t("Select the file uploader service")}>
+                    <Select
+                        options={[
+                            { label: "Custom Uploader", value: "Custom" },
+                            { label: "Catbox", value: "Catbox" },
+                            { label: "Litterbox", value: "Litterbox" },
+                            { label: "GoFile", value: "GoFile" },
+                        ]}
+                        placeholder="Select the file uploader service"
+                        className={Margins.bottom16}
+                        select={handleFileUploaderChange}
+                        isSelected={v => v === fileUploader}
+                        serialize={v => v}
+                    />
+                </Forms.FormSection>
+
+                <FormSwitch
+                    title={t("Auto-Send Link In Chat")}
+                    description={t("Automatically send the uploaded file link directly to the current chat")}
+                    value={settings.store.autoSend === "Yes"}
+                    onChange={v => {
+                        updateSetting("autoSend", v ? "Yes" : "No");
+                    }}
+                    hideBorder
                     className={Margins.bottom16}
-                    select={handleFileUploaderChange}
-                    isSelected={v => v === fileUploader}
-                    serialize={v => v}
                 />
-            </Forms.FormSection>
 
-            <FormSwitch
-                title={t("Auto-Send Link In Chat")}
-                description={t("Automatically send the uploaded file link directly to the current chat")}
-                value={settings.store.autoSend === "Yes"}
-                onChange={v => {
-                    updateSetting("autoSend", v ? "Yes" : "No");
-                }}
-                hideBorder
-                className={Margins.bottom16}
-            />
+                {fileUploader === "GoFile" && (
+                    <>
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>GoFile Settings</Forms.FormTitle>
+                        <Forms.FormSection title={t("GoFile Token (optional)")}>
+                            <TextInput value={settings.store.gofileToken || ""} placeholder="Insert GoFile Token"
+                                onChange={newValue => updateSetting("gofileToken", newValue)} className={Margins.bottom16} />
+                        </Forms.FormSection>
+                    </>
+                )}
 
-            {fileUploader === "GoFile" && (
-                <>
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>GoFile Settings</Forms.FormTitle>
-                    <Forms.FormSection title={t("GoFile Token (optional)")}>
-                        <TextInput value={settings.store.gofileToken || ""} placeholder="Insert GoFile Token"
-                            onChange={newValue => updateSetting("gofileToken", newValue)} className={Margins.bottom16} />
-                    </Forms.FormSection>
-                </>
-            )}
+                {fileUploader === "Catbox" && (
+                    <>
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>Catbox Settings</Forms.FormTitle>
+                        <Forms.FormSection title={t("Catbox User hash (optional)")}>
+                            <TextInput value={settings.store.catboxUserHash || ""} placeholder="Insert User Hash"
+                                onChange={newValue => updateSetting("catboxUserHash", newValue)} className={Margins.bottom16} />
+                        </Forms.FormSection>
+                    </>
+                )}
 
-            {fileUploader === "Catbox" && (
-                <>
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>Catbox Settings</Forms.FormTitle>
-                    <Forms.FormSection title={t("Catbox User hash (optional)")}>
-                        <TextInput value={settings.store.catboxUserHash || ""} placeholder="Insert User Hash"
-                            onChange={newValue => updateSetting("catboxUserHash", newValue)} className={Margins.bottom16} />
-                    </Forms.FormSection>
-                </>
-            )}
+                {fileUploader === "Litterbox" && (
+                    <>
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>Litterbox Settings</Forms.FormTitle>
+                        <Forms.FormSection title={t("Select the file expiration time")}>
+                            <Select
+                                options={[
+                                    { label: "1 hour", value: "1h" },
+                                    { label: "12 hours", value: "12h" },
+                                    { label: "24 hours", value: "24h" },
+                                    { label: "72 hours", value: "72h" },
+                                ]}
+                                placeholder="Select Duration"
+                                className={Margins.bottom16}
+                                select={newValue => updateSetting("litterboxTime", newValue)}
+                                isSelected={v => v === settings.store.litterboxTime}
+                                serialize={v => v}
+                            />
+                        </Forms.FormSection>
+                    </>
+                )}
 
-            {fileUploader === "Litterbox" && (
-                <>
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>Litterbox Settings</Forms.FormTitle>
-                    <Forms.FormSection title={t("Select the file expiration time")}>
-                        <Select
-                            options={[
-                                { label: "1 hour", value: "1h" },
-                                { label: "12 hours", value: "12h" },
-                                { label: "24 hours", value: "24h" },
-                                { label: "72 hours", value: "72h" },
-                            ]}
-                            placeholder="Select Duration"
-                            className={Margins.bottom16}
-                            select={newValue => updateSetting("litterboxTime", newValue)}
-                            isSelected={v => v === settings.store.litterboxTime}
-                            serialize={v => v}
-                        />
-                    </Forms.FormSection>
-                </>
-            )}
+                {fileUploader === "Custom" && (
+                    <>
+                        <Forms.FormSection title={t("Request URL")}>
+                            <TextInput value={customUploaderStore.get().requestURL} placeholder="Request URL"
+                                onChange={(v: string) => customUploaderStore.set({ requestURL: v })} className={Margins.bottom16} />
+                        </Forms.FormSection>
+                        <Forms.FormSection title={t("File form name")}>
+                            <TextInput value={customUploaderStore.get().fileFormName} placeholder="File Form Name"
+                                onChange={(v: string) => customUploaderStore.set({ fileFormName: v })} className={Margins.bottom16} />
+                        </Forms.FormSection>
+                        <Forms.FormSection title={t("Response type")}>
+                            <Select
+                                options={[{ label: "Text", value: "Text" }, { label: "JSON", value: "JSON" }]}
+                                placeholder="Select Response Type"
+                                className={Margins.bottom16}
+                                select={(v: string) => customUploaderStore.set({ responseType: v })}
+                                isSelected={(v: string) => v === customUploaderStore.get().responseType}
+                                serialize={(v: string) => v}
+                            />
+                        </Forms.FormSection>
+                        <Forms.FormSection title={t("URL (JSON path)")}>
+                            <TextInput value={customUploaderStore.get().url} placeholder="URL (JSON path)"
+                                onChange={(v: string) => customUploaderStore.set({ url: v })} className={Margins.bottom16} />
+                        </Forms.FormSection>
 
-            {fileUploader === "Custom" && (
-                <>
-                    <Forms.FormSection title={t("Request URL")}>
-                        <TextInput value={customUploaderStore.get().requestURL} placeholder="Request URL"
-                            onChange={(v: string) => customUploaderStore.set({ requestURL: v })} className={Margins.bottom16} />
-                    </Forms.FormSection>
-                    <Forms.FormSection title={t("File form name")}>
-                        <TextInput value={customUploaderStore.get().fileFormName} placeholder="File Form Name"
-                            onChange={(v: string) => customUploaderStore.set({ fileFormName: v })} className={Margins.bottom16} />
-                    </Forms.FormSection>
-                    <Forms.FormSection title={t("Response type")}>
-                        <Select
-                            options={[{ label: "Text", value: "Text" }, { label: "JSON", value: "JSON" }]}
-                            placeholder="Select Response Type"
-                            className={Margins.bottom16}
-                            select={(v: string) => customUploaderStore.set({ responseType: v })}
-                            isSelected={(v: string) => v === customUploaderStore.get().responseType}
-                            serialize={(v: string) => v}
-                        />
-                    </Forms.FormSection>
-                    <Forms.FormSection title={t("URL (JSON path)")}>
-                        <TextInput value={customUploaderStore.get().url} placeholder="URL (JSON path)"
-                            onChange={(v: string) => customUploaderStore.set({ url: v })} className={Margins.bottom16} />
-                    </Forms.FormSection>
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>Custom Uploader Arguments</Forms.FormTitle>
+                        {Object.entries(customUploaderStore.get().args).map(([key, value], index) => (
+                            <div key={index}>
+                                <TextInput value={key} placeholder="Argument Key"
+                                    onChange={(newKey: string) => handleArgChange(key, newKey, value as string)} className={Margins.bottom16} />
+                                <TextInput value={value as string} placeholder="Argument Value"
+                                    onChange={(newValue: string) => handleArgChange(key, key, newValue)} className={Margins.bottom16} />
+                            </div>
+                        ))}
 
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>Custom Uploader Arguments</Forms.FormTitle>
-                    {Object.entries(customUploaderStore.get().args).map(([key, value], index) => (
-                        <div key={index}>
-                            <TextInput value={key} placeholder="Argument Key"
-                                onChange={(newKey: string) => handleArgChange(key, newKey, value as string)} className={Margins.bottom16} />
-                            <TextInput value={value as string} placeholder="Argument Value"
-                                onChange={(newValue: string) => handleArgChange(key, key, newValue)} className={Margins.bottom16} />
-                        </div>
-                    ))}
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>Headers</Forms.FormTitle>
+                        {Object.entries(customUploaderStore.get().headers).map(([key, value], index) => (
+                            <div key={index}>
+                                <TextInput value={key} placeholder="Header Key"
+                                    onChange={(newKey: string) => handleHeaderChange(key, newKey, value as string)} className={Margins.bottom16} />
+                                <TextInput value={value as string} placeholder="Header Value"
+                                    onChange={(newValue: string) => handleHeaderChange(key, key, newValue)} className={Margins.bottom16} />
+                            </div>
+                        ))}
 
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>Headers</Forms.FormTitle>
-                    {Object.entries(customUploaderStore.get().headers).map(([key, value], index) => (
-                        <div key={index}>
-                            <TextInput value={key} placeholder="Header Key"
-                                onChange={(newKey: string) => handleHeaderChange(key, newKey, value as string)} className={Margins.bottom16} />
-                            <TextInput value={value as string} placeholder="Header Value"
-                                onChange={(newValue: string) => handleHeaderChange(key, key, newValue)} className={Margins.bottom16} />
-                        </div>
-                    ))}
-
-                    <Forms.FormDivider />
-                    <Forms.FormTitle>Import ShareX Config</Forms.FormTitle>
-                    <Button onClick={() => fileInputRef.current?.click()}
-                        color={Button.Colors.BRAND} size={Button.Sizes.XLARGE} className={Margins.bottom16}>
-                        Select File
-                    </Button>
-                    <input ref={fileInputRef} type="file" accept=".sxcu" style={{ display: "none" }}
-                        onChange={handleShareXConfigUpload} />
-                </>
-            )}
-        </Flex>
+                        <Forms.FormDivider />
+                        <Forms.FormTitle>Import ShareX Config</Forms.FormTitle>
+                        <Button onClick={() => fileInputRef.current?.click()}
+                            color={Button.Colors.BRAND} size={Button.Sizes.XLARGE} className={Margins.bottom16}>
+                            Select File
+                        </Button>
+                        <input ref={fileInputRef} type="file" accept=".sxcu" style={{ display: "none" }}
+                            onChange={handleShareXConfigUpload} />
+                    </>
+                )}
+            </Flex>
+        </div>
     );
 }
 
 const settings = definePluginSettings({
     fileUploader: {
         type: OptionType.SELECT,
+        description: "Select the file uploader service",
         options: [
             { label: "Custom Uploader", value: "Custom" },
-            { label: "Catbox", value: "Catbox", default: true },
+            { label: "Catbox", value: "Catbox" },
             { label: "Litterbox", value: "Litterbox" },
-            { label: "GoFile", value: "GoFile" },
+            { label: "GoFile", value: "GoFile", default: true },
         ],
-        description: "Select the file uploader service",
-        hidden: true
     },
-    gofileToken: { type: OptionType.STRING, default: "", description: "GoFile Token (optional)", hidden: true },
     autoSend: {
         type: OptionType.SELECT,
-        options: [{ label: "Yes", value: "Yes" }, { label: "No", value: "No", default: true }],
-        description: "Auto-Send", hidden: true
+        description: "Automatically send the uploaded file link directly to the current chat",
+        options: [
+            { label: "Yes", value: "Yes", default: true },
+            { label: "No", value: "No" },
+        ],
     },
-    catboxUserHash: { type: OptionType.STRING, default: "", description: "User hash for Catbox (optional)", hidden: true },
     litterboxTime: {
         type: OptionType.SELECT,
+        description: "Select the file expiration time",
         options: [
-            { label: "1 hour", value: "1h", default: true },
+            { label: "1 hour", value: "1h" },
             { label: "12 hours", value: "12h" },
             { label: "24 hours", value: "24h" },
-            { label: "72 hours", value: "72h" },
+            { label: "72 hours", value: "72h", default: true },
         ],
-        description: "Duration for files on Litterbox", hidden: true
     },
-    customUploaderName: { type: OptionType.STRING, default: "", description: "Name of the custom uploader", hidden: true },
-    customUploaderRequestURL: { type: OptionType.STRING, default: "", description: "Request URL", hidden: true },
-    customUploaderFileFormName: { type: OptionType.STRING, default: "", description: "File form name", hidden: true },
+    gofileToken: {
+        type: OptionType.STRING,
+        description: "GoFile Token (optional)",
+        default: "",
+    },
+    catboxUserHash: {
+        type: OptionType.STRING,
+        description: "Catbox User hash (optional)",
+        default: "",
+    },
+    customUploaderName: {
+        type: OptionType.STRING,
+        description: "Name of the custom uploader",
+        default: "",
+    },
+    customUploaderRequestURL: {
+        type: OptionType.STRING,
+        description: "Request URL for the custom uploader",
+        default: "",
+    },
+    customUploaderFileFormName: {
+        type: OptionType.STRING,
+        description: "File form name for the custom uploader",
+        default: "",
+    },
     customUploaderResponseType: {
         type: OptionType.SELECT,
-        options: [{ label: "Text", value: "Text", default: true }, { label: "JSON", value: "JSON" }],
-        description: "Response type", hidden: true
+        description: "Response type for the custom uploader",
+        options: [
+            { label: "Text", value: "Text", default: true },
+            { label: "JSON", value: "JSON" },
+        ],
     },
-    customUploaderURL: { type: OptionType.STRING, default: "", description: "URL (JSON path)", hidden: true },
-    customUploaderThumbnailURL: { type: OptionType.STRING, default: "", description: "Thumbnail URL (JSON path)", hidden: true },
-    customUploaderHeaders: { type: OptionType.STRING, default: JSON.stringify({}), description: "Headers (JSON string)", hidden: true },
-    customUploaderArgs: { type: OptionType.STRING, default: JSON.stringify({}), description: "Arguments (JSON string)", hidden: true },
+    customUploaderURL: {
+        type: OptionType.STRING,
+        description: "JSON path for the URL in the response",
+        default: "",
+    },
+    customUploaderThumbnailURL: {
+        type: OptionType.STRING,
+        description: "JSON path for the thumbnail URL in the response (optional)",
+        default: "",
+    },
+    customUploaderHeaders: {
+        type: OptionType.STRING,
+        description: "Headers for the custom uploader (JSON format)",
+        default: "{}",
+    },
+    customUploaderArgs: {
+        type: OptionType.STRING,
+        description: "Arguments for the custom uploader (JSON format)",
+        default: "{}",
+    },
     customSettings: { type: OptionType.COMPONENT, component: SettingsComponent, description: "Configure custom uploader settings", hidden: false },
-}).withPrivateSettings<{
-    customUploaderArgs?: Record<string, string>;
-    customUploaderHeaders?: Record<string, string>;
-}>();
-
-function sendTextToChat(text: string) {
-    if (settings.store.autoSend === "No") {
-        insertTextIntoChatInputBox(text);
-    } else {
-        const channelId = SelectedChannelStore.getChannelId();
-        sendMessage(channelId, { content: text });
-    }
-}
-
-async function resolveFile(options: CommandArgument[], ctx: CommandContext): Promise<File | null> {
-    for (const opt of options) {
-        if (opt.name === "file") {
-            const upload = UploadStore.getUpload(ctx.channel.id, opt.name, DraftType.SlashCommand);
-            return upload.item.file;
-        }
-    }
-    return null;
-}
+});
 
 async function uploadFileToGofile(file: File, channelId: string) {
     try {
@@ -469,9 +502,9 @@ function triggerFileUpload() {
     document.body.removeChild(fileInput);
 }
 
-const BigFileIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+const BigFileIcon = (props: any) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" {...props}>
+        <path fill="currentColor" fillRule="evenodd" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" clipRule="evenodd" />
     </svg>
 );
 
@@ -480,9 +513,14 @@ const ctxMenuPatch: NavContextMenuPatchCallback = (children, props) => {
     children.splice(1, 0,
         <Menu.MenuItem
             id="upload-big-file"
+            key="upload-big-file"
             label={t("Upload a Big File")}
+            iconLeft={BigFileIcon}
             icon={BigFileIcon}
-            leadingAccessory={BigFileIcon}
+            leadingAccessory={{
+                type: "icon",
+                icon: BigFileIcon
+            }}
             action={triggerFileUpload}
         />
     );
