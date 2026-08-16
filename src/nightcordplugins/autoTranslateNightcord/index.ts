@@ -3166,6 +3166,8 @@ export const translations: TranslationMap = {
     "Pin DMs": { en: "Pin DMs", fr: "Épingler les DM", ar: "تثبيت الرسائل المباشرة", es: "Fijar mensajes directos", ru: "Закрепить личные сообщения", zh: "引脚 DM" },
     "Ping": { en: "Ping", fr: "Ping", ar: "بينغ", es: "Silbido", ru: "Пинг", zh: "平" },
     "Ping reply by default": { en: "Ping reply by default", fr: "Réponse ping par défaut", ar: "الرد بينغ بشكل افتراضي", es: "Respuesta de ping por defecto", ru: "Ответ Ping по умолчанию", zh: "默认 Ping 回复" },
+    "Platform updated! Reconnecting Gateway...": { en: "Platform updated! Reconnecting Gateway...", fr: "Plateforme mise à jour ! Reconnexion de la passerelle...", ar: "تم تحديث المنصة! إعادة الاتصال بالبوابة...", es: "¡Plataforma actualizada! Reconectando pasarela...", ru: "Платформа обновлена! Переподключение к Gateway...", zh: "平台已更新！正在重新连接网关..." },
+    "Platform updated!": { en: "Platform updated!", fr: "Plateforme mise à jour !", ar: "تم تحديث المنصة!", es: "¡Plataforma actualizada!", ru: "Платформа обновлена!", zh: "平台已更新！" },
     "Pings the bot to check if it": { en: "Pings the bot to check if it", fr: "Cingle le bot pour vérifier s'il", ar: "يصدر صوتًا للروبوت للتحقق مما إذا كان كذلك", es: "Hace ping al bot para comprobar si", ru: "Пингует бота, чтобы проверить, работает ли он", zh: "对机器人执行 ping 操作以检查是否" },
     "Pink": { en: "Pink", fr: "Rose", ar: "لون القرنفل", es: "Rosa", ru: "Розовый", zh: "粉色的" },
     "PixelVault upload key": { en: "PixelVault upload key", fr: "Clé de téléchargement PixelVault", ar: "مفتاح تحميل PixelVault", es: "Clave de carga de PixelVault", ru: "Ключ загрузки PixelVault", zh: "PixelVault 上传密钥" },
