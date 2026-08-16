@@ -153,14 +153,13 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                     </ModalContent>
                     <ModalFooter style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
                         <Button
-                            color={Button.Colors.PRIMARY}
-                            look={Button.Looks.LINK}
+                            variant="link"
                             onClick={props.onClose}
                         >
                             {t("Cancel")}
                         </Button>
                         <Button
-                            color={Button.Colors.BRAND}
+                            variant="primary"
                             onClick={() => {
                                 props.onClose();
                                 doToggleEnabled();
@@ -232,17 +231,15 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                 <ModalFooter style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", gap: "8px" }}>
                         <Button
-                            color={Button.Colors.PRIMARY}
-                            look={Button.Looks.LINK}
-                            size={Button.Sizes.SMALL}
+                            variant="secondary"
+                            size="small"
                             onClick={() => VencordNative.native.openExternal(videoUrl)}
                         >
                             {t("Open in Browser")}
                         </Button>
                         <Button
-                            color={Button.Colors.PRIMARY}
-                            look={Button.Looks.LINK}
-                            size={Button.Sizes.SMALL}
+                            variant="secondary"
+                            size="small"
                             onClick={() => {
                                 VencordNative.clipboard.copy(videoUrl);
                                 showToast(t("Video link copied to clipboard!"), Toasts.Type.SUCCESS);
@@ -254,8 +251,8 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                     <div style={{ display: "flex", gap: "8px" }}>
                         {hasSettings && (
                             <Button
-                                color={Button.Colors.BRAND}
-                                size={Button.Sizes.SMALL}
+                                variant="primary"
+                                size="small"
                                 onClick={() => {
                                     props.onClose();
                                     openPluginModal(plugin);
@@ -265,9 +262,8 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                             </Button>
                         )}
                         <Button
-                            color={Button.Colors.PRIMARY}
-                            look={Button.Looks.FILLED}
-                            size={Button.Sizes.SMALL}
+                            variant="secondary"
+                            size="small"
                             onClick={props.onClose}
                         >
                             {t("Close")}
