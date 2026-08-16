@@ -98,7 +98,7 @@ export function HeaderBarButton(props: HeaderBarButtonProps & { ref?: React.RefO
                     aria-label={label}
                     aria-expanded={selected}
                 >
-                    <Icon size="custom" width={iconSize} height={iconSize} color="currentColor" />
+                    <Icon width={iconSize} height={iconSize} color="currentColor" />
                 </Clickable>
             )}
         </Tooltip>

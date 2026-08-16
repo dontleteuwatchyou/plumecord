@@ -82,6 +82,7 @@ try {
 import "~plugins";
 
 export * as Api from "./api";
+export * as DataStore from "./api/DataStore";
 export * as Plugins from "./api/PluginManager";
 export * as Components from "./components";
 export * as Util from "./utils";

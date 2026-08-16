@@ -7,6 +7,8 @@
 import electron, { app, Menu, nativeImage, Tray } from "electron";
 import { dirname, join } from "path";
 
+let nightcordTrayInstance: Tray | null = null;
+
 /**
  * Initializes the Nightcord system tray icon.
  * Should only be called on Windows, outside overlay mode.
@@ -40,8 +42,8 @@ export function initNightcordTray(injectorPath: string) {
                 }
             }
 
-            const tray = new Tray(icon);
-            tray.setToolTip("Nightcord");
+            nightcordTrayInstance = new Tray(icon);
+            nightcordTrayInstance!.setToolTip("Nightcord");
 
             const trayMenu = Menu.buildFromTemplate([
                 {
@@ -80,8 +82,8 @@ export function initNightcordTray(injectorPath: string) {
                 }
             ]);
 
-            tray.setContextMenu(trayMenu);
-            tray.on("click", () => {
+            nightcordTrayInstance!.setContextMenu(trayMenu);
+            nightcordTrayInstance!.on("click", () => {
                 const wins = electron.BrowserWindow.getAllWindows();
                 const main = wins.find(w => !w.isDestroyed()) ?? wins[0];
                 if (main) {

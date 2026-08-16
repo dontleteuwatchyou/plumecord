@@ -245,22 +245,10 @@ require(patcherPath);
 async function applyDefaultPluginsSetting() {
     try {
         const settingsDir = path.join(process.env.APPDATA, "Nightcord", "settings");
-        const settingsPath = path.join(settingsDir, "settings.json");
         await fs.mkdir(settingsDir, { recursive: true });
-
-        // Always enable default plugins by removing the 'plugins' key from settings.json
-        // so that Nightcord natively loads its enabledByDefault values.
-        let existing = null;
-        try { existing = JSON.parse(await fs.readFile(settingsPath, "utf-8")); } catch { }
-        if (existing && typeof existing === "object" && "plugins" in existing) {
-            delete existing.plugins;
-            await fs.writeFile(settingsPath, JSON.stringify(existing, null, 2), "utf-8");
-            log("✅ Default plugins enabled (reset to built-in defaults)");
-        } else {
-            log("✅ Default plugins enabled (no override needed)");
-        }
+        log("✅ Plugin settings preserved");
     } catch (err) {
-        log(`⚠️ Could not apply plugin settings: ${err.message}`);
+        log(`⚠️ Could not verify plugin settings: ${err.message}`);
     }
 }
 

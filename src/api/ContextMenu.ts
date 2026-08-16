@@ -182,7 +182,7 @@ function cloneMenuChildren(obj: ReactElement<any> | Array<ReactElement<any> | nu
             obj?.props?.children &&
             (obj.type !== Menu.MenuControlItem || obj.type === Menu.MenuControlItem && obj.props.control != null)
         ) {
-            obj.props.children = cloneMenuChildren(obj.props.children);
+            obj = React.cloneElement(obj, { children: cloneMenuChildren(obj.props.children) });
         }
     }
 

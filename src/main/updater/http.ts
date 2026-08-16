@@ -9,7 +9,7 @@ import { IpcEvents } from "@shared/IpcEvents";
 import { VENCORD_USER_AGENT } from "@shared/vencordUserAgent";
 import { exec } from "child_process";
 import { app, ipcMain } from "electron";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "original-fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "original-fs";
 import { join } from "path";
 import { domain } from "../../../DOMAIN.json";
 import { serializeErrors } from "./common";
@@ -83,6 +83,21 @@ async function getUpdates() {
  * Does NOT touch any running files. Returns true when the zip is staged.
  */
 async function stageUpdate(): Promise<boolean> {
+    // If update is already staged for this version on disk, skip redundant download
+    if (existsSync(PENDING_UPDATE_MARKER)) {
+        try {
+            const marker = JSON.parse(readFileSync(PENDING_UPDATE_MARKER, "utf-8"));
+            if (marker.stagingDir && existsSync(marker.stagingDir)) {
+                if (!pendingVersion || marker.version === pendingVersion) {
+                    console.log(`[NightcordUpdater] Update ${marker.version} is already staged on disk. Skipping download.`);
+                    pendingDownloadUrl = null;
+                    pendingVersion = null;
+                    return true;
+                }
+            }
+        } catch { }
+    }
+
     if (!pendingDownloadUrl) return false;
     if (isApplying) return false;
     isApplying = true;

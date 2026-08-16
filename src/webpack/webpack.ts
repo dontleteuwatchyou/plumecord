@@ -242,10 +242,12 @@ export const find = traceFunction("find", function find(filter: FilterFn, { isIn
         if (typeof mod.exports !== "object" || topLevelOnly) continue;
 
         for (const nestedMod in mod.exports) {
-            const nested = mod.exports[nestedMod];
-            if (nested && filter(nested)) {
-                return isWaitFor ? [nested, key] : nested;
-            }
+            try {
+                const nested = mod.exports[nestedMod];
+                if (nested && filter(nested)) {
+                    return isWaitFor ? [nested, key] : nested;
+                }
+            } catch { }
         }
     }
 
@@ -272,8 +274,10 @@ export function findAll(filter: FilterFn, { topLevelOnly = false }: { topLevelOn
             continue;
 
         for (const nestedMod in mod.exports) {
-            const nested = mod.exports[nestedMod];
-            if (nested && filter(nested)) ret.push(nested);
+            try {
+                const nested = mod.exports[nestedMod];
+                if (nested && filter(nested)) ret.push(nested);
+            } catch { }
         }
     }
 

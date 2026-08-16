@@ -93,175 +93,173 @@ if (!IS_VANILLA) {
                 return;
             }
 
-            // On n'injecte le preload Nightcord QUE dans les fenêtres Discord/Nightcord légitimes.
-            const ourPreload = join(__dirname, "preload.js");
-            const preloadIsOurs = options.webPreferences.preload === ourPreload;
-            const KNOWN_TITLES = /^(Discord|Vesktop|Equibop)$|^(Nightcord|Equicord)|Overlay/i;
-            const isTrustedTitle = !!(options.title && KNOWN_TITLES.test(options.title));
-            const isVBCable = !!(options.title && options.title.includes("VB-Cable"));
-
-            if (options?.webPreferences?.preload && (isTrustedTitle || isVBCable || preloadIsOurs)) {
-                const original = options.webPreferences.preload;
-                const isMainWindow = options.title === "Discord";
-                options.webPreferences.preload = join(__dirname, "preload.js");
-                options.webPreferences.sandbox = false;
-                options.webPreferences.backgroundThrottling = false;
-                options.webPreferences.webviewTag = true;
-
-                let ses = options.webPreferences.session;
-                if (!ses && options.webPreferences.partition) {
-                    ses = electron.session.fromPartition(options.webPreferences.partition);
-                }
-                ses ??= electron.session.defaultSession;
-                registerMediaPermissionsForSession(ses);
-
-                if (settings.frameless) {
-                    options.frame = false;
-                } else if (settings.mainWindowFrameless && isMainWindow) {
-                    options.frame = false;
-                } else if (process.platform === "win32" && settings.winNativeTitleBar) {
-                    delete options.frame;
-                }
-
-                if (settings.transparent) {
-                    options.transparent = true;
-                    options.backgroundColor = "#00000000";
-                }
-
-                // Windows 11 acrylic/mica effect
-                const winMaterial = settings.windowMaterial as string | undefined;
-                if (process.platform === "win32" && winMaterial && winMaterial !== "none") {
-                    options.transparent = true;
-                    options.backgroundColor = "#00000000";
-                }
-
-                if (settings.disableMinSize) {
-                    options.minWidth = 0;
-                    options.minHeight = 0;
-                }
-
-                const needsVibrancy = process.platform === "darwin" && settings.macosVibrancyStyle;
-
-                if (needsVibrancy) {
-                    options.backgroundColor = "#00000000";
-                    if (settings.macosVibrancyStyle) {
-                        options.vibrancy = settings.macosVibrancyStyle;
-                    }
-                }
-
-                options.fullscreenable = true;
-
-                process.env.DISCORD_PRELOAD = original;
-
+            // Align with Equicord: inject our preload into every window that has a
+            // preload + a title.  The old isTrustedTitle / KNOWN_TITLES filter was
+            // too restrictive — it silently skipped the main Discord window when it
+            // launched with a title that didn't match (e.g. during Squirrel startup
+            // or the first boot after an EquilotlCli injection).  That caused Discord
+            // to start without our renderer, leaving the session un-patched and
+            // triggering a LevelDB flush that logged the user out.
+            if (!options?.webPreferences?.preload || !options.title) {
                 super(options);
+                return;
+            }
 
-                if (settings.streamProof) {
-                    try {
-                        this.setContentProtection(true);
-                    } catch (e) {
-                        console.error("Failed to set content protection on startup:", e);
-                    }
+            const original = options.webPreferences.preload;
+            const isMainWindow = options.title === "Discord";
+            options.webPreferences.preload = join(__dirname, "preload.js");
+            options.webPreferences.sandbox = false;
+            options.webPreferences.backgroundThrottling = false;
+            options.webPreferences.webviewTag = true;
+
+            let ses = options.webPreferences.session;
+            if (!ses && options.webPreferences.partition) {
+                ses = electron.session.fromPartition(options.webPreferences.partition);
+            }
+            ses ??= electron.session.defaultSession;
+            registerMediaPermissionsForSession(ses);
+
+            if (settings.frameless) {
+                options.frame = false;
+            } else if (settings.mainWindowFrameless && isMainWindow) {
+                options.frame = false;
+            } else if (process.platform === "win32" && settings.winNativeTitleBar) {
+                delete options.frame;
+            }
+
+            if (settings.transparent) {
+                options.transparent = true;
+                options.backgroundColor = "#00000000";
+            }
+
+            // Windows 11 acrylic/mica effect
+            const winMaterial = settings.windowMaterial as string | undefined;
+            if (process.platform === "win32" && winMaterial && winMaterial !== "none") {
+                options.transparent = true;
+                options.backgroundColor = "#00000000";
+            }
+
+            if (settings.disableMinSize) {
+                options.minWidth = 0;
+                options.minHeight = 0;
+            }
+
+            const needsVibrancy = process.platform === "darwin" && settings.macosVibrancyStyle;
+
+            if (needsVibrancy) {
+                options.backgroundColor = "#00000000";
+                if (settings.macosVibrancyStyle) {
+                    options.vibrancy = settings.macosVibrancyStyle;
                 }
+            }
 
-                const isTransparent = !!options.transparent;
-                let isFakeFullScreen = false;
-                let originalBounds: electron.Rectangle | null = null;
-                let isMaximizedBefore = false;
-                let transitioning = false;
+            options.fullscreenable = true;
 
-                const superSetFullScreen = this.setFullScreen.bind(this);
-                const superIsFullScreen = this.isFullScreen.bind(this);
+            process.env.DISCORD_PRELOAD = original;
 
-                this.setFullScreen = (flag: boolean) => {
-                    if (transitioning) return;
-                    transitioning = true;
-                    try {
-                        if (isTransparent) {
-                            if (flag) {
-                                if (isFakeFullScreen) return;
-                                isFakeFullScreen = true;
-                                originalBounds = this.getBounds();
-                                isMaximizedBefore = this.isMaximized();
-                                const display = electron.screen.getDisplayMatching(originalBounds).bounds;
-                                this.setResizable(false);
-                                this.setBounds(display);
-                                this.setAlwaysOnTop(true, "screen-saver");
-                                this.emit("enter-full-screen");
-                            } else {
-                                if (!isFakeFullScreen) return;
-                                isFakeFullScreen = false;
-                                this.setAlwaysOnTop(false);
-                                this.setResizable(true);
-                                if (isMaximizedBefore) {
-                                    this.maximize();
-                                } else if (originalBounds) {
-                                    this.setBounds(originalBounds);
-                                }
-                                this.emit("leave-full-screen");
-                            }
+            super(options);
+
+            if (settings.streamProof) {
+                try {
+                    this.setContentProtection(true);
+                } catch (e) {
+                    console.error("Failed to set content protection on startup:", e);
+                }
+            }
+
+            const isTransparent = !!options.transparent;
+            let isFakeFullScreen = false;
+            let originalBounds: electron.Rectangle | null = null;
+            let isMaximizedBefore = false;
+            let transitioning = false;
+
+            const superSetFullScreen = this.setFullScreen.bind(this);
+            const superIsFullScreen = this.isFullScreen.bind(this);
+
+            this.setFullScreen = (flag: boolean) => {
+                if (transitioning) return;
+                transitioning = true;
+                try {
+                    if (isTransparent) {
+                        if (flag) {
+                            if (isFakeFullScreen) return;
+                            isFakeFullScreen = true;
+                            originalBounds = this.getBounds();
+                            isMaximizedBefore = this.isMaximized();
+                            const display = electron.screen.getDisplayMatching(originalBounds).bounds;
+                            this.setResizable(false);
+                            this.setBounds(display);
+                            this.setAlwaysOnTop(true, "screen-saver");
+                            this.emit("enter-full-screen");
                         } else {
-                            superSetFullScreen(flag);
+                            if (!isFakeFullScreen) return;
+                            isFakeFullScreen = false;
+                            this.setAlwaysOnTop(false);
+                            this.setResizable(true);
+                            if (isMaximizedBefore) {
+                                this.maximize();
+                            } else if (originalBounds) {
+                                this.setBounds(originalBounds);
+                            }
+                            this.emit("leave-full-screen");
                         }
-                    } finally {
-                        transitioning = false;
+                    } else {
+                        superSetFullScreen(flag);
                     }
-                };
-
-                this.isFullScreen = () => {
-                    if (isTransparent) return isFakeFullScreen;
-                    return superIsFullScreen();
-                };
-
-                if (isTransparent) {
-                    this.on("enter-html-full-screen", () => {
-                        if (!isFakeFullScreen) this.setFullScreen(true);
-                    });
-                    this.on("leave-html-full-screen", () => {
-                        if (isFakeFullScreen) this.setFullScreen(false);
-                    });
-                } else {
-                    this.on("enter-html-full-screen", () => {
-                        if (!superIsFullScreen()) superSetFullScreen(true);
-                    });
-                    this.on("leave-html-full-screen", () => {
-                        if (superIsFullScreen()) superSetFullScreen(false);
-                    });
+                } finally {
+                    transitioning = false;
                 }
+            };
 
-                this.webContents.on("before-input-event", (event, input) => {
-                    if (input.type === "keyDown" && input.key === "F11" && !input.control && !input.shift && !input.alt && !input.meta) {
-                        event.preventDefault();
-                        this.setFullScreen(!this.isFullScreen());
-                    }
+            this.isFullScreen = () => {
+                if (isTransparent) return isFakeFullScreen;
+                return superIsFullScreen();
+            };
+
+            if (isTransparent) {
+                this.on("enter-html-full-screen", () => {
+                    if (!isFakeFullScreen) this.setFullScreen(true);
                 });
-
-                if (process.platform === "win32" && winMaterial && winMaterial !== "none") {
-                    try {
-                        let applied = false;
-                        if (typeof this.setBackgroundMaterial === "function") {
-                            this.setBackgroundMaterial(winMaterial);
-                            applied = true;
-                        }
-                        if (!applied && typeof this.setVibrancy === "function") {
-                            this.setVibrancy(winMaterial === "acrylic" ? "acrylic" : "under-window");
-                            applied = true;
-                        }
-                        if (!applied) {
-                            console.warn("[Nightcord] No background material API available on this system");
-                        }
-                    } catch (e) {
-                        console.error("[Nightcord] setBackgroundMaterial failed:", e);
-                    }
-                }
-
-                if (settings.disableMinSize) {
-                    this.setMinimumSize = (_width: number, _height: number) => { };
-                }
+                this.on("leave-html-full-screen", () => {
+                    if (isFakeFullScreen) this.setFullScreen(false);
+                });
             } else {
-                if (options && options.title !== "Discord") {
-                    options.backgroundColor ??= "#1e1f22";
+                this.on("enter-html-full-screen", () => {
+                    if (!superIsFullScreen()) superSetFullScreen(true);
+                });
+                this.on("leave-html-full-screen", () => {
+                    if (superIsFullScreen()) superSetFullScreen(false);
+                });
+            }
+
+            this.webContents.on("before-input-event", (event, input) => {
+                if (input.type === "keyDown" && input.key === "F11" && !input.control && !input.shift && !input.alt && !input.meta) {
+                    event.preventDefault();
+                    this.setFullScreen(!this.isFullScreen());
                 }
-                super(options);
+            });
+
+            if (process.platform === "win32" && winMaterial && winMaterial !== "none") {
+                try {
+                    let applied = false;
+                    if (typeof this.setBackgroundMaterial === "function") {
+                        this.setBackgroundMaterial(winMaterial);
+                        applied = true;
+                    }
+                    if (!applied && typeof this.setVibrancy === "function") {
+                        this.setVibrancy(winMaterial === "acrylic" ? "acrylic" : "under-window");
+                        applied = true;
+                    }
+                    if (!applied) {
+                        console.warn("[Nightcord] No background material API available on this system");
+                    }
+                } catch (e) {
+                    console.error("[Nightcord] setBackgroundMaterial failed:", e);
+                }
+            }
+
+            if (settings.disableMinSize) {
+                this.setMinimumSize = (_width: number, _height: number) => { };
             }
         }
     }
