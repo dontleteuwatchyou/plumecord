@@ -2,8 +2,9 @@
 
 ## 1. UI & Visual Aesthetics
 - **Strict Zero-Emoji Policy**: NEVER use any emojis in any user-facing text, buttons, modals, toasts, badge labels, or UI cards. Always use clean, minimalist SVG vector icons and crisp typography.
-- **Native Discord Components**: Always utilize official Discord design system primitives (Mana UI, Discord CSS variables such as `var(--brand-500)`, `var(--text-normal)`, `var(--background-secondary)`, standard modal layouts, and form elements).
-- **Seamless Discord Look & Feel**: The UI must look 100% native, responsive, uncluttered, and perfectly integrated into Discord's dark/light themes.
+- **Strictly Official Discord Components Only**: Always utilize official Discord design system primitives (`ModalRoot`, `ModalHeader`, `ModalContent`, `ModalFooter`, `ModalCloseButton`, `Button`, `Text`, `FormSwitch`, `Select`, `TextInput`). Never invent custom unstyled HTML buttons or non-Discord modal wrappers.
+- **No Fluorescent or Flashy Colors**: Never use bright neon gradients, fluorescent borders, or flashy glowing badges. Always stick strictly to official Discord design tokens (`var(--header-primary)`, `var(--header-secondary)`, `var(--text-normal)`, `var(--text-muted)`, `var(--brand-500)`, `var(--background-floating)`).
+- **Seamless Discord Look & Feel**: The UI must look 100% native, responsive, uncluttered, and perfectly integrated into Discord's dark/light themes without out-of-place custom headers or clunky icons.
 
 ## 2. Code Standards & Headers
 - **Mandatory Copyright & License Header**: Every new or modified source code file MUST begin with the exact copyright header:
