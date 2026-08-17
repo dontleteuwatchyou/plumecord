@@ -224,53 +224,6 @@ function pruneMsgCache() {
     }
 }
 
-/** Sérialise les embeds Discord en texte lisible + extrait les images d'embed */
-function extractEmbedsData(embeds: any[]): { text: string; attachments: LogAttachment[]; } {
-    if (!Array.isArray(embeds) || embeds.length === 0) return { text: "", attachments: [] };
-    const parts: string[] = [];
-    const attachments: LogAttachment[] = [];
-
-    for (const embed of embeds) {
-        const lines: string[] = [];
-        if (embed.author?.name) lines.push(`[${embed.author.name}]`);
-        if (embed.title) lines.push(embed.url ? `${embed.title} (${embed.url})` : embed.title);
-        if (embed.description) lines.push(embed.description);
-        if (Array.isArray(embed.fields)) {
-            for (const f of embed.fields) {
-                if (f.name || f.value) lines.push(`${f.name ? f.name + ": " : ""}${f.value ?? ""}`);
-            }
-        }
-        if (embed.footer?.text) lines.push(`— ${embed.footer.text}`);
-        if (lines.length > 0) parts.push(lines.join(" | "));
-
-        // Extraire l'image principale de l'embed
-        const img = embed.image || embed.thumbnail;
-        if (img?.url) {
-            attachments.push({
-                url: img.url,
-                proxy_url: img.proxy_url || img.url,
-                width: img.width,
-                height: img.height,
-                filename: "embed-image",
-                content_type: "image/"
-            });
-        }
-        // Video embed
-        const vid = embed.video;
-        if (vid?.url) {
-            attachments.push({
-                url: vid.url,
-                proxy_url: vid.proxy_url || vid.url,
-                width: vid.width,
-                height: vid.height,
-                filename: "embed-video.mp4",
-                content_type: "video/mp4"
-            });
-        }
-    }
-    return { text: parts.join(" \n"), attachments };
-}
-
 function cacheMsg(msg: any) {
     if (!msg?.id) return;
     if (!isLoadingMessages) pruneMsgCache();
@@ -285,15 +238,7 @@ function cacheMsg(msg: any) {
         content_type: att.content_type || att.contentType || ""
     })).filter(att => !!att.url) : [];
 
-    // Support embeds (messages de bots)
-    let content = msg.content ?? "";
-    if (Array.isArray(msg.embeds) && msg.embeds.length > 0) {
-        const { text: embedText, attachments: embedAtts } = extractEmbedsData(msg.embeds);
-        if (embedText) content = content ? `${content}\n${embedText}` : embedText;
-        for (const att of embedAtts) {
-            if (!attachments.find(a => a.url === att.url)) attachments.push(att);
-        }
-    }
+    const content = msg.content ?? "";
 
     msgCache.set(msg.id, {
         content,
@@ -496,7 +441,7 @@ function LogRow({ e, onClose }: { e: LogEntry; onClose?: () => void; }) {
                     <div className="el-msg el-msg--deleted">
                         <span className="el-msg-label">{t("Message:")} </span>
                         <div style={{ flex: 1, overflow: "hidden" }}>
-                            <span>{renderContent(e.content) || (!e.attachments?.length && <em style={{ opacity: 0.5 }}>{t("pas en cache")}</em>)}</span>
+                            <span>{renderContent(e.content)}</span>
                             {e.attachments && e.attachments.length > 0 && (
                                 <div className="el-attachments">
                                     {e.attachments.map((att, i) => (
@@ -891,7 +836,7 @@ function subscribeToEvents() {
         if (!d.message) return;
         const m = d.message; const cached = msgCache.get(m.id);
         const oldC = cached?.content ?? "", newC = m.content ?? "";
-        if (oldC === newC) return;
+        if (oldC === newC || (!newC && !oldC)) return;
         const a = authorFrom(m);
         pushLog({
             type: "message_edit", content: newC, extra: oldC || "(inconnu)", realId: m.id,
@@ -963,6 +908,9 @@ function subscribeToEvents() {
                 }
             } catch { }
         }
+
+        // If message had no text and no attachments (embeds only or empty), do not log anything
+        if (!content && !attachments.length) return;
 
         if (authorId) {
             const u = getUser(authorId);
