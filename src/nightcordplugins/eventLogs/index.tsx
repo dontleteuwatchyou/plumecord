@@ -91,6 +91,12 @@ export const settings = definePluginSettings({
         description: "Don't Delete — Re-display all logged events after every app reload",
         restartNeeded: false,
     },
+    ignoreBots: {
+        type: OptionType.BOOLEAN,
+        default: true,
+        description: "Ignore Bots — Do not log message edits or deletions from bots and webhooks",
+        restartNeeded: false,
+    },
     persistentLogs: [] as Omit<LogEntry, "id" | "timeStr">[]
 });
 
@@ -195,8 +201,16 @@ function authorFrom(msg: any) {
     const id = msg?.author?.id ?? msg?.authorId;
     let name = msg?.author?.global_name ?? msg?.author?.username ?? "?";
     let av: string | null = msg?.author?.avatar ?? null;
-    if (id) { const u = getUser(id); if (u) { if (name === "?") name = u.globalName ?? u.username ?? name; if (!av) av = u.avatar ?? null; } }
-    return { authorId: id, authorName: name, authorAvatar: av };
+    let isBot = Boolean(msg?.author?.bot || msg?.webhook_id || msg?.webhookId);
+    if (id) {
+        const u = getUser(id);
+        if (u) {
+            if (name === "?") name = u.globalName ?? u.username ?? name;
+            if (!av) av = u.avatar ?? null;
+            if (u.bot) isBot = true;
+        }
+    }
+    return { authorId: id, authorName: name, authorAvatar: av, isBot };
 }
 
 const MSG_CACHE_MAX = 50000;
@@ -834,16 +848,35 @@ function subscribeToEvents() {
     });
     sub("MESSAGE_UPDATE", d => {
         if (!d.message) return;
-        const m = d.message; const cached = msgCache.get(m.id);
-        const oldC = cached?.content ?? "", newC = m.content ?? "";
-        if (oldC === newC || (!newC && !oldC)) return;
+        const m = d.message;
+        const cached = msgCache.get(m.id);
+        const oldC = cached?.content ?? "";
+        const newC = m.content ?? "";
+        // If content didn't change or if either string is empty (unknown previous message or embed update), ignore
+        if (oldC === newC || !newC || !oldC) {
+            if (cached) cached.content = newC || cached.content;
+            else if (newC) cacheMsg(m);
+            return;
+        }
+
         const a = authorFrom(m);
+        if (settings.store.ignoreBots && a.isBot) {
+            if (cached) cached.content = newC;
+            return;
+        }
+
         pushLog({
-            type: "message_edit", content: newC, extra: oldC || "(inconnu)", realId: m.id,
-            authorId: a.authorId ?? cached?.authorId, authorName: a.authorName !== "?" ? a.authorName : (cached?.authorName ?? "?"),
-            authorAvatar: a.authorAvatar ?? cached?.authorAvatar ?? null, ...chInfo(m.channel_id)
+            type: "message_edit",
+            content: newC,
+            extra: oldC,
+            realId: m.id,
+            authorId: a.authorId ?? cached?.authorId,
+            authorName: a.authorName !== "?" ? a.authorName : (cached?.authorName ?? "?"),
+            authorAvatar: a.authorAvatar ?? cached?.authorAvatar ?? null,
+            ...chInfo(m.channel_id)
         });
-        if (cached) cached.content = newC; else cacheMsg(m);
+        if (cached) cached.content = newC;
+        else cacheMsg(m);
     });
     sub("MESSAGE_DELETE", d => {
         if (d.mlDeleted) return;
@@ -911,6 +944,11 @@ function subscribeToEvents() {
 
         // If message had no text and no attachments (embeds only or empty), do not log anything
         if (!content && !attachments.length) return;
+
+        if (settings.store.ignoreBots) {
+            const a = authorId ? authorFrom({ author: { id: authorId } }) : null;
+            if (a?.isBot) return;
+        }
 
         if (authorId) {
             const u = getUser(authorId);
