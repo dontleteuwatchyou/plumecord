@@ -48,48 +48,48 @@ const settings = definePluginSettings({
         description: "Désactiver les points \"X est en train d'écrire...\"",
         default: true,
         disabled: () => isPluginEnabled("NoTypingAnimation"),
-        restartNeeded: true
+        restartNeeded: false
     },
     noGifAvatars: {
         type: OptionType.BOOLEAN,
         description: "Bloquer les avatars GIF animés dans les listes et messages",
         default: true,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noGifAvatars = v; }
     },
     noAnimatedEmoji: {
         type: OptionType.BOOLEAN,
         description: "Désactiver l'animation des emojis Discord",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noAnimatedEmoji = v; }
     },
     noStickers: {
         type: OptionType.BOOLEAN,
         description: "Empêcher l'autoplay des stickers animés Lottie",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noStickers = v; }
     },
     noActivities: {
         type: OptionType.BOOLEAN,
         description: "Masquer la section Activités (jeux, Spotify, etc.) dans le panneau membres",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noActivities = v; }
     },
     noVideoAutoplay: {
         type: OptionType.BOOLEAN,
         description: "Bloquer l'autoplay des vidéos intégrées dans les messages (MP4, WebM)",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noVideoAutoplay = v; }
     },
     noSoundboardPreview: {
         type: OptionType.BOOLEAN,
         description: "Désactiver la prévisualisation audio du soundboard au survol",
         default: true,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v: boolean) { noSoundboardPreview = v; }
     },
     limitMsgCache: {

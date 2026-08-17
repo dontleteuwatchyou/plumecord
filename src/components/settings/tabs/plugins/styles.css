@@ -439,7 +439,7 @@
     width: 82vw !important;
     max-width: 940px !important;
     min-width: 580px !important;
-    background: var(--background-primary, #1e1f22) !important;
+    background: var(--modal-background, var(--background-floating, var(--background-secondary, #2b2d31))) !important;
     border-radius: 12px !important;
     overflow: hidden !important;
 }

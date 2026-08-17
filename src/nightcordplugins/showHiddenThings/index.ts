@@ -31,7 +31,7 @@ const opt = (description: string) => ({
     type: OptionType.BOOLEAN,
     description,
     default: true,
-    restartNeeded: true
+    restartNeeded: false
 } satisfies PluginSettingDef);
 
 const settings = definePluginSettings({

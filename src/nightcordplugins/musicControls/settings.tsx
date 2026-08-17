@@ -226,6 +226,6 @@ export const settings = definePluginSettings({
         type: OptionType.STRING,
         description: "Default is ws://localhost:24123",
         default: "ws://localhost:24123",
-        restartNeeded: true,
+        restartNeeded: false,
     }
 });

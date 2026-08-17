@@ -75,7 +75,7 @@ const settings = definePluginSettings({
         description: "Show spectators under screenshare panel",
         type: OptionType.BOOLEAN,
         default: true,
-        restartNeeded: true
+        restartNeeded: false
     },
 });
 

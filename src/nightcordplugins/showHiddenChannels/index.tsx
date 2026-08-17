@@ -62,7 +62,7 @@ export const settings = definePluginSettings({
             { label: "Show Unreads", value: ChannelStyle.Unread },
             { label: "Muted and Show Unreads", value: ChannelStyle.MutedUnread }
         ],
-        restartNeeded: true
+        restartNeeded: false
     },
     showMode: {
         description: "The mode used to display hidden channels.",
@@ -72,7 +72,7 @@ export const settings = definePluginSettings({
             { label: "Eye icon on the right", value: ShowMode.EyeIconRight },
             { label: "Lock icon on the right", value: ShowMode.LockIconRight }
         ],
-        restartNeeded: true
+        restartNeeded: false
     },
     defaultAllowedUsersAndRolesDropdownState: {
         description: "Whether the allowed users and roles dropdown on hidden channels should be open by default",

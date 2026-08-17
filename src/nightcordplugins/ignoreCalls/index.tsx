@@ -85,7 +85,7 @@ const settings = definePluginSettings({
     permanentlyIgnoredUsers: {
         type: OptionType.STRING,
         description: "User IDs (comma + space) who should be permanetly ignored",
-        restartNeeded: true,
+        restartNeeded: false,
         default: "",
     },
 });

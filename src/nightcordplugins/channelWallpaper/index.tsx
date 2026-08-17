@@ -61,13 +61,13 @@ const settings = definePluginSettings({
         type: OptionType.STRING,
         description: "VPS URL (e.g. ws://your-vps:3000). Empty = use hidden messages.",
         default: "",
-        restartNeeded: true,
+        restartNeeded: false,
     },
     vpsPassword: {
         type: OptionType.STRING,
         description: "Password for the sync server.",
         default: "nightcord",
-        restartNeeded: true,
+        restartNeeded: false,
     },
 });
 

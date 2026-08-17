@@ -52,7 +52,7 @@ interface PluginCardProps extends React.HTMLProps<HTMLDivElement> {
 }
 
 export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, onMouseLeave, isNew, hasTutorial }: PluginCardProps) {
-    const settings = Settings.plugins[plugin.name];
+    const settings = (Settings.plugins[plugin.name] ??= {} as any);
     const isEnabled = () => isPluginEnabled(plugin.name);
 
     const [likeData, setLikeData] = React.useState<PluginLikeData | null>(null);
@@ -93,6 +93,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
     function doToggleEnabled() {
         const wasEnabled = isEnabled();
+        const targetSettings = (Settings.plugins[plugin.name] ??= {} as any);
 
         if (!wasEnabled) {
             const { restartNeeded, failures } = startDependenciesRecursive(plugin);
@@ -104,27 +105,27 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             }
 
             if (restartNeeded) {
-                settings.enabled = true;
+                targetSettings.enabled = true;
                 onRestartNeeded(plugin.name, "enabled");
                 return;
             }
         }
 
         if (pluginRequiresRestart(plugin)) {
-            settings.enabled = !wasEnabled;
+            targetSettings.enabled = !wasEnabled;
             onRestartNeeded(plugin.name, "enabled");
             return;
         }
 
         if (wasEnabled && !plugin.started) {
-            settings.enabled = !wasEnabled;
+            targetSettings.enabled = !wasEnabled;
             return;
         }
 
         const result = wasEnabled ? stopPlugin(plugin) : startPlugin(plugin);
 
         if (!result) {
-            settings.enabled = false;
+            targetSettings.enabled = false;
 
             const msg = `Error while ${wasEnabled ? "stopping" : "starting"} plugin ${plugin.name}`;
             showToast(msg, Toasts.Type.FAILURE, {
@@ -134,7 +135,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             return;
         }
 
-        settings.enabled = !wasEnabled;
+        targetSettings.enabled = !wasEnabled;
     }
 
     function toggleEnabled() {
@@ -184,18 +185,18 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
         openModal(props => (
             <ModalRoot {...props} size={ModalSize.DYNAMIC} className="nc-tutorial-modal">
-                <ModalHeader separator={false} style={{ padding: "20px 24px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 4 }}>
+                <ModalHeader separator={false} style={{ padding: "24px 24px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", flexDirection: "column", flex: 1, gap: 8 }}>
                         <Text variant="heading-xl/bold" style={{ color: "#ffffff", fontSize: "20px", fontWeight: 700, margin: 0 }}>
                             {plugin.name} – {t("Tutorial")}
                         </Text>
-                        <Text variant="text-sm/normal" style={{ color: "#949ba4", fontSize: "14px", margin: 0 }}>
+                        <Text variant="text-sm/normal" style={{ color: "#949ba4", fontSize: "14px", margin: 0, paddingBottom: "6px" }}>
                             {t("Watch full plugin guide and feature demonstration")}
                         </Text>
                     </div>
                     <ModalCloseButton onClick={props.onClose} />
                 </ModalHeader>
-                <ModalContent style={{ padding: "0 24px 16px" }}>
+                <ModalContent style={{ padding: "6px 24px 20px" }}>
                     <div style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: "10px", overflow: "hidden", background: "#000000", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
                         <video
                             src={videoUrl}

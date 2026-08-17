@@ -69,19 +69,19 @@ const settings = definePluginSettings({
     noMirroredCamera: {
         type: OptionType.BOOLEAN,
         description: "Prevents the camera from being mirrored on your screen",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false,
     },
     removeActivitySection: {
         type: OptionType.BOOLEAN,
         description: "Removes the activity section above member list",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false,
     },
     showYourOwnActivityButtons: {
         type: OptionType.BOOLEAN,
         description: "Discord hides your own activity buttons for some reason",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false,
     },
     refreshSlashCommands: {
@@ -92,31 +92,31 @@ const settings = definePluginSettings({
     forceRoleIcon: {
         type: OptionType.BOOLEAN,
         description: "Forces role icons to display next to messages in compact mode",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
     accountStandingButton: {
         type: OptionType.BOOLEAN,
         description: "Show an account standing button in the header bar",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false,
     },
     restoreFileDownloadButton: {
         type: OptionType.BOOLEAN,
         description: "Adds back the Download button at the top right corner of files",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
     noBulletPoints: {
         type: OptionType.BOOLEAN,
         description: "Stops you from typing markdown bullet points (stinky)",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
     noModalAnimation: {
         type: OptionType.BOOLEAN,
         description: "Remove the 300ms long animation when opening or closing modals",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
 });

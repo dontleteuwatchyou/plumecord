@@ -372,7 +372,7 @@ const settings = definePluginSettings({
         description: "Hide the \"X is typing...\" dots on screen (visual only)",
         default: true,
         disabled: () => isPluginEnabled("NoTypingAnimation"),
-        restartNeeded: true
+        restartNeeded: false
     },
     noGifAvatars: {
         type: OptionType.BOOLEAN,
@@ -390,7 +390,7 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Prevent Lottie animated stickers from autoplaying",
         default: false,
-        restartNeeded: true
+        restartNeeded: false
     },
     noActivities: {
         type: OptionType.BOOLEAN,
@@ -402,13 +402,13 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Block autoplay of embedded videos in messages",
         default: false,
-        restartNeeded: true
+        restartNeeded: false
     },
     noSoundboardPreview: {
         type: OptionType.BOOLEAN,
         description: "Disable soundboard audio preview on hover",
         default: true,
-        restartNeeded: true
+        restartNeeded: false
     },
     reduceBlurEffects: {
         type: OptionType.BOOLEAN,

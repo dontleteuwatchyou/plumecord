@@ -153,7 +153,7 @@ export const settings = definePluginSettings({
         default: true,
         type: OptionType.BOOLEAN,
         description: "Toggle to whenever show the toolbox or not",
-        restartNeeded: true,
+        restartNeeded: false,
     },
 
     ShowWhereMessageIsFrom: {
@@ -262,7 +262,7 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Clear logs when Discord restarts.",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
     },
 
     openLogs: {

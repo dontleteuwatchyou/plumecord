@@ -31,13 +31,13 @@ const settings = definePluginSettings({
         description: "Disable Spotify auto-pause",
         type: OptionType.BOOLEAN,
         default: true,
-        restartNeeded: true
+        restartNeeded: false
     },
     keepSpotifyActivityOnIdle: {
         description: "Keep Spotify activity playing when idling",
         type: OptionType.BOOLEAN,
         default: false,
-        restartNeeded: true
+        restartNeeded: false
     }
 });
 

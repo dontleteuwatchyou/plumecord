@@ -178,7 +178,7 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Whether to make the mobile indicator match the color of the user status.",
         default: true,
-        restartNeeded: true
+        restartNeeded: false
     },
     showBots: {
         type: OptionType.BOOLEAN,
@@ -188,7 +188,7 @@ const settings = definePluginSettings({
     ConsoleIcon: {
         type: OptionType.SELECT,
         description: "What console icon to use",
-        restartNeeded: true,
+        restartNeeded: false,
         options: [
             { label: "Equicord", value: "equicord", default: true },
             { label: "Suncord", value: "suncord" },

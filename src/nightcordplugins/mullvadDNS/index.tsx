@@ -190,7 +190,7 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Rewrite fetch URLs to resolved IPs. This is experimental and can break HTTPS.",
         default: false,
-        restartNeeded: true,
+        restartNeeded: false,
         onChange(v) { cfgRewrite = v; }
     },
     preloadOnStart: {

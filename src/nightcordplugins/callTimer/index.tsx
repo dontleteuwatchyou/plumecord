@@ -35,13 +35,13 @@ export const settings = definePluginSettings({
     allCallTimers: {
         type: OptionType.BOOLEAN,
         description: "Add call timer to all users in a server voice channel",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
     showWithoutHover: {
         type: OptionType.BOOLEAN,
         description: "Always show the timer without needing to hover",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     },
     showRoleColor: {
@@ -65,7 +65,7 @@ export const settings = definePluginSettings({
     watchLargeGuilds: {
         type: OptionType.BOOLEAN,
         description: "Track users in large guilds. This may cause lag if you're in a lot of large guilds with active voice users. Tested with up to 2000 active voice users with no issues.",
-        restartNeeded: true,
+        restartNeeded: false,
         default: false
     }
 });
