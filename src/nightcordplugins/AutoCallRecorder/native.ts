@@ -14,12 +14,19 @@ import fixWebmDuration from "fix-webm-duration";
 if (typeof globalThis.FileReader === "undefined") {
     (globalThis as any).FileReader = class {
         onloadend: any = null;
+        onload: any = null;
+        onerror: any = null;
         result: any = null;
         readAsArrayBuffer(blob: Blob) {
             blob.arrayBuffer().then(buf => {
                 this.result = buf;
-                if (this.onloadend) this.onloadend();
-            }).catch(() => {});
+                const ev = { target: this };
+                if (typeof this.onload === "function") this.onload(ev);
+                if (typeof this.onloadend === "function") this.onloadend(ev);
+            }).catch(err => {
+                if (typeof this.onerror === "function") this.onerror(err);
+                if (typeof this.onloadend === "function") this.onloadend({ target: this });
+            });
         }
     };
 }
@@ -170,7 +177,9 @@ export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Ui
             title: "Save Call Recording",
             defaultPath: defaultFilename,
             filters: [
-                { name: "Video/Audio", extensions: ["webm", "mkv", "ogg"] },
+                { name: "MP4 Video/Audio", extensions: ["mp4", "m4a"] },
+                { name: "WebM / MKV", extensions: ["webm", "mkv"] },
+                { name: "OGG Audio", extensions: ["ogg"] },
                 { name: "All Files", extensions: ["*"] }
             ]
         });

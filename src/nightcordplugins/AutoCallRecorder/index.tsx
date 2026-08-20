@@ -117,7 +117,8 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: t("Video Format"),
         options: [
-            { label: "WebM", value: "webm", default: true },
+            { label: "MP4 (MPEG-4 AVC / Seekable)", value: "mp4", default: true },
+            { label: "WebM", value: "webm" },
             { label: "MKV", value: "mkv" }
         ]
     },
@@ -125,7 +126,8 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: t("Audio Format"),
         options: [
-            { label: "OGG", value: "ogg", default: true },
+            { label: "MP4 / AAC (MPEG-4 Audio / Seekable)", value: "mp4", default: true },
+            { label: "OGG (Opus)", value: "ogg" },
             { label: "WebM", value: "webm" }
         ]
     },

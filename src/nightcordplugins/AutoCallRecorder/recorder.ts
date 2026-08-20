@@ -47,6 +47,98 @@ export function isCurrentlyRecording(): boolean {
     return isRecording;
 }
 
+function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ext: string } {
+    if (opts.mode === "video") {
+        if (opts.videoFormat === "mkv") {
+            const mimes = [
+                "video/x-matroska;codecs=avc1,opus",
+                "video/x-matroska;codecs=avc1,aac",
+                "video/x-matroska",
+                "video/webm;codecs=vp8,opus",
+                "video/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "mkv" };
+            }
+            return { mimeType: "video/webm", ext: "mkv" };
+        } else if (opts.videoFormat === "webm") {
+            const mimes = [
+                "video/webm;codecs=vp9,opus",
+                "video/webm;codecs=vp8,opus",
+                "video/webm;codecs=h264,opus",
+                "video/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "webm" };
+            }
+            return { mimeType: "video/webm", ext: "webm" };
+        } else {
+            // Default: MP4 (H.264 / AVC + AAC / Opus in MP4)
+            const mimes = [
+                "video/mp4;codecs=avc1,mp4a.40.2",
+                "video/mp4;codecs=avc1,opus",
+                "video/mp4;codecs=h264,aac",
+                "video/mp4;codecs=avc1",
+                "video/mp4;codecs=h264",
+                "video/mp4",
+                "video/webm;codecs=vp9,opus",
+                "video/webm;codecs=vp8,opus",
+                "video/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) {
+                    const ext = m.includes("mp4") ? "mp4" : "webm";
+                    return { mimeType: m, ext };
+                }
+            }
+            return { mimeType: "video/mp4", ext: "mp4" };
+        }
+    } else {
+        // Voice only
+        if (opts.audioFormat === "ogg") {
+            const mimes = [
+                "audio/ogg;codecs=opus",
+                "audio/ogg",
+                "audio/webm;codecs=opus",
+                "audio/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "ogg" };
+            }
+            return { mimeType: "audio/ogg", ext: "ogg" };
+        } else if (opts.audioFormat === "webm") {
+            const mimes = [
+                "audio/webm;codecs=opus",
+                "audio/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "webm" };
+            }
+            return { mimeType: "audio/webm", ext: "webm" };
+        } else {
+            // Default: MP4 / AAC (MPEG-4 Audio)
+            const mimes = [
+                "audio/mp4;codecs=mp4a.40.2",
+                "audio/mp4;codecs=aac",
+                "audio/mp4;codecs=opus",
+                "audio/mp4",
+                "video/mp4;codecs=mp4a.40.2",
+                "video/mp4;codecs=avc1,opus",
+                "video/mp4",
+                "audio/webm;codecs=opus",
+                "audio/webm"
+            ];
+            for (const m of mimes) {
+                if (MediaRecorder.isTypeSupported(m)) {
+                    const ext = m.includes("mp4") ? "mp4" : "webm";
+                    return { mimeType: m, ext };
+                }
+            }
+            return { mimeType: "audio/mp4", ext: "mp4" };
+        }
+    }
+}
+
 export async function startRecording(opts: RecordingOptions): Promise<boolean> {
     if (isRecording) return false;
     activeOpts = opts;
@@ -57,9 +149,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         pendingChunkPromises = [];  // always reset on new recording
         startTimeMs = Date.now();
 
-        const ext = opts.mode === "video"
-            ? (opts.videoFormat === "mkv" ? "mkv" : "webm")
-            : (opts.audioFormat === "ogg" ? "ogg" : "webm");
+        const { mimeType, ext } = getMediaRecordingConfig(opts);
         const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         currentFilename = `AutoCall_${dateStr}.${ext}`;
 
@@ -172,27 +262,10 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         }
 
         let videoBitsPerSecond: number | undefined;
-        let mimeType = "audio/webm";
-
         if (opts.mode === "video") {
             if (opts.videoQuality === "1080p60") videoBitsPerSecond = 8000000;
             else if (opts.videoQuality === "720p30") videoBitsPerSecond = 3000000;
             else if (opts.videoQuality === "480p25") videoBitsPerSecond = 1500000;
-
-            if (opts.videoFormat === "mkv") {
-                mimeType = "video/x-matroska;codecs=avc1,opus";
-                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/webm;codecs=vp8,opus";
-            } else {
-                mimeType = "video/webm;codecs=vp8,opus";
-            }
-        } else {
-            if (opts.audioFormat === "webm") {
-                mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-            } else {
-                if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) mimeType = "audio/ogg;codecs=opus";
-                else if (MediaRecorder.isTypeSupported("audio/ogg")) mimeType = "audio/ogg";
-                else mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-            }
         }
 
         const recorderOptions: any = { mimeType };
