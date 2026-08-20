@@ -31,6 +31,8 @@ if (typeof globalThis.FileReader === "undefined") {
     };
 }
 
+import { fixMediaFileDuration } from "./mediaFixer";
+
 let activeStream: WriteStream | null = null;
 let activeTempPath: string | null = null;
 
@@ -94,7 +96,7 @@ export async function appendRecordingChunk(_event: IpcMainInvokeEvent, chunk: Ui
 }
 
 /**
- * Closes stream, patches EBML duration metadata with fixWebmDuration so the file is seekable,
+ * Closes stream, patches duration and seekability metadata (MP4/WebM/MKV),
  * then moves the recording to the target destination folder.
  */
 export async function finalizeStreamRecording(
@@ -116,16 +118,14 @@ export async function finalizeStreamRecording(
         const sourcePath = activeTempPath;
         activeTempPath = null;
 
-        // Patche la durée EBML avec fixWebmDuration AVANT de déplacer le fichier
-        if (durationMs > 0 && /\.(webm|mkv)$/i.test(filename)) {
+        // Patche la durée et l'index de recherche dans le fichier avant de le déplacer
+        if (durationMs > 0) {
             try {
                 const rawBuf = await readFile(sourcePath);
-                const blob = new Blob([rawBuf], { type: "video/webm" });
-                const fixedBlob = await fixWebmDuration(blob, durationMs);
-                const arrayBuffer = await fixedBlob.arrayBuffer();
-                await writeFile(sourcePath, Buffer.from(arrayBuffer));
+                const fixedBuf = await fixMediaFileDuration(rawBuf, filename, durationMs);
+                await writeFile(sourcePath, fixedBuf);
             } catch (err) {
-                console.warn("[AutoCallRecorder] fixWebmDuration failed:", err);
+                console.warn("[AutoCallRecorder] Duration patch failed:", err);
             }
         }
 
