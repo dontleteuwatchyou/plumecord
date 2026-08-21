@@ -162,7 +162,7 @@ require(path.join(__dirname, "dist", "desktop", "patcher.js"));
     const injectScript = join(__dirname, "inject-discord.ps1");
     if (existsSync(injectScript)) cpSync(injectScript, join(outDir, "inject-discord.ps1"));
 
-    const iconSrc = join(__dirname, "nightcord.ico");
+    const iconSrc = join(__dirname, "assets", "nightcord.ico");
     if (existsSync(iconSrc)) {
         cpSync(iconSrc, join(outDir, "app.ico"));
         // Rcedit pour le branding
@@ -206,7 +206,7 @@ module.exports = {
     directories: { output: "release", buildResources: "desktop/assets" },
     win: {
         target: [{ target: "dir", arch: ["x64"] }],
-        icon: "nightcord.ico",
+        icon: "assets/nightcord.ico",
         requestedExecutionLevel: "asInvoker"
     }
 };
