@@ -62,3 +62,7 @@ certs/
 # System files
 Thumbs.db
 Desktop.ini
+
+# Ignored local scripts
+publish-release.bat
+buildextension.bat
