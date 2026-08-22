@@ -60,7 +60,7 @@ const SettingsOptions: Record<string, Array<BooleanSetting | SettingsComponent>>
             key: "customTitleBar",
             title: "Discord Titlebar",
             description: "Use Discord's custom title bar instead of the native system one. Requires a full restart.",
-            defaultValue: isWindows
+            defaultValue: false
         },
         {
             key: "staticTitle",
