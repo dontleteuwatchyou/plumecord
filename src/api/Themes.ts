@@ -134,6 +134,17 @@ async function initThemes() {
 
     themesStyle.textContent = localImports.map(link => `@import url("${link.trim()}");`).join("\n");
     updatePopoutWindows();
+    themeChangeListeners.forEach(listener => listener());
+}
+
+const themeChangeListeners = new Set<() => void>();
+
+export function addThemeChangeListener(listener: () => void) {
+    themeChangeListeners.add(listener);
+}
+
+export function removeThemeChangeListener(listener: () => void) {
+    themeChangeListeners.delete(listener);
 }
 
 function applyToPopout(popoutWindow: Window | undefined, key: string) {

@@ -233,8 +233,6 @@ export const PinActions = findByPropsLazy("pinMessage", "unpinMessage");
 // Utils
 export const ReadStateUtils = findByPropsLazy("ackMessage", "hasUnread");
 export const ColorUtils = findByPropsLazy("hex2int", "int2hex");
-export const ApplicationStreamingStore = findByPropsLazy("getAnyStreamForUser", "getStreamForUser");
-export const ApplicationStreamPreviewStore = findByPropsLazy("getPreviewURL");
 export const fetchApplicationsRPC = findByCodeLazy("APPLICATION_RPC(");
 
 // React DnD hooks

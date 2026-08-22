@@ -9,11 +9,10 @@ import definePlugin from "@utils/types";
 
 export default definePlugin({
     name: "HeaderBarAPI",
-    description: "API to add buttons to the header bar and channel toolbar",
-    authors: [Devs.Ven],
+    description: "API to add buttons to the header bar and channel toolbar.",
+    authors: [Devs.prism],
 
     patches: [
-        // Patch 1 : barre de titre (header bar) - méthode Equicord Avril 2026
         {
             find: '?"BACK_FORWARD_NAVIGATION":',
             replacement: {
@@ -21,7 +20,6 @@ export default definePlugin({
                 replace: ",...Vencord.Api.HeaderBar._addHeaderBarButtons()"
             }
         },
-        // Patch 2 : channel toolbar
         {
             find: "Missing channel in Channel.renderHeaderToolbar",
             replacement: {

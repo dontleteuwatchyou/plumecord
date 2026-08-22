@@ -26,18 +26,11 @@ export default definePlugin({
     patches: [
         {
             find: "#{intl::MESSAGE_UTILITIES_A11Y_LABEL}",
-            replacement: [
-                {
-                    match: /((?:\(0,\s*\i\.(?:jsx|jsxs)\)|\i\.\i|\i)\s*\(\s*(\i\.\i|\i)\s*,\s*\{[^}]*?(?:label:.+?message:(\i)|message:(\i).+?label:)[^}]*?\}\))/,
-                    replace: (full: string, _1: string, comp: string, msg1: string, msg2: string) =>
-                        `${full},Vencord.Api.MessagePopover._buildPopoverElements(${comp},${msg1 || msg2})`
-                },
-                {
-                    match: /(?<=\]\}\)),(.{0,40}togglePopout:.+?\}\))\]\}\):null,(?<=\((\i\.\i),\{label:.+?:null,(\i)\?\(0,\i\.jsxs?\)\(\i\.Fragment.+?message:(\i).+?)/,
-                    replace: (_, ReactButton, ButtonComponent, showReactButton, message) => "" +
-                        `]}):null,Vencord.Api.MessagePopover._buildPopoverElements(${ButtonComponent},${message}),${showReactButton}?${ReactButton}:null,`
-                }
-            ]
+            replacement: {
+                match: /(?<=\]\}\)),(.{0,40}togglePopout:.+?\}\))\]\}\):null,(?<=\((\i),\{label:.+?:null,(\i)\?\(0,\i\.jsxs?\)\(\i\.Fragment.+?message:(\i).+?)/,
+                replace: (_, ReactButton, ButtonComponent, showReactButton, message) => "" +
+                    `]}):null,Vencord.Api.MessagePopover._buildPopoverElements(${ButtonComponent},${message}),${showReactButton}?${ReactButton}:null,`
+            }
         }
     ]
 });

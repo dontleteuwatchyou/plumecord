@@ -26,7 +26,5 @@
 }
 
 .vc-trans-chat-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    scale: 1.085;
 }
