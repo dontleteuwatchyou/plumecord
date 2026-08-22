@@ -11,6 +11,10 @@ const skipDirs = new Set([
     'messagePeek'
 ]);
 
+if (fs.existsSync('src/nightcordplugins')) {
+    fs.readdirSync('src/nightcordplugins').forEach(p => skipDirs.add(p));
+}
+
 function copyDirRecursive(src, dest) {
     if (!fs.existsSync(dest)) {
         fs.mkdirSync(dest, { recursive: true });

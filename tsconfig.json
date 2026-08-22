@@ -37,7 +37,8 @@
                 "./debug/*"
             ],
             "@plugins/*": [
-                "./plugins/*"
+                "./plugins/*",
+                "./nightcordplugins/*"
             ],
             "@shared/*": [
                 "./shared/*"
@@ -58,10 +59,12 @@
                 "./webpack/wreq.d"
             ],
             "@nightcordplugins/*": [
-                "./nightcordplugins/*"
+                "./nightcordplugins/*",
+                "./plugins/*"
             ],
             "@equicordplugins/*": [
-                "./plugins/*"
+                "./plugins/*",
+                "./nightcordplugins/*"
             ],
             "@illegalcordplugins/*": [
                 "./illegalcordplugins/*"

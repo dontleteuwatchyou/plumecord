@@ -431,6 +431,39 @@ export const stylePlugin = {
 /**
  * @type {import("esbuild").BuildOptions}
  */
+const pluginAliasesPlugin = {
+    name: "plugin-aliases",
+    setup(build) {
+        build.onResolve({ filter: /^@(?:plugins|equicordplugins|nightcordplugins)(?:\/(.*))?$/ }, async args => {
+            const match = args.path.match(/^@(?:plugins|equicordplugins|nightcordplugins)(?:\/(.*))?$/);
+            const rel = match?.[1] || "";
+
+            for (const base of ["./src/plugins", "./src/nightcordplugins"]) {
+                const fullBase = join(process.cwd(), base);
+                const target = rel ? join(fullBase, rel) : fullBase;
+                for (const candidate of [
+                    target + ".ts",
+                    target + ".tsx",
+                    target + ".js",
+                    target + ".css",
+                    join(target, "index.ts"),
+                    join(target, "index.tsx"),
+                    join(target, "index.js"),
+                    target
+                ]) {
+                    try {
+                        const s = await readFile(candidate).catch(() => null);
+                        if (s !== null) {
+                            return { path: candidate };
+                        }
+                    } catch { }
+                }
+            }
+            return null;
+        });
+    }
+};
+
 export const commonOpts = {
     logLevel: "info",
     bundle: true,
@@ -438,7 +471,7 @@ export const commonOpts = {
     sourcemap: watch ? "inline" : "external",
     legalComments: "linked",
     banner,
-    plugins: [fileUrlPlugin, gitHashPlugin, gitRemotePlugin, stylePlugin],
+    plugins: [pluginAliasesPlugin, fileUrlPlugin, gitHashPlugin, gitRemotePlugin, stylePlugin],
     external: ["~plugins", "~git-hash", "~git-remote", "/assets/*"],
     inject: [join(dirname(fileURLToPath(import.meta.url)), "inject/react.mjs")],
     jsx: "transform",
