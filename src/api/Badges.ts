@@ -73,7 +73,7 @@ export function _getBadges(args: any) {
         if (isStealthModeEnabled()) return [];
     } catch { }
 
-    const rawUserId = args?.userId || args?.id || args?.user?.id || args?.author?.id;
+    const rawUserId = args?.userId || args?.id || args?.user?.id || args?.author?.id || (typeof args?.getId === "function" ? args.getId() : "");
     const userId = rawUserId ? String(rawUserId) : "";
     const guildId = String(args?.guildId || args?.guild_id || "");
 

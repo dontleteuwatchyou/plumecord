@@ -149,9 +149,15 @@ export default definePlugin({
                     match: /alt:" ","aria-hidden":!0,src:.{0,50}(\i).iconSrc/,
                     replace: "...$1.props,$&"
                 },
+                // Path with 2026-04-badge-discovery OFF
                 {
-                    match: /(?<=forceOpen:.{0,40}?\i\((\i)\.id\).{0,100}?)children:/,
-                    replace: "children:$1.component?$self.renderBadgeComponent({...$1}) :"
+                    match: /(?<=forceOpen:.{0,40}?ariaHidden:!0,)children:(?=.{0,50}?(\i)\.id)/,
+                    replace: "children:$1.component?$self.renderBadgeComponent({...$1}):"
+                },
+                // Path with 2026-04-badge-discovery ON
+                {
+                    match: /(?<=fallbackIconSrc:.{0,50}?)children:(?=.{0,50}?(\i)\.id)/,
+                    replace: "children:$1.component?$self.renderBadgeComponent({...$1}):"
                 },
                 // handle onClick and onContextMenu
                 {
@@ -164,7 +170,7 @@ export default definePlugin({
             find: "getLegacyUsername(){",
             replacement: {
                 match: /getBadges\(\)\{.{0,100}?return\[/,
-                replace: "getBadges(){return $self.dedupeBadges([...$self.getBadges(this),"
+                replace: "$&...$self.getBadges(this),"
             }
         }
     ],
@@ -265,8 +271,8 @@ export default definePlugin({
         if (!profile) return [];
 
         try {
-            const userId = profile.userId || profile.id || profile.user?.id || profile.author?.id;
-            const guildId = profile.guildId || profile.guild_id;
+            const userId = profile.userId || profile.id || profile.user?.id || profile.author?.id || (typeof profile.getId === "function" ? profile.getId() : "");
+            const guildId = profile.guildId || profile.guild_id || "";
             return _getBadges({ ...profile, userId: String(userId || ""), guildId: String(guildId || "") });
         } catch (e) {
             new Logger("BadgeAPI#getBadges").error(e);
