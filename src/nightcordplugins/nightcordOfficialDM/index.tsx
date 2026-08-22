@@ -175,11 +175,18 @@ function scanAndFixNightcordDmElements() {
     }
 }
 
+let dmObserverPending = false;
+
 function startDomObserver() {
     if (domObserver) return;
     scanAndFixNightcordDmElements();
     domObserver = new MutationObserver(() => {
-        scanAndFixNightcordDmElements();
+        if (dmObserverPending) return;
+        dmObserverPending = true;
+        requestAnimationFrame(() => {
+            dmObserverPending = false;
+            scanAndFixNightcordDmElements();
+        });
     });
     domObserver.observe(document.body, {
         childList: true,
@@ -192,6 +199,7 @@ function stopDomObserver() {
         domObserver.disconnect();
         domObserver = null;
     }
+    dmObserverPending = false;
 }
 
 function handleGlobalClick(e: MouseEvent) {

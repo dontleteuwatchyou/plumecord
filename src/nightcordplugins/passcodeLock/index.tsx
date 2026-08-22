@@ -803,7 +803,11 @@ export default definePlugin({
         (this as any)._onKeyDown = onKeyDown;
         window.addEventListener("keydown", onKeyDown);
 
+        let lastActivityReset = 0;
         (this as any)._activityListener = () => {
+            const now = Date.now();
+            if (now - lastActivityReset < 2000) return;
+            lastActivityReset = now;
             if (!isLocked) resetAutolock();
         };
         window.addEventListener("mousemove", (this as any)._activityListener);

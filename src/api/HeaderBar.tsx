@@ -10,7 +10,6 @@ import { classes } from "@utils/misc";
 import { find, filters, findComponentByCodeLazy, findCssClassesLazy } from "@webpack";
 import { Clickable, Tooltip, useEffect, useState, Popout, useRef, showToast, Toasts } from "@webpack/common";
 import type { ComponentType, JSX, MouseEventHandler, ReactNode } from "react";
-import { openNightcordModal } from "@nightcordplugins/compactMode/NightcordModal";
 import { Settings } from "@api/Settings";
 
 const logger = new Logger("HeaderBarAPI");
@@ -451,7 +450,9 @@ function CompactHeaderBarToggle() {
             <HeaderBarButton
                 icon={GearIcon}
                 tooltip="Nightcord Settings"
-                onClick={() => openNightcordModal()}
+                onClick={() => {
+                    import("@nightcordplugins/compactMode/NightcordModal").then(m => m.openNightcordModal());
+                }}
             />
         </div>
     );

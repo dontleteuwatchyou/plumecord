@@ -98,6 +98,7 @@ const DS_STYLE_KEY = "auto-responder-global-style";
 
 let lastMessageId = "";
 const cachedGlobalStyle = "";
+const _pendingResponderTimers = new Set<ReturnType<typeof setTimeout>>();
 
 async function handleMessage(message: any) {
     if (!settings.store.isActive) return;
@@ -195,12 +196,18 @@ Réponds de manière naturelle. NE RENVOIE QUE LE TEXTE DE TA RÉPONSE.`;
                 TypingActions.startTyping(message.channel_id);
             } catch { }
 
-            setTimeout(async () => {
-                await RestAPI.post({
-                    url: `/channels/${message.channel_id}/messages`,
-                    body: { content: reply }
-                });
+            const _t = setTimeout(async () => {
+                _pendingResponderTimers.delete(_t);
+                try {
+                    await RestAPI.post({
+                        url: `/channels/${message.channel_id}/messages`,
+                        body: { content: reply }
+                    });
+                } catch (e) {
+                    console.error("[AutoResponder] Post error:", e);
+                }
             }, totalDelay);
+            _pendingResponderTimers.add(_t);
         }
     } catch (err) {
         console.error("[AutoResponder] Error:", err);
@@ -355,8 +362,11 @@ export default definePlugin({
     },
 
     start() {
+        _pendingResponderTimers.clear();
     },
 
     stop() {
+        _pendingResponderTimers.forEach(clearTimeout);
+        _pendingResponderTimers.clear();
     }
 });

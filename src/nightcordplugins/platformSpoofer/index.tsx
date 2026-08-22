@@ -119,7 +119,7 @@ export default definePlugin({
     name: "PlatformSpoofer",
     description: "Spoof what platform or device you're on instantly without reloading Discord",
     tags: ["Utility"],
-    authors: [Devs.Vendicated],
+    authors: [Devs.Ven],
     settings,
 
     start() {

@@ -297,13 +297,19 @@ function injectHypeSquadChangerIntoNativePanel() {
     }
 }
 
+let isHypeSquadThrottled = false;
+
 function startDomObserver() {
     stopDomObserver();
     if (!isPluginStarted) return;
     injectHypeSquadChangerIntoNativePanel();
     domObserver = new MutationObserver(() => {
-        if (!isPluginStarted) return;
-        injectHypeSquadChangerIntoNativePanel();
+        if (!isPluginStarted || isHypeSquadThrottled) return;
+        isHypeSquadThrottled = true;
+        requestAnimationFrame(() => {
+            isHypeSquadThrottled = false;
+            if (isPluginStarted) injectHypeSquadChangerIntoNativePanel();
+        });
     });
     domObserver.observe(document.body, { childList: true, subtree: true });
 }

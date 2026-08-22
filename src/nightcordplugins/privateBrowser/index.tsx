@@ -7,7 +7,7 @@
 import definePlugin, { PluginNative } from "@utils/types";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { React } from "@webpack/common";
-import { BrowserButton } from "./components/BrowserButton";
+import { BrowserButton, cleanupBrowserInterval } from "./components/BrowserButton";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { FluxDispatcher } from "@webpack/common";
 import { OptionType } from "@utils/types";
@@ -124,6 +124,7 @@ export default definePlugin({
         FluxDispatcher.unsubscribe("YOUTUBE_TOGGLE", handleOtherPluginToggle);
         FluxDispatcher.unsubscribe("NIGHTCORDNEWS_TOGGLE", handleOtherPluginToggle);
         
+        cleanupBrowserInterval();
         Native.teardown().catch(() => {});
     }
 });

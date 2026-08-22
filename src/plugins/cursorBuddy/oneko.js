@@ -11,6 +11,20 @@
 
 /* eslint-disable */
 
+let _onekoMouseMove = null;
+let _onekoBeforeUnload = null;
+
+export function cleanupOneko() {
+    if (_onekoMouseMove) {
+        document.removeEventListener("mousemove", _onekoMouseMove);
+        _onekoMouseMove = null;
+    }
+    if (_onekoBeforeUnload) {
+        window.removeEventListener("beforeunload", _onekoBeforeUnload);
+        _onekoBeforeUnload = null;
+    }
+}
+
 export default function oneko(options = {}) {
     const {
         speed = 10,
@@ -196,13 +210,15 @@ export default function oneko(options = {}) {
 
         document.body.appendChild(nekoEl);
 
-        document.addEventListener("mousemove", function (event) {
+        cleanupOneko();
+        _onekoMouseMove = function (event) {
             mousePosX = event.clientX;
             mousePosY = event.clientY;
-        });
+        };
+        document.addEventListener("mousemove", _onekoMouseMove);
 
         if (persistPosition) {
-            window.addEventListener("beforeunload", function (event) {
+            _onekoBeforeUnload = function (event) {
                 window.localStorage.setItem(
                     "oneko",
                     JSON.stringify({
@@ -217,7 +233,8 @@ export default function oneko(options = {}) {
                         bgPos: nekoEl.style.backgroundPosition,
                     })
                 );
-            });
+            };
+            window.addEventListener("beforeunload", _onekoBeforeUnload);
         }
 
         window.requestAnimationFrame(onAnimationFrame);

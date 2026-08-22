@@ -12,6 +12,8 @@ import { addTotpAccount, getTotpAccounts, TotpAccount } from "./store";
 import { generateTOTP } from "./totp";
 
 let modalObserver: MutationObserver | null = null;
+const activeCardTimers = new Set<ReturnType<typeof setInterval>>();
+let mfaObserverPending = false;
 let lastLoginEmail = "";
 let lastLoginUsername = "";
 
@@ -255,6 +257,7 @@ function injectAutofillBanner(input: HTMLInputElement, accounts: TotpAccount[]) 
 
         updateCode();
         const timer = setInterval(updateCode, 1000);
+        activeCardTimers.add(timer);
 
         if (selectEl) {
             selectEl.onchange = (e) => {
@@ -262,6 +265,7 @@ function injectAutofillBanner(input: HTMLInputElement, accounts: TotpAccount[]) 
                 const found = sorted.find(a => a.id === newId);
                 if (found) {
                     clearInterval(timer);
+                    activeCardTimers.delete(timer);
                     selectedAccount = found;
                     renderCardContent();
                 }
@@ -413,7 +417,12 @@ export function startMfaModalObserver() {
     scanForMfaCodeInputs();
 
     modalObserver = new MutationObserver(() => {
-        scanForMfaCodeInputs();
+        if (mfaObserverPending) return;
+        mfaObserverPending = true;
+        requestAnimationFrame(() => {
+            mfaObserverPending = false;
+            scanForMfaCodeInputs();
+        });
     });
 
     modalObserver.observe(document.body, {
@@ -437,5 +446,8 @@ export function stopMfaModalObserver() {
         modalObserver.disconnect();
         modalObserver = null;
     }
+    mfaObserverPending = false;
+    activeCardTimers.forEach(t => clearInterval(t));
+    activeCardTimers.clear();
     document.querySelectorAll(".nightcord-2fa-autofill-card, .nightcord-2fa-quickadd-btn").forEach(el => el.remove());
 }

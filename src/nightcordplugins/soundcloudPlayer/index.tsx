@@ -3455,7 +3455,7 @@ export default definePlugin({
 
     name: "SoundCordPlayer",
     enabledByDefault: true,
-    description: t("Integrated SoundCord player. Client ID is automatically fetched via native Electron process — no account required."),
+    description: "Integrated SoundCord player. Client ID is automatically fetched via native Electron process — no account required.",
     authors: [EquicordDevs.nobody],
     settings,
     

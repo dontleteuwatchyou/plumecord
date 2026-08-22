@@ -14,6 +14,14 @@ import { browserBase64 } from "../icon";
 
 type ExtensionInfo = { id: string; name: string; version: string; description: string; iconUrl: string; dir: string; };
 
+export let _urlSyncInterval: ReturnType<typeof setInterval> | null = null;
+export function cleanupBrowserInterval() {
+    if (_urlSyncInterval) {
+        clearInterval(_urlSyncInterval);
+        _urlSyncInterval = null;
+    }
+}
+
 // ─── Extension Panel ─────────────────────────────────────────────────────────
 
 let extPanelEl: HTMLDivElement | null = null;
@@ -924,7 +932,8 @@ function getOrCreateBrowserContainer(): HTMLDivElement {
         });
         
         // Periodic URL sync
-        setInterval(() => {
+        if (_urlSyncInterval) clearInterval(_urlSyncInterval);
+        _urlSyncInterval = setInterval(() => {
             if (activeTabId && el?.style.display === "flex") {
                 const wv = document.getElementById(`webview-${activeTabId}`) as HTMLIFrameElement;
                 if (wv) {

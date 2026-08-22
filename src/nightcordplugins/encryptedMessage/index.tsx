@@ -155,8 +155,23 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     return copy.buffer;
 }
 
+const MAX_CACHE_SIZE = 500;
 const derivedKeyCache = new Map<string, Promise<CryptoKey>>();
 const decryptedPlaintextCache = new Map<string, string>();
+
+function setDecryptedCache(key: string, val: string) {
+    decryptedPlaintextCache.set(key, val);
+    if (decryptedPlaintextCache.size > MAX_CACHE_SIZE) {
+        decryptedPlaintextCache.delete(decryptedPlaintextCache.keys().next().value!);
+    }
+}
+
+function setDerivedKeyCache(key: string, val: Promise<CryptoKey>) {
+    derivedKeyCache.set(key, val);
+    if (derivedKeyCache.size > MAX_CACHE_SIZE) {
+        derivedKeyCache.delete(derivedKeyCache.keys().next().value!);
+    }
+}
 
 async function deriveAESKey(password: string, salt: Uint8Array, iterations: number, usages: KeyUsage[]): Promise<CryptoKey> {
     const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -187,7 +202,7 @@ async function deriveAESKey(password: string, salt: Uint8Array, iterations: numb
         );
     })();
 
-    derivedKeyCache.set(cacheKey, promise);
+    setDerivedKeyCache(cacheKey, promise);
     return promise;
 }
 
@@ -247,8 +262,8 @@ async function encryptAES(text: string, password: string): Promise<string> {
         throw new Error("Encrypted message is too long for Discord.");
     }
 
-    decryptedPlaintextCache.set(`${password}:${encryptedMessage}`, text);
-    decryptedPlaintextCache.set(`${password}:${wrappedMessage}`, text);
+    setDecryptedCache(`${password}:${encryptedMessage}`, text);
+    setDecryptedCache(`${password}:${wrappedMessage}`, text);
 
     return encryptedMessage;
 }
@@ -305,7 +320,7 @@ async function decryptAES(encrypted: string, password: string): Promise<string> 
 
     resetSecurityState();
     const result = decoder.decode(decrypted);
-    decryptedPlaintextCache.set(cacheKey, result);
+    setDecryptedCache(cacheKey, result);
     return result;
 }
 
@@ -1114,6 +1129,8 @@ export default definePlugin({
         decryptedMessageIds.clear();
         originalEncryptedMessages.clear();
         decryptingMessageIds.clear();
+        derivedKeyCache.clear();
+        decryptedPlaintextCache.clear();
     },
 
     async onBeforeMessageSend(channelId, messageObj) {
@@ -1136,8 +1153,8 @@ export default definePlugin({
             const originalPlaintext = messageObj.content;
             const encryptedMessage = await encryptAES(originalPlaintext, password);
             const wrapped = `${SECURITY_CONSTANTS.ENCRYPTION_MARKER_START}${encryptedMessage}${SECURITY_CONSTANTS.ENCRYPTION_MARKER_END}`;
-            decryptedPlaintextCache.set(`${password}:${encryptedMessage}`, originalPlaintext);
-            decryptedPlaintextCache.set(`${password}:${wrapped}`, originalPlaintext);
+            setDecryptedCache(`${password}:${encryptedMessage}`, originalPlaintext);
+            setDecryptedCache(`${password}:${wrapped}`, originalPlaintext);
             messageObj.content = wrapped;
         } catch (error) {
             const errorMessage = getErrorMessage(error);

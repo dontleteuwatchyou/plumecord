@@ -183,7 +183,7 @@ function startFlux() {
     try { VoiceStateStore?.addChangeListener?.(checkFollowedUser); } catch { }
 
     if (fastCheckInterval) clearInterval(fastCheckInterval);
-    fastCheckInterval = setInterval(checkFollowedUser, 50);
+    fastCheckInterval = setInterval(checkFollowedUser, 1000);
 
     fluxUnsub = () => {
         FluxDispatcher?.unsubscribe?.("VOICE_STATE_UPDATES", handler);

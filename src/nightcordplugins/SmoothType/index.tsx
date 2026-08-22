@@ -146,16 +146,27 @@ function applyCaretPosition() {
 }
 
 let observer: MutationObserver | null = null;
+let caretRafPending = false;
+
+function throttledApplyCaretPosition() {
+    if (caretRafPending) return;
+    caretRafPending = true;
+    requestAnimationFrame(() => {
+        caretRafPending = false;
+        applyCaretPosition();
+    });
+}
 
 function startObserver() {
     if (observer || document.visibilityState === "hidden") return;
-    observer = new MutationObserver(() => applyCaretPosition());
+    observer = new MutationObserver(() => throttledApplyCaretPosition());
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
 function stopObserver() {
     observer?.disconnect();
     observer = null;
+    caretRafPending = false;
 }
 
 function handleVisibilityChange() {
@@ -221,7 +232,7 @@ export default definePlugin({
     name: "SmoothType",
     enabledByDefault: false,
     description: "The plugin allows you to fully customize the cursor caret's visual settings, including adjustable transition delays and custom CSS animation effects.",
-    authors: [Devs.coll,Devs.viciouscal],
+    authors: [{ name: "coll", id: 0n }, { name: "viciouscal", id: 0n }],
     settings,
 
     start() {

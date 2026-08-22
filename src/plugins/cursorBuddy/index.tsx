@@ -15,8 +15,8 @@ import { classNameFactory } from "@utils/css";
 import definePlugin, { OptionType } from "@utils/types";
 import { ColorPicker } from "@webpack/common";
 
-import fathorse from "./fathorse";
-import oneko from "./oneko";
+import fathorse, { cleanupFathorse } from "./fathorse";
+import oneko, { cleanupOneko } from "./oneko";
 
 const ONEKO_IMAGE = "https://raw.githubusercontent.com/adryd325/oneko.js/5281d057c4ea9bd4f6f997ee96ba30491aed16c0/oneko.gif";
 const FATASS_HORSE_IMAGE = "https://raw.githubusercontent.com/nexpid/fatass-horse/08bc4042750d5f995c55327f7b6c6710158f5263/sheet.png";
@@ -197,6 +197,8 @@ const settings = definePluginSettings({
 });
 
 function unload() {
+    cleanupOneko();
+    cleanupFathorse();
     document.getElementById("oneko")?.remove();
     document.getElementById("fathorse")?.remove();
 }

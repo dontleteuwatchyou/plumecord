@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import ErrorBoundary from "@components/ErrorBoundary";
 import { BaseText } from "@components/BaseText";
 import { Button } from "@components/Button";
 import { Heading } from "@components/Heading";
@@ -274,16 +275,18 @@ export function openCloudSyncModal(initialMode: "sync" | "restore" = "sync", onC
     if (activeCloudModalKey) return;
     activeCloudModalKey = openModal(props => (
         <ModalRoot {...props} size={ModalSize.LARGE}>
-            <CloudSyncModal
-                initialMode={initialMode}
-                onClose={() => {
-                    if (activeCloudModalKey) {
-                        closeModal(activeCloudModalKey);
-                        activeCloudModalKey = null;
-                    }
-                }}
-                onCompleted={onCompleted}
-            />
+            <ErrorBoundary message="Failed to render 2FA Cloud Sync modal">
+                <CloudSyncModal
+                    initialMode={initialMode}
+                    onClose={() => {
+                        if (activeCloudModalKey) {
+                            closeModal(activeCloudModalKey);
+                            activeCloudModalKey = null;
+                        }
+                    }}
+                    onCompleted={onCompleted}
+                />
+            </ErrorBoundary>
         </ModalRoot>
     ));
 }

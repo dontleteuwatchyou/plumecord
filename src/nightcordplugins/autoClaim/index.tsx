@@ -69,12 +69,14 @@ let lastClaimTimestamp = 0;
  * the bot posts before ChannelStore has hydrated the new channel.
  */
 const knownTicketChannels = new Set<string>();
-
-/**
- * Message IDs we already processed so we never double-click
- * when both MESSAGE_CREATE and MESSAGE_UPDATE fire for the same message.
- */
 const processedMessages = new Set<string>();
+
+function markProcessed(msgId: string) {
+    processedMessages.add(msgId);
+    if (processedMessages.size > 300) {
+        processedMessages.delete(processedMessages.keys().next().value!);
+    }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -232,4 +234,9 @@ export default definePlugin({
             await handleMessage(message);
         },
     },
+
+    stop() {
+        knownTicketChannels.clear();
+        processedMessages.clear();
+    }
 });
