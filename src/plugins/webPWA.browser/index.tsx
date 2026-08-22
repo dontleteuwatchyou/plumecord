@@ -101,7 +101,7 @@ export default definePlugin({
     authors: [Devs.ThaUnknown],
     tags: ["Utility"],
     managedStyle,
-    enabledByDefault: true,
+    enabledByDefault: !IS_DISCORD_DESKTOP,
 
     flux: {
         KEYBINDS_REGISTER_GLOBAL_KEYBIND_ACTIONS: ({ keybinds }: { keybinds: Record<string, { onTrigger: () => any; }>; }) => {
