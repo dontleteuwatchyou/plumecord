@@ -59,6 +59,9 @@ const translations: Record<string, Partial<Record<Language, string>>> = {
     "Relaunch Discord": { fr: "Relancer Discord", es: "Reiniciar Discord", ru: "Перезапустить Discord", zh: "重启 Discord", ar: "إعادة تشغيل Discord" },
     "Contribute": { fr: "Contribuer", es: "Contribuir", ru: "Внести вклад", zh: "贡献", ar: "المساهمة" },
     "DEV Team": { fr: "Équipe DEV", es: "Equipo DEV", ru: "Команда разработчиков", zh: "开发团队", ar: "فريق التطوير" },
+    "Discord Server": { fr: "Serveur Discord", es: "Servidor de Discord", ru: "Сервер Discord", zh: "Discord 服务器", ar: "سيرفر Discord" },
+    "Join Discord Server": { fr: "Rejoindre le serveur Discord", es: "Unirse al servidor de Discord", ru: "Присоединиться к серверу Discord", zh: "加入 Discord 服务器", ar: "الانضمام إلى سيرفر Discord" },
+    "Join the official Nightcord Discord server to stay updated with new releases, get support, suggest features, and chat with the community.": { fr: "Rejoignez le serveur Discord officiel de Nightcord pour rester informé des nouveautés, obtenir de l'aide, suggérer des fonctionnalités et discuter avec la communauté.", es: "Únete al servidor oficial de Discord de Nightcord para mantenerte actualizado con las novedades, recibir soporte y chatear con la comunidad.", ru: "Присоединяйтесь к официальному серверу Discord Nightcord, чтобы быть в курсе обновлений, получать поддержку и общаться с сообществом.", zh: "加入 Nightcord 官方 Discord 服务器，获取最新更新、支持并与社区交流。", ar: "انضم إلى سيرفر Nightcord الرسمي على Discord للبقاء على اطلاع بآخر التحديثات والحصول على الدعم والتواصل مع المجتمع." },
     "Nightcord Channel": { fr: "Chaîne Nightcord", es: "Canal de Nightcord", ru: "Канал Nightcord", zh: "Nightcord 频道", ar: "قناة Nightcord" },
 
     // ── Client Settings ──────────────────────────────────────────────────────

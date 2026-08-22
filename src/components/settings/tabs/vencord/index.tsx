@@ -18,7 +18,7 @@ import { Divider } from "@components/Divider";
 import { Flex } from "@components/Flex";
 import { FormSwitch } from "@components/FormSwitch";
 import { Heading } from "@components/Heading";
-import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, PlanetIcon, RestartIcon } from "@components/Icons";
+import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, DiscordIcon, RestartIcon } from "@components/Icons";
 import { Notice } from "@components/Notice";
 import { Paragraph } from "@components/Paragraph";
 import { openPluginModal, SettingsTab, wrapTab } from "@components/settings";
@@ -181,9 +181,9 @@ function DevTeamSection() {
                     action={() => setShowDevs(!showDevs)}
                 />
                 <QuickAction
-                    Icon={PlanetIcon}
-                    text="Nightcord Channel"
-                    action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://t.me/nightcordoff") : window.open("https://t.me/nightcordoff", "_blank")}
+                    Icon={DiscordIcon}
+                    text="Discord Server"
+                    action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://discord.gg/n1ghtcord") : window.open("https://discord.gg/n1ghtcord", "_blank")}
                 />
             </QuickActionCard>
 

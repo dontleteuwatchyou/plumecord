@@ -17,6 +17,7 @@ import { Flex } from "./Flex";
 import { Heading } from "./Heading";
 import { Paragraph } from "./Paragraph";
 import { Link } from "./Link";
+import { DiscordIcon } from "./Icons";
 
 
 export const MELLOWTEL_ONBOARDING_VERSION = "1";
@@ -92,7 +93,7 @@ function MellowtelOnboardingContent({ onClose }: { onClose: () => void }) {
     const renderProgressBar = () => {
         return (
             <Flex style={{ gap: "8px", marginBottom: "20px", marginTop: "12px", width: "100%" }}>
-                {[1, 2, 3].map(i => (
+                {[1, 2, 3, 4].map(i => (
                     <div 
                         key={i}
                         style={{
@@ -107,6 +108,87 @@ function MellowtelOnboardingContent({ onClose }: { onClose: () => void }) {
             </Flex>
         );
     };
+
+    if (step === 4) {
+        return (
+            <>
+                <ModalHeader separator={false} style={{ paddingBottom: "0" }}>
+                    <Flex direction="vertical" style={{ width: "100%" }}>
+                        <Heading tag="h2" id="mellowtel-onboarding-title" style={{ fontSize: "20px", fontWeight: 700, color: "#ffffff" }}>
+                            {t("Discord Server")}
+                        </Heading>
+                        {renderProgressBar()}
+                    </Flex>
+                </ModalHeader>
+
+                <ModalContent style={{ padding: "16px 20px" }}>
+                    <Paragraph style={{ color: "#dbdee1", fontSize: "14px", lineHeight: "1.5", marginBottom: "20px" }}>
+                        {t("Join the official Nightcord Discord server to stay updated with new releases, get support, suggest features, and chat with the community.")}
+                    </Paragraph>
+
+                    <div style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "24px 20px",
+                        backgroundColor: "rgba(255, 255, 255, 0.03)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: "8px",
+                        marginTop: "8px",
+                        textAlign: "center"
+                    }}>
+                        <DiscordIcon width={48} height={48} style={{ color: "#5865F2", marginBottom: "16px" }} />
+                        <Heading tag="h3" style={{ fontSize: "16px", fontWeight: 600, color: "#ffffff", marginBottom: "6px" }}>
+                            Nightcord Community
+                        </Heading>
+                        <Paragraph style={{ color: "#949ba4", fontSize: "13px", marginBottom: "18px" }}>
+                            discord.gg/n1ghtcord
+                        </Paragraph>
+                        <Button
+                            variant="primary"
+                            onClick={() => {
+                                if (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) {
+                                    VencordNative.native.openExternal("https://discord.gg/n1ghtcord");
+                                } else {
+                                    window.open("https://discord.gg/n1ghtcord", "_blank");
+                                }
+                            }}
+                            style={{
+                                padding: "10px 24px",
+                                fontWeight: "bold",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px"
+                            }}
+                        >
+                            <DiscordIcon width={18} height={18} />
+                            {t("Join Discord Server")}
+                        </Button>
+                    </div>
+                </ModalContent>
+
+                <ModalFooter>
+                    <Flex style={{ width: "100%", justifyContent: "space-between", alignItems: "center" }}>
+                        <Link onClick={async () => { await applyDefaultPreset(); persistChoice(true); onClose(); }} style={{ fontSize: "13px", color: "#949ba4", cursor: "pointer" }}>
+                            {t("Skip")}
+                        </Link>
+                        <Button
+                            variant="primary"
+                            onClick={async () => {
+                                await applyDefaultPreset();
+                                persistChoice(true);
+                                onClose();
+                            }}
+                            style={{ padding: "10px 24px", fontWeight: "bold" }}
+                        >
+                            {t("Finish Setup")}
+                        </Button>
+                    </Flex>
+                </ModalFooter>
+            </>
+        );
+    }
 
     if (step === 3) {
         return (
@@ -154,19 +236,15 @@ function MellowtelOnboardingContent({ onClose }: { onClose: () => void }) {
 
                 <ModalFooter>
                     <Flex style={{ width: "100%", justifyContent: "space-between", alignItems: "center" }}>
-                        <Link onClick={async () => { await applyDefaultPreset(); persistChoice(true); onClose(); }} style={{ fontSize: "13px", color: "#949ba4", cursor: "pointer" }}>
+                        <Link onClick={() => setStep(4)} style={{ fontSize: "13px", color: "#949ba4", cursor: "pointer" }}>
                             {t("Skip")}
                         </Link>
                         <Button
                             variant="primary"
-                            onClick={async () => {
-                                await applyDefaultPreset();
-                                persistChoice(true);
-                                onClose();
-                            }}
+                            onClick={() => setStep(4)}
                             style={{ padding: "10px 24px", fontWeight: "bold" }}
                         >
-                            {t("Finish Setup")}
+                            {t("Next")}
                         </Button>
                     </Flex>
                 </ModalFooter>
