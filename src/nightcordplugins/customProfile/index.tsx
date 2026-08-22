@@ -2736,21 +2736,6 @@ export default definePlugin({
                 const lvl = data.levelReached ?? 1;
                 badgesArr.push({ id: "gifting_level", icon: "ca105ad9cfc8580c765101d17bbb2323", description: getLevelBadgeDesc(lvl) });
             }
-
-            // FILTER OUT custom client badges to prevent double rendering/flicker
-            badgesArr = badgesArr.filter(b => {
-                if (!b) return false;
-                const id = (b.id || "").toLowerCase();
-                const desc = (b.description || "").toLowerCase();
-                if (id.includes("vencord") || desc.includes("vencord")) return false;
-                if (id.includes("equicord") || desc.includes("equicord")) return false;
-                if (id.includes("nightcord") || desc.includes("nightcord")) return false;
-                if (id.includes("illegalcord") || desc.includes("illegalcord")) return false;
-                if (id.includes("contributor") || desc.includes("contributor")) return false;
-                if (id === "nc-badge") return false;
-                return true;
-            });
-
             badgesArr = deduplicateProfileBadges(badgesArr);
             merged.badges = badgesArr;
 
@@ -2948,21 +2933,6 @@ export default definePlugin({
                 const lvl = storedData.levelReached ?? 1;
                 badgesArr.push({ id: "gifting_level", icon: "ca105ad9cfc8580c765101d17bbb2323", description: getLevelBadgeDesc(lvl) });
             }
-
-            // FILTER OUT custom client badges to prevent double rendering/flicker
-            badgesArr = badgesArr.filter(b => {
-                if (!b) return false;
-                const id = (b.id || "").toLowerCase();
-                const desc = (b.description || "").toLowerCase();
-                if (id.includes("vencord") || desc.includes("vencord")) return false;
-                if (id.includes("equicord") || desc.includes("equicord")) return false;
-                if (id.includes("nightcord") || desc.includes("nightcord")) return false;
-                if (id.includes("illegalcord") || desc.includes("illegalcord")) return false;
-                if (id.includes("contributor") || desc.includes("contributor")) return false;
-                if (id === "nc-badge") return false;
-                return true;
-            });
-
             badgesArr = deduplicateProfileBadges(badgesArr);
             merged.badges = badgesArr;
 

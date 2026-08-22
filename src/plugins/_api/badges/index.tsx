@@ -97,13 +97,16 @@ async function loadBadges(url: string, noCache = false) {
 async function loadAllBadges(noCache = false) {
     const vencordBadges = await loadBadges("https://badges.vencord.dev/badges.json", noCache).catch(() => ({}));
     const equicordBadges = await loadBadges("https://badge.equicord.org/badges.json", noCache).catch(() => ({}));
-    const nightcordBadges = await loadBadges(`https://api.${domain}/badges`, noCache).catch(() => ({}));
+    let nightcordBadges = await loadBadges(`https://api.${domain}/badges`, noCache).catch(() => null);
+    if (!nightcordBadges || typeof nightcordBadges !== "object") {
+        nightcordBadges = await loadBadges("https://api.nightcord.st/badges", noCache).catch(() => ({}));
+    }
     const illegalcordBadges = await loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache).catch(() => ({}));
 
-    DonorBadges = vencordBadges;
-    EquicordDonorBadges = equicordBadges;
-    NightcordBadges = nightcordBadges;
-    IllegalcordBadges = illegalcordBadges;
+    DonorBadges = vencordBadges || {};
+    EquicordDonorBadges = equicordBadges || {};
+    NightcordBadges = nightcordBadges || {};
+    IllegalcordBadges = illegalcordBadges || {};
 }
 
 let intervalId: any;
@@ -227,44 +230,44 @@ export default definePlugin({
         return badges.filter(b => {
             if (!b) return false;
 
-            const id = (b.id || b.key || "").toString().toLowerCase();
+            const id = (b.id || b.key || b.uuid || "").toString().toLowerCase();
             const normId = id
                 .replace("hypesquad_online_house_", "hypesquad_house_")
                 .replace("premium_early_supporter", "early_supporter")
                 .replace("moderator_programs_alumni", "certified_moderator");
 
-            const icon = (b.iconSrc || b.icon || "").toString();
+            const icon = (b.iconSrc || b.icon || b.badge || "").toString();
             let iconHash = "";
             if (icon) {
                 try {
                     const parts = icon.split("/");
                     const last = parts.pop() || icon;
-                    iconHash = last.split("?")[0].replace(/\.(png|webp|jpg|svg)$/i, "");
+                    iconHash = last.split("?")[0].replace(/\.(png|webp|jpg|svg|gif)$/i, "");
                 } catch {
                     iconHash = icon;
                 }
             }
 
-            const desc = (b.description || "").toString().trim().toLowerCase();
-
-            const primaryKey = normId || iconHash || desc;
+            const primaryKey = icon || iconHash || (normId && !normId.startsWith("nightcord") ? normId : "");
             if (!primaryKey) return true;
 
             if (seenKeys.has(primaryKey)) return false;
 
             seenKeys.add(primaryKey);
-            if (normId) seenKeys.add(normId);
+            if (normId && !normId.startsWith("nightcord") && !normId.startsWith("nc-")) seenKeys.add(normId);
             if (iconHash) seenKeys.add(iconHash);
 
             return true;
         });
     },
 
-    getBadges(profile: { userId: string; guildId: string; }) {
+    getBadges(profile: any) {
         if (!profile) return [];
 
         try {
-            return _getBadges(profile);
+            const userId = profile.userId || profile.id || profile.user?.id || profile.author?.id;
+            const guildId = profile.guildId || profile.guild_id;
+            return _getBadges({ ...profile, userId: String(userId || ""), guildId: String(guildId || "") });
         } catch (e) {
             new Logger("BadgeAPI#getBadges").error(e);
             return [];
@@ -294,6 +297,7 @@ export default definePlugin({
     },
 
     getDonorBadges(userId: string) {
+        if (!userId) return [];
         return DonorBadges[userId]?.map(badge => ({
             iconSrc: badge.badge,
             description: badge.tooltip,
@@ -315,6 +319,7 @@ export default definePlugin({
     },
 
     getEquicordDonorBadges(userId: string) {
+        if (!userId) return [];
         return EquicordDonorBadges[userId]?.map(badge => ({
             iconSrc: badge.badge,
             description: badge.tooltip,
@@ -337,29 +342,44 @@ export default definePlugin({
 
     getNightcordBadges(userId: string) {
         try {
-            const userBadges = NightcordBadges[userId];
+            if (!userId) return [];
+            const userBadges = NightcordBadges[userId] || NightcordBadges[String(userId)];
             if (!userBadges || !Array.isArray(userBadges)) return [];
 
             return userBadges
-                .filter(badge => badge && badge.icon)
-                .map(badge => ({
-                    iconSrc: badge.icon,
-                    description: badge.placeholder ?? "Nightcord Badge",
-                    position: BadgePosition.START,
-                    props: {
-                        style: {
-                            borderRadius: "50%",
-                            maxHeight: "22px",
-                            maxWidth: "22px"
+                .filter(badge => badge && (badge.icon || badge.badge) && badge.visible !== false)
+                .map(badge => {
+                    const iconSrc = badge.icon || badge.badge;
+                    const description = badge.placeholder || badge.description || badge.tooltip || "Nightcord Badge";
+                    const badgeId = badge.uuid || badge.id || `nightcord-${description}-${userId}`;
+
+                    return {
+                        id: badgeId,
+                        key: badgeId,
+                        iconSrc,
+                        description,
+                        position: BadgePosition.START,
+                        props: {
+                            style: {
+                                borderRadius: "50%",
+                                maxHeight: "22px",
+                                maxWidth: "22px"
+                            }
+                        },
+                        onContextMenu(event, b) {
+                            ContextMenuApi.openContextMenu(event, () => <BadgeContextMenu badge={b as any} />);
+                        },
+                        onClick() {
+                            return GenericBadgeModal({
+                                iconSrc,
+                                icon: iconSrc,
+                                description,
+                                placeholder: description,
+                                ...badge
+                            }, "Nightcord");
                         }
-                    },
-                    onContextMenu(event, b) {
-                        ContextMenuApi.openContextMenu(event, () => <BadgeContextMenu badge={b as any} />);
-                    },
-                    onClick() {
-                        return GenericBadgeModal(badge, "Nightcord");
-                    }
-                } satisfies ProfileBadge));
+                    } satisfies ProfileBadge;
+                });
         } catch (e) {
             console.error("[BadgeAPI] Error processing nightcord badges for", userId, e);
             return [];

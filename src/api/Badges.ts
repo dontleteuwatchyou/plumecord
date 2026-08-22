@@ -66,36 +66,54 @@ export function removeProfileBadge(badge: ProfileBadge) {
  * Inject badges into the profile badges array.
  * You probably don't need to use this.
  */
-export function _getBadges(args: BadgeUserArgs) {
+export function _getBadges(args: any) {
     // ── Stealth Mode Bypass ──
     try {
         const { isStealthModeEnabled } = require("./HeaderBar");
         if (isStealthModeEnabled()) return [];
     } catch { }
 
+    const rawUserId = args?.userId || args?.id || args?.user?.id || args?.author?.id;
+    const userId = rawUserId ? String(rawUserId) : "";
+    const guildId = String(args?.guildId || args?.guild_id || "");
+
+    const normalizedArgs: BadgeUserArgs = {
+        ...args,
+        userId,
+        guildId
+    };
+
+    if (!userId) return [];
+
     // ── Hidden badge sources (per-profile, synced via cloud) ──
-    const hiddenSources = getHiddenBadgeSources(args.userId);
+    const hiddenSources = getHiddenBadgeSources(userId);
     const isHidden = (source: string) => hiddenSources.includes(source as any);
 
     const badges = [] as ProfileBadge[];
 
-    const shieldBadge = (b: any) => ({
-        ...args,
-        ...b,
-        iconSrc: typeof b.iconSrc === "string" ? b.iconSrc : "",
-        link: typeof b.link === "string" ? b.link : "",
-        id: b.id || b.key || b.description || "nc-badge",
-        key: b.key || b.id || b.description || "nc-badge",
-        description: b.description || "",
-    });
+    const shieldBadge = (b: any) => {
+        const iconSrc = typeof b.iconSrc === "string" ? b.iconSrc : (typeof b.icon === "string" ? b.icon : (typeof b.badge === "string" ? b.badge : ""));
+        const description = b.description || b.placeholder || b.tooltip || "";
+        const id = b.id || b.key || b.uuid || (iconSrc ? iconSrc.split("/").pop()?.split("?")[0] : null) || description || "nc-badge";
+
+        return {
+            ...normalizedArgs,
+            ...b,
+            iconSrc,
+            link: typeof b.link === "string" ? b.link : "",
+            id,
+            key: id,
+            description,
+        };
+    };
 
     for (const badge of Badges) {
-        if (badge.shouldShow && !badge.shouldShow(args)) {
+        if (badge.shouldShow && !badge.shouldShow(normalizedArgs)) {
             continue;
         }
 
         const b = badge.getBadges
-            ? badge.getBadges(args).map(badge => shieldBadge({
+            ? badge.getBadges(normalizedArgs).map(badge => shieldBadge({
                 ...badge,
                 component: badge.component && ErrorBoundary.wrap(badge.component, { noop: true })
             }))
@@ -108,10 +126,10 @@ export function _getBadges(args: BadgeUserArgs) {
         }
     }
 
-    const donorBadges = BadgeAPIPlugin.getDonorBadges(args.userId);
-    const equicordDonorBadges = BadgeAPIPlugin.getEquicordDonorBadges(args.userId);
-    const nightcordBadges = (BadgeAPIPlugin as any).getNightcordBadges?.(args.userId);
-    const illegalcordBadges = (BadgeAPIPlugin as any).getIllegalcordBadges?.(args.userId);
+    const donorBadges = BadgeAPIPlugin.getDonorBadges(userId);
+    const equicordDonorBadges = BadgeAPIPlugin.getEquicordDonorBadges(userId);
+    const nightcordBadges = (BadgeAPIPlugin as any).getNightcordBadges?.(userId);
+    const illegalcordBadges = (BadgeAPIPlugin as any).getIllegalcordBadges?.(userId);
 
     if (donorBadges && !isHidden("vencord")) {
         badges.unshift(...donorBadges.map(shieldBadge));
@@ -125,10 +143,16 @@ export function _getBadges(args: BadgeUserArgs) {
         badges.unshift(...nightcordBadges.map(shieldBadge));
     }
 
+    if (illegalcordBadges && !isHidden("illegalcord")) {
+        badges.unshift(...illegalcordBadges.map(shieldBadge));
+    }
+
     const seen = new Set<string>();
     return badges.filter(b => {
         if (!b) return false;
-        const key = (b.id || b.key || b.iconSrc || b.description || "").toString();
+        const key = (b.id && b.id !== "nc-badge")
+            ? b.id
+            : (b.iconSrc || b.key || b.description || "").toString();
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
