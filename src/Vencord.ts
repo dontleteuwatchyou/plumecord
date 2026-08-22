@@ -300,24 +300,5 @@ init();
 
 document.addEventListener("DOMContentLoaded", () => {
     startAllPlugins(StartAt.DOMContentLoaded);
-
-    // Reposition Discord's titlebar to the left by default (90px)
-    // When stealth mode or compact mode is enabled, it falls back to Discord's default center position.
-    createAndAppendStyle("nightcord-titlebar-position", coreStyleRootNode).textContent = `
-        body:not(.nightcord-stealth):not(.nightcord-compact) [class*="title_c38"] {
-            position: absolute !important;
-            left: 90px !important;
-            right: auto !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
-            text-align: left !important;
-            margin: 0 !important;
-        }
-    `;
-
-    // FIXME
-    if (IS_DISCORD_DESKTOP && Settings.winNativeTitleBar && IS_WINDOWS) {
-        createAndAppendStyle("vencord-native-titlebar-style", coreStyleRootNode).textContent = "[class*=titleBar]{display: none!important}";
-    }
 }, { once: true });
 
