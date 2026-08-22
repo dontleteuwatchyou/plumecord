@@ -1,0 +1,13 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Works around an Electron / Theme bug where app-region: drag is accidentally applied to the full document/body */
+html,
+body,
+#app-mount {
+    app-region: no-drag !important;
+    -webkit-app-region: no-drag !important;
+}
