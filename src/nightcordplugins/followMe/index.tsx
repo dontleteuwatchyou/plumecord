@@ -9,7 +9,7 @@ import { HeaderBarButton } from "@api/HeaderBar";
 import { DataStore } from "@api/index";
 import definePlugin from "@utils/types";
 import { findStoreLazy } from "@webpack";
-import { ChannelStore, Constants,Menu, PermissionsBits, PermissionStore, React, RestAPI, Toasts, useEffect, UserStore, useState } from "@webpack/common";
+import { ChannelStore, Constants, Menu, PermissionsBits, PermissionStore, React, RestAPI, SelectedChannelStore, Toasts, useEffect, UserStore, useState } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 const VoiceStateStore = findStoreLazy("VoiceStateStore");
@@ -37,19 +37,36 @@ async function persist() {
     await DataStore.set(DS_KEY, targetId ? { id: targetId, name: targetName } : null);
 }
 
+function getVoiceState(userId: string, guildId?: string) {
+    try {
+        if (VoiceStateStore) {
+            const state = VoiceStateStore.getVoiceStateForUser?.(userId);
+            if (state) return state;
+            if (guildId) {
+                const guildStates = VoiceStateStore.getVoiceStates?.(guildId);
+                if (guildStates && guildStates[userId]) return guildStates[userId];
+            }
+        }
+    } catch {}
+    return null;
+}
+
 async function moveTargetTo(guildId: string, channelId: string) {
     if (!targetId || !guildId || !channelId) return;
 
-    const targetState = VoiceStateStore.getVoiceStateForUser(targetId);
-    if (!targetState) return;
+    const targetState = getVoiceState(targetId, guildId);
+    if (!targetState || !targetState.channelId) return;
 
     if (targetState.channelId === channelId) return;
 
     const channel = ChannelStore.getChannel(channelId);
     if (!channel) return;
-    const canMove = PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel);
 
-    if (!canMove) return;
+    const canMove = PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel);
+    if (!canMove) {
+        console.warn("[FollowMe] Missing MOVE_MEMBERS permission in channel:", channelId);
+        return;
+    }
 
     try {
         await RestAPI.patch({
@@ -61,26 +78,37 @@ async function moveTargetTo(guildId: string, channelId: string) {
     }
 }
 
+function checkAndMoveTarget() {
+    if (!targetId) return;
+    const myId = UserStore.getCurrentUser()?.id;
+    if (!myId) return;
+
+    const myChannelId = SelectedChannelStore.getVoiceChannelId();
+    if (!myChannelId) return;
+
+    const myChannel = ChannelStore.getChannel(myChannelId);
+    if (!myChannel?.guild_id) return;
+
+    moveTargetTo(myChannel.guild_id, myChannelId);
+}
+
 function followMe(userId: string) {
     if (targetId === userId) return;
     const user = UserStore?.getUser?.(userId);
     targetId = userId;
     targetName = user?.globalName ?? user?.username ?? userId;
 
-    const myId = UserStore.getCurrentUser()?.id;
-    const myState = VoiceStateStore.getVoiceStateForUser(myId);
-    if (myState?.channelId && myState.guildId) {
-        moveTargetTo(myState.guildId, myState.channelId);
-    }
+    checkAndMoveTarget();
 
     notifyAll();
     persist().catch(() => { });
-    Toasts.show({ message: t("Following Me: {name} 🏃‍♂️").replace("{name}", targetName), type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+    Toasts.show({ message: t("Following Me: {name}").replace("{name}", targetName), type: Toasts.Type.SUCCESS, id: Toasts.genId() });
 }
 
 function unfollowMe() {
     const name = targetName;
-    targetId = null; targetName = "";
+    targetId = null;
+    targetName = "";
     notifyAll();
     persist().catch(() => { });
     Toasts.show({ message: t("Stopped forcing {name} to follow").replace("{name}", name), type: Toasts.Type.MESSAGE, id: Toasts.genId() });
@@ -143,8 +171,7 @@ export default definePlugin({
     name: "FollowMe",
     enabledByDefault: false,
     description: "Forces a user to follow you in voice channels (if you have permissions). Right-click a user -> Follow Me.",
-    authors: [{ name: "Nightcord",
-     id: 0n }],
+    authors: [{ name: "Nightcord", id: 0n }],
 
     headerBarButton: {
         icon: () => <FollowMeIcon filled={true} />,
@@ -162,16 +189,20 @@ export default definePlugin({
                     if (s.channelId && s.guildId) {
                         moveTargetTo(s.guildId, s.channelId);
                     }
-                }
-                else if (s.userId === targetId) {
-                    const myState = VoiceStateStore.getVoiceStateForUser(myId);
-                    if (myState?.channelId && myState.guildId && s.channelId !== myState.channelId) {
-                        if (s.guildId === myState.guildId) {
-                            moveTargetTo(myState.guildId, myState.channelId);
+                } else if (s.userId === targetId) {
+                    const myChannelId = SelectedChannelStore.getVoiceChannelId();
+                    if (myChannelId) {
+                        const myChannel = ChannelStore.getChannel(myChannelId);
+                        if (myChannel?.guild_id && s.channelId !== myChannelId && s.guildId === myChannel.guild_id) {
+                            moveTargetTo(myChannel.guild_id, myChannelId);
                         }
                     }
                 }
             }
+        },
+
+        VOICE_CHANNEL_SELECT() {
+            setTimeout(checkAndMoveTarget, 300);
         }
     },
 
@@ -186,7 +217,8 @@ export default definePlugin({
     },
 
     stop() {
-        targetId = null; targetName = "";
+        targetId = null;
+        targetName = "";
         removeContextMenuPatch("user-context", ctxPatch);
         removeContextMenuPatch("user-profile-actions", ctxPatch);
     },
