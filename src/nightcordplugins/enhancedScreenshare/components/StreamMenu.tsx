@@ -26,6 +26,53 @@ export const streamAudioState: StreamAudioSettingsState = {
     appVolumes: {}
 };
 
+export function formatCleanAppName(rawName: string): string {
+    if (!rawName) return "Application";
+
+    // Strip path if raw path like C:\Windows\System32\cmd.exe
+    let clean = rawName.split(/[\\/]/).pop() ?? rawName;
+
+    // Detect common browsers & applications
+    const lower = clean.toLowerCase();
+    if (lower === "cmd.exe" || lower === "cmd") return "Command Prompt";
+    if (lower === "powershell.exe" || lower === "powershell") return "PowerShell";
+    if (lower === "spotify.exe" || lower === "spotify") return "Spotify";
+    if (lower.includes("chrome") || lower.includes("google chrome")) return "Google Chrome";
+    if (lower.includes("brave")) return "Brave Browser";
+    if (lower.includes("msedge") || lower.includes("edge")) return "Microsoft Edge";
+    if (lower.includes("firefox")) return "Mozilla Firefox";
+    if (lower.includes("discord") || lower.includes("nightcord")) return "Discord";
+    if (lower.includes("vlc")) return "VLC Media Player";
+    if (lower.includes("roblox")) return "Roblox";
+    if (lower.includes("steam")) return "Steam";
+    if (lower.includes("youtube")) return "YouTube";
+
+    // Clean browser window titles like "Song - YouTube - Google Chrome"
+    if (clean.includes(" - Google Chrome")) return "Google Chrome";
+    if (clean.includes(" - Brave")) return "Brave Browser";
+    if (clean.includes(" - Microsoft​ Edge") || clean.includes(" - Edge")) return "Microsoft Edge";
+    if (clean.includes(" - Mozilla Firefox")) return "Mozilla Firefox";
+    if (clean.includes(" - Discord")) return "Discord";
+
+    // Remove window subtitles after dashes if long
+    if (clean.includes(" — ")) {
+        clean = clean.split(" — ")[0];
+    } else if (clean.includes(" - ")) {
+        clean = clean.split(" - ")[0];
+    }
+
+    if (clean.toLowerCase().endsWith(".exe")) {
+        clean = clean.slice(0, -4);
+    }
+
+    clean = clean.trim();
+    if (clean.length > 30) {
+        clean = clean.slice(0, 27) + "...";
+    }
+
+    return clean;
+}
+
 export function applyStreamAudio(pids?: number[] | string | null, deviceId?: string | null) {
     try {
         const engine = (MediaEngineStore as any)?.getMediaEngine?.();
@@ -45,7 +92,6 @@ export function applyStreamAudio(pids?: number[] | string | null, deviceId?: str
                 }
             }
         } else if (typeof engine.setSoundshareSource === "function") {
-            // Unset single-PID filter to enable native full desktop audio loopback
             try {
                 engine.setSoundshareSource(null, false);
             } catch {
@@ -104,10 +150,12 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
     const appsMap = new Map<number, { name: string; pid: number; }>();
     for (const g of [...runningGames, ...visibleGames, ...candidateGames]) {
         if (g && g.pid && g.name) {
-            appsMap.set(g.pid, { name: g.name, pid: g.pid });
+            const cleanName = formatCleanAppName(g.name);
+            appsMap.set(g.pid, { name: cleanName, pid: g.pid });
         }
     }
-    const appsList = Array.from(appsMap.values());
+
+    const appsList = Array.from(appsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
     const rawDevices = (MediaEngineStore as any)?.getOutputDevices?.() ?? {};
     const devicesList: Array<{ id: string; name: string; }> = Array.isArray(rawDevices)

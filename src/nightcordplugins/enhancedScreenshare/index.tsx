@@ -8,6 +8,8 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { FluxDispatcher, MediaEngineStore } from "@webpack/common";
 
+import "./styles.css";
+
 import { openPreviewGalleryModal, previewSettingsState } from "./components/PreviewGalleryModal";
 import { applyStreamAudio, streamAudioContextMenuPatch, streamAudioState } from "./components/StreamMenu";
 import { getCustomStreamThumbnail, loadProfiles } from "./previewStore";
