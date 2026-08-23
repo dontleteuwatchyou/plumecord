@@ -140,7 +140,7 @@ export function _usePatchContextMenu(props: ContextMenuProps) {
     } catch { }
 
     const contextMenuPatches = navPatches.get(props.navId);
-    const hasPatches = (contextMenuPatches && contextMenuPatches.length > 0) || globalPatches.size > 0;
+    const hasPatches = (contextMenuPatches && contextMenuPatches.size > 0) || globalPatches.size > 0;
     if (!hasPatches) return props;
 
     props = {
