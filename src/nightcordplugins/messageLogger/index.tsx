@@ -164,15 +164,19 @@ const patchMessageContextMenu: NavContextMenuPatchCallback = (
 
 const patchChannelContextMenu: NavContextMenuPatchCallback = (
     children,
-    { channel },
+    ctx: { channel?: any; user?: any; } = {},
 ) => {
-    const messages = MessageStore.getMessages(channel?.id) as MLMessage[];
+    const { channel, user } = ctx;
+    const targetChannelId = channel?.id || (user ? ChannelStore.getDMFromUserId(user.id) : null) || SelectedChannelStore.getChannelId();
+    if (!targetChannelId) return;
+
+    const messages = MessageStore.getMessages(targetChannelId) as MLMessage[];
     if (!messages?.some(msg => msg.deleted || msg.editHistory?.length)) return;
 
-    const group = findGroupChildrenByChildId("mark-channel-read", children) ?? children;
-    group.push(
+    const clearMenuItem = (
         <Menu.MenuItem
             id="vc-ml-clear-channel"
+            key="vc-ml-clear-channel"
             label={t("Clear Message Log")}
             color="danger"
             action={() => {
@@ -182,7 +186,7 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
                         affectedIds.add(msg.id);
                         FluxDispatcher.dispatch({
                             type: "MESSAGE_DELETE",
-                            channelId: channel.id,
+                            channelId: targetChannelId,
                             id: msg.id,
                             mlDeleted: true,
                         });
@@ -193,7 +197,7 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
                         delete cached.__messageloggerLastAppliedKey;
                         delete cached.customRenderedContent;
 
-                        updateMessage(channel.id, msg.id, {
+                        updateMessage(targetChannelId, msg.id, {
                             editHistory: [],
                             customRenderedContent: null,
                         });
@@ -203,21 +207,40 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
                 Promise.resolve().then(() =>
                     Promise.resolve().then(() => {
                         affectedIds.forEach(id => {
-                            updateMessage(channel.id, id);
+                            updateMessage(targetChannelId, id);
                         });
                     })
                 );
 
                 // Also clear from IndexedDB so they don't reappear when scrolling up
                 import("./db").then(async ({ getMessagesForChannelIDB, deleteMessagesBulkIDB }) => {
-                    const channelMessages = await getMessagesForChannelIDB(channel.id);
+                    const channelMessages = await getMessagesForChannelIDB(targetChannelId);
                     if (channelMessages.length > 0) {
                         await deleteMessagesBulkIDB(channelMessages.map(m => m.message_id));
                     }
                 });
             }}
-        />,
+        />
     );
+
+    // Look for MessageCleaner group or top group to place alongside it
+    const cleanerGroup = children.find(c =>
+        c?.key?.includes?.("cleaner-top-group") ||
+        (Array.isArray(c?.props?.children) && c.props.children.some((i: any) => i?.key?.includes?.("clean-") || i?.props?.id?.includes?.("clean")))
+    );
+
+    if (cleanerGroup && Array.isArray(cleanerGroup.props?.children)) {
+        // Insert right into cleaner group alongside clean messages
+        cleanerGroup.props.children.push(clearMenuItem);
+    } else {
+        const topGroup = (
+            <Menu.MenuGroup key="vc-ml-clear-top-group">
+                {clearMenuItem}
+                <Menu.MenuSeparator key="separator-ml-clear-top" />
+            </Menu.MenuGroup>
+        );
+        children.unshift(topGroup);
+    }
 };
 
 function applyAggregatedCustomContent(message: Message, key: string, nodes: React.ReactNode) {
