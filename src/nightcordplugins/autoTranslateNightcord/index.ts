@@ -4375,7 +4375,9 @@ export const translations: TranslationMap = {
     "Profile Name": {"en":"Profile Name","fr":"Nom du profil","ar":"اسم الملف الشخصي","es":"Nombre del perfil","ru":"Имя профиля","zh":"配置名称"},
     "Enhanced Screenshare": {"en":"Enhanced Screenshare","fr":"Stream Amélioré","ar":"مشاركة شاشة محسنة","es":"Transmisión mejorada","ru":"Улучшенный стрим","zh":"增强型屏幕共享"},
     "Entire System (Default - All Sounds)": {"en":"Entire System (Default - All Sounds)","fr":"Système complet (Par défaut - Tous les sons)","ar":"النظام بالكامل (افتراضي - جميع الأصوات)","es":"Todo el sistema (Predeterminado - Todos los sonidos)","ru":"Вся система (По умолчанию - Все звуки)","zh":"整个系统（默认 - 所有声音）"},
-    "Stream Audio Volume": {"en":"Stream Audio Volume","fr":"Volume audio du stream","ar":"مستوى صوت البث","es":"Volumen del stream","ru":"Громкость стрима","zh":"直播音量"},
+    "Application Volume Mixer": {"en":"Application Volume Mixer","fr":"Mixeur de volume des applications","ar":"خلاط مستوى صوت التطبيقات","es":"Mezclador de volumen de aplicaciones","ru":"Микшер громкости приложений","zh":"应用程序音量混音器"},
+    "Overall Stream Volume": {"en":"Overall Stream Volume","fr":"Volume global du stream","ar":"مستوى صوت البث الإجمالي","es":"Volumen general del stream","ru":"Общая громкость стрима","zh":"全局直播音量"},
+    "No preview media in this profile. Upload an image, GIF, or video above.": {"en":"No preview media in this profile. Upload an image, GIF, or video above.","fr":"Aucun média dans ce profil. Téléversez une image, un GIF ou une vidéo ci-dessus.","ar":"لا توجد وسائط معاينة في هذا الملف. قم برفع صورة أو GIF أو فيديو أعلاه.","es":"No hay medios de vista previa en este perfil. Sube una imagen, GIF o video arriba.","ru":"В этом профиле нет медиа. Загрузите изображение, GIF или видео выше.","zh":"此配置文件中没有预览媒体。请在上方上传图像、GIF 或视频。"},
     "Okay": {"en":"Okay","fr":"D'accord","ar":"حسناً","es":"De acuerdo","ru":"Понятно","zh":"好的"},
 };
 

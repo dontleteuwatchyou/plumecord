@@ -202,25 +202,33 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                     </Text>
                 </div>
 
-                <div className={cl("grid")}>
-                    {activeProfile.items.map((item, idx) => (
-                        <div
-                            key={idx}
-                            className={`${cl("card")} ${activeProfile.currentIndex === idx ? "selected" : ""}`}
-                            onClick={() => void handleSelectItem(idx)}
-                        >
-                            <img src={item.dataUri} alt={item.name} className={cl("thumbnail")} />
-                            <span className={cl("card-badge")}>{item.type}</span>
-                            <button
-                                className={cl("card-delete")}
-                                onClick={e => void handleDeleteItem(e, idx)}
-                                title="Delete preview"
+                {activeProfile.items.length > 0 ? (
+                    <div className={cl("grid")}>
+                        {activeProfile.items.map((item, idx) => (
+                            <div
+                                key={idx}
+                                className={`${cl("card")} ${activeProfile.currentIndex === idx ? "selected" : ""}`}
+                                onClick={() => void handleSelectItem(idx)}
                             >
-                                Remove
-                            </button>
-                        </div>
-                    ))}
-                </div>
+                                <img src={item.dataUri} alt={item.name} className={cl("thumbnail")} />
+                                <span className={cl("card-badge")}>{item.type}</span>
+                                <button
+                                    className={cl("card-delete")}
+                                    onClick={e => void handleDeleteItem(e, idx)}
+                                    title="Delete preview"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)" }}>
+                        <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>
+                            No preview media in this profile. Upload an image, GIF, or video above.
+                        </Text>
+                    </div>
+                )}
             </ModalContent>
 
             <ModalFooter className={cl("footer")}>
@@ -257,6 +265,7 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
 
                 <Button
                     variant="primary"
+                    size="small"
                     onClick={modalProps.onClose}
                 >
                     Done
