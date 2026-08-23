@@ -169,19 +169,24 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
                 <div className={cl("footer-right")}>
                     <Button
                         variant="secondary"
+                        size="small"
                         onClick={async () => {
                             await writeKnownSettings();
+                            flushSettings();
                             modalProps.onClose();
                         }}
                     >
                         Dismiss
                     </Button>
-                    <Button
-                        variant="primary"
-                        onClick={handleContinue}
-                    >
-                        {changes.hasChanges ? "Restart to Apply" : "Done"}
-                    </Button>
+                    {changes.hasChanges && (
+                        <Button
+                            variant="primary"
+                            size="small"
+                            onClick={handleContinue}
+                        >
+                            Restart to Apply
+                        </Button>
+                    )}
                 </div>
             </ModalFooter>
         </ModalRoot>

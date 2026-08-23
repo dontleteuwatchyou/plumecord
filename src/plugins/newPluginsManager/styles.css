@@ -5,12 +5,12 @@
  */
 
 .nc-new-plugins-root {
-    background-color: #313338 !important;
-    background: #313338 !important;
+    background-color: var(--background-floating, var(--background-secondary, #2b2d31)) !important;
+    background: var(--background-floating, var(--background-secondary, #2b2d31)) !important;
     border-radius: 12px !important;
     overflow: hidden !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
+    box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, 0.4)) !important;
     transition: max-width 0.2s ease, width 0.2s ease;
 }
 
@@ -34,9 +34,9 @@
     display: flex !important;
     align-items: flex-start !important;
     justify-content: space-between !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-    background-color: #2b2d31 !important;
-    background: #2b2d31 !important;
+    border-bottom: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.06)) !important;
+    background-color: var(--background-secondary, #2b2d31) !important;
+    background: var(--background-secondary, #2b2d31) !important;
 }
 
 .nc-new-plugins-header-text {
@@ -53,7 +53,7 @@
 }
 
 .nc-new-plugins-title {
-    color: #ffffff !important;
+    color: var(--header-primary, #ffffff) !important;
     font-weight: 700 !important;
     letter-spacing: -0.01em;
 }
@@ -70,7 +70,7 @@
 }
 
 .nc-new-plugins-description {
-    color: #949ba4 !important;
+    color: var(--text-muted, #949ba4) !important;
     font-size: 13px !important;
     line-height: 1.4;
 }
@@ -79,8 +79,8 @@
     padding: 20px 24px !important;
     max-height: 520px !important;
     overflow-y: auto !important;
-    background-color: #313338 !important;
-    background: #313338 !important;
+    background-color: var(--background-primary, #313338) !important;
+    background: var(--background-primary, #313338) !important;
 }
 
 .nc-new-plugins-grid {
@@ -102,9 +102,9 @@
     align-items: center !important;
     justify-content: space-between !important;
     padding: 16px 24px !important;
-    border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
-    background-color: #2b2d31 !important;
-    background: #2b2d31 !important;
+    border-top: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.06)) !important;
+    background-color: var(--background-secondary, #2b2d31) !important;
+    background: var(--background-secondary, #2b2d31) !important;
 }
 
 .nc-new-plugins-footer-right {

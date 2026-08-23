@@ -60,25 +60,23 @@ export function applyStreamAudio(pids?: number[] | string | null, deviceId?: str
     }
 }
 
-function AppVolumeSlider({ pid, name }: { pid: number; name: string; }) {
+function renderAppVolumeSlider(pid: number, name: string) {
     const currentVolume = streamAudioState.appVolumes[pid] ?? 100;
-    const [val, setVal] = React.useState(currentVolume);
-
     return (
         <Menu.MenuControlItem
             id={`enhanced-screenshare-vol-ctrl-${pid}`}
-            label={`${name} (${val}%)`}
+            key={`enhanced-screenshare-vol-ctrl-${pid}`}
+            label={`${name} (${currentVolume}%)`}
             control={(props: any, ref: any) => (
                 <Menu.MenuSliderControl
                     {...props}
                     ref={ref}
-                    value={val}
+                    value={currentVolume}
                     minValue={0}
                     maxValue={200}
-                    renderValue={() => `${val}%`}
+                    renderValue={() => `${currentVolume}%`}
                     onChange={(newVal: number) => {
                         const rounded = Math.round(newVal);
-                        setVal(rounded);
                         streamAudioState.appVolumes[pid] = rounded;
                     }}
                 />
@@ -147,7 +145,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                             action={() => toggleAppPid(app.pid)}
                         />
                         <Menu.MenuSeparator />
-                        <AppVolumeSlider pid={app.pid} name={app.name} />
+                        {renderAppVolumeSlider(app.pid, app.name)}
                     </Menu.MenuItem>
                 ))
             ) : (
@@ -166,9 +164,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
             label="Application Volume Mixer"
         >
             {appsList.length > 0 ? (
-                appsList.map(app => (
-                    <AppVolumeSlider key={app.pid} pid={app.pid} name={app.name} />
-                ))
+                appsList.map(app => renderAppVolumeSlider(app.pid, app.name))
             ) : (
                 <Menu.MenuItem
                     id="enhanced-screenshare-vol-empty"

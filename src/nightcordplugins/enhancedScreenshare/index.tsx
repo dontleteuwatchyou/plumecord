@@ -114,7 +114,9 @@ export default definePlugin({
 
     contextMenus: {
         "stream-options": streamAudioContextMenuPatch,
-        "stream-context": streamAudioContextMenuPatch
+        "stream-context": streamAudioContextMenuPatch,
+        "manage-streams": streamAudioContextMenuPatch,
+        "stream-settings": streamAudioContextMenuPatch
     },
 
     toolboxActions: {
