@@ -1,20 +1,8 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import { onceDefined } from "@shared/onceDefined";
 import electron, { app, BrowserWindowConstructorOptions, Menu, session } from "electron";
@@ -22,12 +10,12 @@ import { existsSync as fsExistsSync, statSync as fsStatSync } from "original-fs"
 import { dirname, join } from "path";
 
 import { registerMediaPermissionsForSession } from "../nightcord/main/mediaPermissions";
+import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
 import { RendererSettings } from "./settings";
 import { patchTrayMenu } from "./trayMenu";
 import { IS_VANILLA } from "./utils/constants";
 
 console.log("[Nightcord] Starting up...");
-
 
 // Our injector file at app/index.js
 const injectorPath = require.main!.filename;
@@ -43,7 +31,7 @@ const discordPkg = require(join(asarPath, "package.json"));
 require.main!.filename = join(asarPath, discordPkg.main);
 if (IS_VESKTOP || IS_EQUIBOP) require.main!.filename = join(dirname(injectorPath), "..", "..", "package.json");
 
-// @ts-expect-error Untyped method? Dies from cringe
+// @ts-expect-error Untyped method
 app.setAppPath(asarPath);
 
 if (!IS_VANILLA) {
@@ -93,13 +81,6 @@ if (!IS_VANILLA) {
                 return;
             }
 
-            // Align with Equicord: inject our preload into every window that has a
-            // preload + a title.  The old isTrustedTitle / KNOWN_TITLES filter was
-            // too restrictive — it silently skipped the main Discord window when it
-            // launched with a title that didn't match (e.g. during Squirrel startup
-            // or the first boot after an EquilotlCli injection).  That caused Discord
-            // to start without our renderer, leaving the session un-patched and
-            // triggering a LevelDB flush that logged the user out.
             if (!options?.webPreferences?.preload || !options.title) {
                 super(options);
                 return;
@@ -183,6 +164,10 @@ if (!IS_VANILLA) {
             process.env.DISCORD_PRELOAD = safeOriginalPreload;
 
             super(options);
+
+            if (isMainWindow) {
+                makeLinksOpenExternally(this);
+            }
 
             if (settings.streamProof) {
                 try {
@@ -275,9 +260,6 @@ if (!IS_VANILLA) {
                         this.setVibrancy(winMaterial === "acrylic" ? "acrylic" : "under-window");
                         applied = true;
                     }
-                    if (!applied) {
-                        console.warn("[Nightcord] No background material API available on this system");
-                    }
                 } catch (e) {
                     console.error("[Nightcord] setBackgroundMaterial failed:", e);
                 }
@@ -302,222 +284,13 @@ if (!IS_VANILLA) {
         s.set("DANGEROUS_ENABLE_DEVTOOLS_ONLY_ENABLE_IF_YOU_KNOW_WHAT_YOURE_DOING", true);
     });
 
-function isInternalAppUrl(rawUrl: string): boolean {
-    if (!rawUrl || rawUrl === "about:blank") return true;
-    if (rawUrl.startsWith("file://") || rawUrl.startsWith("devtools://") || rawUrl.startsWith("about:")) return true;
+    process.env.DATA_DIR = join(app.getPath("userData"), "..", "Nightcord");
 
-    try {
-        const u = new URL(rawUrl);
-        const host = u.hostname.toLowerCase();
-        const path = u.pathname.toLowerCase();
-
-        // Captchas inside Discord
-        if (host.includes("hcaptcha.com") || host.includes("recaptcha.net")) return true;
-        if (host.includes("google.com") && path.startsWith("/recaptcha")) return true;
-        if ((host === "discord.com" || host.endsWith(".discord.com")) && path.startsWith("/cdn-cgi/")) return true;
-
-        // Legitimate Discord App windows (Main Client, Overlays, Popouts, Popups, etc.)
-        if (host === "discord.com" || host.endsWith(".discord.com") || host === "discordapp.com" || host.endsWith(".discordapp.com")) {
-            const target = u.searchParams.get("target");
-            if (target) {
-                try {
-                    const targetHost = new URL(target).hostname.toLowerCase();
-                    if (!targetHost.endsWith("discord.com") && !targetHost.endsWith("discordapp.com")) {
-                        return false;
-                    }
-                } catch {
-                    return false;
-                }
-            }
-            if (
-                path.startsWith("/channels/") ||
-                path === "/popout" ||
-                path.startsWith("/popout/") ||
-                path === "/popup" ||
-                path.startsWith("/popup/") ||
-                path === "/overlay" ||
-                path.startsWith("/overlay/") ||
-                path.startsWith("/app") ||
-                path.startsWith("/activities") ||
-                path.startsWith("/activity") ||
-                path.startsWith("/login") ||
-                path.startsWith("/register") ||
-                path.startsWith("/oauth2")
-            ) {
-                return true;
-            }
-        }
-    } catch {}
-
-    return false;
-}
-
-function patchWebContents(wc: electron.WebContents) {
-    if ((wc as any)._nightcordPatched) return;
-    (wc as any)._nightcordPatched = true;
-
-    wc.setWindowOpenHandler(({ url, frameName }) => {
-        const isOverlay = frameName && (frameName.toLowerCase().includes("overlay") || frameName.startsWith("DISCORD_"));
-        if (isOverlay) {
-            return {
-                action: "allow",
-                overrideBrowserWindowOptions: {
-                    transparent: true,
-                    backgroundColor: "#00000000",
-                    frame: false,
-                    hasShadow: false
-                }
-            };
-        }
-        if (!url || url === "about:blank" || url.startsWith("devtools://")) {
-            return {
-                action: "allow",
-                overrideBrowserWindowOptions: {
-                    show: false,
-                    width: 0,
-                    height: 0,
-                    x: -9999,
-                    y: -9999,
-                    skipTaskbar: true,
-                    frame: false,
-                    transparent: true,
-                    backgroundColor: "#00000000"
-                }
-            };
-        }
-        if (!isInternalAppUrl(url)) {
-            electron.shell.openExternal(url).catch(() => {});
-            return { action: "deny" };
-        }
-        return { action: "allow" };
+    app.whenReady().then(() => {
+        registerMediaPermissionsForSession(session.defaultSession);
     });
-
-    wc.on("did-create-window", (childWin, details) => {
-        const title = childWin.getTitle();
-        const isOverlay = title && title.toLowerCase().includes("overlay");
-
-        if (isOverlay) {
-            try {
-                childWin.setBackgroundColor("#00000000");
-            } catch {}
-            return;
-        }
-
-        try {
-            childWin.hide();
-            childWin.setOpacity(0);
-            childWin.setSkipTaskbar(true);
-        } catch {}
-
-        childWin.on("page-title-updated", (_e, t) => {
-            if (t && (t === "discord" || t === "Discord Popup")) {
-                try { childWin.destroy(); } catch {}
-            } else if (t && t.toLowerCase().includes("overlay")) {
-                try { childWin.setBackgroundColor("#00000000"); } catch {}
-            }
-        });
-
-        const childWc = childWin.webContents;
-        if ((childWc as any)._nightcordPatched) return;
-        (childWc as any)._nightcordPatched = true;
-
-        const openUrl = details && details.url;
-        if (openUrl && openUrl !== "about:blank" && !openUrl.startsWith("devtools://") && !isInternalAppUrl(openUrl)) {
-            electron.shell.openExternal(openUrl).catch(() => {});
-            try { childWin.destroy(); } catch (_) {}
-            return;
-        }
-
-        childWc.once("will-navigate", (event, url) => {
-            if (!isInternalAppUrl(url)) {
-                event.preventDefault();
-                electron.shell.openExternal(url).catch(() => {});
-                try { childWin.destroy(); } catch (_) {}
-            }
-        });
-
-        childWc.once("did-navigate", (_event, url) => {
-            if (!isInternalAppUrl(url)) {
-                electron.shell.openExternal(url).catch(() => {});
-                try { childWin.destroy(); } catch (_) {}
-            }
-        });
-
-        childWc.setWindowOpenHandler(({ url }) => {
-            if (!url || url === "about:blank" || url.startsWith("devtools://")) {
-                return {
-                    action: "allow",
-                    overrideBrowserWindowOptions: {
-                        show: false,
-                        skipTaskbar: true
-                    }
-                };
-            }
-            electron.shell.openExternal(url).catch(() => {});
-            return { action: "deny" };
-        });
-
-        childWc.once("did-finish-load", () => {
-            const url = childWc.getURL();
-            if (url && url !== "about:blank" && !isInternalAppUrl(url)) {
-                electron.shell.openExternal(url).catch(() => {});
-                try { childWin.destroy(); } catch (_) {}
-            }
-        });
-
-        setImmediate(() => {
-            try {
-                if (!childWin.isDestroyed()) {
-                    const u = childWc.getURL();
-                    const t = childWin.getTitle();
-                    if (!u || u === "about:blank" || u.includes("/popup") || t === "discord" || t === "Discord Popup") {
-                        try { childWin.destroy(); } catch (_) {}
-                    }
-                }
-            } catch (_) {}
-        });
-    });
-
-    wc.on("will-navigate", (event, url) => {
-        const currentUrl = wc.getURL();
-        if (url !== currentUrl && !isInternalAppUrl(url)) {
-            event.preventDefault();
-            electron.shell.openExternal(url).catch(() => {});
-        }
-    });
-}
-
-app.on("browser-window-created", (_, win) => {
-    patchWebContents(win.webContents);
-});
-
-app.on("web-contents-created", (_, wc) => {
-    patchWebContents(wc);
-});
-
-process.env.DATA_DIR = join(app.getPath("userData"), "..", "Nightcord");
-
-app.whenReady().then(() => {
-    registerMediaPermissionsForSession(session.defaultSession);
-    for (const wc of electron.webContents.getAllWebContents()) {
-        patchWebContents(wc);
-    }
-});
 
     // ── Neutralisation de DISCORD_WINDOW_TOGGLE_FULLSCREEN ──
-    //
-    // PROBLÈME RACINE : Discord émet cet IPC automatiquement à chaque démarrage
-    // ET à chaque rechargement de thème pour "synchroniser" son état interne.
-    // L'ancien handler faisait `win.setFullScreen(!win.isFullScreen())` — un toggle
-    // aveugle. Résultat : fenêtre maximisée + isFullScreen()=false → setFullScreen(true)
-    // → overlay OS fullscreen → tous les inputs bloqués, app figée. F11 sortait du
-    // fullscreen et débloquait. Le fix du délai de 2s ne suffisait pas car les thèmes
-    // rechargent Discord après ce délai.
-    //
-    // SOLUTION : on intercepte le handler Discord et on le remplace par un no-op
-    // complet. Le fullscreen utilisateur est désormais géré exclusivement via F11
-    // intercepté dans before-input-event ci-dessus — ce qui est à la fois plus propre
-    // et impossible à déclencher accidentellement par Discord.
     {
         const _originalHandle = electron.ipcMain.handle.bind(electron.ipcMain);
         const FULLSCREEN_CHANNEL = "DISCORD_WINDOW_TOGGLE_FULLSCREEN";
@@ -528,9 +301,6 @@ app.whenReady().then(() => {
                 if (_fullscreenPatched) return;
                 _fullscreenPatched = true;
                 try { electron.ipcMain.removeHandler(FULLSCREEN_CHANNEL); } catch {}
-                // No-op : on enregistre un handler vide pour que Discord ne crash pas
-                // ("no handler registered"), mais on ne fait RIEN — le fullscreen est
-                // géré par before-input-event (F11) côté main process.
                 _originalHandle(FULLSCREEN_CHANNEL, (_event: electron.IpcMainInvokeEvent) => {
                     // Intentionnellement vide.
                 });
@@ -551,6 +321,8 @@ app.whenReady().then(() => {
         };
     }
 
+    // Optimization switches identical to Equicord:
+    // Disables EcoQoS / background throttling to eliminate CPU starvation, stutter & game FPS drops
     const originalAppend = app.commandLine.appendSwitch;
     const _ncDisabledFeatures = new Set(["WidgetLayering", "UseEcoQoSForBackgroundProcess", "CalculateNativeWinOcclusion"]);
     app.commandLine.appendSwitch = function (...args) {
