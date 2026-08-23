@@ -16,7 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+import { flushSettings } from "@api/Settings";
+
 export function relaunch() {
+    try {
+        flushSettings();
+    } catch {}
     if (IS_DISCORD_DESKTOP)
         window.DiscordNative.app.relaunch();
     else if (IS_VESKTOP || IS_EQUIBOP)

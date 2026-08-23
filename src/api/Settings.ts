@@ -273,29 +273,42 @@ export const SettingsStore = new SettingsStoreClass(settings, {
     }
 });
 
+let _saveSettingsTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function flushSettings(path?: string[]) {
+    if (_saveSettingsTimer !== undefined) {
+        clearTimeout(_saveSettingsTimer);
+        _saveSettingsTimer = undefined;
+    }
+    try {
+        if (typeof VencordNative !== "undefined" && VencordNative?.settings?.set) {
+            VencordNative.settings.set(SettingsStore.plain, path);
+        }
+    } catch (err) {
+        try {
+            const sanitized = JSON.parse(JSON.stringify(SettingsStore.plain, (k, v) => {
+                if (typeof v === "function" || typeof v === "symbol") return undefined;
+                if (typeof v === "bigint") return v.toString();
+                if (v instanceof Node) return undefined;
+                return v;
+            }));
+            if (typeof VencordNative !== "undefined" && VencordNative?.settings?.set) {
+                VencordNative.settings.set(sanitized, path);
+            }
+        } catch (e) {
+            console.error("[Settings] Failed to save settings to native store:", err, e);
+        }
+    }
+}
+
 if (!IS_REPORTER) {
-    let _saveSettingsTimer: ReturnType<typeof setTimeout> | undefined;
     SettingsStore.addGlobalChangeListener((_, path) => {
         SettingsStore.plain.cloud.settingsSyncVersion = Date.now();
         if (_saveSettingsTimer !== undefined) clearTimeout(_saveSettingsTimer);
         _saveSettingsTimer = setTimeout(() => {
             _saveSettingsTimer = undefined;
-            try {
-                VencordNative.settings.set(SettingsStore.plain, path);
-            } catch (err) {
-                try {
-                    const sanitized = JSON.parse(JSON.stringify(SettingsStore.plain, (k, v) => {
-                        if (typeof v === "function" || typeof v === "symbol") return undefined;
-                        if (typeof v === "bigint") return v.toString();
-                        if (v instanceof Node) return undefined;
-                        return v;
-                    }));
-                    VencordNative.settings.set(sanitized, path);
-                } catch (e) {
-                    console.error("[Settings] Failed to save settings to native store:", err, e);
-                }
-            }
-        }, 500);
+            flushSettings(path);
+        }, 300);
     });
 }
 

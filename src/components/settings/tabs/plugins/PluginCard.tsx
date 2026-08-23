@@ -18,7 +18,7 @@ import { OptionType, Plugin } from "@utils/types";
 import { HeadingPrimary } from "@components/Heading";
 import { Button } from "@components/Button";
 import { React, showToast, Text, Toasts, Tooltip, UserStore } from "@webpack/common";
-import { Settings } from "Vencord";
+import { flushSettings, Settings } from "@api/Settings";
 import {domain} from "../../../../../DOMAIN.json";
 import { t } from "@api/i18n";
 import { tPlugin } from "@api/pluginI18n";
@@ -93,7 +93,10 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
     function doToggleEnabled() {
         const wasEnabled = isEnabled();
+        const nextState = !wasEnabled;
         const targetSettings = (Settings.plugins[plugin.name] ??= {} as any);
+        targetSettings.enabled = nextState;
+        flushSettings();
 
         if (!wasEnabled) {
             const { restartNeeded, failures } = startDependenciesRecursive(plugin);
@@ -101,24 +104,29 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             if (failures.length) {
                 logger.error(`Failed to start dependencies for ${plugin.name}: ${failures.join(", ")}`);
                 showNotice("Failed to start dependencies: " + failures.join(", "), "Close", () => null);
+                targetSettings.enabled = false;
+                flushSettings();
                 return;
             }
 
             if (restartNeeded) {
                 targetSettings.enabled = true;
+                flushSettings();
                 onRestartNeeded(plugin.name, "enabled");
                 return;
             }
         }
 
         if (pluginRequiresRestart(plugin)) {
-            targetSettings.enabled = !wasEnabled;
+            targetSettings.enabled = nextState;
+            flushSettings();
             onRestartNeeded(plugin.name, "enabled");
             return;
         }
 
         if (wasEnabled && !plugin.started) {
-            targetSettings.enabled = !wasEnabled;
+            targetSettings.enabled = nextState;
+            flushSettings();
             return;
         }
 
@@ -126,6 +134,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
 
         if (!result) {
             targetSettings.enabled = false;
+            flushSettings();
 
             const msg = `Error while ${wasEnabled ? "stopping" : "starting"} plugin ${plugin.name}`;
             showToast(msg, Toasts.Type.FAILURE, {
@@ -135,7 +144,8 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
             return;
         }
 
-        targetSettings.enabled = !wasEnabled;
+        targetSettings.enabled = nextState;
+        flushSettings();
     }
 
     function toggleEnabled() {

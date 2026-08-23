@@ -1,30 +1,29 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import "./styles.css";
 
-import { Settings, useSettings } from "@api/Settings";
-import { BaseText } from "@components/BaseText";
-import ErrorBoundary from "@components/ErrorBoundary";
-import { Link } from "@components/Link";
-import { Notice } from "@components/Notice";
+import { flushSettings, Settings, useSettings } from "@api/Settings";
 import { PluginDependencyList } from "@components/settings/tabs/plugins";
 import { PluginCard } from "@components/settings/tabs/plugins/PluginCard";
+import { Button } from "@components/Button";
 import { ChangeList } from "@utils/ChangeList";
 import { classNameFactory } from "@utils/css";
+import { relaunch } from "@utils/native";
 import { useForceUpdater } from "@utils/react";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize } from "@utils/modal";
 import { RenderModalProps } from "@vencord/discord-types";
-import { closeModal, Modal, openModal, Tooltip, useMemo } from "@webpack/common";
+import { closeModal, openModal, Text, Tooltip, useMemo } from "@webpack/common";
 import { ReactNode } from "react";
 
 import Plugins from "~plugins";
 
 import { getNewPlugins, getNewSettings, KnownPluginSettingsMap, writeKnownSettings } from "./knownSettings";
 
-const cl = classNameFactory("vc-new-plugins-");
+const cl = classNameFactory("nc-new-plugins-");
 
 let hasSeen = false;
 
@@ -54,15 +53,21 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
     }, []);
 
     const sortedPlugins = useMemo(() => {
-        const mapPlugins = (array: string[]) => array.map(pn => Plugins[pn]).sort((a, b) => a.name.localeCompare(b.name));
+        const mapPlugins = (array: string[]) =>
+            array
+                .filter(pn => Plugins[pn])
+                .map(pn => Plugins[pn])
+                .sort((a, b) => a.name.localeCompare(b.name));
+
         return [
             ...mapPlugins([...newPlugins]),
             ...mapPlugins([...newSettings.keys()].filter(p => !newPlugins.has(p)))
         ];
-    }, []);
+    }, [newPlugins, newSettings]);
 
     const onRestartNeeded = (name: string) => {
         changes.handleChange(name);
+        flushSettings();
         forceUpdate();
     };
 
@@ -72,12 +77,12 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
     for (const p of sortedPlugins) {
         if (p.hidden) continue;
 
-        const isRequired = p.required || depMap[p.name]?.some(d => settings.plugins[d].enabled);
+        const isRequired = p.required || depMap[p.name]?.some(d => settings.plugins[d]?.enabled);
 
         if (isRequired) {
             const tooltipText = p.required
-                ? "This plugin is required for Equicord to function."
-                : <PluginDependencyList deps={depMap[p.name]?.filter(d => settings.plugins[d].enabled)} />;
+                ? "This plugin is required for Nightcord to function."
+                : <PluginDependencyList deps={depMap[p.name]?.filter(d => settings.plugins[d]?.enabled)} />;
 
             requiredPluginCards.push(
                 <Tooltip text={tooltipText} key={p.name}>
@@ -110,55 +115,72 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
 
     const handleContinue = async () => {
         await writeKnownSettings();
+        flushSettings();
         if (changes.hasChanges) {
-            location.reload();
+            relaunch();
         } else {
             modalProps.onClose();
         }
     };
 
     return (
-        <Modal
-            {...modalProps}
-            size="md"
-            title={
-                <div className={cl("header-content")}>
-                    <BaseText size="lg" weight="semibold" className={cl("title")}>
-                        New Plugins and Settings ({totalCount})
-                    </BaseText>
+        <ModalRoot {...modalProps} size={ModalSize.LARGE} className={cl("root")}>
+            <ModalHeader separator={false} className={cl("header")}>
+                <div className={cl("header-text")}>
+                    <div className={cl("title-row")}>
+                        <Text variant="heading-lg/bold" className={cl("title")}>
+                            New Plugins & Enhancements
+                        </Text>
+                        <span className={cl("badge")}>
+                            {totalCount} NEW
+                        </span>
+                    </div>
+                    <Text variant="text-sm/normal" className={cl("description")}>
+                        Discover the latest plugins added to Nightcord. Enable and configure any you would like to use.
+                    </Text>
                 </div>
-            }
-            subtitle={
-                <>
-                    <BaseText size="sm" className={cl("description")}>
-                        New plugins have been added since your last visit. Enable any you'd like or continue to dismiss.
-                    </BaseText>
-                    <br />
-                    <Notice.Info className={cl("notice")}>
-                        Equicord is Open Source Software. If you enjoy using it, consider supporting us <Link href="https://github.com/sponsors/thororen1234" target="_blank" rel="noopener noreferrer">here</Link>.
-                    </Notice.Info>
-                </>
-            }
-            actions={[
-                {
-                    text: "Don't show this again",
-                    onClick: () => {
-                        Settings.plugins.NewPluginsManager.enabled = !settings?.plugins?.NewPluginsManager?.enabled;
-                    },
-                    variant: "secondary"
-                },
-                {
-                    text: changes.hasChanges ? "Restart" : "Continue",
-                    onClick: handleContinue,
-                    variant: "primary"
-                }
-            ]}
-        >
-            <div className={cl("grid")}>
-                {pluginCards}
-                {requiredPluginCards}
-            </div>
-        </Modal >
+                <ModalCloseButton onClick={modalProps.onClose} />
+            </ModalHeader>
+
+            <ModalContent className={cl("content")}>
+                <div className={cl("grid")}>
+                    {pluginCards}
+                    {requiredPluginCards}
+                </div>
+            </ModalContent>
+
+            <ModalFooter className={cl("footer")}>
+                <Button
+                    variant="link"
+                    size="small"
+                    onClick={() => {
+                        Settings.plugins.NewPluginsManager.enabled = false;
+                        flushSettings();
+                        modalProps.onClose();
+                    }}
+                >
+                    Don't show on startup
+                </Button>
+
+                <div className={cl("footer-right")}>
+                    <Button
+                        variant="secondary"
+                        onClick={async () => {
+                            await writeKnownSettings();
+                            modalProps.onClose();
+                        }}
+                    >
+                        Dismiss
+                    </Button>
+                    <Button
+                        variant="primary"
+                        onClick={handleContinue}
+                    >
+                        {changes.hasChanges ? "Restart to Apply" : "Done"}
+                    </Button>
+                </div>
+            </ModalFooter>
+        </ModalRoot>
     );
 }
 
@@ -168,13 +190,11 @@ export async function openNewPluginsModal() {
     if ((newPlugins.size || newSettings.size) && !hasSeen) {
         hasSeen = true;
         const modalKey = openModal(modalProps => (
-            <ErrorBoundary noop onError={() => closeModal(modalKey)}>
-                <NewPluginsModal
-                    modalProps={modalProps}
-                    newPlugins={newPlugins}
-                    newSettings={newSettings}
-                />
-            </ErrorBoundary>
+            <NewPluginsModal
+                modalProps={modalProps}
+                newPlugins={newPlugins}
+                newSettings={newSettings}
+            />
         ));
     }
 }
