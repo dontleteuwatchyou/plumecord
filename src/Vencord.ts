@@ -293,12 +293,17 @@ async function init() {
     }
 }
 
-initPluginManager();
-initStyles();
-startAllPlugins(StartAt.Init);
-init();
+if ((window as any).__NIGHTCORD_INITIALIZED__) {
+    console.warn("[Nightcord] Renderer already initialized — skipping duplicate execution.");
+} else {
+    (window as any).__NIGHTCORD_INITIALIZED__ = true;
+    initPluginManager();
+    initStyles();
+    startAllPlugins(StartAt.Init);
+    init();
 
-document.addEventListener("DOMContentLoaded", () => {
-    startAllPlugins(StartAt.DOMContentLoaded);
-}, { once: true });
+    document.addEventListener("DOMContentLoaded", () => {
+        startAllPlugins(StartAt.DOMContentLoaded);
+    }, { once: true });
+}
 

@@ -84,18 +84,15 @@ function inject(resourcesDir) {
     const backupPath = join(resourcesDir, "_app.asar");
     const appDirPath = join(resourcesDir, "app");
 
-    // Vérifier si déjà injecté
-    if (existsSync(appDirPath) && existsSync(join(appDirPath, "index.js"))) {
-        try {
-            const indexContent = readFileSync(join(appDirPath, "index.js"), "utf-8");
-            if (indexContent.includes("Nightcord Injector") || indexContent.includes("Nightcord")) {
-                console.log("\x1b[33m[Nightcord] Déjà injecté ! Utilisez 'pnpm uninject' d'abord pour réinjecter.\x1b[0m");
-                return false;
-            }
-        } catch { }
+    // Nettoyer les fichiers de mods tiers (vencord.asar, equicord.asar, betterdiscord.asar)
+    for (const modAsar of ["vencord.asar", "equicord.asar", "betterdiscord.asar"]) {
+        const p = join(resourcesDir, modAsar);
+        if (existsSync(p)) {
+            try { rmSync(p, { force: true }); } catch {}
+        }
     }
 
-    // Étape 1 : Backup app.asar → _app.asar
+    // Étape 1 : Backup app.asar → _app.asar (si app.asar est un vrai fichier et pas un backup)
     if (existsSync(appAsarPath) && !existsSync(backupPath)) {
         let isDir = false;
         try { isDir = statSync(appAsarPath).isDirectory(); } catch { }
@@ -106,22 +103,29 @@ function inject(resourcesDir) {
             console.log("[Nightcord] Sauvegarde app.asar → _app.asar...");
             renameSync(appAsarPath, backupPath);
         }
-    } else if (!existsSync(backupPath)) {
+    } else if (!existsSync(backupPath) && !existsSync(appAsarPath)) {
         console.error("\x1b[31m[Nightcord] Aucun app.asar ou _app.asar trouvé dans resources !\x1b[0m");
         return false;
     }
 
-    // Étape 2 : Supprimer l'ancien app.asar s'il existe (pourrait être un dossier d'une injection précédente)
-    if (existsSync(appAsarPath)) {
+    // Étape 2 : Supprimer l'ancien app/ et l'ancien app.asar (qui pourrait être un dossier résiduel)
+    if (existsSync(appDirPath)) {
         try {
-            rmSync(appAsarPath, { recursive: true, force: true });
+            rmSync(appDirPath, { recursive: true, force: true });
         } catch (e) {
-            console.error(`\x1b[31m[Nightcord] Impossible de supprimer l'ancien app.asar : ${e.message}\x1b[0m`);
-            return false;
+            console.error(`\x1b[31m[Nightcord] Impossible de supprimer l'ancien app/ : ${e.message}\x1b[0m`);
         }
     }
 
-    // Étape 3 : Créer le dossier app/ avec le loader
+    if (existsSync(appAsarPath)) {
+        let isDir = false;
+        try { isDir = statSync(appAsarPath).isDirectory(); } catch { }
+        if (isDir) {
+            try { rmSync(appAsarPath, { recursive: true, force: true }); } catch { }
+        }
+    }
+
+    // Étape 3 : Créer le dossier app/ avec le loader Nightcord
     mkdirSync(appDirPath, { recursive: true });
 
     writeFileSync(join(appDirPath, "package.json"), JSON.stringify({

@@ -168,21 +168,27 @@ function cleanOldNightcord(isUninstall) {
         const appAsarPath = join(resourcesDir, "app.asar");
 
         try {
-            if (existsSync(appDirPath)) {
-                let shouldDelete = false;
-                try {
-                    const pkgFile = join(appDirPath, "package.json");
-                    if (existsSync(pkgFile)) {
-                        const pkg = JSON.parse(readFileSync(pkgFile, "utf-8"));
-                        if (pkg.name === "nightcord") shouldDelete = true;
-                    } else if (existsSync(backupPath)) {
-                        shouldDelete = true;
-                    }
-                } catch { shouldDelete = true; }
+            // Delete leftover client mod asars (vencord.asar, equicord.asar, etc.)
+            for (const modAsar of ["vencord.asar", "equicord.asar", "betterdiscord.asar"]) {
+                const p = join(resourcesDir, modAsar);
+                if (existsSync(p)) {
+                    try { rmSync(p, { force: true }); } catch {}
+                }
+            }
 
-                if (shouldDelete) {
-                    rmSync(appDirPath, { recursive: true, force: true });
-                    console.log(`[Nightcord] Removed legacy app/ folder in ${resourcesDir}`);
+            if (existsSync(appDirPath)) {
+                rmSync(appDirPath, { recursive: true, force: true });
+                console.log(`[Nightcord] Removed existing client mod app/ folder in ${resourcesDir}`);
+                cleanedAny = true;
+            }
+
+            // If app.asar is a directory (from OpenAsar or manual unpacking), delete it
+            if (existsSync(appAsarPath)) {
+                let isDir = false;
+                try { isDir = statSync(appAsarPath).isDirectory(); } catch {}
+                if (isDir) {
+                    rmSync(appAsarPath, { recursive: true, force: true });
+                    console.log(`[Nightcord] Removed unpacked app.asar directory in ${resourcesDir}`);
                     cleanedAny = true;
                 }
             }

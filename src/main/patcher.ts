@@ -155,7 +155,32 @@ if (!IS_VANILLA) {
 
             options.fullscreenable = true;
 
-            process.env.DISCORD_PRELOAD = original;
+            const safeOriginalPreload = (function resolveDiscordPreload(p: string): string {
+                if (!p) return "";
+                const lower = p.toLowerCase();
+                const isMod = lower.includes("vencord") || lower.includes("equicord") || lower.includes("betterdiscord") || (lower.includes("nightcord") && lower.includes("dist"));
+                if (isMod) {
+                    const candidates = [
+                        join(asarPath, "app_bootstrap", "preload.js"),
+                        join(asarPath, "dist", "preload.js"),
+                        join(asarPath, "preload.js"),
+                        join(asarPath, "..", "..", "modules", "discord_desktop_core", "discord_desktop_core", "core.asar", "app", "mainScreenPreload.js"),
+                        join(dirname(asarPath), "_app.asar", "app_bootstrap", "preload.js"),
+                        join(dirname(asarPath), "app.asar", "app_bootstrap", "preload.js")
+                    ];
+                    for (const cand of candidates) {
+                        try {
+                            if (fsExistsSync(cand) && !fsStatSync(cand).isDirectory()) {
+                                return cand;
+                            }
+                        } catch {}
+                    }
+                    return "";
+                }
+                return p;
+            })(original);
+
+            process.env.DISCORD_PRELOAD = safeOriginalPreload;
 
             super(options);
 
