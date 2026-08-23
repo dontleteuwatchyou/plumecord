@@ -13,7 +13,11 @@ import { registerMediaPermissionsForSession } from "../nightcord/main/mediaPermi
 import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
 import { RendererSettings } from "./settings";
 import { patchTrayMenu } from "./trayMenu";
+import { applyPendingUpdateOnStartup } from "./updater/pendingUpdate";
 import { IS_VANILLA } from "./utils/constants";
+
+// Apply any staged updates before loading components
+applyPendingUpdateOnStartup();
 
 console.log("[Nightcord] Starting up...");
 

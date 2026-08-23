@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, promises as fsp, readFileSync, rmSync, writeFile
 import { join } from "path";
 import { domain } from "../../../DOMAIN.json";
 import { serializeErrors } from "./common";
+import { copyDirectorySync } from "./pendingUpdate";
 
 const GITEA_BASE = `https://source.${domain}`;
 const API_BASE = `${GITEA_BASE}/api/v1/repos/nightcord/nightcord`;
@@ -125,7 +126,10 @@ async function stageUpdate(): Promise<boolean> {
                     return reject(new Error("ZIP extraction failed: " + err.message));
                 }
 
-                // Write marker so nightcord-index.js knows to apply on next boot
+                // Attempt immediate copy for non-locked files (renderer, css, preload)
+                copyDirectorySync(STAGING_DIR, __dirname);
+
+                // Write marker so patcher.ts double-checks and finalizes on next boot
                 try {
                     await fsp.writeFile(PENDING_UPDATE_MARKER, JSON.stringify({
                         version: pendingVersion,
