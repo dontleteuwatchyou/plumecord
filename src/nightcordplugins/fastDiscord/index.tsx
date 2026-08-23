@@ -65,20 +65,11 @@ function buildCss(): string {
     const s = settings.store;
     let css = "";
 
-    if (s.noGifAvatars) {
-        css += `
-[class*="listItem"] [class*="avatar"] img[src*=".gif"],
-[class*="message"] [class*="avatar"] img[src*=".gif"],
-[class*="memberInner"] [class*="avatar"] img[src*=".gif"] {
-    content: url("");
-}
-[class*="listItem"] [class*="avatar"] img,
-[class*="message"] [class*="avatar"] img,
-[class*="memberInner"] [class*="avatar"] img {
-    image-rendering: pixelated;
+    css += `
+body.fastdiscord-bg-mode * {
+    animation-play-state: paused !important;
 }
 `;
-    }
 
     if (s.noAnimatedEmoji) {
         css += `
@@ -132,7 +123,9 @@ img[class*="emoji"][src*="gif"] {
 
     if (s.disableHoverTransitions) {
         css += `
-* {
+[class*="button_"],
+[class*="clickable_"],
+[class*="wrapper_"] {
     transition-duration: 0.001s !important;
 }
 `;
@@ -151,6 +144,7 @@ function injectCss() {
 
 function removeCss() {
     document.getElementById(CSS_ID)?.remove();
+    document.body.classList.remove("fastdiscord-bg-mode");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -170,10 +164,13 @@ let cacheCleanerInterval: ReturnType<typeof setInterval> | null = null;
 function forceGC() {
     try {
         if (typeof (window as any).gc === "function") {
-            (window as any).gc();
-            setTimeout(() => {
-                try { if (typeof (window as any).gc === "function") (window as any).gc(); } catch { }
-            }, 100);
+            if ("requestIdleCallback" in window) {
+                (window as any).requestIdleCallback(() => {
+                    try { (window as any).gc(); } catch { }
+                }, { timeout: 2000 });
+            } else {
+                (window as any).gc();
+            }
         }
     } catch { }
 }
@@ -186,7 +183,6 @@ function startCacheCleaner() {
     stopCacheCleaner();
     cacheCleanerInterval = setInterval(() => {
         if (!settings.store.limitMsgCache) return;
-        // Only use the native GC — no direct manipulation of MessageStore
         forceGC();
     }, cacheCleanIntervalMs());
 }
@@ -199,35 +195,27 @@ function stopCacheCleaner() {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                       Background RAF throttle (FPS)                        */
+/*                       Safe Background Throttling                           */
 /* -------------------------------------------------------------------------- */
 
-let origRAF: typeof requestAnimationFrame | null = null;
-let origCancelRAF: typeof cancelAnimationFrame | null = null;
 let bgFpsActive = false;
-const rafMap = new Map<number, ReturnType<typeof setTimeout>>();
-let rafSeq = 0;
-
-function bgFrameIntervalMs(): number {
-    return settings.store.lowEndMode ? 200 : 100;
-}
 
 function onVisibilityChange() {
     if (document.hidden) {
-        installRafThrottle();
-        forceGC();
+        document.body.classList.add("fastdiscord-bg-mode");
     } else if (document.hasFocus()) {
-        uninstallRafThrottle();
+        document.body.classList.remove("fastdiscord-bg-mode");
     }
 }
 
 function onWindowBlur() {
-    installRafThrottle();
-    forceGC();
+    document.body.classList.add("fastdiscord-bg-mode");
 }
 
 function onWindowFocus() {
-    if (!document.hidden) uninstallRafThrottle();
+    if (!document.hidden) {
+        document.body.classList.remove("fastdiscord-bg-mode");
+    }
 }
 
 function applyBgFpsPatch(enable: boolean) {
@@ -236,54 +224,16 @@ function applyBgFpsPatch(enable: boolean) {
         document.addEventListener("visibilitychange", onVisibilityChange);
         window.addEventListener("blur", onWindowBlur);
         window.addEventListener("focus", onWindowFocus);
-        if (document.hidden || !document.hasFocus()) installRafThrottle();
+        if (document.hidden || !document.hasFocus()) {
+            document.body.classList.add("fastdiscord-bg-mode");
+        }
     } else if (!enable && bgFpsActive) {
         bgFpsActive = false;
         document.removeEventListener("visibilitychange", onVisibilityChange);
         window.removeEventListener("blur", onWindowBlur);
         window.removeEventListener("focus", onWindowFocus);
-        uninstallRafThrottle();
+        document.body.classList.remove("fastdiscord-bg-mode");
     }
-}
-
-function installRafThrottle() {
-    if (origRAF || !bgFpsActive) return;
-    origRAF = window.requestAnimationFrame;
-    origCancelRAF = window.cancelAnimationFrame;
-    let lastT = 0;
-
-    (window as any).requestAnimationFrame = function (cb: FrameRequestCallback) {
-        const id = ++rafSeq;
-        const now = performance.now();
-        const delay = Math.max(0, bgFrameIntervalMs() - (now - lastT));
-        const tId = setTimeout(() => {
-            rafMap.delete(id);
-            lastT = performance.now();
-            cb(performance.now());
-        }, delay);
-        rafMap.set(id, tId);
-        return id;
-    };
-
-    window.cancelAnimationFrame = function (id: number) {
-        const tId = rafMap.get(id);
-        if (tId !== undefined) {
-            clearTimeout(tId);
-            rafMap.delete(id);
-        } else if (origCancelRAF) {
-            origCancelRAF(id);
-        }
-    };
-}
-
-function uninstallRafThrottle() {
-    if (!origRAF) return;
-    window.requestAnimationFrame = origRAF;
-    if (origCancelRAF) window.cancelAnimationFrame = origCancelRAF;
-    origRAF = null;
-    origCancelRAF = null;
-    for (const tId of rafMap.values()) clearTimeout(tId);
-    rafMap.clear();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -482,6 +432,15 @@ export default definePlugin({
             replacement: {
                 match: /autoplay:!0/g,
                 replace: "autoplay:!1"
+            }
+        },
+        // Static avatars instead of GIF
+        {
+            find: /getUserAvatarURL.{0,80}animated/,
+            predicate: () => settings.store.noGifAvatars,
+            replacement: {
+                match: /(animated\s*(?:&&|=).*?)(true)/,
+                replace: (_, pre) => `${pre}false`
             }
         },
         // Disable soundboard preview on hover

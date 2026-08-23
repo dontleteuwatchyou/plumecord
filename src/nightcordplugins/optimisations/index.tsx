@@ -143,20 +143,18 @@ const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const forceGC = () => {
     try {
         if (typeof (window as any).gc === "function") {
-            (window as any).gc();
-            setTimeout(() => {
-                try {
-                    if (typeof (window as any).gc === "function") (window as any).gc();
-                } catch {}
-            }, 100);
+            if ("requestIdleCallback" in window) {
+                (window as any).requestIdleCallback(() => {
+                    try { (window as any).gc(); } catch {}
+                }, { timeout: 2000 });
+            } else {
+                (window as any).gc();
+            }
         }
     } catch {}
 };
 
 function pruneMessageCaches() {
-    // Only call native V8 GC — do NOT mutate or delete MessageStore._channelMessages directly,
-    // as wiping channel message objects corrupts Discord's internal pagination state (hasMoreBefore)
-    // and causes older DM history to be cut off with a false "start of message history" header.
     forceGC();
 }
 
@@ -175,12 +173,7 @@ function stopCacheCleaner() {
     }
 }
 
-let _origRAF: typeof requestAnimationFrame | null = null;
-let _origCancel: typeof cancelAnimationFrame | null = null;
 let _bgFpsActive = false;
-const BG_FRAME_INTERVAL = 100;
-const _rafMap = new Map<number, any>();
-let _rafSeq = 0;
 
 function applyBgFpsPatch(enable: boolean) {
     if (enable && !_bgFpsActive) {
@@ -188,95 +181,44 @@ function applyBgFpsPatch(enable: boolean) {
         document.addEventListener("visibilitychange", _onVisChange);
         window.addEventListener("blur", _onBlur);
         window.addEventListener("focus", _onFocus);
-        if (document.hidden || !document.hasFocus()) _installRafThrottle();
+        if (document.hidden || !document.hasFocus()) {
+            document.body.classList.add("nightcord-opti-bg-mode");
+        }
     } else if (!enable && _bgFpsActive) {
         _bgFpsActive = false;
         document.removeEventListener("visibilitychange", _onVisChange);
         window.removeEventListener("blur", _onBlur);
         window.removeEventListener("focus", _onFocus);
-        _uninstallRafThrottle();
+        document.body.classList.remove("nightcord-opti-bg-mode");
     }
 }
 
 function _onVisChange() {
     if (document.hidden) {
-        _installRafThrottle();
-        if (limitMsgCache) pruneMessageCaches();
+        document.body.classList.add("nightcord-opti-bg-mode");
     } else if (document.hasFocus()) {
-        _uninstallRafThrottle();
+        document.body.classList.remove("nightcord-opti-bg-mode");
     }
 }
 
 function _onBlur() {
-    _installRafThrottle();
-    if (limitMsgCache) pruneMessageCaches();
+    document.body.classList.add("nightcord-opti-bg-mode");
 }
 
 function _onFocus() {
     if (!document.hidden) {
-        _uninstallRafThrottle();
+        document.body.classList.remove("nightcord-opti-bg-mode");
     }
-}
-
-function _installRafThrottle() {
-    if (_origRAF || !_bgFpsActive) return;
-    _origRAF = window.requestAnimationFrame;
-    _origCancel = window.cancelAnimationFrame;
-    let _lastT = 0;
-    (window as any).requestAnimationFrame = function (cb: FrameRequestCallback) {
-        const id = ++_rafSeq;
-        const now = performance.now();
-        const delay = Math.max(0, BG_FRAME_INTERVAL - (now - _lastT));
-        const tId = setTimeout(() => {
-            _rafMap.delete(id);
-            _lastT = performance.now();
-            cb(performance.now());
-        }, delay);
-        _rafMap.set(id, tId);
-        return id;
-    };
-    window.cancelAnimationFrame = function (id: number) {
-        const tId = _rafMap.get(id);
-        if (tId !== undefined) {
-            clearTimeout(tId);
-            _rafMap.delete(id);
-        } else if (_origCancel) {
-            _origCancel(id);
-        }
-    };
-}
-
-function _uninstallRafThrottle() {
-    if (!_origRAF) return;
-    window.requestAnimationFrame = _origRAF;
-    if (_origCancel) window.cancelAnimationFrame = _origCancel;
-    _origRAF = null;
-    _origCancel = null;
-    for (const tId of _rafMap.values()) {
-        clearTimeout(tId);
-    }
-    _rafMap.clear();
 }
 
 const CSS_ID = "nightcord-opti-css";
 
 function buildAndInjectCss() {
-    let css = "";
-
-    if (noGifAvatars) {
-        css += `
-[class*="listItem"] [class*="avatar"] img[src*=".gif"],
-[class*="message"] [class*="avatar"] img[src*=".gif"],
-[class*="memberInner"] [class*="avatar"] img[src*=".gif"] {
-    content: url("");
-}
-[class*="listItem"] [class*="avatar"] img,
-[class*="message"] [class*="avatar"] img,
-[class*="memberInner"] [class*="avatar"] img {
-    image-rendering: pixelated;
+    let css = `
+body.nightcord-opti-bg-mode * {
+    animation-play-state: paused !important;
 }
 `;
-    }
 
     if (noAnimatedEmoji) {
         css += `
@@ -333,6 +275,7 @@ img[class*="emoji"][src*="gif"] {
 
 function removeCss() {
     document.getElementById(CSS_ID)?.remove();
+    document.body.classList.remove("nightcord-opti-bg-mode");
 }
 
 export default definePlugin({
