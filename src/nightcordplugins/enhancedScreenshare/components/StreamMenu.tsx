@@ -14,12 +14,14 @@ export interface StreamAudioSettingsState {
     selectedAppPids: number[];
     selectedDeviceId: string | null;
     isolateDiscordVoice: boolean;
+    appVolumes: Record<number, number>;
 }
 
 export const streamAudioState: StreamAudioSettingsState = {
     selectedAppPids: [],
     selectedDeviceId: "default",
-    isolateDiscordVoice: true
+    isolateDiscordVoice: true,
+    appVolumes: {}
 };
 
 export function applyStreamAudio(pids?: number[] | string | null, deviceId?: string | null) {
@@ -56,6 +58,33 @@ export function applyStreamAudio(pids?: number[] | string | null, deviceId?: str
     } catch (err) {
         console.error("[EnhancedScreenshare] Failed to apply stream audio:", err);
     }
+}
+
+function AppVolumeSlider({ pid, name }: { pid: number; name: string; }) {
+    const currentVolume = streamAudioState.appVolumes[pid] ?? 100;
+    const [val, setVal] = React.useState(currentVolume);
+
+    return (
+        <Menu.MenuControlItem
+            id={`enhanced-screenshare-vol-ctrl-${pid}`}
+            label={`${name} (${val}%)`}
+            control={(props: any, ref: any) => (
+                <Menu.MenuSliderControl
+                    {...props}
+                    ref={ref}
+                    value={val}
+                    minValue={0}
+                    maxValue={200}
+                    renderValue={() => `${val}%`}
+                    onChange={(newVal: number) => {
+                        const rounded = Math.round(newVal);
+                        setVal(rounded);
+                        streamAudioState.appVolumes[pid] = rounded;
+                    }}
+                />
+            )}
+        />
+    );
 }
 
 export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (children) => {
@@ -106,17 +135,43 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
             <Menu.MenuSeparator />
             {appsList.length > 0 ? (
                 appsList.map(app => (
-                    <Menu.MenuCheckboxItem
+                    <Menu.MenuItem
                         key={app.pid}
-                        id={`enhanced-screenshare-app-${app.pid}`}
+                        id={`enhanced-screenshare-app-menu-${app.pid}`}
                         label={app.name}
-                        checked={streamAudioState.selectedAppPids.includes(app.pid)}
-                        action={() => toggleAppPid(app.pid)}
-                    />
+                    >
+                        <Menu.MenuCheckboxItem
+                            id={`enhanced-screenshare-app-chk-${app.pid}`}
+                            label="Include in Stream"
+                            checked={streamAudioState.selectedAppPids.includes(app.pid)}
+                            action={() => toggleAppPid(app.pid)}
+                        />
+                        <Menu.MenuSeparator />
+                        <AppVolumeSlider pid={app.pid} name={app.name} />
+                    </Menu.MenuItem>
                 ))
             ) : (
                 <Menu.MenuItem
                     id="enhanced-screenshare-app-empty"
+                    label="No running applications detected"
+                    disabled={true}
+                />
+            )}
+        </Menu.MenuItem>
+    );
+
+    const volumeMixerItems = (
+        <Menu.MenuItem
+            id="enhanced-screenshare-volume-mixer"
+            label="Application Volume Mixer"
+        >
+            {appsList.length > 0 ? (
+                appsList.map(app => (
+                    <AppVolumeSlider key={app.pid} pid={app.pid} name={app.name} />
+                ))
+            ) : (
+                <Menu.MenuItem
+                    id="enhanced-screenshare-vol-empty"
                     label="No running applications detected"
                     disabled={true}
                 />
@@ -196,6 +251,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
         <Menu.MenuSeparator />,
         <Menu.MenuGroup label="Enhanced Screenshare">
             {appMenuItems}
+            {volumeMixerItems}
             {deviceMenuItems}
             {voiceIsolateItem}
             {previewGalleryItem}

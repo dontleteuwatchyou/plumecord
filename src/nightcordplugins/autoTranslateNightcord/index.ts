@@ -4374,6 +4374,8 @@ export const translations: TranslationMap = {
     "New Profile": {"en":"New Profile","fr":"Nouveau profil","ar":"ملف شخصي جديد","es":"Nuevo perfil","ru":"Новый профиль","zh":"新建配置"},
     "Profile Name": {"en":"Profile Name","fr":"Nom du profil","ar":"اسم الملف الشخصي","es":"Nombre del perfil","ru":"Имя профиля","zh":"配置名称"},
     "Enhanced Screenshare": {"en":"Enhanced Screenshare","fr":"Stream Amélioré","ar":"مشاركة شاشة محسنة","es":"Transmisión mejorada","ru":"Улучшенный стрим","zh":"增强型屏幕共享"},
+    "Application Volume Mixer": {"en":"Application Volume Mixer","fr":"Mixeur de volume des applications","ar":"خلاط مستوى صوت التطبيقات","es":"Mezclador de volumen de aplicaciones","ru":"Микшер громкости приложений","zh":"应用程序音量混音器"},
+    "Include in Stream": {"en":"Include in Stream","fr":"Inclure dans le stream","ar":"تضمين في البث","es":"Incluir en la transmisión","ru":"Включить в стрим","zh":"包含在直播中"},
     "Okay": {"en":"Okay","fr":"D'accord","ar":"حسناً","es":"De acuerdo","ru":"Понятно","zh":"好的"},
 };
 
