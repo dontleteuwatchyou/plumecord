@@ -1,14 +1,20 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import "./createTheme.css";
 
 import { ErrorCard } from "@components/ErrorCard";
+import { FormSwitch } from "@components/FormSwitch";
 import { Paragraph } from "@components/Paragraph";
-// relativeLuminance inlined (clientTheme removed)
+import { classNameFactory } from "@utils/css";
+import { Margins } from "@utils/margins";
+import { findByCodeLazy, findStoreLazy } from "@webpack";
+import { Button, React, TextInput, ThemeStore, useEffect, useState, useStateFromStores } from "@webpack/common";
+import { t } from "../../../../nightcordplugins/autoTranslateNightcord";
+
 function relativeLuminance(hex: string): number {
     const toLinear = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
     const r = toLinear(parseInt(hex.slice(0, 2), 16) / 255);
@@ -16,11 +22,6 @@ function relativeLuminance(hex: string): number {
     const b = toLinear(parseInt(hex.slice(4, 6), 16) / 255);
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
-import { classNameFactory } from "@utils/css";
-import { Margins } from "@utils/margins";
-import { findByCodeLazy, findStoreLazy } from "@webpack";
-import { Button, ThemeStore, useStateFromStores } from "@webpack/common";
-import { React, useEffect, useRef, useState } from "@webpack/common";
 
 const saveClientTheme = findByCodeLazy('type:"UNSYNCED_USER_SETTINGS_UPDATE', '"system"===');
 const NitroThemeStore = findStoreLazy("ClientThemesBackgroundStore");
@@ -30,8 +31,9 @@ const cl = classNameFactory("vc-ct-");
 const colorPresets = [
     "#1E1514", "#172019", "#13171B", "#1C1C28", "#402D2D",
     "#3A483D", "#344242", "#313D4B", "#2D2F47", "#322B42",
-    "#3C2E42", "#422938", "#b6908f", "#bfa088", "#d3c77d",
-    "#86ac86", "#88aab3", "#8693b5", "#8a89ba", "#ad94bb",
+    "#3C2E42", "#422938", "#B6908F", "#BFA088", "#D3C77D",
+    "#86AC86", "#88AAB3", "#8693B5", "#8A89BA", "#AD94BB",
+    "#5865F2", "#57F287", "#FEE75C", "#EB459E", "#ED4245"
 ];
 
 // ── Storage key ──────────────────────────────────────────
@@ -69,7 +71,6 @@ function loadSettings(): ThemeSettings {
 
 function saveSettings(s: ThemeSettings) {
     try {
-        // Don't save the base64 image in localStorage (too large) — save everything else
         const toSave = { ...s, bgImage: null };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch { /* ignore */ }
@@ -83,9 +84,10 @@ const ID_GLASS = "vc-ct-glass";
 
 // ── Helpers ──────────────────────────────────────────────
 function hexToHSL(hex: string) {
-    const r = parseInt(hex.substring(0, 2), 16) / 255;
-    const g = parseInt(hex.substring(2, 4), 16) / 255;
-    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    const cleanHex = hex.replace("#", "").padStart(6, "0");
+    const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
+    const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
+    const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
     const cMax = Math.max(r, g, b), cMin = Math.min(r, g, b);
     const delta = cMax - cMin;
     let hue = 0, saturation = 0;
@@ -179,11 +181,9 @@ function applyBackground(image: string | null, blur: number, size: string) {
   background-repeat: no-repeat !important;
   background-attachment: fixed !important;`;
     getStyle(ID_BG).textContent = `
-/* Set image directly on html element */
 html {
   ${bgCss}
 }
-/* Make all Discord root layers transparent so image shows through */
 [class*="baseLayer_"],
 [class*="app_"],
 [class*="bg_"],
@@ -223,9 +223,7 @@ export function removeAll() {
 
 // ── Auto-apply on load if previously enabled ─────────────
 (function initOnLoad() {
-    // Toujours nettoyer les styles résiduels au démarrage
     [ID_VARS, ID_OVERRIDES, ID_BG, ID_GLASS].forEach(id => document.getElementById(id)?.remove());
-    // Re-appliquer seulement si enabled
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
@@ -233,7 +231,6 @@ export function removeAll() {
         if (s.enabled) {
             applyColorVars(s.color);
             applyColorOverrides(s.color).catch(console.error);
-            // Ne pas appliquer glass/bg au démarrage pour éviter les artefacts visuels
         }
     } catch { /* ignore */ }
 })();
@@ -241,7 +238,7 @@ export function removeAll() {
 // ── Main Tab ─────────────────────────────────────────────
 export function CreateThemeTab() {
     const [settings, setSettingsState] = useState<ThemeSettings>(() => loadSettings());
-    const fileRef = useRef<HTMLInputElement>(null);
+    const [hexInput, setHexInput] = useState(() => `#${settings.color}`);
 
     // ClientTheme warnings
     const currentTheme = useStateFromStores([ThemeStore], () => ThemeStore.theme);
@@ -259,25 +256,21 @@ export function CreateThemeTab() {
 
     function setDiscordTheme(theme: string) { saveClientTheme({ theme }); }
 
-    // Update a single field, save and re-apply
-    function update<K extends keyof ThemeSettings>(key: K, val: ThemeSettings[K]) {
+    function updateColor(hexValue: string) {
+        const clean = hexValue.replace("#", "").toUpperCase();
+        setHexInput(`#${clean}`);
         setSettingsState(prev => {
-            const next = { ...prev, [key]: val };
+            const next = { ...prev, color: clean };
             saveSettings(next);
-            // Always apply color/glass when enabled, always apply bg-related when image exists
             if (next.enabled) {
                 applyColorVars(next.color);
                 applyColorOverrides(next.color).catch(console.error);
                 applyGlass(next.transparency, next.panelBlur);
             }
-            // Apply background immediately if image present (regardless of enabled)
-            if (next.bgImage) applyBackground(next.bgImage, next.bgBlur, next.bgSize);
-            else removeStyle(ID_BG);
             return next;
         });
     }
 
-    // Toggle enabled
     function toggleEnabled(enabled: boolean) {
         setSettingsState(prev => {
             const next = { ...prev, enabled };
@@ -288,171 +281,114 @@ export function CreateThemeTab() {
         });
     }
 
-    async function applyWindowMaterial(material: ThemeSettings["windowMaterial"]) {
-        if (IS_WEB) return;
-        // Save to Equicord settings so patcher.ts reads it on next Discord start
-        try {
-            const s = VencordNative.settings.get();
-            (s as any).windowMaterial = material;
-            await VencordNative.settings.set(s as any);
-        } catch (e) { console.error("[CreateTheme] save windowMaterial failed", e); }
-        // Apply immediately to current window via IPC
-        if (VencordNative.window?.setBackgroundMaterial) {
-            VencordNative.window.setBackgroundMaterial(material).catch(console.error);
-        }
-    }
-
-    // Apply on mount
     useEffect(() => {
         if (settings.enabled) {
             applyColorVars(settings.color);
             applyColorOverrides(settings.color).catch(console.error);
             applyGlass(settings.transparency, settings.panelBlur);
         }
-        // Always restore bg if image exists in state
-        if (settings.bgImage) applyBackground(settings.bgImage, settings.bgBlur, settings.bgSize);
-        // Restore window material
-        if (settings.windowMaterial !== "none") applyWindowMaterial(settings.windowMaterial);
     }, []);
 
-    function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => {
-            const img = ev.target?.result as string;
-            setSettingsState(prev => {
-                const next = { ...prev, bgImage: img };
-                // Don't save image to localStorage (too large)
-                saveSettings({ ...next, bgImage: null });
-                // Always apply background immediately, regardless of enabled toggle
-                applyBackground(img, next.bgBlur, next.bgSize);
-                return next;
-            });
-        };
-        reader.readAsDataURL(file);
-    }
-
-    function removeImage() {
-        setSettingsState(prev => {
-            const next = { ...prev, bgImage: null };
-            saveSettings(next);
-            applyBackground(null, 0, "cover");
-            return next;
-        });
-        if (fileRef.current) fileRef.current.value = "";
-    }
+    const formattedColor = `#${settings.color.replace("#", "")}`;
 
     return (
         <div className={cl("root")}>
+            {/* ── Theme Color Card ── */}
+            <div className={cl("card")}>
+                <div className={cl("header-group")}>
+                    <div className={cl("card-title")}>{t("Theme Color")}</div>
+                    <div className={cl("card-desc")}>{t("Customize the tint color across all Discord panels, headers, and UI elements.")}</div>
+                </div>
 
-            {/* ── Color Section ── */}
-            <div className={cl("section")}>
-                <div className={cl("section-title")}>Theme Color</div>
-                <div className={cl("color-row")} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div className={cl("color-labels")} style={{ flex: 1 }}>
-                        <span className={cl("label")} style={{ fontWeight: 600, display: "block" }}>Color</span>
-                        <span className={cl("sublabel")} style={{ fontSize: 12, opacity: 0.7 }}>Tints every panel, button and link</span>
+                <div className={cl("color-picker-row")}>
+                    <div className={cl("color-info")}>
+                        <div className={cl("color-title")}>{t("Primary Accent")}</div>
+                        <div className={cl("color-sub")}>{t("Tints panels, sidebar, buttons, and accents")}</div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <input
-                            type="color"
-                            value={"#" + settings.color}
-                            onChange={e => update("color", e.target.value.replace("#", ""))}
-                            style={{
-                                width: 40,
-                                height: 32,
-                                padding: 0,
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                backgroundColor: "transparent"
-                            }}
-                        />
-                        <input
-                            type="text"
-                            value={"#" + settings.color}
-                            onChange={e => {
-                                const val = e.target.value.replace("#", "");
-                                if (/^[0-9A-Fa-f]{0,6}$/.test(val)) {
-                                    if (val.length === 6) update("color", val);
-                                }
-                            }}
-                            style={{
-                                width: 80,
-                                padding: "4px 8px",
-                                borderRadius: 4,
-                                border: "1px solid var(--border-medium)",
-                                backgroundColor: "var(--input-background)",
-                                color: "var(--text-normal)",
-                                fontSize: 14
-                            }}
-                        />
+                    <div className={cl("color-controls")}>
+                        <div className={cl("color-swatch-wrapper")} style={{ backgroundColor: formattedColor }}>
+                            <input
+                                type="color"
+                                className={cl("native-color-input")}
+                                value={formattedColor}
+                                onChange={e => updateColor(e.target.value)}
+                            />
+                        </div>
+                        <div style={{ width: 110 }}>
+                            <TextInput
+                                size="small"
+                                value={hexInput}
+                                onChange={(val: string) => {
+                                    setHexInput(val);
+                                    const clean = val.replace("#", "");
+                                    if (/^[0-9A-Fa-f]{6}$/.test(clean)) {
+                                        updateColor(clean);
+                                    }
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
-                    {colorPresets.map(preset => (
-                        <div
-                            key={preset}
-                            onClick={() => update("color", preset.replace("#", ""))}
-                            style={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: "50%",
-                                backgroundColor: preset,
-                                cursor: "pointer",
-                                border: settings.color === preset.replace("#", "") ? "2px solid white" : "1px solid rgba(255,255,255,0.2)"
-                            }}
-                        />
-                    ))}
+
+                <div className={cl("presets-section")}>
+                    <div className={cl("presets-label")}>{t("Color Presets")}</div>
+                    <div className={cl("presets-grid")}>
+                        {colorPresets.map(preset => {
+                            const cleanPreset = preset.replace("#", "").toUpperCase();
+                            const isSelected = settings.color.toUpperCase() === cleanPreset;
+                            return (
+                                <div
+                                    key={preset}
+                                    className={`${cl("preset-chip")} ${isSelected ? "active" : ""}`}
+                                    style={{ backgroundColor: preset }}
+                                    onClick={() => updateColor(cleanPreset)}
+                                    title={preset}
+                                />
+                            );
+                        })}
+                    </div>
                 </div>
-                <Button
-                    size={Button.Sizes.SMALL}
-                    color={Button.Colors.PRIMARY}
-                    look={Button.Looks.FILLED}
-                    onClick={() => update("color", "313338")}
-                    style={{ marginTop: 12, width: "fit-content" }}
-                >
-                    Reset Color
-                </Button>
+
+                <div className={cl("actions-row")}>
+                    <Button
+                        size={Button.Sizes.SMALL}
+                        color={Button.Colors.PRIMARY}
+                        look={Button.Looks.FILLED}
+                        onClick={() => updateColor("313338")}
+                    >
+                        {t("Reset to Default")}
+                    </Button>
+                </div>
 
                 {(contrastWarning || nitroThemeEnabled) && (
                     <ErrorCard className={Margins.top8}>
-                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Your theme won't look good!</div>
-                        {contrastWarning && <Paragraph>› Selected color won't contrast well with text</Paragraph>}
-                        {nitroThemeEnabled && <Paragraph>› Nitro themes aren't supported</Paragraph>}
-                        <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>{t("Contrast Warning")}</div>
+                        {contrastWarning && <Paragraph>› {t("Selected color may not contrast well with text")}</Paragraph>}
+                        {nitroThemeEnabled && <Paragraph>› {t("Nitro themes are not supported with custom color tinting")}</Paragraph>}
+                        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                             {contrastWarning && fixableContrast &&
                                 <Button onClick={() => setDiscordTheme(oppositeTheme)} color={Button.Colors.RED} size={Button.Sizes.SMALL}>
-                                    Switch to {oppositeTheme} mode
+                                    {t("Switch to {theme} Mode").replace("{theme}", oppositeTheme)}
                                 </Button>}
                             {nitroThemeEnabled &&
                                 <Button onClick={() => setDiscordTheme(currentTheme)} color={Button.Colors.RED} size={Button.Sizes.SMALL}>
-                                    Disable Nitro Theme
+                                    {t("Disable Nitro Theme")}
                                 </Button>}
                         </div>
                     </ErrorCard>
                 )}
             </div>
 
-            {/* Background Image, Glass Effect et Window Effect supprimés */}
-
-            {/* ── Enable toggle ── */}
-            <div className={cl("section")}>
-                <label className={cl("live-toggle")}>
-                    <input
-                        type="checkbox"
-                        checked={settings.enabled}
-                        onChange={e => toggleEnabled(e.target.checked)}
-                    />
-                    <span>Enable theme</span>
-                </label>
-                <div className={cl("section-desc")}>
-                    When enabled, your theme stays active even after closing this tab or restarting Discord
-                    (color &amp; glass only — background image must be re-uploaded each session).
-                </div>
+            {/* ── Enable Theme Toggle Card ── */}
+            <div className={cl("card")}>
+                <FormSwitch
+                    title={t("Enable Theme")}
+                    description={t("When enabled, your custom theme stays active even after closing settings or restarting Discord.")}
+                    value={settings.enabled}
+                    onChange={toggleEnabled}
+                    hideBorder
+                />
             </div>
-
         </div>
     );
 }
