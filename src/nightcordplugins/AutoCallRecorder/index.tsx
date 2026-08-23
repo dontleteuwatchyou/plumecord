@@ -8,13 +8,13 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, IPluginOptionComponentProps } from "@utils/types";
 import { FluxDispatcher, SelectedChannelStore, React, Avatar, IconUtils, UserStore, RelationshipStore, Toasts } from "@webpack/common";
 import { Button, TextInput } from "@webpack/common/components";
-import { findByProps } from "@webpack";
+import { findByPropsLazy, findStoreLazy } from "@webpack";
 import { SafeSearchableSelect } from "@components/SafeSearchableSelect";
 import { startRecording, stopRecording, isCurrentlyRecording, getRecordingDurationMs } from "./recorder";
 import { t } from "../autoTranslateNightcord";
 import "./style.css";
 
-const VoiceStateStore = findByProps("getVoiceState");
+const VoiceStateStore = findStoreLazy("VoiceStateStore") ?? findByPropsLazy("getVoiceState");
 
 const BlacklistSelector = (props: IPluginOptionComponentProps) => {
     const friends = RelationshipStore?.getFriendIDs?.()?.map((id: string) => UserStore?.getUser?.(id))?.filter(Boolean) || [];

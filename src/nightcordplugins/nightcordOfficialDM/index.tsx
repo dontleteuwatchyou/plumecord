@@ -646,10 +646,18 @@ function disconnectMastodonStreaming() {
 async function fetchMastodonFeed(): Promise<any[]> {
     for (const url of API_URLS) {
         try {
-            const res = await fetch(url);
-            if (res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data) && data.length > 0) return data;
+            if (typeof VencordNative !== "undefined" && (VencordNative as any)?.http?.fetch) {
+                const res = await (VencordNative as any).http.fetch(url);
+                if (res?.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) return data;
+                }
+            } else {
+                const res = await fetch(url).catch(() => null);
+                if (res && res.ok) {
+                    const data = await res.json().catch(() => null);
+                    if (Array.isArray(data) && data.length > 0) return data;
+                }
             }
         } catch {}
     }
