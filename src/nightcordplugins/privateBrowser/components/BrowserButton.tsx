@@ -958,18 +958,6 @@ function getOrCreateBrowserContainer(): HTMLDivElement {
         const style = document.createElement("style");
         style.id = "browser-global-style";
         style.textContent = `
-            body.browser-is-open section[class^="panels_"],
-            body.browser-is-open div[class^="container_"]:has(> div[class^="nameTag_"]) {
-                display: none !important;
-            }
-            body.browser-is-open div[class*="wrapper_"][class*="overlay_"] {
-                opacity: 0 !important;
-                visibility: hidden !important;
-            }
-            body.browser-is-open #browser-button div[class*="wrapper_"][class*="overlay_"] {
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
             #browser-ext-panel::-webkit-scrollbar { width: 6px; }
             #browser-ext-panel::-webkit-scrollbar-track { background: transparent; }
             #browser-ext-panel::-webkit-scrollbar-thumb { background: #404249; border-radius: 3px; }

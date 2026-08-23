@@ -248,18 +248,6 @@ function getOrCreateVanillaIframe(): HTMLDivElement {
         const style = document.createElement("style");
         style.id = "ytd-global-style";
         style.textContent = `
-            body.ytd-is-open section[class^="panels_"],
-            body.ytd-is-open div[class^="container_"]:has(> div[class^="nameTag_"]) {
-                display: none !important;
-            }
-            body.ytd-is-open div[class*="wrapper_"][class*="overlay_"] {
-                opacity: 0 !important;
-                visibility: hidden !important;
-            }
-            body.ytd-is-open #youtube-button div[class*="wrapper_"][class*="overlay_"] {
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
             #ytd-global-iframe::-webkit-scrollbar {
                 display: none !important;
                 width: 0 !important;
