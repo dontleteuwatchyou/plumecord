@@ -23,6 +23,8 @@ import { contextBridge, webFrame } from "electron/renderer";
 import VencordNative, { invoke, sendSync } from "./VencordNative";
 
 contextBridge.exposeInMainWorld("VencordNative", VencordNative);
+contextBridge.exposeInMainWorld("EquicordNative", VencordNative);
+contextBridge.exposeInMainWorld("NightcordNative", VencordNative);
 
 // Discord
 if (location.protocol !== "data:") {

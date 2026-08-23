@@ -103,7 +103,7 @@ define(Function.prototype, "m", {
         // Ensure this is likely one of Discord main Webpack instances.
         // We may catch Discord bundled libs, React Devtools or other extensions Webpack instances here.
         const { stack } = new Error();
-        if (!stack?.includes("http") || stack.match(/at \d+? \(/) || !String(this).includes("exports:{}")) {
+        if ((!stack?.includes("http") && !stack?.includes("discord") && !stack?.includes("assets") && !stack?.includes("app.asar")) || stack.match(/at \d+? \(/) || !String(this).includes("exports:{}")) {
             return;
         }
 

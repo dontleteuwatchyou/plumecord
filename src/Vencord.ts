@@ -297,6 +297,16 @@ if ((window as any).__NIGHTCORD_INITIALIZED__) {
     console.warn("[Nightcord] Renderer already initialized — skipping duplicate execution.");
 } else {
     (window as any).__NIGHTCORD_INITIALIZED__ = true;
+
+    try {
+        const g: any = typeof window !== "undefined" ? window : globalThis;
+        g.Equicord = g.Vencord;
+        g.Nightcord = g.Vencord;
+        g.VencordNative ??= g.EquicordNative ?? g.NightcordNative;
+        g.EquicordNative ??= g.VencordNative;
+        g.NightcordNative ??= g.VencordNative;
+    } catch {}
+
     initPluginManager();
     initStyles();
     startAllPlugins(StartAt.Init);
