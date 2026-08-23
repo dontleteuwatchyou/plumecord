@@ -756,6 +756,7 @@ function DynamicIsland({ onlySoundCord }: { onlySoundCord?: boolean }) {
     };
 
     const primaryIsPlaying = primary === IslandType.Spotify ? isPlaying : primary === IslandType.SoundCord ? soundCordState.isPlaying : false;
+    const now = new Date();
     const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateString = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
