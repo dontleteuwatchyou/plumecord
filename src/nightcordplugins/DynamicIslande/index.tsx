@@ -647,13 +647,6 @@ function DynamicIsland({ onlySoundCord }: { onlySoundCord?: boolean }) {
     const primaryChannelId = primary === IslandType.Voice ? channelId : undefined;
     const idle = !track && !scTrack && !channelId && !stream;
 
-    const [now, setNow] = useState(new Date());
-    useEffect(() => {
-        if (!idle) return;
-        const intervalId = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(intervalId);
-    }, [idle]);
-
     useEffect(() => {
         if (streamKey) setStreamStartedAt(Date.now());
     }, [streamKey]);

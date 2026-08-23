@@ -377,10 +377,21 @@ const getChannelEventInfo = (event: ChannelFluxEvent): ChannelInfo => {
     };
 };
 
+const MAX_SEEN_SERVER_USERS = 500;
+
 const rememberServerUser = (userId: string, guildId?: string) => {
     if (isCurrentUser(userId)) return;
     if (shouldIgnoreUser(userId)) return;
     if (!guildId || !serverTargetIds.has(guildId)) return;
+
+    if (!seenServerUsers.has(userId) && seenServerUsers.size >= MAX_SEEN_SERVER_USERS) {
+        const oldest = seenServerUsers.keys().next().value;
+        if (oldest) {
+            seenServerUsers.delete(oldest);
+            lastStatuses.delete(oldest);
+            lastActivities.delete(oldest);
+        }
+    }
 
     let guildIds = seenServerUsers.get(userId);
     if (!guildIds) {

@@ -56,11 +56,23 @@ export type MessageEditListener = (channelId: string, messageId: string, message
 const sendListeners = new Set<MessageSendListener>();
 const editListeners = new Set<MessageEditListener>();
 
+async function runWithTimeout<T>(fn: () => Promisable<T>, timeoutMs = 2500): Promise<T | undefined> {
+    let timer: any;
+    const timeoutPromise = new Promise<undefined>(resolve => {
+        timer = setTimeout(resolve, timeoutMs);
+    });
+    try {
+        return await Promise.race([Promise.resolve(fn()), timeoutPromise]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 export async function _handlePreSend(channelId: string, messageObj: MessageObject, options: MessageOptions, replyOptions: MessageReplyOptions) {
     options.replyOptions = replyOptions;
     for (const listener of sendListeners) {
         try {
-            const result = await listener(channelId, messageObj, options);
+            const result = await runWithTimeout(() => listener(channelId, messageObj, options));
             if (result?.cancel) {
                 return true;
             }
@@ -74,7 +86,7 @@ export async function _handlePreSend(channelId: string, messageObj: MessageObjec
 export async function _handlePreEdit(channelId: string, messageId: string, messageObj: MessageObject) {
     for (const listener of editListeners) {
         try {
-            const result = await listener(channelId, messageId, messageObj);
+            const result = await runWithTimeout(() => listener(channelId, messageId, messageObj));
             if (result?.cancel) {
                 return true;
             }

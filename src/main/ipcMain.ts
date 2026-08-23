@@ -161,10 +161,14 @@ function runPowershellScript(psScript: string): Promise<void> {
                 "-NoProfile", "-ExecutionPolicy", "Bypass",
                 "-File", tempFile
             ]);
-            child.on("error", reject);
+            child.on("error", (err: any) => {
+                try { unlinkSync(tempFile); } catch {}
+                try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                reject(err);
+            });
             child.on("exit", code => {
                 try { unlinkSync(tempFile); } catch {}
-try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
                 if (code === 0) resolve();
                 else reject(new Error(`PowerShell exit code ${code}`));
             });
@@ -1166,9 +1170,9 @@ ipcMain.handle(IpcEvents.GET_QUICK_CSS, (event) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
     return readCss();
 });
-ipcMain.handle(IpcEvents.SET_QUICK_CSS, (event, css) => {
+ipcMain.handle(IpcEvents.SET_QUICK_CSS, async (event, css) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
-    return writeFileSync(QUICK_CSS_PATH, css);
+    return writeFile(QUICK_CSS_PATH, css);
 });
 
 ipcMain.handle(IpcEvents.GET_THEMES_DIR, (event) => {
@@ -1227,12 +1231,14 @@ ipcMain.handle(IpcEvents.INIT_FILE_WATCHERS, (event) => {
     }).catch(() => { });
 
     const themesWatcher = watch(THEMES_DIR, { persistent: false }, debounce(() => {
-        sender.postMessage(IpcEvents.THEME_UPDATE, void 0);
+        if (!sender.isDestroyed())
+            sender.postMessage(IpcEvents.THEME_UPDATE, void 0);
     }));
 
     if (IS_DEV) {
         rendererCssWatcher = watch(RENDERER_CSS_PATH, { persistent: false }, async () => {
-            sender.postMessage(IpcEvents.RENDERER_CSS_UPDATE, await readFile(RENDERER_CSS_PATH, "utf-8"));
+            if (!sender.isDestroyed())
+                sender.postMessage(IpcEvents.RENDERER_CSS_UPDATE, await readFile(RENDERER_CSS_PATH, "utf-8"));
         });
     }
 
@@ -1270,6 +1276,7 @@ ipcMain.handle(IpcEvents.OPEN_MONACO_EDITOR, async (event) => {
         return;
     }
 
+    const monacoSession = session.fromPartition("monaco-editor");
     monacoWin = new BrowserWindow({
         title: "Nightcord QuickCSS Editor",
         autoHideMenuBar: true,
@@ -1278,19 +1285,27 @@ ipcMain.handle(IpcEvents.OPEN_MONACO_EDITOR, async (event) => {
             preload: join(__dirname, "preload.js"),
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: false
+            sandbox: false,
+            partition: "monaco-editor"
         }
     });
 
-    monacoWin.once("closed", () => { monacoWin = null; });
-
-    monacoWin.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const headersListener = (details: any, callback: any) => {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
                 "Content-Security-Policy": ["default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval';"]
             }
         });
+    };
+
+    monacoSession.webRequest.onHeadersReceived(headersListener);
+
+    monacoWin.once("closed", () => {
+        try {
+            monacoSession.webRequest.onHeadersReceived(null as any);
+        } catch {}
+        monacoWin = null;
     });
 
     makeLinksOpenExternally(monacoWin);
@@ -1444,7 +1459,7 @@ ipcMain.handle(IpcEvents.NIGHTCORD_DOWNLOAD_AND_RUN, async (event, url: string) 
     const tmpPath = path.join(os.tmpdir(), "NightcordUpdate-Setup.exe");
 
     await new Promise<void>((resolve, reject) => {
-        https.get(url, (res: any) => {
+        const req = https.get(url, (res: any) => {
             if (res.statusCode !== 200) {
                 res.resume();
                 reject(new Error(`HTTP ${res.statusCode}`));
@@ -1455,7 +1470,11 @@ ipcMain.handle(IpcEvents.NIGHTCORD_DOWNLOAD_AND_RUN, async (event, url: string) 
             file.on("finish", () => file.close(() => resolve()));
             file.on("error", (err: any) => { fs.unlink(tmpPath, () => { }); reject(err); });
             res.on("error", (err: any) => { fs.unlink(tmpPath, () => { }); reject(err); });
-        }).on("error", (err: any) => {
+        });
+        req.setTimeout(30000, () => {
+            req.destroy(new Error("Request timed out after 30 seconds"));
+        });
+        req.on("error", (err: any) => {
             fs.unlink(tmpPath, () => { });
             reject(err);
         });

@@ -48,6 +48,14 @@ function addDecryptedId(id: string) {
         decryptedMessageIds.delete(decryptedMessageIds.values().next().value!);
     }
 }
+
+function setOriginalEncryptedMessage(id: string, value: { channelId: string; content: string; }) {
+    originalEncryptedMessages.set(id, value);
+    if (originalEncryptedMessages.size > MAX_DECRYPTED_CACHE) {
+        const oldestKey = originalEncryptedMessages.keys().next().value;
+        if (oldestKey) originalEncryptedMessages.delete(oldestKey);
+    }
+}
 const decryptingMessageIds = new Set<string>();
 
 function validatePassword(password: string): string[] {
@@ -784,7 +792,7 @@ function decryptMessage(message: any, passedChannelId?: string) {
 
     if (!message.originalEncryptedContent || !isEncryptedMessage(message.originalEncryptedContent)) return;
 
-    originalEncryptedMessages.set(message.id, { channelId, content: message.originalEncryptedContent });
+    setOriginalEncryptedMessage(message.id, { channelId, content: message.originalEncryptedContent });
 
     const encryptedPart = getEncryptedPart(message.originalEncryptedContent);
     const cached = decryptedPlaintextCache.get(`${password}:${encryptedPart}`) ?? decryptedPlaintextCache.get(`${password}:${message.originalEncryptedContent}`);
@@ -873,7 +881,7 @@ function scanAndDecrypt(obj: any, parentChannelId?: string, depth = 0, visited =
                         obj.originalEncryptedContent = rawEncrypted;
                     }
                     if (rawEncrypted) {
-                        originalEncryptedMessages.set(obj.id, { channelId: currentChannelId, content: rawEncrypted });
+                        setOriginalEncryptedMessage(obj.id, { channelId: currentChannelId, content: rawEncrypted });
                     }
                     obj.content = cached;
                     try { delete obj._contentParsed; } catch {}
@@ -1093,14 +1101,27 @@ export default definePlugin({
         originalEncryptedMessages.clear();
         decryptingMessageIds.clear();
 
+        const MESSAGE_EVENT_TYPES = new Set([
+            "MESSAGE_CREATE",
+            "MESSAGE_UPDATE",
+            "LOAD_MESSAGES_SUCCESS",
+            "SEARCH_FINISH",
+            "LOCAL_MESSAGE_CREATE",
+            "PINNED_MESSAGES_FETCH_SUCCESS",
+            "THREAD_MESSAGES_FIRST_PAGE"
+        ]);
+
         const origDispatch = FluxDispatcher.dispatch;
         FluxDispatcher.dispatch = function (event: any) {
-            // Skip scan for events we explicitly marked to bypass re-decryption
-            if (!event._nc_skip_scan) {
-                try {
-                    scanAndDecrypt(event);
-                } catch (e) {
-                    console.error("[EncryptedMessage] dispatch scan error:", e);
+            // Only scan events that can contain chat messages
+            if (event && !event._nc_skip_scan) {
+                const type = event.type as string | undefined;
+                if (type && (MESSAGE_EVENT_TYPES.has(type) || type.includes("MESSAGE") || type.includes("SEARCH"))) {
+                    try {
+                        scanAndDecrypt(event);
+                    } catch (e) {
+                        console.error("[EncryptedMessage] dispatch scan error:", e);
+                    }
                 }
             }
             return origDispatch.call(this, event);

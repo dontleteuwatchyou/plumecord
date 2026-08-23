@@ -9,7 +9,7 @@ import { IpcEvents } from "@shared/IpcEvents";
 import { VENCORD_USER_AGENT } from "@shared/vencordUserAgent";
 import { exec } from "child_process";
 import { app, ipcMain } from "electron";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "original-fs";
+import { existsSync, mkdirSync, promises as fsp, readFileSync, rmSync, writeFileSync } from "original-fs";
 import { join } from "path";
 import { domain } from "../../../DOMAIN.json";
 import { serializeErrors } from "./common";
@@ -107,7 +107,7 @@ async function stageUpdate(): Promise<boolean> {
 
         // Save zip to temp
         const zipPath = join(app.getPath("temp"), `nightcord-update-${Date.now()}.zip`);
-        writeFileSync(zipPath, data, { flush: true });
+        await fsp.writeFile(zipPath, data);
 
         // Clean any stale staging dir first
         try { rmSync(STAGING_DIR, { recursive: true, force: true }); } catch { }
@@ -117,7 +117,7 @@ async function stageUpdate(): Promise<boolean> {
         const psExtract = `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${STAGING_DIR}' -Force`;
 
         return await new Promise<boolean>((resolve, reject) => {
-            exec(`powershell -NoProfile -NonInteractive -Command "${psExtract}"`, err => {
+            exec(`powershell -NoProfile -NonInteractive -Command "${psExtract}"`, async err => {
                 // Cleanup zip regardless
                 try { rmSync(zipPath, { force: true }); } catch { }
 
@@ -126,12 +126,16 @@ async function stageUpdate(): Promise<boolean> {
                 }
 
                 // Write marker so nightcord-index.js knows to apply on next boot
-                writeFileSync(PENDING_UPDATE_MARKER, JSON.stringify({
-                    version: pendingVersion,
-                    stagingDir: STAGING_DIR,
-                    destDir: __dirname,
-                    createdAt: Date.now()
-                }));
+                try {
+                    await fsp.writeFile(PENDING_UPDATE_MARKER, JSON.stringify({
+                        version: pendingVersion,
+                        stagingDir: STAGING_DIR,
+                        destDir: __dirname,
+                        createdAt: Date.now()
+                    }));
+                } catch (markerErr) {
+                    return reject(markerErr);
+                }
 
                 pendingDownloadUrl = null;
                 pendingVersion = null;

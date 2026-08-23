@@ -133,19 +133,22 @@ interface ContextMenuProps {
 export function _usePatchContextMenu(props: ContextMenuProps) {
     if (!Menu.MenuItem) return props; // Prevent crashes in case we fail to acquire menu items for some reason
 
+    // ── Stealth Mode Bypass (Check first before any cloning) ──
+    try {
+        const { isStealthModeEnabled } = require("./HeaderBar");
+        if (isStealthModeEnabled()) return props;
+    } catch { }
+
+    const contextMenuPatches = navPatches.get(props.navId);
+    const hasPatches = (contextMenuPatches && contextMenuPatches.length > 0) || globalPatches.size > 0;
+    if (!hasPatches) return props;
+
     props = {
         ...props,
         children: cloneMenuChildren(props.children),
     };
 
     props.contextMenuAPIArguments ??= [];
-    const contextMenuPatches = navPatches.get(props.navId);
-
-    // ── Stealth Mode Bypass ──
-    try {
-        const { isStealthModeEnabled } = require("./HeaderBar");
-        if (isStealthModeEnabled()) return props;
-    } catch { }
 
     if (!Array.isArray(props.children)) props.children = [props.children];
 

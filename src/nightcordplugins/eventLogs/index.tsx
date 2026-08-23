@@ -181,6 +181,10 @@ function pushLog(entry: Omit<LogEntry, "id" | "timestamp" | "timeStr">) {
     logs.unshift(newLog);
     if (NOTIF_TYPES.has(newLog.type)) {
         unreadLogEntries.add(newLog);
+        if (unreadLogEntries.size > 200) {
+            const oldest = unreadLogEntries.values().next().value;
+            if (oldest) unreadLogEntries.delete(oldest);
+        }
     }
     scheduleFlush();
 }
