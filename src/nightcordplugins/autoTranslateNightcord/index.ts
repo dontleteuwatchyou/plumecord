@@ -4374,8 +4374,8 @@ export const translations: TranslationMap = {
     "New Profile": {"en":"New Profile","fr":"Nouveau profil","ar":"ملف شخصي جديد","es":"Nuevo perfil","ru":"Новый профиль","zh":"新建配置"},
     "Profile Name": {"en":"Profile Name","fr":"Nom du profil","ar":"اسم الملف الشخصي","es":"Nombre del perfil","ru":"Имя профиля","zh":"配置名称"},
     "Enhanced Screenshare": {"en":"Enhanced Screenshare","fr":"Stream Amélioré","ar":"مشاركة شاشة محسنة","es":"Transmisión mejorada","ru":"Улучшенный стрим","zh":"增强型屏幕共享"},
-    "Application Volume Mixer": {"en":"Application Volume Mixer","fr":"Mixeur de volume des applications","ar":"خلاط مستوى صوت التطبيقات","es":"Mezclador de volumen de aplicaciones","ru":"Микшер громкости приложений","zh":"应用程序音量混音器"},
-    "Include in Stream": {"en":"Include in Stream","fr":"Inclure dans le stream","ar":"تضمين في البث","es":"Incluir en la transmisión","ru":"Включить в стрим","zh":"包含在直播中"},
+    "Entire System (Default - All Sounds)": {"en":"Entire System (Default - All Sounds)","fr":"Système complet (Par défaut - Tous les sons)","ar":"النظام بالكامل (افتراضي - جميع الأصوات)","es":"Todo el sistema (Predeterminado - Todos los sonidos)","ru":"Вся система (По умолчанию - Все звуки)","zh":"整个系统（默认 - 所有声音）"},
+    "Stream Audio Volume": {"en":"Stream Audio Volume","fr":"Volume audio du stream","ar":"مستوى صوت البث","es":"Volumen del stream","ru":"Громкость стрима","zh":"直播音量"},
     "Okay": {"en":"Okay","fr":"D'accord","ar":"حسناً","es":"De acuerdo","ru":"Понятно","zh":"好的"},
 };
 
