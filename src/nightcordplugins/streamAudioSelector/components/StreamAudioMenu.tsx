@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { HeadphoneIcon, SpeakerIcon, SystemAudioIcon } from "@components/Icons";
+import { HeadphonesIcon, ScreenshareIcon } from "@components/Icons";
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { MediaEngineStore, Menu, React, RunningGameStore } from "@webpack/common";
 
@@ -72,7 +72,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
         <Menu.MenuItem
             id="stream-audio-app-selector"
             label="Stream Audio Application"
-            icon={SystemAudioIcon}
+            icon={ScreenshareIcon}
         >
             <Menu.MenuRadioItem
                 id="stream-audio-app-system"
@@ -113,7 +113,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
         <Menu.MenuItem
             id="stream-audio-device-selector"
             label="Stream Output Device"
-            icon={SpeakerIcon}
+            icon={HeadphonesIcon}
         >
             <Menu.MenuRadioItem
                 id="stream-audio-device-default"
