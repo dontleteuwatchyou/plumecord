@@ -60,7 +60,18 @@ export function handleExternalUrl(url: string, protocol?: string): { action: "de
 
     try {
         const u = new URL(url);
-        if (u.pathname.startsWith("/popout") && (u.hostname === "discord.com" || u.hostname.endsWith(".discord.com") || DISCORD_HOSTNAMES.includes(u.hostname))) {
+        const isDiscordHost = u.hostname === "discord.com" || u.hostname.endsWith(".discord.com") || DISCORD_HOSTNAMES.includes(u.hostname);
+        if (isDiscordHost) {
+            const target = u.searchParams.get("target");
+            if (target) {
+                try {
+                    const targetHost = new URL(target).hostname.toLowerCase();
+                    if (!targetHost.endsWith("discord.com") && !targetHost.endsWith("discordapp.com")) {
+                        return handleExternalUrl(target);
+                    }
+                } catch {}
+            }
+            // All internal Discord paths (popout, popup, overlay, channels, etc.) must NEVER open in external browser
             return { action: "deny" };
         }
     } catch {}
@@ -107,7 +118,7 @@ export function makeLinksOpenExternally(win: BrowserWindow) {
         }
 
         const isDiscordPopout = pathname === "/popout" && DISCORD_HOSTNAMES.includes(hostname);
-        const isDiscordPopup = (pathname === "/popup" || pathname.includes("popup")) && DISCORD_HOSTNAMES.includes(hostname);
+        const isDiscordPopup = (pathname === "/popup" || pathname.includes("popup") || pathname.includes("overlay")) && DISCORD_HOSTNAMES.includes(hostname);
 
         if (isDiscordPopout || (frameName.startsWith("DISCORD_") && pathname === "/popout" && DISCORD_HOSTNAMES.includes(hostname))) {
             if (isPopoutRateLimited()) {
@@ -132,8 +143,8 @@ export function makeLinksOpenExternally(win: BrowserWindow) {
             const targetParam = searchParams.get("target");
             if (targetParam && !isDiscordUrl(targetParam)) {
                 handleExternalUrl(targetParam);
-                return { action: "deny" };
             }
+            return { action: "deny" };
         }
 
         if (url === "about:blank") return {

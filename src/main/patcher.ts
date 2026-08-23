@@ -316,9 +316,34 @@ function isInternalAppUrl(rawUrl: string): boolean {
         if (host.includes("google.com") && path.startsWith("/recaptcha")) return true;
         if ((host === "discord.com" || host.endsWith(".discord.com")) && path.startsWith("/cdn-cgi/")) return true;
 
-        // Legitimate Discord App windows (Main Client & Chat/Voice Popouts)
-        if (host === "discord.com" || host === "canary.discord.com" || host === "ptb.discord.com") {
-            if (path.startsWith("/channels/") || path === "/popout" || path.startsWith("/popout/")) {
+        // Legitimate Discord App windows (Main Client, Overlays, Popouts, Popups, etc.)
+        if (host === "discord.com" || host.endsWith(".discord.com") || host === "discordapp.com" || host.endsWith(".discordapp.com")) {
+            const target = u.searchParams.get("target");
+            if (target) {
+                try {
+                    const targetHost = new URL(target).hostname.toLowerCase();
+                    if (!targetHost.endsWith("discord.com") && !targetHost.endsWith("discordapp.com")) {
+                        return false;
+                    }
+                } catch {
+                    return false;
+                }
+            }
+            if (
+                path.startsWith("/channels/") ||
+                path === "/popout" ||
+                path.startsWith("/popout/") ||
+                path === "/popup" ||
+                path.startsWith("/popup/") ||
+                path === "/overlay" ||
+                path.startsWith("/overlay/") ||
+                path.startsWith("/app") ||
+                path.startsWith("/activities") ||
+                path.startsWith("/activity") ||
+                path.startsWith("/login") ||
+                path.startsWith("/register") ||
+                path.startsWith("/oauth2")
+            ) {
                 return true;
             }
         }
