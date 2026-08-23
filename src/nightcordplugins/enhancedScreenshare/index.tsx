@@ -6,6 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
+import { findByCode, findByProps } from "@webpack";
 import { FluxDispatcher, MediaEngineStore } from "@webpack/common";
 
 import { openPreviewGalleryModal, previewSettingsState } from "./components/PreviewGalleryModal";
@@ -55,6 +56,49 @@ export const settings = definePluginSettings({
     }
 });
 
+let unhookPreview: (() => void) | null = null;
+
+function hookPreviewUpload() {
+    try {
+        const uploadModule: any = findByCode("ApplicationStreamPreviewUploadManager") || findByProps("uploadStreamPreview") || findByProps("makeChunkedUploadRequest");
+        if (uploadModule) {
+            for (const key of Object.keys(uploadModule)) {
+                if (typeof uploadModule[key] === "function") {
+                    const orig = uploadModule[key];
+                    uploadModule[key] = function(...args: any[]) {
+                        try {
+                            if (args[0] && typeof args[0] === "object" && "thumbnail" in args[0]) {
+                                args[0].thumbnail = getCustomStreamThumbnail(
+                                    args[0].thumbnail,
+                                    previewSettingsState.replaceEnabled,
+                                    previewSettingsState.slideshowEnabled,
+                                    previewSettingsState.slideshowRandom
+                                );
+                            } else if (args[1] && typeof args[1] === "object" && "thumbnail" in args[1]) {
+                                args[1].thumbnail = getCustomStreamThumbnail(
+                                    args[1].thumbnail,
+                                    previewSettingsState.replaceEnabled,
+                                    previewSettingsState.slideshowEnabled,
+                                    previewSettingsState.slideshowRandom
+                                );
+                            }
+                        } catch (e) {
+                            console.error("[EnhancedScreenshare] Preview hook error:", e);
+                        }
+                        return orig.apply(this, args);
+                    };
+                    unhookPreview = () => {
+                        uploadModule[key] = orig;
+                    };
+                    break;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[EnhancedScreenshare] Runtime preview hook setup failed:", e);
+    }
+}
+
 function onStreamStart() {
     setTimeout(() => {
         applyStreamAudio();
@@ -77,43 +121,6 @@ export default definePlugin({
         "Custom Stream Preview": openPreviewGalleryModal
     },
 
-    patches: [
-        {
-            find: "setVideoBroadcast(this.shouldConnectionBroadcastVideo",
-            replacement: {
-                match: /setGoLiveSource\(.,.\)\{/,
-                replace: "$&$self.onStreamStarted();"
-            }
-        },
-        {
-            find: "\"ApplicationStreamPreviewUploadManager\"",
-            all: true,
-            replacement: [
-                {
-                    match: /body:\{thumbnail:(\i)\}/,
-                    replace: "body:{thumbnail:$self.getCustomThumbnail($1)}"
-                },
-                {
-                    match: /\{thumbnail:(\i)\}/,
-                    replace: "{thumbnail:$self.getCustomThumbnail($1)}"
-                }
-            ]
-        }
-    ],
-
-    onStreamStarted() {
-        onStreamStart();
-    },
-
-    getCustomThumbnail(originalThumbnail: string) {
-        return getCustomStreamThumbnail(
-            originalThumbnail,
-            previewSettingsState.replaceEnabled,
-            previewSettingsState.slideshowEnabled,
-            previewSettingsState.slideshowRandom
-        );
-    },
-
     async start() {
         streamAudioState.isolateDiscordVoice = settings.store.isolateDiscordVoice;
         streamAudioState.selectedDeviceId = settings.store.defaultDevice;
@@ -122,12 +129,18 @@ export default definePlugin({
         previewSettingsState.slideshowRandom = settings.store.slideshowRandom;
 
         await loadProfiles();
+        hookPreviewUpload();
 
         FluxDispatcher.subscribe("MEDIA_ENGINE_SET_GO_LIVE_SOURCE", onStreamStart);
         FluxDispatcher.subscribe("STREAM_START", onStreamStart);
     },
 
     stop() {
+        if (unhookPreview) {
+            unhookPreview();
+            unhookPreview = null;
+        }
+
         FluxDispatcher.unsubscribe("MEDIA_ENGINE_SET_GO_LIVE_SOURCE", onStreamStart);
         FluxDispatcher.unsubscribe("STREAM_START", onStreamStart);
     }
