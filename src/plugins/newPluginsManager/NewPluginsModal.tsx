@@ -12,6 +12,7 @@ import { PluginCard } from "@components/settings/tabs/plugins/PluginCard";
 import { Button } from "@components/Button";
 import { ChangeList } from "@utils/ChangeList";
 import { classNameFactory } from "@utils/css";
+import { classes } from "@utils/misc";
 import { relaunch } from "@utils/native";
 import { useForceUpdater } from "@utils/react";
 import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize } from "@utils/modal";
@@ -113,6 +114,9 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
 
     const totalCount = pluginCards.length + requiredPluginCards.length;
 
+    const modalSize = totalCount <= 1 ? ModalSize.SMALL : totalCount === 2 ? ModalSize.MEDIUM : ModalSize.LARGE;
+    const sizeClass = totalCount <= 1 ? "count-1" : totalCount === 2 ? "count-2" : "count-many";
+
     const handleContinue = async () => {
         await writeKnownSettings();
         flushSettings();
@@ -124,7 +128,7 @@ function NewPluginsModal({ modalProps, newPlugins, newSettings }: ModalComponent
     };
 
     return (
-        <ModalRoot {...modalProps} size={ModalSize.LARGE} className={cl("root")}>
+        <ModalRoot {...modalProps} size={modalSize} className={classes(cl("root"), cl(sizeClass))}>
             <ModalHeader separator={false} className={cl("header")}>
                 <div className={cl("header-text")}>
                     <div className={cl("title-row")}>

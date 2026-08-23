@@ -5,11 +5,27 @@
  */
 
 .nc-new-plugins-root {
-    background-color: var(--background-floating) !important;
+    background-color: #313338 !important;
+    background: #313338 !important;
     border-radius: 12px !important;
     overflow: hidden !important;
-    border: 1px solid var(--border-subtle);
-    max-width: 820px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    transition: max-width 0.2s ease, width 0.2s ease;
+}
+
+.nc-new-plugins-root.nc-new-plugins-count-1 {
+    max-width: 440px !important;
+    width: 440px !important;
+}
+
+.nc-new-plugins-root.nc-new-plugins-count-2 {
+    max-width: 620px !important;
+    width: 620px !important;
+}
+
+.nc-new-plugins-root.nc-new-plugins-count-many {
+    max-width: 840px !important;
     width: 90vw !important;
 }
 
@@ -18,8 +34,9 @@
     display: flex !important;
     align-items: flex-start !important;
     justify-content: space-between !important;
-    border-bottom: 1px solid var(--border-subtle) !important;
-    background: var(--background-secondary) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    background-color: #2b2d31 !important;
+    background: #2b2d31 !important;
 }
 
 .nc-new-plugins-header-text {
@@ -42,7 +59,7 @@
 }
 
 .nc-new-plugins-badge {
-    background-color: var(--brand-500);
+    background-color: var(--brand-500, #5865f2);
     color: #ffffff;
     font-size: 11px;
     font-weight: 700;
@@ -53,7 +70,7 @@
 }
 
 .nc-new-plugins-description {
-    color: var(--text-muted) !important;
+    color: #949ba4 !important;
     font-size: 13px !important;
     line-height: 1.4;
 }
@@ -62,7 +79,8 @@
     padding: 20px 24px !important;
     max-height: 520px !important;
     overflow-y: auto !important;
-    background-color: var(--background-primary) !important;
+    background-color: #313338 !important;
+    background: #313338 !important;
 }
 
 .nc-new-plugins-grid {
@@ -71,13 +89,22 @@
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
+.nc-new-plugins-count-1 .nc-new-plugins-grid {
+    grid-template-columns: 1fr !important;
+}
+
+.nc-new-plugins-count-2 .nc-new-plugins-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+}
+
 .nc-new-plugins-footer {
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
     padding: 16px 24px !important;
-    border-top: 1px solid var(--border-subtle) !important;
-    background-color: var(--background-secondary) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.06) !important;
+    background-color: #2b2d31 !important;
+    background: #2b2d31 !important;
 }
 
 .nc-new-plugins-footer-right {
