@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { HeadphonesIcon, ScreenshareIcon } from "@components/Icons";
+import { HeadphonesIcon, ImageIcon, ScreenshareIcon } from "@components/Icons";
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { MediaEngineStore, Menu, React, RunningGameStore } from "@webpack/common";
+
+import { openPreviewGalleryModal } from "./PreviewGalleryModal";
 
 export interface StreamAudioSettingsState {
     selectedAppPids: number[];
@@ -31,17 +33,14 @@ export function applyStreamAudio(pids?: number[] | string | null, deviceId?: str
         const effectiveDevice = deviceId !== undefined ? deviceId : streamAudioState.selectedDeviceId;
 
         if (effectivePids.length > 0) {
-            // Check if engine supports multi-source soundshare array
             if (typeof engine.setSoundshareSources === "function") {
                 engine.setSoundshareSources(effectivePids, true);
             } else if (typeof engine.setSoundshareSource === "function") {
-                // Hook each individual process
                 for (const pid of effectivePids) {
                     engine.setSoundshareSource(pid, true);
                 }
             }
         } else if (typeof engine.setSoundshareSource === "function") {
-            // Default system soundshare
             engine.setSoundshareSource(0, true);
         }
 
@@ -55,7 +54,7 @@ export function applyStreamAudio(pids?: number[] | string | null, deviceId?: str
             }
         }
     } catch (err) {
-        console.error("[StreamAudioSelector] Failed to apply stream audio:", err);
+        console.error("[EnhancedScreenshare] Failed to apply stream audio:", err);
     }
 }
 
@@ -91,12 +90,12 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
 
     const appMenuItems = (
         <Menu.MenuItem
-            id="stream-audio-app-selector"
+            id="enhanced-screenshare-app-selector"
             label="Stream Audio Application"
             icon={ScreenshareIcon}
         >
             <Menu.MenuCheckboxItem
-                id="stream-audio-app-system"
+                id="enhanced-screenshare-app-system"
                 label="Entire System (Default)"
                 checked={isEntireSystem}
                 action={() => {
@@ -109,7 +108,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                 appsList.map(app => (
                     <Menu.MenuCheckboxItem
                         key={app.pid}
-                        id={`stream-audio-app-${app.pid}`}
+                        id={`enhanced-screenshare-app-${app.pid}`}
                         label={app.name}
                         checked={streamAudioState.selectedAppPids.includes(app.pid)}
                         action={() => toggleAppPid(app.pid)}
@@ -117,7 +116,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                 ))
             ) : (
                 <Menu.MenuItem
-                    id="stream-audio-app-empty"
+                    id="enhanced-screenshare-app-empty"
                     label="No running applications detected"
                     disabled={true}
                 />
@@ -127,13 +126,13 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
 
     const deviceMenuItems = (
         <Menu.MenuItem
-            id="stream-audio-device-selector"
+            id="enhanced-screenshare-device-selector"
             label="Stream Output Device"
             icon={HeadphonesIcon}
         >
             <Menu.MenuRadioItem
-                id="stream-audio-device-default"
-                group="stream-audio-device-group"
+                id="enhanced-screenshare-device-default"
+                group="enhanced-screenshare-device-group"
                 label="Default Output Device"
                 checked={!streamAudioState.selectedDeviceId || streamAudioState.selectedDeviceId === "default"}
                 action={() => {
@@ -146,8 +145,8 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                 devicesList.map(dev => (
                     <Menu.MenuRadioItem
                         key={dev.id}
-                        id={`stream-audio-dev-${dev.id}`}
-                        group="stream-audio-device-group"
+                        id={`enhanced-screenshare-dev-${dev.id}`}
+                        group="enhanced-screenshare-device-group"
                         label={dev.name}
                         checked={streamAudioState.selectedDeviceId === dev.id}
                         action={() => {
@@ -158,7 +157,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                 ))
             ) : (
                 <Menu.MenuItem
-                    id="stream-audio-device-empty"
+                    id="enhanced-screenshare-device-empty"
                     label="No audio output devices found"
                     disabled={true}
                 />
@@ -168,7 +167,7 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
 
     const voiceIsolateItem = (
         <Menu.MenuCheckboxItem
-            id="stream-audio-isolate-voice"
+            id="enhanced-screenshare-isolate-voice"
             label="Isolate Discord Voice (Prevent Echo)"
             checked={streamAudioState.isolateDiscordVoice}
             action={() => {
@@ -184,12 +183,22 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
         />
     );
 
+    const previewGalleryItem = (
+        <Menu.MenuItem
+            id="enhanced-screenshare-custom-preview"
+            label="Custom Stream Preview"
+            icon={ImageIcon}
+            action={openPreviewGalleryModal}
+        />
+    );
+
     children.push(
         <Menu.MenuSeparator />,
-        <Menu.MenuGroup label="Stream Audio Settings">
+        <Menu.MenuGroup label="Enhanced Screenshare">
             {appMenuItems}
             {deviceMenuItems}
             {voiceIsolateItem}
+            {previewGalleryItem}
         </Menu.MenuGroup>
     );
 };
