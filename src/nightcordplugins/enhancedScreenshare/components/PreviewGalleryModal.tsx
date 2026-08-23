@@ -13,12 +13,14 @@ import { closeModal, openModal, React, Select, Text, TextInput, useEffect, useRe
 
 import {
     activeProfileId,
+    actualStreamImageUri,
     DEFAULT_PROFILE_ID,
     getActiveProfile,
     MAX_FILE_SIZE,
     MediaItem,
-    profiles,
+    notifyPreviewChanges,
     processFile,
+    profiles,
     saveProfiles,
     setActiveProfileId,
     subscribePreviewChanges
@@ -64,7 +66,9 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                 const item = await processFile(file);
                 activeProfile.items.push(item);
             }
+            activeProfile.currentIndex = Math.max(0, activeProfile.items.length - 1);
             await saveProfiles();
+            notifyPreviewChanges();
         } catch (e) {
             console.error("[EnhancedScreenshare] Error adding preview:", e);
         } finally {
@@ -77,6 +81,7 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
         if (p) {
             setActiveProfileId(profileId);
             void saveProfiles();
+            notifyPreviewChanges();
             setTick(t => t + 1);
         }
     };
@@ -94,6 +99,7 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
         setIsCreatingProfile(false);
         setNewProfileName("");
         await saveProfiles();
+        notifyPreviewChanges();
     };
 
     const handleDeleteItem = async (e: React.MouseEvent, index: number) => {
@@ -103,11 +109,13 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
             activeProfile.currentIndex = Math.max(0, activeProfile.items.length - 1);
         }
         await saveProfiles();
+        notifyPreviewChanges();
     };
 
     const handleSelectItem = async (index: number) => {
         activeProfile.currentIndex = index;
         await saveProfiles();
+        notifyPreviewChanges();
     };
 
     const profileOptions = Array.from(profiles.values()).map(p => ({
@@ -123,7 +131,7 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                         Custom Stream Preview Gallery
                     </Text>
                     <Text variant="text-sm/normal" className={cl("description")}>
-                        Upload custom images, animated GIFs, or videos to broadcast as your stream preview thumbnail.
+                        Upload custom images to broadcast as your stream preview thumbnail.
                     </Text>
                 </div>
                 <ModalCloseButton onClick={modalProps.onClose} />
@@ -132,7 +140,7 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
             <ModalContent className={cl("content")}>
                 <div className={cl("profile-bar")}>
                     <div className={cl("profile-select")}>
-                        <Text variant="text-sm/semibold" style={{ color: "var(--header-primary)" }}>
+                        <Text variant="text-sm/semibold" style={{ color: "var(--header-primary, #ffffff)" }}>
                             Active Profile:
                         </Text>
                         <Select
@@ -189,17 +197,17 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                     <input
                         type="file"
                         ref={fileInputRef}
-                        accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"
+                        accept="image/png,image/jpeg,image/webp"
                         multiple
                         style={{ display: "none" }}
                         onChange={e => void handleFiles(e.target.files)}
                     />
-                    <Text variant="text-md/semibold" style={{ color: "var(--header-primary)" }}>
-                        {isProcessing ? "Processing media..." : "Click or drag & drop images, GIFs, or videos here"}
-                    </Text>
-                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
-                        Supports PNG, JPG, WEBP, GIF, MP4, WEBM (Max 15MB)
-                    </Text>
+                    <span className={cl("upload-title")}>
+                        {isProcessing ? "Processing images..." : "Click or drag & drop images here"}
+                    </span>
+                    <span className={cl("upload-sub")}>
+                        Supports PNG, JPG, WEBP (Max 15MB)
+                    </span>
                 </div>
 
                 {activeProfile.items.length > 0 ? (
@@ -211,11 +219,10 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                                 onClick={() => void handleSelectItem(idx)}
                             >
                                 <img src={item.dataUri} alt={item.name} className={cl("thumbnail")} />
-                                <span className={cl("card-badge")}>{item.type}</span>
                                 <button
                                     className={cl("card-delete")}
                                     onClick={e => void handleDeleteItem(e, idx)}
-                                    title="Delete preview"
+                                    title="Delete image"
                                 >
                                     Remove
                                 </button>
@@ -223,9 +230,9 @@ function PreviewGalleryModal({ modalProps }: { modalProps: RenderModalProps; }) 
                         ))}
                     </div>
                 ) : (
-                    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text-muted)" }}>
-                        <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>
-                            No preview media in this profile. Upload an image, GIF, or video above.
+                    <div style={{ textAlign: "center", padding: "24px 0" }}>
+                        <Text variant="text-sm/normal" style={{ color: "var(--text-muted, #949ba4)" }}>
+                            No preview images in this profile. Upload an image above.
                         </Text>
                     </div>
                 )}

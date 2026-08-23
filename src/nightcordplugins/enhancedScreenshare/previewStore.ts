@@ -16,7 +16,7 @@ export const DEFAULT_PROFILE_ID = "default";
 export interface MediaItem {
     blob: Blob;
     dataUri: string;
-    type: "image" | "gif" | "video";
+    type: "image";
     name: string;
     size: number;
 }
@@ -32,7 +32,7 @@ interface StoredProfile {
     id: string;
     name: string;
     items: Array<{
-        type: "image" | "gif" | "video";
+        type: "image";
         mime: string;
         name: string;
         dataUri: string;
@@ -93,7 +93,7 @@ export async function loadProfiles(): Promise<void> {
                         items.push({
                             blob,
                             dataUri: item.dataUri,
-                            type: item.type,
+                            type: "image",
                             name: item.name,
                             size: blob.size
                         });
@@ -129,8 +129,8 @@ export async function saveProfiles(): Promise<void> {
                 id: p.id,
                 name: p.name,
                 items: p.items.map(it => ({
-                    type: it.type,
-                    mime: it.blob.type,
+                    type: "image",
+                    mime: it.blob.type || "image/jpeg",
                     name: it.name,
                     dataUri: it.dataUri
                 }))
@@ -141,7 +141,6 @@ export async function saveProfiles(): Promise<void> {
         await DataStore.set(DATASTORE_KEY_PROFILES, { profiles: stored });
         await DataStore.set(DATASTORE_KEY_ACTIVE_PROFILE, activeProfileId);
         await DataStore.set(DATASTORE_KEY_INDICES, indices);
-
         notifyPreviewChanges();
     } catch (err) {
         console.error("[EnhancedScreenshare] Failed to save preview profiles:", err);
@@ -149,32 +148,6 @@ export async function saveProfiles(): Promise<void> {
 }
 
 export async function processFile(file: File): Promise<MediaItem> {
-    const isGif = file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif");
-    const isVideo = file.type.startsWith("video/") || file.name.toLowerCase().endsWith(".mp4") || file.name.toLowerCase().endsWith(".webm");
-
-    if (isGif) {
-        const dataUri = await fileToDataUri(file);
-        return {
-            blob: file,
-            dataUri,
-            type: "gif",
-            name: file.name,
-            size: file.size
-        };
-    }
-
-    if (isVideo) {
-        const frameDataUri = await extractVideoFrame(file);
-        return {
-            blob: file,
-            dataUri: frameDataUri,
-            type: "video",
-            name: file.name,
-            size: file.size
-        };
-    }
-
-    // Standard static image: convert & normalize to 1280x720 JPEG
     const convertedBlob = await processImageBlob(file);
     const dataUri = await fileToDataUri(convertedBlob);
     return {
@@ -225,7 +198,7 @@ function processImageBlob(blob: Blob): Promise<Blob> {
             canvas.toBlob((newBlob) => {
                 if (newBlob) resolve(newBlob);
                 else reject(new Error("Blob creation failed"));
-            }, "image/jpeg", 0.75);
+            }, "image/jpeg", 0.85);
         };
 
         img.onerror = () => {
@@ -234,58 +207,6 @@ function processImageBlob(blob: Blob): Promise<Blob> {
         };
 
         img.src = url;
-    });
-}
-
-function extractVideoFrame(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const video = document.createElement("video");
-        const url = URL.createObjectURL(file);
-        video.preload = "auto";
-        video.muted = true;
-        video.playsInline = true;
-
-        video.onloadeddata = () => {
-            video.currentTime = Math.min(0.5, video.duration / 2 || 0);
-        };
-
-        video.onseeked = () => {
-            try {
-                const targetWidth = 1280;
-                const targetHeight = 720;
-                const canvas = document.createElement("canvas");
-                canvas.width = targetWidth;
-                canvas.height = targetHeight;
-                const ctx = canvas.getContext("2d");
-                if (!ctx) {
-                    URL.revokeObjectURL(url);
-                    return reject(new Error("Canvas context failed"));
-                }
-
-                ctx.fillStyle = "#000000";
-                ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-                const scale = Math.max(targetWidth / (video.videoWidth || 1), targetHeight / (video.videoHeight || 1));
-                const scaledWidth = (video.videoWidth || 1) * scale;
-                const scaledHeight = (video.videoHeight || 1) * scale;
-                const x = (targetWidth - scaledWidth) / 2;
-                const y = (targetHeight - scaledHeight) / 2;
-
-                ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
-                URL.revokeObjectURL(url);
-                resolve(canvas.toDataURL("image/jpeg", 0.75));
-            } catch (e) {
-                URL.revokeObjectURL(url);
-                reject(e);
-            }
-        };
-
-        video.onerror = () => {
-            URL.revokeObjectURL(url);
-            reject(new Error("Failed to process video frame"));
-        };
-
-        video.src = url;
     });
 }
 
