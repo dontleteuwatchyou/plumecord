@@ -9,30 +9,39 @@ import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { MediaEngineStore, Menu, React, RunningGameStore } from "@webpack/common";
 
 export interface StreamAudioSettingsState {
-    selectedAppPid: number | string | null;
+    selectedAppPids: number[];
     selectedDeviceId: string | null;
     isolateDiscordVoice: boolean;
 }
 
 export const streamAudioState: StreamAudioSettingsState = {
-    selectedAppPid: "system",
+    selectedAppPids: [],
     selectedDeviceId: "default",
     isolateDiscordVoice: true
 };
 
-export function applyStreamAudio(pid?: number | string | null, deviceId?: string | null) {
+export function applyStreamAudio(pids?: number[] | string | null, deviceId?: string | null) {
     try {
         const engine = (MediaEngineStore as any)?.getMediaEngine?.();
         if (!engine) return;
 
-        const effectivePid = pid !== undefined ? pid : streamAudioState.selectedAppPid;
+        const effectivePids = pids !== undefined
+            ? (Array.isArray(pids) ? pids : (pids === "system" ? [] : []))
+            : streamAudioState.selectedAppPids;
         const effectiveDevice = deviceId !== undefined ? deviceId : streamAudioState.selectedDeviceId;
 
-        if (effectivePid && effectivePid !== "system" && typeof effectivePid === "number") {
-            if (typeof engine.setSoundshareSource === "function") {
-                engine.setSoundshareSource(effectivePid, true);
+        if (effectivePids.length > 0) {
+            // Check if engine supports multi-source soundshare array
+            if (typeof engine.setSoundshareSources === "function") {
+                engine.setSoundshareSources(effectivePids, true);
+            } else if (typeof engine.setSoundshareSource === "function") {
+                // Hook each individual process
+                for (const pid of effectivePids) {
+                    engine.setSoundshareSource(pid, true);
+                }
             }
         } else if (typeof engine.setSoundshareSource === "function") {
+            // Default system soundshare
             engine.setSoundshareSource(0, true);
         }
 
@@ -68,35 +77,42 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
         ? rawDevices
         : Object.values(rawDevices);
 
+    const isEntireSystem = streamAudioState.selectedAppPids.length === 0;
+
+    const toggleAppPid = (pid: number) => {
+        const index = streamAudioState.selectedAppPids.indexOf(pid);
+        if (index > -1) {
+            streamAudioState.selectedAppPids = streamAudioState.selectedAppPids.filter(p => p !== pid);
+        } else {
+            streamAudioState.selectedAppPids = [...streamAudioState.selectedAppPids, pid];
+        }
+        applyStreamAudio(streamAudioState.selectedAppPids);
+    };
+
     const appMenuItems = (
         <Menu.MenuItem
             id="stream-audio-app-selector"
             label="Stream Audio Application"
             icon={ScreenshareIcon}
         >
-            <Menu.MenuRadioItem
+            <Menu.MenuCheckboxItem
                 id="stream-audio-app-system"
-                group="stream-audio-app-group"
                 label="Entire System (Default)"
-                checked={!streamAudioState.selectedAppPid || streamAudioState.selectedAppPid === "system"}
+                checked={isEntireSystem}
                 action={() => {
-                    streamAudioState.selectedAppPid = "system";
-                    applyStreamAudio("system");
+                    streamAudioState.selectedAppPids = [];
+                    applyStreamAudio([]);
                 }}
             />
             <Menu.MenuSeparator />
             {appsList.length > 0 ? (
                 appsList.map(app => (
-                    <Menu.MenuRadioItem
+                    <Menu.MenuCheckboxItem
                         key={app.pid}
                         id={`stream-audio-app-${app.pid}`}
-                        group="stream-audio-app-group"
                         label={app.name}
-                        checked={streamAudioState.selectedAppPid === app.pid}
-                        action={() => {
-                            streamAudioState.selectedAppPid = app.pid;
-                            applyStreamAudio(app.pid);
-                        }}
+                        checked={streamAudioState.selectedAppPids.includes(app.pid)}
+                        action={() => toggleAppPid(app.pid)}
                     />
                 ))
             ) : (
@@ -157,12 +173,12 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
             checked={streamAudioState.isolateDiscordVoice}
             action={() => {
                 streamAudioState.isolateDiscordVoice = !streamAudioState.isolateDiscordVoice;
-                if (streamAudioState.isolateDiscordVoice && streamAudioState.selectedAppPid === "system" && appsList.length > 0) {
-                    streamAudioState.selectedAppPid = appsList[0].pid;
-                    applyStreamAudio(appsList[0].pid);
+                if (streamAudioState.isolateDiscordVoice && streamAudioState.selectedAppPids.length === 0 && appsList.length > 0) {
+                    streamAudioState.selectedAppPids = [appsList[0].pid];
+                    applyStreamAudio(streamAudioState.selectedAppPids);
                 } else if (!streamAudioState.isolateDiscordVoice) {
-                    streamAudioState.selectedAppPid = "system";
-                    applyStreamAudio("system");
+                    streamAudioState.selectedAppPids = [];
+                    applyStreamAudio([]);
                 }
             }}
         />
