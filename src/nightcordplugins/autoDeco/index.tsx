@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -271,28 +271,27 @@ function AutoDecoSettingsComponent() {
                     {entries.length} {entries.length === 1 ? "cible" : "cibles"}
                 </span>
             </div>
-            <div
+            <ScrollerThin
+                fade
                 style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "6px",
                     maxHeight: "260px",
-                    overflowY: "auto",
-                    paddingRight: "4px"
+                    paddingRight: "6px"
                 }}
             >
-                {entries.map(({ key, guildId, userId }) => (
-                    <TargetRow
-                        key={key}
-                        guildId={guildId}
-                        userId={userId}
-                        onRemove={() => {
-                            autoDecoedUsers.delete(key);
-                            saveAutoDecoed();
-                        }}
-                    />
-                ))}
-            </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {entries.map(({ key, guildId, userId }) => (
+                        <TargetRow
+                            key={key}
+                            guildId={guildId}
+                            userId={userId}
+                            onRemove={() => {
+                                autoDecoedUsers.delete(key);
+                                saveAutoDecoed();
+                            }}
+                        />
+                    ))}
+                </div>
+            </ScrollerThin>
         </div>
     );
 }
