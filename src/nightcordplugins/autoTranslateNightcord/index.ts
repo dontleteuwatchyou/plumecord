@@ -11,6 +11,10 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Auto Deco Target List": {"en":"Auto Deco Target List","fr":"Liste des cibles Auto Deco","ar":"قائمة أهداف قطع الاتصال التلقائي","es":"Lista de objetivos de Auto Deco","ru":"Список целей Auto Deco","zh":"自动断开连接目标列表"},
+    "No users currently in Auto Deco list.": {"en":"No users currently in Auto Deco list.","fr":"Aucun utilisateur dans la liste Auto Deco.","ar":"لا يوجد مستخدمون حالياً في قائمة قطع الاتصال التلقائي.","es":"No hay usuarios en la lista de Auto Deco actualmente.","ru":"В списке Auto Deco пока нет пользователей.","zh":"当前自动断开列表中没有用户。"},
+    "Auto Mute Target List": {"en":"Auto Mute Target List","fr":"Liste des cibles Auto Mute","ar":"قائمة أهداف الكتم التلقائي","es":"Lista de objetivos de Auto Mute","ru":"Список целей Auto Mute","zh":"自动静音目标列表"},
+    "No users currently in Auto Mute list.": {"en":"No users currently in Auto Mute list.","fr":"Aucun utilisateur dans la liste Auto Mute.","ar":"لا يوجد مستخدمون حالياً في قائمة الكتم التلقائي.","es":"No hay usuarios en la lista de Auto Mute actualmente.","ru":"В списке Auto Mute пока нет пользователей.","zh":"当前自动静音列表中没有用户。"},
     "Browsing:": {"en":"Browsing:","fr":"Navigation :","ar":"تصفح:","es":"Explorando:","ru":"Просмотр:","zh":"浏览："},
     "Back to browse": {"en":"Back to browse","fr":"Retour à l'accueil","ar":"العودة إلى التصفح","es":"Volver a explorar","ru":"Назад к обзору","zh":"返回浏览"},
     "LockGroup": {"en":"LockGroup","fr":"LockGroup","ar":"LockGroup","es":"LockGroup","ru":"LockGroup","zh":"LockGroup"},

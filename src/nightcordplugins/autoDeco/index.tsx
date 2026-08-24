@@ -7,11 +7,19 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Constants, GuildStore, Menu, React, RestAPI, showToast, Toasts, PermissionsBits, PermissionStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore } from "@webpack/common";
+import { Card } from "@components/Card";
+import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
+import { Switch } from "@components/Switch";
 import { t } from "../autoTranslateNightcord";
 
 // Key format: `${guildId}:${userId}`
 const autoDecoedUsers = new Set<string>();
+const listeners = new Set<() => void>();
+
+function notifyChange() {
+    listeners.forEach(l => l());
+}
 
 async function loadAutoDecoed() {
     try {
@@ -19,6 +27,7 @@ async function loadAutoDecoed() {
         if (Array.isArray(saved)) {
             autoDecoedUsers.clear();
             saved.forEach(k => autoDecoedUsers.add(k));
+            notifyChange();
         }
     } catch { }
 }
@@ -26,6 +35,7 @@ async function loadAutoDecoed() {
 async function saveAutoDecoed() {
     try {
         await DataStore.set("AutoDeco_users", Array.from(autoDecoedUsers));
+        notifyChange();
     } catch { }
 }
 
@@ -42,10 +52,29 @@ async function setServerDisconnect(guildId: string, userId: string): Promise<boo
     }
 }
 
-interface VoiceState {
-    userId: string;
-    guildId?: string;
-    channelId?: string | null;
+function processVoiceState(state: any) {
+    if (!state) return;
+    const userId = state.userId || state.user_id;
+    const guildId = state.guildId || state.guild_id || GuildStore.getGuildId();
+    const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+
+    if (!userId || !guildId) return;
+
+    const key = `${guildId}:${userId}`;
+    if (autoDecoedUsers.has(key) && channelId) {
+        // Disconnect immediately and retry to prevent gateway race conditions on rejoin
+        setServerDisconnect(guildId, userId).catch(() => {});
+        setTimeout(() => {
+            if (autoDecoedUsers.has(key)) {
+                setServerDisconnect(guildId, userId).catch(() => {});
+            }
+        }, 150);
+        setTimeout(() => {
+            if (autoDecoedUsers.has(key)) {
+                setServerDisconnect(guildId, userId).catch(() => {});
+            }
+        }, 400);
+    }
 }
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user?: any; guildId?: string; channel?: any; } = {}) => {
@@ -76,15 +105,10 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
                 if (next) {
                     autoDecoedUsers.add(key);
                     await saveAutoDecoed();
-                    showToast(t("Auto Deco enabled for ") + (user.username || user.tag || "user"), Toasts.Type.SUCCESS);
-                    const ok = await setServerDisconnect(guildId, user.id);
-                    if (!ok) {
-                        showToast(t("Failed to disconnect user (check permissions)"), Toasts.Type.FAILURE);
-                    }
+                    await setServerDisconnect(guildId, user.id);
                 } else {
                     autoDecoedUsers.delete(key);
                     await saveAutoDecoed();
-                    showToast(t("Auto Deco disabled for ") + (user.username || user.tag || "user"), Toasts.Type.INFO);
                 }
             }}
         />
@@ -103,6 +127,73 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
     }
 };
 
+function AutoDecoSettingsComponent() {
+    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+
+    React.useEffect(() => {
+        const listener = () => forceUpdate();
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+    }, []);
+
+    const entries = Array.from(autoDecoedUsers).map(key => {
+        const [guildId, userId] = key.split(":");
+        return { key, guildId, userId };
+    });
+
+    if (entries.length === 0) {
+        return (
+            <Card variant="primary" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)", marginTop: "8px" }}>
+                <Text variant="text-sm/normal">{t("No users currently in Auto Deco list.")}</Text>
+            </Card>
+        );
+    }
+
+    return (
+        <Flex flexDirection={FlexDirection.VERTICAL} gap="8px" style={{ width: "100%", marginTop: "8px" }}>
+            <Text variant="text-sm/bold" style={{ color: "var(--header-primary)", marginBottom: "4px" }}>
+                {t("Auto Deco Target List")} ({entries.length})
+            </Text>
+            {entries.map(({ key, guildId, userId }) => {
+                const user = UserStore.getUser(userId);
+                const guild = GuildStore.getGuild(guildId);
+                const username = user?.globalName || (user as any)?.global_name || user?.username || userId;
+                const handle = user?.username ? `@${user.username}` : "";
+                const serverName = guild?.name || guildId;
+                const avatarUrl = user?.avatar
+                    ? `https://cdn.discordapp.com/avatars/${userId}/${user.avatar}.webp?size=64`
+                    : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`;
+
+                return (
+                    <Card key={key} variant="primary" outline style={{ padding: "10px 14px" }}>
+                        <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
+                            <Flex alignItems={FlexAlign.CENTER} gap="12px">
+                                <Avatar src={avatarUrl} size="SIZE_32" />
+                                <Flex flexDirection={FlexDirection.VERTICAL} style={{ gap: "2px" }}>
+                                    <Flex alignItems={FlexAlign.CENTER} gap="6px">
+                                        <Text variant="text-sm/bold" style={{ color: "var(--header-primary)" }}>{username}</Text>
+                                        {handle && <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>{handle}</Text>}
+                                    </Flex>
+                                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                                        {t("Server")}: {serverName}
+                                    </Text>
+                                </Flex>
+                            </Flex>
+                            <Switch
+                                checked={true}
+                                onChange={async () => {
+                                    autoDecoedUsers.delete(key);
+                                    await saveAutoDecoed();
+                                }}
+                            />
+                        </Flex>
+                    </Card>
+                );
+            })}
+        </Flex>
+    );
+}
+
 export default definePlugin({
     name: "AutoDeco",
     description: "Automatically disconnects selected users whenever they join a voice channel.",
@@ -111,26 +202,22 @@ export default definePlugin({
     ],
     enabledByDefault: false,
 
+    settingsAboutComponent: AutoDecoSettingsComponent,
+
     contextMenus: {
         "user-context": UserContextMenuPatch
     },
 
     flux: {
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
-            if (!Array.isArray(voiceStates)) return;
-
-            for (const state of voiceStates) {
-                const { userId, guildId, channelId } = state;
-                if (!userId || !guildId) continue;
-
-                const key = `${guildId}:${userId}`;
-                if (autoDecoedUsers.has(key)) {
-                    // If user is currently in a voice channel, disconnect them instantly!
-                    if (channelId) {
-                        setServerDisconnect(guildId, userId).catch(() => {});
-                    }
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
+            if (Array.isArray(voiceStates)) {
+                for (const state of voiceStates) {
+                    processVoiceState(state);
                 }
             }
+        },
+        VOICE_STATE_UPDATE(state: any) {
+            processVoiceState(state);
         }
     },
 
@@ -140,5 +227,6 @@ export default definePlugin({
 
     stop() {
         autoDecoedUsers.clear();
+        notifyChange();
     }
 });

@@ -7,11 +7,19 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Constants, GuildStore, Menu, React, RestAPI, showToast, Toasts, PermissionsBits, PermissionStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore } from "@webpack/common";
+import { Card } from "@components/Card";
+import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
+import { Switch } from "@components/Switch";
 import { t } from "../autoTranslateNightcord";
 
 // Key format: `${guildId}:${userId}`
 const autoMutedUsers = new Set<string>();
+const listeners = new Set<() => void>();
+
+function notifyChange() {
+    listeners.forEach(l => l());
+}
 
 async function loadAutoMuted() {
     try {
@@ -19,6 +27,7 @@ async function loadAutoMuted() {
         if (Array.isArray(saved)) {
             autoMutedUsers.clear();
             saved.forEach(k => autoMutedUsers.add(k));
+            notifyChange();
         }
     } catch { }
 }
@@ -26,6 +35,7 @@ async function loadAutoMuted() {
 async function saveAutoMuted() {
     try {
         await DataStore.set("AutoMute_users", Array.from(autoMutedUsers));
+        notifyChange();
     } catch { }
 }
 
@@ -42,11 +52,32 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     }
 }
 
-interface VoiceState {
-    userId: string;
-    guildId?: string;
-    channelId?: string;
-    mute: boolean;
+function processVoiceState(state: any) {
+    if (!state) return;
+    const userId = state.userId || state.user_id;
+    const guildId = state.guildId || state.guild_id || GuildStore.getGuildId();
+    const mute = state.mute !== undefined ? state.mute : false;
+    const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+
+    if (!userId || !guildId) return;
+
+    const key = `${guildId}:${userId}`;
+    if (autoMutedUsers.has(key)) {
+        // If user is currently unmuted or rejoining a channel, enforce server mute immediately
+        if (!mute && channelId) {
+            setServerMute(guildId, userId, true).catch(() => {});
+            setTimeout(() => {
+                if (autoMutedUsers.has(key)) {
+                    setServerMute(guildId, userId, true).catch(() => {});
+                }
+            }, 150);
+            setTimeout(() => {
+                if (autoMutedUsers.has(key)) {
+                    setServerMute(guildId, userId, true).catch(() => {});
+                }
+            }, 400);
+        }
+    }
 }
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user?: any; guildId?: string; channel?: any; } = {}) => {
@@ -77,15 +108,10 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
                 if (next) {
                     autoMutedUsers.add(key);
                     await saveAutoMuted();
-                    showToast(t("Auto Mute enabled for ") + (user.username || user.tag || "user"), Toasts.Type.SUCCESS);
-                    const ok = await setServerMute(guildId, user.id, true);
-                    if (!ok) {
-                        showToast(t("Failed to server mute (check permissions)"), Toasts.Type.FAILURE);
-                    }
+                    await setServerMute(guildId, user.id, true);
                 } else {
                     autoMutedUsers.delete(key);
                     await saveAutoMuted();
-                    showToast(t("Auto Mute disabled for ") + (user.username || user.tag || "user"), Toasts.Type.INFO);
                     await setServerMute(guildId, user.id, false);
                 }
             }}
@@ -104,6 +130,74 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
     }
 };
 
+function AutoMuteSettingsComponent() {
+    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+
+    React.useEffect(() => {
+        const listener = () => forceUpdate();
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+    }, []);
+
+    const entries = Array.from(autoMutedUsers).map(key => {
+        const [guildId, userId] = key.split(":");
+        return { key, guildId, userId };
+    });
+
+    if (entries.length === 0) {
+        return (
+            <Card variant="primary" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)", marginTop: "8px" }}>
+                <Text variant="text-sm/normal">{t("No users currently in Auto Mute list.")}</Text>
+            </Card>
+        );
+    }
+
+    return (
+        <Flex flexDirection={FlexDirection.VERTICAL} gap="8px" style={{ width: "100%", marginTop: "8px" }}>
+            <Text variant="text-sm/bold" style={{ color: "var(--header-primary)", marginBottom: "4px" }}>
+                {t("Auto Mute Target List")} ({entries.length})
+            </Text>
+            {entries.map(({ key, guildId, userId }) => {
+                const user = UserStore.getUser(userId);
+                const guild = GuildStore.getGuild(guildId);
+                const username = user?.globalName || (user as any)?.global_name || user?.username || userId;
+                const handle = user?.username ? `@${user.username}` : "";
+                const serverName = guild?.name || guildId;
+                const avatarUrl = user?.avatar
+                    ? `https://cdn.discordapp.com/avatars/${userId}/${user.avatar}.webp?size=64`
+                    : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`;
+
+                return (
+                    <Card key={key} variant="primary" outline style={{ padding: "10px 14px" }}>
+                        <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
+                            <Flex alignItems={FlexAlign.CENTER} gap="12px">
+                                <Avatar src={avatarUrl} size="SIZE_32" />
+                                <Flex flexDirection={FlexDirection.VERTICAL} style={{ gap: "2px" }}>
+                                    <Flex alignItems={FlexAlign.CENTER} gap="6px">
+                                        <Text variant="text-sm/bold" style={{ color: "var(--header-primary)" }}>{username}</Text>
+                                        {handle && <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>{handle}</Text>}
+                                    </Flex>
+                                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                                        {t("Server")}: {serverName}
+                                    </Text>
+                                </Flex>
+                            </Flex>
+                            <Switch
+                                checked={true}
+                                onChange={async () => {
+                                    autoMutedUsers.delete(key);
+                                    await saveAutoMuted();
+                                    await setServerMute(guildId, userId, false);
+                                }}
+                            />
+                        </Flex>
+                    </Card>
+                );
+            })}
+        </Flex>
+    );
+}
+
 export default definePlugin({
     name: "AutoMute",
     description: "Automatically server mutes selected users and re-mutes them instantly if they unmute.",
@@ -112,26 +206,22 @@ export default definePlugin({
     ],
     enabledByDefault: false,
 
+    settingsAboutComponent: AutoMuteSettingsComponent,
+
     contextMenus: {
         "user-context": UserContextMenuPatch
     },
 
     flux: {
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
-            if (!Array.isArray(voiceStates)) return;
-
-            for (const state of voiceStates) {
-                const { userId, guildId, mute } = state;
-                if (!userId || !guildId) continue;
-
-                const key = `${guildId}:${userId}`;
-                if (autoMutedUsers.has(key)) {
-                    // If user is currently NOT server-muted, mute them back instantly!
-                    if (!mute) {
-                        setServerMute(guildId, userId, true).catch(() => {});
-                    }
+        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
+            if (Array.isArray(voiceStates)) {
+                for (const state of voiceStates) {
+                    processVoiceState(state);
                 }
             }
+        },
+        VOICE_STATE_UPDATE(state: any) {
+            processVoiceState(state);
         }
     },
 
@@ -141,5 +231,6 @@ export default definePlugin({
 
     stop() {
         autoMutedUsers.clear();
+        notifyChange();
     }
 });
