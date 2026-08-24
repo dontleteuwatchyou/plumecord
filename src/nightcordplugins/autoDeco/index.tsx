@@ -143,6 +143,96 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
     }
 };
 
+interface TargetUserInfo {
+    name: string;
+    username: string;
+    avatarUrl: string;
+}
+
+const userCache = new Map<string, TargetUserInfo>();
+
+function useTargetUser(userId: string): TargetUserInfo {
+    const cachedStore = UserStore.getUser(userId);
+    const initial: TargetUserInfo = userCache.get(userId) || {
+        name: (cachedStore as any)?.globalName || (cachedStore as any)?.global_name || cachedStore?.username || userId,
+        username: cachedStore?.username ? `@${cachedStore.username}` : "",
+        avatarUrl: cachedStore?.avatar
+            ? `https://cdn.discordapp.com/avatars/${userId}/${cachedStore.avatar}.webp?size=64`
+            : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`
+    };
+
+    const [info, setInfo] = React.useState<TargetUserInfo>(initial);
+
+    React.useEffect(() => {
+        const u = UserStore.getUser(userId);
+        if (u) {
+            const data: TargetUserInfo = {
+                name: (u as any).globalName || (u as any).global_name || u.username,
+                username: u.username ? `@${u.username}` : "",
+                avatarUrl: u.avatar
+                    ? `https://cdn.discordapp.com/avatars/${userId}/${u.avatar}.webp?size=64`
+                    : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`
+            };
+            userCache.set(userId, data);
+            setInfo(data);
+            return;
+        }
+
+        if (userCache.has(userId)) {
+            setInfo(userCache.get(userId)!);
+            return;
+        }
+
+        RestAPI.get({ url: Constants.Endpoints.USER(userId) })
+            .then((res: any) => {
+                const b = res?.body;
+                if (b) {
+                    const data: TargetUserInfo = {
+                        name: b.global_name || b.username || userId,
+                        username: b.username ? `@${b.username}` : "",
+                        avatarUrl: b.avatar
+                            ? `https://cdn.discordapp.com/avatars/${userId}/${b.avatar}.webp?size=64`
+                            : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`
+                    };
+                    userCache.set(userId, data);
+                    setInfo(data);
+                }
+            })
+            .catch(() => { });
+    }, [userId]);
+
+    return info;
+}
+
+function TargetRow({ guildId, userId, onRemove }: { guildId: string; userId: string; onRemove: () => void; }) {
+    const userInfo = useTargetUser(userId);
+    const guild = GuildStore.getGuild(guildId);
+    const serverName = guild?.name || guildId;
+
+    return (
+        <Card variant="primary" outline style={{ padding: "8px 12px", background: "var(--background-secondary, #2b2d31)", borderRadius: "8px" }}>
+            <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
+                <Flex alignItems={FlexAlign.CENTER} gap="10px">
+                    <Avatar src={userInfo.avatarUrl} size="SIZE_32" />
+                    <Flex flexDirection={FlexDirection.VERTICAL} style={{ gap: "1px" }}>
+                        <Flex alignItems={FlexAlign.CENTER} gap="6px">
+                            <span style={{ color: "#ffffff", fontWeight: 600, fontSize: "13px" }}>{userInfo.name}</span>
+                            {userInfo.username && <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "11px" }}>{userInfo.username}</span>}
+                        </Flex>
+                        <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "11px" }}>
+                            {t("Server")}: {serverName}
+                        </span>
+                    </Flex>
+                </Flex>
+                <Switch
+                    checked={true}
+                    onChange={onRemove}
+                />
+            </Flex>
+        </Card>
+    );
+}
+
 function AutoDecoSettingsComponent() {
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
 
@@ -159,54 +249,45 @@ function AutoDecoSettingsComponent() {
 
     if (entries.length === 0) {
         return (
-            <Card variant="primary" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted)", marginTop: "8px" }}>
-                <Text variant="text-sm/normal">{t("No users currently in Auto Deco list.")}</Text>
+            <Card variant="primary" style={{ padding: "16px", textAlign: "center", color: "var(--text-muted, #949ba4)", marginTop: "8px" }}>
+                <span style={{ fontSize: "13px", color: "var(--text-muted, #949ba4)" }}>{t("No users currently in Auto Deco list.")}</span>
             </Card>
         );
     }
 
     return (
-        <Flex flexDirection={FlexDirection.VERTICAL} gap="8px" style={{ width: "100%", marginTop: "8px" }}>
-            <Text variant="text-sm/bold" style={{ color: "var(--header-primary)", marginBottom: "4px" }}>
-                {t("Auto Deco Target List")} ({entries.length})
-            </Text>
-            {entries.map(({ key, guildId, userId }) => {
-                const user = UserStore.getUser(userId);
-                const guild = GuildStore.getGuild(guildId);
-                const username = user?.globalName || (user as any)?.global_name || user?.username || userId;
-                const handle = user?.username ? `@${user.username}` : "";
-                const serverName = guild?.name || guildId;
-                const avatarUrl = user?.avatar
-                    ? `https://cdn.discordapp.com/avatars/${userId}/${user.avatar}.webp?size=64`
-                    : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`;
-
-                return (
-                    <Card key={key} variant="primary" outline style={{ padding: "10px 14px" }}>
-                        <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
-                            <Flex alignItems={FlexAlign.CENTER} gap="12px">
-                                <Avatar src={avatarUrl} size="SIZE_32" />
-                                <Flex flexDirection={FlexDirection.VERTICAL} style={{ gap: "2px" }}>
-                                    <Flex alignItems={FlexAlign.CENTER} gap="6px">
-                                        <Text variant="text-sm/bold" style={{ color: "var(--header-primary)" }}>{username}</Text>
-                                        {handle && <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>{handle}</Text>}
-                                    </Flex>
-                                    <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
-                                        {t("Server")}: {serverName}
-                                    </Text>
-                                </Flex>
-                            </Flex>
-                            <Switch
-                                checked={true}
-                                onChange={async () => {
-                                    autoDecoedUsers.delete(key);
-                                    await saveAutoDecoed();
-                                }}
-                            />
-                        </Flex>
-                    </Card>
-                );
-            })}
-        </Flex>
+        <div style={{ width: "100%", marginTop: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span style={{ color: "#ffffff", fontWeight: 600, fontSize: "13px", letterSpacing: "0.2px" }}>
+                    {t("Auto Deco Target List")}
+                </span>
+                <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "12px", fontWeight: 500 }}>
+                    {entries.length} {entries.length === 1 ? "cible" : "cibles"}
+                </span>
+            </div>
+            <div
+                style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    paddingRight: "4px"
+                }}
+            >
+                {entries.map(({ key, guildId, userId }) => (
+                    <TargetRow
+                        key={key}
+                        guildId={guildId}
+                        userId={userId}
+                        onRemove={async () => {
+                            autoDecoedUsers.delete(key);
+                            await saveAutoDecoed();
+                        }}
+                    />
+                ))}
+            </div>
+        </div>
     );
 }
 
