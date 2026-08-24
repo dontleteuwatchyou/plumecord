@@ -355,7 +355,7 @@ const old = {
       "tooltip": "Verified"
     }
   ],
-  "1209621342639493201": [
+  "1539701501679894678": [
     {
       "badge": "https://i.imgur.com/Wyw0BqM.png",
       "tooltip": "Partner"
@@ -373,7 +373,7 @@ const old = {
       "tooltip": "VIP"
     }
   ],
-  "1209621342639493201": [
+  "1539701501679894678": [
     {
       "badge": "https://i.imgur.com/Wyw0BqM.png",
       "tooltip": "Partner"

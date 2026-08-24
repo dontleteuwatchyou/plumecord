@@ -41,12 +41,12 @@ const cl = classNameFactory("vc-vencord-tab-");
 
 const DEV_TEAM_IDS = [
     { 
-        id: "1209621342639493201", 
+        id: "1539701501679894678", 
         role: "Creator", 
         description: "Manager of app, site visuals, communication & ads" 
     },
     { 
-        id: "171356978310938624", 
+        id: "126874834910183424", 
         role: "Admin", 
         description: "Manager of infrastructure, API, bot & network hosting" 
     }
