@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceStateStore } from "@webpack/common";
+import { Avatar, Constants, GuildActions, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -41,10 +41,18 @@ async function saveAutoMuted() {
 
 async function setServerMute(guildId: string, userId: string, mute: boolean): Promise<boolean> {
     try {
-        await RestAPI.patch({
+        if (typeof GuildActions?.setServerMute === "function") {
+            GuildActions.setServerMute(guildId, userId, mute);
+        } else if (typeof (VoiceActions as any)?.setServerMute === "function") {
+            (VoiceActions as any).setServerMute(guildId, userId, mute);
+        }
+    } catch { }
+
+    try {
+        RestAPI.patch({
             url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
             body: { mute }
-        });
+        }).catch(() => { });
         return true;
     } catch (e: any) {
         console.error("[AutoMute] Server mute failed:", e);
@@ -62,7 +70,7 @@ function checkAllMutes() {
             ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
 
         if (vs?.channelId && !vs.mute) {
-            setServerMute(guildId, userId, true).catch(() => {});
+            setServerMute(guildId, userId, true).catch(() => { });
         }
     }
 }
@@ -79,19 +87,19 @@ function processVoiceState(state: any) {
     const key = `${guildId}:${userId}`;
     if (autoMutedUsers.has(key)) {
         if (channelId && !mute) {
-            setServerMute(guildId, userId, true).catch(() => {});
+            setServerMute(guildId, userId, true).catch(() => { });
             setTimeout(() => {
                 const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
                 if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
-                    setServerMute(guildId, userId, true).catch(() => {});
+                    setServerMute(guildId, userId, true).catch(() => { });
                 }
-            }, 150);
+            }, 100);
             setTimeout(() => {
                 const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
                 if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
-                    setServerMute(guildId, userId, true).catch(() => {});
+                    setServerMute(guildId, userId, true).catch(() => { });
                 }
-            }, 400);
+            }, 350);
         }
     }
 }
@@ -119,16 +127,16 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
             label={t("Auto Mute")}
             color="danger"
             checked={isAutoMuted}
-            action={async () => {
+            action={() => {
                 const next = !isAutoMuted;
                 if (next) {
                     autoMutedUsers.add(key);
-                    await saveAutoMuted();
-                    await setServerMute(guildId, user.id, true);
+                    setServerMute(guildId, user.id, true);
+                    saveAutoMuted();
                 } else {
                     autoMutedUsers.delete(key);
-                    await saveAutoMuted();
-                    await setServerMute(guildId, user.id, false);
+                    setServerMute(guildId, user.id, false);
+                    saveAutoMuted();
                 }
             }}
         />
@@ -283,10 +291,10 @@ function AutoMuteSettingsComponent() {
                         key={key}
                         guildId={guildId}
                         userId={userId}
-                        onRemove={async () => {
+                        onRemove={() => {
                             autoMutedUsers.delete(key);
-                            await saveAutoMuted();
-                            await setServerMute(guildId, userId, false);
+                            setServerMute(guildId, userId, false);
+                            saveAutoMuted();
                         }}
                     />
                 ))}

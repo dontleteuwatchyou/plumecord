@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceStateStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -41,10 +41,16 @@ async function saveAutoDecoed() {
 
 async function setServerDisconnect(guildId: string, userId: string): Promise<boolean> {
     try {
-        await RestAPI.patch({
+        if (typeof (VoiceActions as any)?.setChannel === "function") {
+            (VoiceActions as any).setChannel(guildId, userId, null);
+        }
+    } catch { }
+
+    try {
+        RestAPI.patch({
             url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
             body: { channel_id: null }
-        });
+        }).catch(() => { });
         return true;
     } catch (e: any) {
         console.error("[AutoDeco] Server disconnect failed:", e);
@@ -62,7 +68,7 @@ function checkAllDecos() {
             ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
 
         if (vs?.channelId) {
-            setServerDisconnect(guildId, userId).catch(() => {});
+            setServerDisconnect(guildId, userId).catch(() => { });
         }
     }
 }
@@ -77,19 +83,19 @@ function processVoiceState(state: any) {
 
     const key = `${guildId}:${userId}`;
     if (autoDecoedUsers.has(key) && channelId) {
-        setServerDisconnect(guildId, userId).catch(() => {});
+        setServerDisconnect(guildId, userId).catch(() => { });
         setTimeout(() => {
             const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
             if (autoDecoedUsers.has(key) && vs?.channelId) {
-                setServerDisconnect(guildId, userId).catch(() => {});
+                setServerDisconnect(guildId, userId).catch(() => { });
             }
-        }, 150);
+        }, 100);
         setTimeout(() => {
             const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
             if (autoDecoedUsers.has(key) && vs?.channelId) {
-                setServerDisconnect(guildId, userId).catch(() => {});
+                setServerDisconnect(guildId, userId).catch(() => { });
             }
-        }, 400);
+        }, 350);
     }
 }
 
@@ -116,15 +122,15 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
             label={t("Auto Deco")}
             color="danger"
             checked={isAutoDecoed}
-            action={async () => {
+            action={() => {
                 const next = !isAutoDecoed;
                 if (next) {
                     autoDecoedUsers.add(key);
-                    await saveAutoDecoed();
-                    await setServerDisconnect(guildId, user.id);
+                    setServerDisconnect(guildId, user.id);
+                    saveAutoDecoed();
                 } else {
                     autoDecoedUsers.delete(key);
-                    await saveAutoDecoed();
+                    saveAutoDecoed();
                 }
             }}
         />
@@ -280,9 +286,9 @@ function AutoDecoSettingsComponent() {
                         key={key}
                         guildId={guildId}
                         userId={userId}
-                        onRemove={async () => {
+                        onRemove={() => {
                             autoDecoedUsers.delete(key);
-                            await saveAutoDecoed();
+                            saveAutoDecoed();
                         }}
                     />
                 ))}
