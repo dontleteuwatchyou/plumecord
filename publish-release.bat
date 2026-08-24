@@ -47,7 +47,7 @@ echo.
 REM 1. Mise a jour de la version
 echo  [1/8] Mise a jour de la version vers %VERSION%...
 node -e "const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); pkg.version = '%VERSION%'; fs.writeFileSync('package.json', JSON.stringify(pkg, null, 4) + '\n', 'utf8');"
-echo  [1/8] Version mise a jour (%VERSION%).
+echo  [1/8] Version mise a jour : %VERSION%
 
 REM 2. Envoi du code source sur Gitea
 echo.
@@ -61,14 +61,14 @@ if errorlevel 1 (
 )
 git push --set-upstream origin master
 if errorlevel 1 (
-    echo  [AVERTISSEMENT] Impossible de push sur Gitea directement via git (VPN/SSH requis). Continuation du build...
+    echo  [AVERTISSEMENT] Impossible de push sur Gitea directement via git. Continuation du build...
 ) else (
     echo  [2/8] Code source synchronise avec Gitea.
 )
 
 REM 3. Build Extensions Web et Desktop
 echo.
-echo  [3/8] Compilation des extensions Chrome et Firefox (buildextension.bat)...
+echo  [3/8] Compilation des extensions Chrome et Firefox...
 taskkill /F /IM Discord.exe /T >nul 2>&1
 taskkill /F /IM DiscordPTB.exe /T >nul 2>&1
 taskkill /F /IM DiscordCanary.exe /T >nul 2>&1
@@ -83,7 +83,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo  [3b/8] Compilation du client Desktop (pnpm build)...
+echo  [3b/8] Compilation du client Desktop...
 call pnpm build
 if errorlevel 1 (
     echo  [ERREUR] pnpm build a echoue.
@@ -114,7 +114,7 @@ if not exist "%INSTALLER_EXE%" (
     pause
     exit /b 1
 )
-for %%F in ("%INSTALLER_EXE%") do echo  [5/8] Nightcord-Installer.exe cree (%%~zF octets)
+echo  [5/8] Nightcord-Installer.exe cree avec succes.
 
 REM 6. nightcord-dist.zip
 echo.
@@ -139,7 +139,7 @@ if not exist "%DIST_ZIP%" (
     pause
     exit /b 1
 )
-for %%F in ("%DIST_ZIP%") do echo  [6/8] nightcord-dist.zip cree (%%~zF octets)
+echo  [6/8] nightcord-dist.zip cree avec succes.
 
 REM 7. version.json
 echo.
