@@ -44,21 +44,17 @@ const DEV_TEAM_IDS = [
         id: "1539701501679894678", 
         role: "Creator", 
         description: "Manager of app, site visuals, communication & ads" 
-    },
-    { 
-        id: "126874834910183424", 
-        role: "Admin", 
-        description: "Manager of infrastructure, API, bot & network hosting" 
     }
 ];
 
 function useDiscordUser(userId: string) {
-    const [user, setUser] = React.useState<{ name: string; pfp: string; } | null>(null);
+    const [user, setUser] = React.useState<{ name: string; username: string; pfp: string; } | null>(null);
     React.useEffect(() => {
         const cached = UserStore?.getUser(userId);
         if (cached) {
             setUser({
                 name: (cached as any).globalName || (cached as any).global_name || cached.username,
+                username: cached.username ? `@${cached.username}` : "",
                 pfp: cached.avatar
                     ? `https://cdn.discordapp.com/avatars/${userId}/${cached.avatar}.webp?size=128`
                     : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`
@@ -70,12 +66,13 @@ function useDiscordUser(userId: string) {
         })
             .then(r => r.json())
             .then(u => setUser({
-                name: u.global_name || u.username || userId,
+                name: u.global_name || u.username || "Nightcord",
+                username: u.username ? `@${u.username}` : "",
                 pfp: u.avatar
                     ? `https://cdn.discordapp.com/avatars/${userId}/${u.avatar}.webp?size=128`
                     : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(userId) >> 22n) % 6}.png`
             }))
-            .catch(() => setUser({ name: userId, pfp: `https://cdn.discordapp.com/embed/avatars/0.png` }));
+            .catch(() => setUser({ name: "Nightcord", username: "", pfp: `https://cdn.discordapp.com/embed/avatars/0.png` }));
     }, [userId]);
     return user;
 }
@@ -86,13 +83,14 @@ function DevCard({ id, role, description }: { id: string; role: string; descript
 
     const handleCopy = (e: React.MouseEvent) => {
         e.stopPropagation();
+        const textToCopy = user?.username ? user.username.replace(/^@/, "") : (user?.name ?? id);
         try {
-            copyToClipboard(id);
+            copyToClipboard(textToCopy);
         } catch {
-            navigator.clipboard.writeText(id);
+            navigator.clipboard.writeText(textToCopy);
         }
         setCopied(true);
-        try { showToast("ID copié !", Toasts.Type.SUCCESS); } catch {}
+        try { showToast("Pseudo copié !", Toasts.Type.SUCCESS); } catch {}
         setTimeout(() => setCopied(false), 1500);
     };
 
@@ -111,7 +109,7 @@ function DevCard({ id, role, description }: { id: string; role: string; descript
 
                     <div 
                         onClick={handleCopy}
-                        title="Cliquer pour copier l'ID"
+                        title="Cliquer pour copier le pseudo"
                         style={{ 
                             display: "inline-flex", 
                             alignItems: "center", 
@@ -129,7 +127,7 @@ function DevCard({ id, role, description }: { id: string; role: string; descript
                             transition: "all 0.15s ease"
                         }}
                     >
-                        <span>{id}</span>
+                        <span>{user?.username || (user?.name ? `@${user.name}` : "...")}</span>
                         {copied ? (
                             <span style={{ color: "var(--status-positive, #43b581)", fontWeight: "bold", fontSize: "10px" }}>✓ Copié</span>
                         ) : (
