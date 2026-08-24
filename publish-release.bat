@@ -11,7 +11,7 @@ if "%INPUT_VER%"=="" (
     echo   NIGHTCORD - PUBLICATION DE NOUVELLE RELEASE
     echo  ========================================================
     echo.
-    set /p INPUT_VER=" Entrez la version a publier (ex: 1.28.0 ou v1.28.0) : "
+    set /p INPUT_VER="Entrez la version a publier : "
 )
 
 if "%INPUT_VER%"=="" (
