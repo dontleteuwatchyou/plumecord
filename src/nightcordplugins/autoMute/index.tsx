@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -52,27 +52,43 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     }
 }
 
+function checkAllMutes() {
+    if (autoMutedUsers.size === 0) return;
+    for (const key of autoMutedUsers) {
+        const [guildId, userId] = key.split(":");
+        if (!guildId || !userId) continue;
+
+        const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
+            ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+
+        if (vs?.channelId && !vs.mute) {
+            setServerMute(guildId, userId, true).catch(() => {});
+        }
+    }
+}
+
 function processVoiceState(state: any) {
     if (!state) return;
     const userId = state.userId || state.user_id;
     const guildId = state.guildId || state.guild_id || GuildStore.getGuildId();
-    const mute = state.mute !== undefined ? state.mute : false;
+    const mute = state.mute !== undefined ? Boolean(state.mute) : false;
     const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
 
     if (!userId || !guildId) return;
 
     const key = `${guildId}:${userId}`;
     if (autoMutedUsers.has(key)) {
-        // If user is currently unmuted or rejoining a channel, enforce server mute immediately
-        if (!mute && channelId) {
+        if (channelId && !mute) {
             setServerMute(guildId, userId, true).catch(() => {});
             setTimeout(() => {
-                if (autoMutedUsers.has(key)) {
+                const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+                if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
                     setServerMute(guildId, userId, true).catch(() => {});
                 }
             }, 150);
             setTimeout(() => {
-                if (autoMutedUsers.has(key)) {
+                const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+                if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
                     setServerMute(guildId, userId, true).catch(() => {});
                 }
             }, 400);
@@ -214,6 +230,7 @@ export default definePlugin({
 
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
+            checkAllMutes();
             if (Array.isArray(voiceStates)) {
                 for (const state of voiceStates) {
                     processVoiceState(state);
@@ -221,15 +238,25 @@ export default definePlugin({
             }
         },
         VOICE_STATE_UPDATE(state: any) {
+            checkAllMutes();
             processVoiceState(state);
+        },
+        PASSIVE_UPDATE_V2() {
+            checkAllMutes();
         }
     },
 
     start() {
         loadAutoMuted();
+        try {
+            VoiceStateStore?.addChangeListener?.(checkAllMutes);
+        } catch { }
     },
 
     stop() {
+        try {
+            VoiceStateStore?.removeChangeListener?.(checkAllMutes);
+        } catch { }
         autoMutedUsers.clear();
         notifyChange();
     }

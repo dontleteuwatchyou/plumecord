@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore } from "@webpack/common";
+import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, Text, UserStore, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -52,6 +52,21 @@ async function setServerDisconnect(guildId: string, userId: string): Promise<boo
     }
 }
 
+function checkAllDecos() {
+    if (autoDecoedUsers.size === 0) return;
+    for (const key of autoDecoedUsers) {
+        const [guildId, userId] = key.split(":");
+        if (!guildId || !userId) continue;
+
+        const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
+            ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+
+        if (vs?.channelId) {
+            setServerDisconnect(guildId, userId).catch(() => {});
+        }
+    }
+}
+
 function processVoiceState(state: any) {
     if (!state) return;
     const userId = state.userId || state.user_id;
@@ -62,15 +77,16 @@ function processVoiceState(state: any) {
 
     const key = `${guildId}:${userId}`;
     if (autoDecoedUsers.has(key) && channelId) {
-        // Disconnect immediately and retry to prevent gateway race conditions on rejoin
         setServerDisconnect(guildId, userId).catch(() => {});
         setTimeout(() => {
-            if (autoDecoedUsers.has(key)) {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+            if (autoDecoedUsers.has(key) && vs?.channelId) {
                 setServerDisconnect(guildId, userId).catch(() => {});
             }
         }, 150);
         setTimeout(() => {
-            if (autoDecoedUsers.has(key)) {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+            if (autoDecoedUsers.has(key) && vs?.channelId) {
                 setServerDisconnect(guildId, userId).catch(() => {});
             }
         }, 400);
@@ -210,6 +226,7 @@ export default definePlugin({
 
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
+            checkAllDecos();
             if (Array.isArray(voiceStates)) {
                 for (const state of voiceStates) {
                     processVoiceState(state);
@@ -217,15 +234,25 @@ export default definePlugin({
             }
         },
         VOICE_STATE_UPDATE(state: any) {
+            checkAllDecos();
             processVoiceState(state);
+        },
+        PASSIVE_UPDATE_V2() {
+            checkAllDecos();
         }
     },
 
     start() {
         loadAutoDecoed();
+        try {
+            VoiceStateStore?.addChangeListener?.(checkAllDecos);
+        } catch { }
     },
 
     stop() {
+        try {
+            VoiceStateStore?.removeChangeListener?.(checkAllDecos);
+        } catch { }
         autoDecoedUsers.clear();
         notifyChange();
     }
