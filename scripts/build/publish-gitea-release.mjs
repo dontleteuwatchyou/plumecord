@@ -19,11 +19,14 @@ async function main() {
     const giteaUrl = "https://source.nightcord.st";
     const repo = "nightcord/nightcord";
 
-    // Read token
-    const tokenFile = path.join(os.homedir(), ".gitea_token");
+    // Read token from project root or user home directory
+    let tokenFile = path.join(process.cwd(), ".gitea_token");
     if (!fs.existsSync(tokenFile)) {
-        console.error(`\n [ERREUR] Fichier de token introuvable : ${tokenFile}`);
-        console.error(` Créez-le avec : echo votre_token > "${tokenFile}"`);
+        tokenFile = path.join(os.homedir(), ".gitea_token");
+    }
+    if (!fs.existsSync(tokenFile)) {
+        console.error(`\n [ERREUR] Fichier de token introuvable.`);
+        console.error(` Créez un fichier .gitea_token avec votre jeton.`);
         process.exit(1);
     }
     const token = fs.readFileSync(tokenFile, "utf8").trim().replace(/[\r\n\s]+/g, "");
