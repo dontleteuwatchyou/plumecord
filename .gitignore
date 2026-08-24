@@ -52,6 +52,7 @@ test-userdata/
 test-app/
 
 # Environment & credentials
+.gitea_token
 .env
 .env.*
 *.env
