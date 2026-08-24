@@ -23,9 +23,10 @@ async function main() {
     const tokenFile = path.join(os.homedir(), ".gitea_token");
     if (!fs.existsSync(tokenFile)) {
         console.error(`\n [ERREUR] Fichier de token introuvable : ${tokenFile}`);
+        console.error(` Créez-le avec : echo votre_token > "${tokenFile}"`);
         process.exit(1);
     }
-    const token = fs.readFileSync(tokenFile, "utf8").trim().replace(/\s+/g, "");
+    const token = fs.readFileSync(tokenFile, "utf8").trim().replace(/[\r\n\s]+/g, "");
     if (!token) {
         console.error(`\n [ERREUR] Token Gitea vide dans ${tokenFile}`);
         process.exit(1);
@@ -65,6 +66,30 @@ async function main() {
         });
     }
 
+    // Detect valid auth header format (token vs Bearer)
+    let authHeader = `token ${token}`;
+    const testUserUrl = new URL(`${baseUrl}/api/v1/user`);
+    const testRes = await reqPromise({
+        hostname: testUserUrl.hostname,
+        port: testUserUrl.port || (testUserUrl.protocol === "https:" ? 443 : 80),
+        path: testUserUrl.pathname,
+        method: "GET",
+        headers: { "Authorization": authHeader, "Accept": "application/json" }
+    });
+
+    if (testRes.status === 401) {
+        const testBearer = await reqPromise({
+            hostname: testUserUrl.hostname,
+            port: testUserUrl.port || (testUserUrl.protocol === "https:" ? 443 : 80),
+            path: testUserUrl.pathname,
+            method: "GET",
+            headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" }
+        });
+        if (testBearer.status === 200) {
+            authHeader = `Bearer ${token}`;
+        }
+    }
+
     // 1. Check or Create Release
     console.log(`  Creation/Recuperation de la release ${tag}...`);
     const urlObj = new URL(`${baseUrl}/api/v1/repos/${repo}/releases/tags/${tag}`);
@@ -73,7 +98,7 @@ async function main() {
         port: urlObj.port || (urlObj.protocol === "https:" ? 443 : 80),
         path: urlObj.pathname,
         method: "GET",
-        headers: { "Authorization": `token ${token}`, "Accept": "application/json" }
+        headers: { "Authorization": authHeader, "Accept": "application/json" }
     });
 
     let release = null;
@@ -94,7 +119,7 @@ async function main() {
             path: createUrl.pathname,
             method: "POST",
             headers: {
-                "Authorization": `token ${token}`,
+                "Authorization": authHeader,
                 "Content-Type": "application/json",
                 "Content-Length": Buffer.byteLength(payload)
             }
@@ -103,7 +128,7 @@ async function main() {
         if (createRes.status === 201 || createRes.status === 200) {
             release = JSON.parse(createRes.data);
         } else {
-            throw new Error(`Echec creation release: ${createRes.status} ${createRes.data}`);
+            throw new Error(`Echec creation release: ${createRes.status} ${createRes.data}\n\n Conseil: Vérifiez votre token Gitea dans ${tokenFile} (Paramètres Gitea -> Applications -> Générer un nouveau jeton avec droits 'repo').`);
         }
     }
 
@@ -131,7 +156,7 @@ async function main() {
                     port: delUrl.port || (delUrl.protocol === "https:" ? 443 : 80),
                     path: delUrl.pathname,
                     method: "DELETE",
-                    headers: { "Authorization": `token ${token}` }
+                    headers: { "Authorization": authHeader }
                 });
             }
         }
@@ -158,7 +183,7 @@ async function main() {
                 path: uploadUrl.pathname + uploadUrl.search,
                 method: "POST",
                 headers: {
-                    "Authorization": `token ${token}`,
+                    "Authorization": authHeader,
                     "Content-Type": f.type,
                     "Content-Length": size
                 }
