@@ -119,61 +119,157 @@ async function cleanModulePatches(resourcesPath) {
     }
 }
 
-function downloadFileAsync(url, destPath, onProgress) {
+import http from "http";
+
+function fetchJsonWithFallback(url) {
     return new Promise((resolve, reject) => {
-        const file = createWriteStream(destPath);
-        https.get(url, { headers: { "User-Agent": "Nightcord-Installer/3.0" }, rejectUnauthorized: false }, (response) => {
-            if (response.statusCode === 302 || response.statusCode === 301) {
-                file.close();
-                downloadFileAsync(response.headers.location, destPath, onProgress).then(resolve).catch(reject);
-                return;
-            }
-            if (response.statusCode !== 200) {
-                file.close();
-                reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
-                return;
-            }
-            const totalBytes = parseInt(response.headers["content-length"], 10) || 0;
-            let downloadedBytes = 0;
-
-            response.on("data", (chunk) => {
-                downloadedBytes += chunk.length;
-                if (totalBytes > 0) {
-                    const percent = (downloadedBytes / totalBytes) * 100;
-                    onProgress(percent, downloadedBytes, totalBytes);
+        function fallbackPowerShell(originalErr) {
+            try {
+                const psCmd = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13; (Invoke-WebRequest -Uri '${url}' -UseBasicParsing -Headers @{'User-Agent'='Nightcord-Installer/3.0'; 'Accept'='application/json'}).Content`;
+                const out = execSync(`powershell.exe -NoProfile -Command "${psCmd}"`, { encoding: "utf8", timeout: 15000 });
+                const parsed = JSON.parse(out.trim());
+                resolve(parsed);
+            } catch (psErr) {
+                try {
+                    const curlOut = execSync(`curl.exe -skL -H "User-Agent: Nightcord-Installer/3.0" -H "Accept: application/json" "${url}"`, { encoding: "utf8", timeout: 15000 });
+                    const parsed = JSON.parse(curlOut.trim());
+                    resolve(parsed);
+                } catch (curlErr) {
+                    reject(originalErr || psErr || curlErr);
                 }
+            }
+        }
+
+        try {
+            const client = url.startsWith("https") ? https : http;
+            const req = client.get(url, {
+                headers: {
+                    "User-Agent": "Nightcord-Installer/3.0",
+                    "Accept": "application/json"
+                },
+                rejectUnauthorized: false
+            }, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) {
+                    const loc = res.headers.location;
+                    if (loc) {
+                        fetchJsonWithFallback(loc).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+                if (res.statusCode !== 200) {
+                    fallbackPowerShell(new Error(`HTTP ${res.statusCode}`));
+                    return;
+                }
+                let data = "";
+                res.on("data", chunk => data += chunk);
+                res.on("end", () => {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (e) {
+                        fallbackPowerShell(e);
+                    }
+                });
             });
 
-            response.pipe(file);
-
-            file.on("finish", () => {
-                file.close();
-                resolve();
+            req.on("error", (err) => {
+                fallbackPowerShell(err);
             });
-        }).on("error", (err) => {
-            file.close();
-            safeDelete(destPath);
-            reject(err);
-        });
+
+            req.setTimeout(8000, () => {
+                req.destroy();
+                fallbackPowerShell(new Error("Request timeout"));
+            });
+        } catch (err) {
+            fallbackPowerShell(err);
+        }
     });
 }
 
-const getJSON = phin.defaults({
-    method: "GET",
-    parse: "json",
-    followRedirects: true,
-    core: { rejectUnauthorized: false },
-    headers: { "User-Agent": "Nightcord-Installer/3.0", "Accept": "application/json" }
-});
+function downloadFileAsync(url, destPath, onProgress) {
+    return new Promise((resolve, reject) => {
+        const file = createWriteStream(destPath);
+        let finished = false;
+
+        function tryPowerShellFallback(origErr) {
+            if (finished) return;
+            finished = true;
+            try { file.close(); } catch {}
+            try {
+                log("⚡ Using system network stack fallback...");
+                const psCmd = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13; Invoke-WebRequest -Uri '${url}' -OutFile '${destPath}' -UseBasicParsing`;
+                execSync(`powershell.exe -NoProfile -Command "${psCmd}"`, { timeout: 120000 });
+                resolve();
+            } catch (psErr) {
+                try {
+                    execSync(`curl.exe -skL "${url}" -o "${destPath}"`, { timeout: 120000 });
+                    resolve();
+                } catch (curlErr) {
+                    reject(origErr || psErr || curlErr);
+                }
+            }
+        }
+
+        try {
+            const client = url.startsWith("https") ? https : http;
+            const req = client.get(url, {
+                headers: { "User-Agent": "Nightcord-Installer/3.0" },
+                rejectUnauthorized: false
+            }, (response) => {
+                if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
+                    file.close();
+                    const redirectUrl = response.headers.location;
+                    if (redirectUrl) {
+                        downloadFileAsync(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+                if (response.statusCode !== 200) {
+                    tryPowerShellFallback(new Error(`Failed to download: HTTP ${response.statusCode}`));
+                    return;
+                }
+                const totalBytes = parseInt(response.headers["content-length"], 10) || 0;
+                let downloadedBytes = 0;
+
+                response.on("data", (chunk) => {
+                    downloadedBytes += chunk.length;
+                    if (totalBytes > 0 && onProgress) {
+                        const percent = (downloadedBytes / totalBytes) * 100;
+                        onProgress(percent, downloadedBytes, totalBytes);
+                    }
+                });
+
+                response.pipe(file);
+
+                file.on("finish", () => {
+                    if (!finished) {
+                        finished = true;
+                        file.close();
+                        resolve();
+                    }
+                });
+            });
+
+            req.on("error", (err) => {
+                tryPowerShellFallback(err);
+            });
+
+            req.setTimeout(15000, () => {
+                req.destroy();
+                tryPowerShellFallback(new Error("Download stream timed out"));
+            });
+        } catch (err) {
+            tryPowerShellFallback(err);
+        }
+    });
+}
 
 async function downloadDist() {
     log("Fetching latest release information from Gitea...");
     let assetUrl;
     let nightcordVersion;
     try {
-        const response = await getJSON(RELEASE_API);
-        const release = response.body;
-        const asset = release && release.assets && release.assets.find(a => a.name.toLowerCase() === DIST_ZIP);
+        const release = await fetchJsonWithFallback(RELEASE_API);
+        const asset = release && release.assets && release.assets.find(a => a.name && a.name.toLowerCase() === DIST_ZIP);
         assetUrl = asset && asset.browser_download_url;
         nightcordVersion = release && release.tag_name;
         if (!assetUrl) {
