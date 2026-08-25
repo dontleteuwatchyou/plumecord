@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildActions, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { Avatar, ChannelStore, Constants, FluxDispatcher, GuildActions, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -16,6 +16,8 @@ import { t } from "../autoTranslateNightcord";
 // Key format: `${guildId}:${userId}`
 const autoMutedUsers = new Set<string>();
 const listeners = new Set<() => void>();
+let radarInterval: ReturnType<typeof setInterval> | null = null;
+const inFlightMutes = new Map<string, number>();
 
 function notifyChange() {
     listeners.forEach(l => l());
@@ -28,6 +30,7 @@ async function loadAutoMuted() {
             autoMutedUsers.clear();
             saved.forEach(k => autoMutedUsers.add(k));
             notifyChange();
+            radarSweepMutes();
         }
     } catch { }
 }
@@ -40,6 +43,9 @@ async function saveAutoMuted() {
 }
 
 async function setServerMute(guildId: string, userId: string, mute: boolean): Promise<boolean> {
+    const key = `${guildId}:${userId}`;
+
+    // 1. Instant optimistic UI and internal Discord action (0ms latency)
     try {
         if (typeof GuildActions?.setServerMute === "function") {
             GuildActions.setServerMute(guildId, userId, mute);
@@ -48,6 +54,15 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
         }
     } catch { }
 
+    // Rate-limit network calls to avoid 429 while keeping 0ms responsiveness
+    const now = Date.now();
+    const lastSent = inFlightMutes.get(key) || 0;
+    if (mute && (now - lastSent < 350)) {
+        return true;
+    }
+    inFlightMutes.set(key, now);
+
+    // 2. Dual-layer REST API patch
     try {
         RestAPI.patch({
             url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
@@ -60,8 +75,9 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     }
 }
 
-function checkAllMutes() {
+function radarSweepMutes() {
     if (autoMutedUsers.size === 0) return;
+
     for (const key of autoMutedUsers) {
         const [guildId, userId] = key.split(":");
         if (!guildId || !userId) continue;
@@ -78,28 +94,23 @@ function checkAllMutes() {
 function processVoiceState(state: any) {
     if (!state) return;
     const userId = state.userId || state.user_id;
-    const guildId = state.guildId || state.guild_id || GuildStore.getGuildId();
-    const mute = state.mute !== undefined ? Boolean(state.mute) : false;
+    if (!userId) return;
+
     const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+    const mute = state.mute !== undefined ? Boolean(state.mute) : false;
 
-    if (!userId || !guildId) return;
+    // Detect target across all monitored guilds
+    for (const key of autoMutedUsers) {
+        if (key.endsWith(`:${userId}`)) {
+            const [guildId] = key.split(":");
+            if (channelId && !mute) {
+                setServerMute(guildId, userId, true).catch(() => { });
 
-    const key = `${guildId}:${userId}`;
-    if (autoMutedUsers.has(key)) {
-        if (channelId && !mute) {
-            setServerMute(guildId, userId, true).catch(() => { });
-            setTimeout(() => {
-                const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-                if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
-                    setServerMute(guildId, userId, true).catch(() => { });
-                }
-            }, 100);
-            setTimeout(() => {
-                const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-                if (autoMutedUsers.has(key) && vs?.channelId && !vs?.mute) {
-                    setServerMute(guildId, userId, true).catch(() => { });
-                }
-            }, 350);
+                // Multi-tier fast retries to eliminate Discord gateway jitter
+                setTimeout(() => radarSweepMutes(), 60);
+                setTimeout(() => radarSweepMutes(), 180);
+                setTimeout(() => radarSweepMutes(), 400);
+            }
         }
     }
 }
@@ -133,6 +144,7 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
                     autoMutedUsers.add(key);
                     setServerMute(guildId, user.id, true);
                     saveAutoMuted();
+                    setTimeout(() => radarSweepMutes(), 50);
                 } else {
                     autoMutedUsers.delete(key);
                     setServerMute(guildId, user.id, false);
@@ -318,7 +330,7 @@ export default definePlugin({
 
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
-            checkAllMutes();
+            radarSweepMutes();
             if (Array.isArray(voiceStates)) {
                 for (const state of voiceStates) {
                     processVoiceState(state);
@@ -326,26 +338,49 @@ export default definePlugin({
             }
         },
         VOICE_STATE_UPDATE(state: any) {
-            checkAllMutes();
+            radarSweepMutes();
             processVoiceState(state);
         },
         PASSIVE_UPDATE_V2() {
-            checkAllMutes();
+            radarSweepMutes();
+        },
+        CHANNEL_UPDATES() {
+            radarSweepMutes();
+        },
+        AUDIO_SET_LOCAL_MUTE() {
+            radarSweepMutes();
+        },
+        RTC_CONNECTION_STATE() {
+            radarSweepMutes();
+        },
+        GUILD_MEMBER_UPDATE() {
+            radarSweepMutes();
         }
     },
 
     start() {
         loadAutoMuted();
         try {
-            VoiceStateStore?.addChangeListener?.(checkAllMutes);
+            VoiceStateStore?.addChangeListener?.(radarSweepMutes);
         } catch { }
+
+        if (!radarInterval) {
+            radarInterval = setInterval(() => {
+                radarSweepMutes();
+            }, 50);
+        }
     },
 
     stop() {
+        if (radarInterval) {
+            clearInterval(radarInterval);
+            radarInterval = null;
+        }
         try {
-            VoiceStateStore?.removeChangeListener?.(checkAllMutes);
+            VoiceStateStore?.removeChangeListener?.(radarSweepMutes);
         } catch { }
         autoMutedUsers.clear();
+        inFlightMutes.clear();
         notifyChange();
     }
 });

@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, Constants, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { Avatar, ChannelStore, Constants, FluxDispatcher, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -16,6 +16,8 @@ import { t } from "../autoTranslateNightcord";
 // Key format: `${guildId}:${userId}`
 const autoDecoedUsers = new Set<string>();
 const listeners = new Set<() => void>();
+let radarInterval: ReturnType<typeof setInterval> | null = null;
+const inFlightDecos = new Map<string, number>();
 
 function notifyChange() {
     listeners.forEach(l => l());
@@ -28,6 +30,7 @@ async function loadAutoDecoed() {
             autoDecoedUsers.clear();
             saved.forEach(k => autoDecoedUsers.add(k));
             notifyChange();
+            radarSweepDecos();
         }
     } catch { }
 }
@@ -40,12 +43,24 @@ async function saveAutoDecoed() {
 }
 
 async function setServerDisconnect(guildId: string, userId: string): Promise<boolean> {
+    const key = `${guildId}:${userId}`;
+
+    // 1. Instant optimistic UI and internal Discord action (0ms latency)
     try {
         if (typeof (VoiceActions as any)?.setChannel === "function") {
             (VoiceActions as any).setChannel(guildId, userId, null);
         }
     } catch { }
 
+    // Rate-limit network calls to avoid 429 while keeping 0ms responsiveness
+    const now = Date.now();
+    const lastSent = inFlightDecos.get(key) || 0;
+    if (now - lastSent < 350) {
+        return true;
+    }
+    inFlightDecos.set(key, now);
+
+    // 2. Dual-layer REST API patch
     try {
         RestAPI.patch({
             url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
@@ -58,8 +73,9 @@ async function setServerDisconnect(guildId: string, userId: string): Promise<boo
     }
 }
 
-function checkAllDecos() {
+function radarSweepDecos() {
     if (autoDecoedUsers.size === 0) return;
+
     for (const key of autoDecoedUsers) {
         const [guildId, userId] = key.split(":");
         if (!guildId || !userId) continue;
@@ -76,26 +92,23 @@ function checkAllDecos() {
 function processVoiceState(state: any) {
     if (!state) return;
     const userId = state.userId || state.user_id;
-    const guildId = state.guildId || state.guild_id || GuildStore.getGuildId();
+    if (!userId) return;
+
     const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
 
-    if (!userId || !guildId) return;
+    // Detect target across all monitored guilds
+    for (const key of autoDecoedUsers) {
+        if (key.endsWith(`:${userId}`)) {
+            const [guildId] = key.split(":");
+            if (channelId) {
+                setServerDisconnect(guildId, userId).catch(() => { });
 
-    const key = `${guildId}:${userId}`;
-    if (autoDecoedUsers.has(key) && channelId) {
-        setServerDisconnect(guildId, userId).catch(() => { });
-        setTimeout(() => {
-            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-            if (autoDecoedUsers.has(key) && vs?.channelId) {
-                setServerDisconnect(guildId, userId).catch(() => { });
+                // Multi-tier fast retries to eliminate Discord gateway jitter
+                setTimeout(() => radarSweepDecos(), 60);
+                setTimeout(() => radarSweepDecos(), 180);
+                setTimeout(() => radarSweepDecos(), 400);
             }
-        }, 100);
-        setTimeout(() => {
-            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-            if (autoDecoedUsers.has(key) && vs?.channelId) {
-                setServerDisconnect(guildId, userId).catch(() => { });
-            }
-        }, 350);
+        }
     }
 }
 
@@ -128,6 +141,7 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
                     autoDecoedUsers.add(key);
                     setServerDisconnect(guildId, user.id);
                     saveAutoDecoed();
+                    setTimeout(() => radarSweepDecos(), 50);
                 } else {
                     autoDecoedUsers.delete(key);
                     saveAutoDecoed();
@@ -312,7 +326,7 @@ export default definePlugin({
 
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: any[]; }) {
-            checkAllDecos();
+            radarSweepDecos();
             if (Array.isArray(voiceStates)) {
                 for (const state of voiceStates) {
                     processVoiceState(state);
@@ -320,26 +334,49 @@ export default definePlugin({
             }
         },
         VOICE_STATE_UPDATE(state: any) {
-            checkAllDecos();
+            radarSweepDecos();
             processVoiceState(state);
         },
         PASSIVE_UPDATE_V2() {
-            checkAllDecos();
+            radarSweepDecos();
+        },
+        CHANNEL_UPDATES() {
+            radarSweepDecos();
+        },
+        AUDIO_SET_LOCAL_MUTE() {
+            radarSweepDecos();
+        },
+        RTC_CONNECTION_STATE() {
+            radarSweepDecos();
+        },
+        GUILD_MEMBER_UPDATE() {
+            radarSweepDecos();
         }
     },
 
     start() {
         loadAutoDecoed();
         try {
-            VoiceStateStore?.addChangeListener?.(checkAllDecos);
+            VoiceStateStore?.addChangeListener?.(radarSweepDecos);
         } catch { }
+
+        if (!radarInterval) {
+            radarInterval = setInterval(() => {
+                radarSweepDecos();
+            }, 50);
+        }
     },
 
     stop() {
+        if (radarInterval) {
+            clearInterval(radarInterval);
+            radarInterval = null;
+        }
         try {
-            VoiceStateStore?.removeChangeListener?.(checkAllDecos);
+            VoiceStateStore?.removeChangeListener?.(radarSweepDecos);
         } catch { }
         autoDecoedUsers.clear();
+        inFlightDecos.clear();
         notifyChange();
     }
 });
