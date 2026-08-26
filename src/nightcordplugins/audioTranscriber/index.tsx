@@ -6,7 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, FormSwitch, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal, React, ReactDOM, SelectedChannelStore, Slider, Text, VoiceStateStore, showToast, Toasts } from "@webpack/common";
+import { Button, createRoot, FormSwitch, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal, React, SelectedChannelStore, Slider, Text, VoiceStateStore, showToast, Toasts } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { transcriberEngine } from "./engine";
@@ -83,6 +83,7 @@ const settings = definePluginSettings({
 });
 
 let overlayContainer: HTMLElement | null = null;
+let overlayRoot: any = null;
 
 function renderOverlay() {
     if (!overlayContainer) {
@@ -102,15 +103,21 @@ function renderOverlay() {
         alwaysOn: !!settings.store.alwaysOn
     };
 
-    ReactDOM.render(
-        <SubtitleOverlay settings={currentSettings} />,
-        overlayContainer
+    if (!overlayRoot) {
+        overlayRoot = createRoot(overlayContainer);
+    }
+
+    overlayRoot.render(
+        <SubtitleOverlay settings={currentSettings} />
     );
 }
 
 function removeOverlay() {
+    if (overlayRoot) {
+        try { overlayRoot.unmount(); } catch { }
+        overlayRoot = null;
+    }
     if (overlayContainer) {
-        try { ReactDOM.unmountComponentAtNode(overlayContainer); } catch { }
         try { overlayContainer.remove(); } catch { }
         overlayContainer = null;
     }
