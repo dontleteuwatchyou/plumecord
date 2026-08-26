@@ -49,10 +49,18 @@ class FakeStreamEngine {
         try {
             const video = document.createElement("video");
             video.id = "nc-fake-streaming-video";
-            video.style.display = "none";
+            // Place off-screen instead of display:none so Chromium actively decodes frames
+            video.style.position = "fixed";
+            video.style.left = "-9999px";
+            video.style.top = "-9999px";
+            video.style.width = "640px";
+            video.style.height = "360px";
+            video.style.opacity = "0.01";
+            video.style.pointerEvents = "none";
+            video.style.zIndex = "-9999";
             video.crossOrigin = "anonymous";
             video.playsInline = true;
-            video.muted = true; // start muted to guarantee autoplay permission
+            video.muted = true; // muted guarantees continuous autoplay
             video.loop = this.config.loop;
             video.playbackRate = this.config.playbackRate;
             video.volume = this.config.volume;
@@ -65,9 +73,16 @@ class FakeStreamEngine {
             this.videoElement = video;
 
             const canvas = document.createElement("canvas");
-            canvas.style.display = "none";
+            canvas.style.position = "fixed";
+            canvas.style.left = "-9999px";
+            canvas.style.top = "-9999px";
+            canvas.style.opacity = "0.01";
+            canvas.style.pointerEvents = "none";
             canvas.width = 1280;
             canvas.height = 720;
+            if (mount) {
+                mount.appendChild(canvas);
+            }
             this.canvas = canvas;
             this.canvasCtx = canvas.getContext("2d");
         } catch (e) {
@@ -242,14 +257,19 @@ class FakeStreamEngine {
         if (this.renderInterval) return;
         this.renderInterval = setInterval(() => {
             const video = this.getVideoElement();
-            if (video && this.canvasCtx && this.canvas && !video.paused) {
+            if (video && this.canvasCtx && this.canvas) {
+                if (video.paused) {
+                    video.play().catch(() => { });
+                }
                 if (video.videoWidth > 0 && video.videoHeight > 0) {
                     if (this.canvas.width !== video.videoWidth || this.canvas.height !== video.videoHeight) {
                         this.canvas.width = video.videoWidth;
                         this.canvas.height = video.videoHeight;
                     }
                 }
-                this.canvasCtx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height);
+                try {
+                    this.canvasCtx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height);
+                } catch { }
             }
         }, 1000 / 30); // 30 fps
     }
@@ -278,7 +298,6 @@ class FakeStreamEngine {
             throw new Error("Video element not ready");
         }
 
-        // Ensure video is playing
         try {
             await video.play();
         } catch { }
@@ -287,7 +306,7 @@ class FakeStreamEngine {
 
         let fakeStream: MediaStream | null = null;
 
-        // Try Canvas captureStream
+        // Try Canvas captureStream (30 FPS)
         if (this.canvas && (this.canvas as any).captureStream) {
             fakeStream = (this.canvas as any).captureStream(30);
         } else if ((video as any).captureStream) {
@@ -325,7 +344,6 @@ class FakeStreamEngine {
             }
 
             if (!addedAudio && this.originalGetUserMedia) {
-                // Fallback to real microphone
                 try {
                     const realAudio = await this.originalGetUserMedia({ audio: originalConstraints.audio, video: false });
                     const micTrack = realAudio.getAudioTracks()[0];

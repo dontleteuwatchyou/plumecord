@@ -13,19 +13,8 @@ import { fakeStreamEngine } from "./engine";
 import { FakeStreamConfig, StreamTarget } from "./types";
 import { t } from "../autoTranslateNightcord";
 
-function formatTime(seconds: number): string {
-    if (isNaN(seconds) || seconds < 0) return "00:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-}
-
 export function FakeStreamingModal({ onClose, transitionState }: { onClose: () => void; transitionState: any; }) {
     const [config, setConfig] = React.useState<FakeStreamConfig>(() => fakeStreamEngine.getConfig());
-    const [currentTime, setCurrentTime] = React.useState(0);
-    const [duration, setDuration] = React.useState(0);
-    const [isPlaying, setIsPlaying] = React.useState(false);
-
     const fileInputRef = React.useRef<HTMLInputElement>(null);
     const previewVideoRef = React.useRef<HTMLVideoElement>(null);
 
@@ -34,29 +23,6 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
             setConfig(fakeStreamEngine.getConfig());
         });
         return () => unsub();
-    }, []);
-
-    React.useEffect(() => {
-        const engineVideo = fakeStreamEngine.getVideoElement();
-        if (!engineVideo) return;
-
-        const handleTimeUpdate = () => {
-            setCurrentTime(engineVideo.currentTime || 0);
-            setDuration(engineVideo.duration || 0);
-            setIsPlaying(!engineVideo.paused);
-        };
-
-        engineVideo.addEventListener("timeupdate", handleTimeUpdate);
-        engineVideo.addEventListener("loadedmetadata", handleTimeUpdate);
-        engineVideo.addEventListener("play", handleTimeUpdate);
-        engineVideo.addEventListener("pause", handleTimeUpdate);
-
-        return () => {
-            engineVideo.removeEventListener("timeupdate", handleTimeUpdate);
-            engineVideo.removeEventListener("loadedmetadata", handleTimeUpdate);
-            engineVideo.removeEventListener("play", handleTimeUpdate);
-            engineVideo.removeEventListener("pause", handleTimeUpdate);
-        };
     }, []);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,23 +39,20 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
 
     const handleToggleActive = () => {
         const nextActive = !config.active;
-        fakeStreamEngine.updateConfig({ active: nextActive });
+        fakeStreamEngine.updateConfig({
+            active: nextActive,
+            target: config.target || "both"
+        });
+
         if (nextActive) {
             fakeStreamEngine.play();
-            showToast("Fake Streaming activated", Toasts.Type.SUCCESS);
+            // Automatically turn on Discord camera if in voice channel
+            fakeStreamEngine.toggleDiscordWebcam(true);
+            showToast("Fake Streaming activated - Camera turned on", Toasts.Type.SUCCESS);
         } else {
             fakeStreamEngine.pause();
+            fakeStreamEngine.toggleDiscordWebcam(false);
             showToast("Fake Streaming stopped", Toasts.Type.INFO);
-        }
-    };
-
-    const handleTogglePlayPause = () => {
-        if (isPlaying) {
-            fakeStreamEngine.pause();
-            if (previewVideoRef.current) previewVideoRef.current.pause();
-        } else {
-            fakeStreamEngine.play();
-            if (previewVideoRef.current) previewVideoRef.current.play().catch(() => { });
         }
     };
 
