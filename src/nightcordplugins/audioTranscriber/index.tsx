@@ -6,9 +6,10 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, createRoot, FormSwitch, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal, React, SelectedChannelStore, Slider, Text, VoiceStateStore, showToast, Toasts } from "@webpack/common";
+import { Button, createRoot, FormSwitch, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal, React, SelectedChannelStore, Slider, Text, TextInput, UserStore, VoiceStateStore, showToast, Toasts } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
+import { getGroqKey, setGroqKey } from "../nightcordAI/groqManager";
 import { transcriberEngine } from "./engine";
 import { SubtitleOverlay, SubtitleHistoryModal } from "./SubtitleOverlay";
 import { TranscriberSettings } from "./types";
@@ -19,16 +20,15 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "Transcription language for speech recognition.",
         options: [
-            { label: "French (Français)", value: "fr-FR", default: true },
-            { label: "English (US)", value: "en-US" },
-            { label: "English (UK)", value: "en-GB" },
-            { label: "Spanish (Español)", value: "es-ES" },
-            { label: "German (Deutsch)", value: "de-DE" },
-            { label: "Italian (Italiano)", value: "it-IT" },
-            { label: "Russian (Русский)", value: "ru-RU" },
-            { label: "Arabic (العربية)", value: "ar-SA" },
-            { label: "Chinese (中文)", value: "zh-CN" },
-            { label: "Japanese (日本語)", value: "ja-JP" }
+            { label: "French (Français)", value: "fr", default: true },
+            { label: "English (Anglais)", value: "en" },
+            { label: "Spanish (Español)", value: "es" },
+            { label: "German (Deutsch)", value: "de" },
+            { label: "Italian (Italiano)", value: "it" },
+            { label: "Russian (Русский)", value: "ru" },
+            { label: "Arabic (العربية)", value: "ar" },
+            { label: "Chinese (中文)", value: "zh" },
+            { label: "Japanese (日本語)", value: "ja" }
         ],
         restartNeeded: false
     },
@@ -93,7 +93,7 @@ function renderOverlay() {
     }
 
     const currentSettings: TranscriberSettings = {
-        language: settings.store.language || "fr-FR",
+        language: settings.store.language || "fr",
         fontSize: settings.store.fontSize || 16,
         bgOpacity: settings.store.bgOpacity || 85,
         fadeDelay: settings.store.fadeDelay || 5,
@@ -125,10 +125,18 @@ function removeOverlay() {
 
 function AudioTranscriberSettingsComponent() {
     const [isRunning, setIsRunning] = React.useState(() => transcriberEngine.getStatus());
+    const [audioLevel, setAudioLevel] = React.useState(0);
+    const [apiKey, setApiKeyState] = React.useState("");
+    const [keySaved, setKeySaved] = React.useState(false);
 
     React.useEffect(() => {
-        const unsub = transcriberEngine.subscribeStatus(active => setIsRunning(active));
-        return () => unsub();
+        getGroqKey().then(k => setApiKeyState(k || ""));
+        const unsubStatus = transcriberEngine.subscribeStatus(active => setIsRunning(active));
+        const unsubLevel = transcriberEngine.subscribeLevel(lvl => setAudioLevel(lvl));
+        return () => {
+            unsubStatus();
+            unsubLevel();
+        };
     }, []);
 
     const toggleEngine = () => {
@@ -136,21 +144,29 @@ function AudioTranscriberSettingsComponent() {
             transcriberEngine.stop();
             showToast("Audio Transcriber paused", Toasts.Type.INFO);
         } else {
-            transcriberEngine.start(settings.store.language || "fr-FR");
+            transcriberEngine.start(settings.store.language || "fr");
             showToast("Audio Transcriber listening", Toasts.Type.SUCCESS);
         }
     };
 
+    const handleSaveKey = async () => {
+        await setGroqKey(apiKey);
+        setKeySaved(true);
+        showToast("API Key saved", Toasts.Type.SUCCESS);
+        setTimeout(() => setKeySaved(false), 2000);
+    };
+
     return (
         <div style={{ width: "100%", marginTop: "10px" }}>
-            <Card variant="primary" outline style={{ padding: "16px", background: "var(--background-secondary, #2b2d31)", borderRadius: "8px", marginBottom: "12px" }}>
-                <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
+            {/* Status & Controls Card */}
+            <Card variant="primary" outline style={{ padding: "16px", background: "var(--background-secondary, #2b2d31)", borderRadius: "8px", marginBottom: "14px" }}>
+                <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%", marginBottom: "12px" }}>
                     <div>
                         <span style={{ color: "#ffffff", fontWeight: 700, fontSize: "14px", display: "block" }}>
                             {t("Live Speech Recognition Engine")}
                         </span>
                         <span style={{ color: isRunning ? "var(--status-positive, #43b581)" : "var(--text-muted, #949ba4)", fontSize: "12px" }}>
-                            {isRunning ? `● ${t("Active & Listening")} (${settings.store.language || "fr-FR"})` : `○ ${t("Idle / Waiting for voice call")}`}
+                            {isRunning ? `● ${t("Active & Listening")} (${settings.store.language || "fr"})` : `○ ${t("Idle / Waiting for voice call")}`}
                         </span>
                     </div>
                     <Flex alignItems={FlexAlign.CENTER} gap="8px">
@@ -170,6 +186,56 @@ function AudioTranscriberSettingsComponent() {
                         </Button>
                     </Flex>
                 </Flex>
+
+                {/* Live VU Meter Bar */}
+                <div style={{ marginTop: "8px" }}>
+                    <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ marginBottom: "4px" }}>
+                        <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "11px", textTransform: "uppercase", fontWeight: 600 }}>
+                            {t("Audio Signal Level")}
+                        </span>
+                        <span style={{ color: audioLevel > 10 ? "var(--status-positive, #43b581)" : "var(--text-muted, #949ba4)", fontSize: "11px", fontWeight: 600 }}>
+                            {audioLevel}%
+                        </span>
+                    </Flex>
+                    <div style={{ width: "100%", height: "6px", backgroundColor: "rgba(0,0,0,0.3)", borderRadius: "3px", overflow: "hidden" }}>
+                        <div
+                            style={{
+                                width: `${audioLevel}%`,
+                                height: "100%",
+                                backgroundColor: audioLevel > 50 ? "#43b581" : "#5865F2",
+                                transition: "width 0.08s ease"
+                            }}
+                        />
+                    </div>
+                </div>
+            </Card>
+
+            {/* Groq API Key Card */}
+            <Card variant="primary" outline style={{ padding: "16px", background: "var(--background-secondary, #2b2d31)", borderRadius: "8px" }}>
+                <span style={{ color: "#ffffff", fontWeight: 700, fontSize: "13px", display: "block", marginBottom: "4px" }}>
+                    {t("Groq Whisper Turbo Engine (Recommended for 100% Accuracy)")}
+                </span>
+                <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "12px", display: "block", marginBottom: "10px", lineHeight: "1.4" }}>
+                    {t("Get a free API key with ultra-fast Whisper Large Turbo at ")}
+                    <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: "var(--text-link)" }}>
+                        console.groq.com/keys
+                    </a>
+                </span>
+                <Flex alignItems={FlexAlign.CENTER} gap="8px">
+                    <TextInput
+                        value={apiKey}
+                        onChange={(v: string) => setApiKeyState(v)}
+                        placeholder="gsk_..."
+                        type="password"
+                        style={{ flex: 1 }}
+                    />
+                    <Button
+                        variant={keySaved ? "positive" : "primary"}
+                        onClick={handleSaveKey}
+                    >
+                        {keySaved ? t("Saved") : t("Save Key")}
+                    </Button>
+                </Flex>
             </Card>
         </div>
     );
@@ -188,7 +254,7 @@ export default definePlugin({
     flux: {
         RTC_CONNECTION_STATE({ state }: { state: string; }) {
             if (state === "RTC_CONNECTED") {
-                transcriberEngine.start(settings.store.language || "fr-FR");
+                transcriberEngine.start(settings.store.language || "fr");
             } else if (state === "DISCONNECTED" && !settings.store.alwaysOn) {
                 transcriberEngine.stop();
             }
@@ -196,7 +262,7 @@ export default definePlugin({
         VOICE_STATE_UPDATES() {
             const currentVoiceChannelId = SelectedChannelStore.getVoiceChannelId();
             if (currentVoiceChannelId && !transcriberEngine.getStatus()) {
-                transcriberEngine.start(settings.store.language || "fr-FR");
+                transcriberEngine.start(settings.store.language || "fr");
             } else if (!currentVoiceChannelId && !settings.store.alwaysOn && transcriberEngine.getStatus()) {
                 transcriberEngine.stop();
             }
@@ -207,7 +273,7 @@ export default definePlugin({
         renderOverlay();
 
         if (settings.store.alwaysOn || SelectedChannelStore.getVoiceChannelId()) {
-            transcriberEngine.start(settings.store.language || "fr-FR");
+            transcriberEngine.start(settings.store.language || "fr");
         }
     },
 
