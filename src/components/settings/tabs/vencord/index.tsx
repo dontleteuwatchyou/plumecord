@@ -181,7 +181,7 @@ function DevTeamSection() {
                 <QuickAction
                     Icon={DiscordIcon}
                     text="Discord Server"
-                    action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://discord.gg/n1ghtcord") : window.open("https://discord.gg/n1ghtcord", "_blank")}
+                    disabled
                 />
             </QuickActionCard>
 

@@ -45,6 +45,16 @@
     flex-shrink: 0;
 }
 
+.vc-settings-quickActions-pill:disabled,
+.vc-settings-quickActions-pill[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none !important;
+    box-shadow: none !important;
+    color: var(--text-muted, #949ba4);
+}
+
 .vc-settings-quickActions-pill .vc-owner-crown-icon {
     color: inherit;
 }
