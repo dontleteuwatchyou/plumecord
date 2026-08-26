@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { FluxDispatcher, MediaEngineStore } from "@webpack/common";
 import { FakeStreamConfig, StreamTarget } from "./types";
 
 type StateListener = () => void;
@@ -12,8 +13,9 @@ class FakeStreamEngine {
     private videoElement: HTMLVideoElement | null = null;
     private canvas: HTMLCanvasElement | null = null;
     private canvasCtx: CanvasRenderingContext2D | null = null;
-    private animFrameId: number | null = null;
+    private renderInterval: ReturnType<typeof setInterval> | null = null;
     private originalGetUserMedia: typeof navigator.mediaDevices.getUserMedia | null = null;
+    private originalPrototypeGetUserMedia: any = null;
 
     private config: FakeStreamConfig = {
         videoUrl: "",
@@ -30,7 +32,7 @@ class FakeStreamEngine {
     private isPatched = false;
 
     constructor() {
-        // Lazy initialization when DOM is ready
+        // Lazy init
     }
 
     public getVideoElement(): HTMLVideoElement | null {
@@ -50,7 +52,7 @@ class FakeStreamEngine {
             video.style.display = "none";
             video.crossOrigin = "anonymous";
             video.playsInline = true;
-            video.muted = false;
+            video.muted = true; // start muted to guarantee autoplay permission
             video.loop = this.config.loop;
             video.playbackRate = this.config.playbackRate;
             video.volume = this.config.volume;
@@ -64,6 +66,8 @@ class FakeStreamEngine {
 
             const canvas = document.createElement("canvas");
             canvas.style.display = "none";
+            canvas.width = 1280;
+            canvas.height = 720;
             this.canvas = canvas;
             this.canvasCtx = canvas.getContext("2d");
         } catch (e) {
@@ -92,9 +96,7 @@ class FakeStreamEngine {
             if (newConfig.videoUrl !== undefined && newConfig.videoUrl !== video.src) {
                 video.src = newConfig.videoUrl;
                 video.load();
-                if (this.config.active) {
-                    video.play().catch(() => { });
-                }
+                video.play().catch(() => { });
             }
             if (newConfig.loop !== undefined) {
                 video.loop = newConfig.loop;
@@ -107,31 +109,43 @@ class FakeStreamEngine {
             }
         }
 
+        if (this.config.active) {
+            this.startCanvasLoop();
+        } else {
+            this.stopCanvasLoop();
+        }
+
         this.notify();
     }
 
-    public loadVideoBlob(file: File): Promise<string> {
-        return new Promise((resolve) => {
-            const url = URL.createObjectURL(file);
-            this.updateConfig({
-                videoUrl: url,
-                videoName: file.name
-            });
-            resolve(url);
+    public async loadVideoBlob(file: File): Promise<string> {
+        const url = URL.createObjectURL(file);
+        this.updateConfig({
+            videoUrl: url,
+            videoName: file.name
         });
+        const video = this.getVideoElement();
+        if (video) {
+            video.src = url;
+            video.load();
+            video.play().catch(() => { });
+        }
+        return url;
     }
 
     public play() {
         const video = this.getVideoElement();
-        if (video && video.paused) {
+        if (video) {
             video.play().catch(() => { });
+            this.startCanvasLoop();
         }
     }
 
     public pause() {
         const video = this.getVideoElement();
-        if (video && !video.paused) {
+        if (video) {
             video.pause();
+            this.stopCanvasLoop();
         }
     }
 
@@ -142,13 +156,34 @@ class FakeStreamEngine {
         }
     }
 
+    public toggleDiscordWebcam(enable?: boolean) {
+        try {
+            const isCurrentlyEnabled = typeof (MediaEngineStore as any)?.isVideoEnabled === "function"
+                ? (MediaEngineStore as any).isVideoEnabled()
+                : false;
+            const targetState = enable !== undefined ? enable : !isCurrentlyEnabled;
+
+            FluxDispatcher.dispatch({
+                type: "MEDIA_ENGINE_SET_VIDEO_ENABLED",
+                enabled: targetState
+            });
+        } catch (e) {
+            console.warn("[FakeStreaming] Failed to toggle Discord webcam:", e);
+        }
+    }
+
     public startPatch() {
         if (this.isPatched || !navigator.mediaDevices) return;
 
         this.originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        const MediaDevicesProto = Object.getPrototypeOf(navigator.mediaDevices);
+        if (MediaDevicesProto && MediaDevicesProto.getUserMedia) {
+            this.originalPrototypeGetUserMedia = MediaDevicesProto.getUserMedia;
+        }
+
         const self = this;
 
-        navigator.mediaDevices.getUserMedia = async function (constraints) {
+        const patchedGetUserMedia = async function (constraints: MediaStreamConstraints | undefined) {
             if (!self.config.active || !self.config.videoUrl) {
                 return self.originalGetUserMedia!.call(navigator.mediaDevices, constraints);
             }
@@ -176,22 +211,53 @@ class FakeStreamEngine {
             }
         };
 
+        navigator.mediaDevices.getUserMedia = patchedGetUserMedia;
+        if (MediaDevicesProto) {
+            MediaDevicesProto.getUserMedia = patchedGetUserMedia;
+        }
+
         this.isPatched = true;
     }
 
     public stopPatch() {
-        if (this.isPatched && this.originalGetUserMedia && navigator.mediaDevices) {
-            navigator.mediaDevices.getUserMedia = this.originalGetUserMedia;
+        if (this.isPatched) {
+            if (this.originalGetUserMedia && navigator.mediaDevices) {
+                navigator.mediaDevices.getUserMedia = this.originalGetUserMedia;
+            }
+            const MediaDevicesProto = Object.getPrototypeOf(navigator.mediaDevices);
+            if (MediaDevicesProto && this.originalPrototypeGetUserMedia) {
+                MediaDevicesProto.getUserMedia = this.originalPrototypeGetUserMedia;
+            }
             this.isPatched = false;
         }
 
-        if (this.animFrameId) {
-            cancelAnimationFrame(this.animFrameId);
-            this.animFrameId = null;
-        }
+        this.stopCanvasLoop();
 
         if (this.videoElement) {
             try { this.videoElement.pause(); } catch { }
+        }
+    }
+
+    private startCanvasLoop() {
+        if (this.renderInterval) return;
+        this.renderInterval = setInterval(() => {
+            const video = this.getVideoElement();
+            if (video && this.canvasCtx && this.canvas && !video.paused) {
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    if (this.canvas.width !== video.videoWidth || this.canvas.height !== video.videoHeight) {
+                        this.canvas.width = video.videoWidth;
+                        this.canvas.height = video.videoHeight;
+                    }
+                }
+                this.canvasCtx.drawImage(video, 0, 0, this.canvas.width, this.canvas.height);
+            }
+        }, 1000 / 30); // 30 fps
+    }
+
+    private stopCanvasLoop() {
+        if (this.renderInterval) {
+            clearInterval(this.renderInterval);
+            this.renderInterval = null;
         }
     }
 
@@ -207,84 +273,70 @@ class FakeStreamEngine {
     }
 
     private async generateFakeStream(originalConstraints: MediaStreamConstraints | undefined): Promise<MediaStream> {
-        if (!this.videoElement) {
+        const video = this.getVideoElement();
+        if (!video) {
             throw new Error("Video element not ready");
         }
 
         // Ensure video is playing
-        if (this.videoElement.paused) {
-            try {
-                await this.videoElement.play();
-            } catch { }
+        try {
+            await video.play();
+        } catch { }
+
+        this.startCanvasLoop();
+
+        let fakeStream: MediaStream | null = null;
+
+        // Try Canvas captureStream
+        if (this.canvas && (this.canvas as any).captureStream) {
+            fakeStream = (this.canvas as any).captureStream(30);
+        } else if ((video as any).captureStream) {
+            fakeStream = (video as any).captureStream(30);
         }
 
-        let mediaStream: MediaStream | null = null;
-
-        // Method 1: HTMLVideoElement.captureStream()
-        if ((this.videoElement as any).captureStream) {
-            try {
-                mediaStream = (this.videoElement as any).captureStream(60);
-            } catch { }
-        } else if ((this.videoElement as any).mozCaptureStream) {
-            try {
-                mediaStream = (this.videoElement as any).mozCaptureStream(60);
-            } catch { }
-        }
-
-        // Method 2: Canvas render loop fallback
-        if (!mediaStream || mediaStream.getVideoTracks().length === 0) {
-            mediaStream = this.createCanvasStream();
+        if (!fakeStream || fakeStream.getVideoTracks().length === 0) {
+            throw new Error("Failed to capture video stream from canvas/element");
         }
 
         const finalStream = new MediaStream();
 
         // 1. Add Fake Video Track
-        const videoTrack = mediaStream.getVideoTracks()[0];
+        const videoTrack = fakeStream.getVideoTracks()[0];
         if (videoTrack) {
+            videoTrack.enabled = true;
             finalStream.addTrack(videoTrack);
         }
 
-        // 2. Audio Track Handling
+        // 2. Audio Handling
         const wantsAudio = !!originalConstraints?.audio;
         if (wantsAudio) {
-            if (this.config.includeAudio && mediaStream.getAudioTracks().length > 0) {
-                // Use video's audio
-                finalStream.addTrack(mediaStream.getAudioTracks()[0]);
-            } else if (this.originalGetUserMedia) {
-                // Use real microphone audio
+            let addedAudio = false;
+
+            if (this.config.includeAudio && (video as any).captureStream) {
                 try {
-                    const realMic = await this.originalGetUserMedia({ audio: originalConstraints.audio, video: false });
-                    const micTrack = realMic.getAudioTracks()[0];
-                    if (micTrack) finalStream.addTrack(micTrack);
+                    const vidStream = (video as any).captureStream();
+                    const audioTrack = vidStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        audioTrack.enabled = true;
+                        finalStream.addTrack(audioTrack);
+                        addedAudio = true;
+                    }
+                } catch { }
+            }
+
+            if (!addedAudio && this.originalGetUserMedia) {
+                // Fallback to real microphone
+                try {
+                    const realAudio = await this.originalGetUserMedia({ audio: originalConstraints.audio, video: false });
+                    const micTrack = realAudio.getAudioTracks()[0];
+                    if (micTrack) {
+                        finalStream.addTrack(micTrack);
+                    }
                 } catch { }
             }
         }
 
         return finalStream;
-    }
-
-    private createCanvasStream(): MediaStream {
-        if (!this.canvas || !this.canvasCtx || !this.videoElement) {
-            return new MediaStream();
-        }
-
-        const width = this.videoElement.videoWidth || 1280;
-        const height = this.videoElement.videoHeight || 720;
-        this.canvas.width = width;
-        this.canvas.height = height;
-
-        const draw = () => {
-            if (!this.videoElement || !this.canvasCtx || !this.canvas) return;
-            if (this.videoElement.readyState >= 2) {
-                this.canvasCtx.drawImage(this.videoElement, 0, 0, this.canvas.width, this.canvas.height);
-            }
-            this.animFrameId = requestAnimationFrame(draw);
-        };
-
-        if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-        draw();
-
-        return this.canvas.captureStream(60);
     }
 }
 

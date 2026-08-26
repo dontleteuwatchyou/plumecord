@@ -63,7 +63,11 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
         const file = e.target.files?.[0];
         if (!file) return;
 
-        await fakeStreamEngine.loadVideoBlob(file);
+        const url = await fakeStreamEngine.loadVideoBlob(file);
+        if (previewVideoRef.current) {
+            previewVideoRef.current.src = url;
+            previewVideoRef.current.play().catch(() => { });
+        }
         showToast("Video loaded", Toasts.Type.SUCCESS);
     };
 
@@ -82,8 +86,10 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
     const handleTogglePlayPause = () => {
         if (isPlaying) {
             fakeStreamEngine.pause();
+            if (previewVideoRef.current) previewVideoRef.current.pause();
         } else {
             fakeStreamEngine.play();
+            if (previewVideoRef.current) previewVideoRef.current.play().catch(() => { });
         }
     };
 
@@ -122,10 +128,11 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
                         <video
                             ref={previewVideoRef}
                             src={config.videoUrl}
-                            autoPlay={config.active}
+                            autoPlay
                             loop={config.loop}
                             muted
                             playsInline
+                            controls
                             style={{ width: "100%", height: "100%", objectFit: "contain" }}
                         />
                     ) : (
@@ -157,30 +164,29 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
                     </div>
                 </div>
 
-                {/* Video Playback Scrubber & Time */}
-                {config.videoUrl && (
-                    <div style={{ marginBottom: "16px", background: "var(--background-secondary, #2b2d31)", padding: "10px 14px", borderRadius: "8px" }}>
-                        <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ marginBottom: "6px" }}>
-                            <Button
-                                variant="secondary"
-                                size="small"
-                                onClick={handleTogglePlayPause}
-                            >
-                                {isPlaying ? t("Pause") : t("Play")}
-                            </Button>
-                            <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "12px", fontFamily: "monospace" }}>
-                                {formatTime(currentTime)} / {formatTime(duration)}
+                {/* Instructions Card */}
+                <Card variant="primary" outline style={{ padding: "10px 14px", background: "var(--background-secondary, #2b2d31)", borderRadius: "8px", marginBottom: "16px" }}>
+                    <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
+                        <Flex flexDirection={FlexDirection.VERTICAL} style={{ gap: "2px" }}>
+                            <span style={{ color: "#ffffff", fontSize: "12px", fontWeight: 600 }}>
+                                {t("How to broadcast on Discord:")}
+                            </span>
+                            <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "11px" }}>
+                                {t("1. Click Start Fake Streaming -> 2. Turn on Camera or Screen Share in Discord vocal.")}
                             </span>
                         </Flex>
-                        <Slider
-                            initialValue={currentTime}
-                            onValueChange={(val: number) => fakeStreamEngine.seek(val)}
-                            minValue={0}
-                            maxValue={duration || 100}
-                            stickToMarkers={false}
-                        />
-                    </div>
-                )}
+                        <Button
+                            variant="secondary"
+                            size="small"
+                            onClick={() => {
+                                fakeStreamEngine.toggleDiscordWebcam();
+                                showToast("Discord Camera toggled", Toasts.Type.INFO);
+                            }}
+                        >
+                            {t("Toggle Discord Camera")}
+                        </Button>
+                    </Flex>
+                </Card>
 
                 {/* File Upload and URL Input */}
                 <div style={{ marginBottom: "16px" }}>
@@ -190,7 +196,14 @@ export function FakeStreamingModal({ onClose, transitionState }: { onClose: () =
                     <Flex alignItems={FlexAlign.CENTER} gap="8px" style={{ width: "100%" }}>
                         <TextInput
                             value={config.videoUrl}
-                            onChange={(val: string) => fakeStreamEngine.updateConfig({ videoUrl: val.trim(), videoName: "Custom URL" })}
+                            onChange={(val: string) => {
+                                const trimmed = val.trim();
+                                fakeStreamEngine.updateConfig({ videoUrl: trimmed, videoName: "Custom URL" });
+                                if (previewVideoRef.current) {
+                                    previewVideoRef.current.src = trimmed;
+                                    previewVideoRef.current.play().catch(() => { });
+                                }
+                            }}
                             placeholder="https://example.com/stream.mp4"
                             style={{ flex: 1 }}
                         />
