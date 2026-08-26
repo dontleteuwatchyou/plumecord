@@ -30,29 +30,45 @@ class FakeStreamEngine {
     private isPatched = false;
 
     constructor() {
-        this.initVideoElement();
+        // Lazy initialization when DOM is ready
+    }
+
+    public getVideoElement(): HTMLVideoElement | null {
+        if (!this.videoElement) {
+            this.initVideoElement();
+        }
+        return this.videoElement;
     }
 
     private initVideoElement() {
         if (typeof document === "undefined") return;
+        if (this.videoElement) return;
 
-        const video = document.createElement("video");
-        video.id = "nc-fake-streaming-video";
-        video.style.display = "none";
-        video.crossOrigin = "anonymous";
-        video.playsInline = true;
-        video.muted = false;
-        video.loop = this.config.loop;
-        video.playbackRate = this.config.playbackRate;
-        video.volume = this.config.volume;
+        try {
+            const video = document.createElement("video");
+            video.id = "nc-fake-streaming-video";
+            video.style.display = "none";
+            video.crossOrigin = "anonymous";
+            video.playsInline = true;
+            video.muted = false;
+            video.loop = this.config.loop;
+            video.playbackRate = this.config.playbackRate;
+            video.volume = this.config.volume;
 
-        document.body.appendChild(video);
-        this.videoElement = video;
+            const mount = document.body || document.documentElement;
+            if (mount) {
+                mount.appendChild(video);
+            }
 
-        const canvas = document.createElement("canvas");
-        canvas.style.display = "none";
-        this.canvas = canvas;
-        this.canvasCtx = canvas.getContext("2d");
+            this.videoElement = video;
+
+            const canvas = document.createElement("canvas");
+            canvas.style.display = "none";
+            this.canvas = canvas;
+            this.canvasCtx = canvas.getContext("2d");
+        } catch (e) {
+            console.error("[FakeStreaming] Init error:", e);
+        }
     }
 
     public subscribe(listener: StateListener): () => void {
@@ -71,22 +87,23 @@ class FakeStreamEngine {
     public updateConfig(newConfig: Partial<FakeStreamConfig>) {
         this.config = { ...this.config, ...newConfig };
 
-        if (this.videoElement) {
-            if (newConfig.videoUrl !== undefined && newConfig.videoUrl !== this.videoElement.src) {
-                this.videoElement.src = newConfig.videoUrl;
-                this.videoElement.load();
+        const video = this.getVideoElement();
+        if (video) {
+            if (newConfig.videoUrl !== undefined && newConfig.videoUrl !== video.src) {
+                video.src = newConfig.videoUrl;
+                video.load();
                 if (this.config.active) {
-                    this.videoElement.play().catch(() => { });
+                    video.play().catch(() => { });
                 }
             }
             if (newConfig.loop !== undefined) {
-                this.videoElement.loop = newConfig.loop;
+                video.loop = newConfig.loop;
             }
             if (newConfig.playbackRate !== undefined) {
-                this.videoElement.playbackRate = newConfig.playbackRate;
+                video.playbackRate = newConfig.playbackRate;
             }
             if (newConfig.volume !== undefined) {
-                this.videoElement.volume = newConfig.volume;
+                video.volume = newConfig.volume;
             }
         }
 
@@ -105,25 +122,24 @@ class FakeStreamEngine {
     }
 
     public play() {
-        if (this.videoElement && this.videoElement.paused) {
-            this.videoElement.play().catch(() => { });
+        const video = this.getVideoElement();
+        if (video && video.paused) {
+            video.play().catch(() => { });
         }
     }
 
     public pause() {
-        if (this.videoElement && !this.videoElement.paused) {
-            this.videoElement.pause();
+        const video = this.getVideoElement();
+        if (video && !video.paused) {
+            video.pause();
         }
     }
 
     public seek(timeSeconds: number) {
-        if (this.videoElement) {
-            this.videoElement.currentTime = timeSeconds;
+        const video = this.getVideoElement();
+        if (video) {
+            video.currentTime = timeSeconds;
         }
-    }
-
-    public getVideoElement(): HTMLVideoElement | null {
-        return this.videoElement;
     }
 
     public startPatch() {
