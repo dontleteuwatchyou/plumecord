@@ -18,55 +18,6 @@ export function int2rgba(rgbVal: number = 0, alpha: number = 1): string {
     return `rgba(${[r, g, b].join(",")},${alpha})`;
 }
 
-// Crisp minimalist SVG presets (0 emojis)
-const PRESET_ICONS = [
-    {
-        name: "Gamepad",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="15" y1="13" x2="15.01" y2="13"></line><line x1="18" y1="11" x2="18.01" y2="11"></line><rect x="2" y="6" width="20" height="12" rx="6"></rect></svg>`
-    },
-    {
-        name: "Code",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`
-    },
-    {
-        name: "Music",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`
-    },
-    {
-        name: "Crown",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"></path></svg>`
-    },
-    {
-        name: "Shield",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`
-    },
-    {
-        name: "Star",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`
-    },
-    {
-        name: "Message",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`
-    },
-    {
-        name: "Fire",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>`
-    },
-    {
-        name: "Globe",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`
-    },
-    {
-        name: "Folder",
-        svg: `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`
-    }
-];
-
-function svgToDataUrl(svgString: string, color: string = "#ffffff"): string {
-    const colored = svgString.replace(/stroke="currentColor"/g, `stroke="${color}"`);
-    return `data:image/svg+xml;utf8,${encodeURIComponent(colored)}`;
-}
-
 export function FolderIconEditModal({
     folderProps,
     initialData,
@@ -181,38 +132,6 @@ export function FolderIconEditModal({
                         <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "12px", lineHeight: "1.4" }}>
                             {t("This is how your folder will look in the Discord server list.")}
                         </span>
-                    </div>
-                </div>
-
-                {/* Preset Icons Section */}
-                <div style={{ marginBottom: "16px" }}>
-                    <span style={{ color: "#ffffff", fontWeight: 600, fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: "8px" }}>
-                        {t("Preset Vector Icons")}
-                    </span>
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                        {PRESET_ICONS.map(preset => (
-                            <button
-                                key={preset.name}
-                                onClick={() => setUrl(svgToDataUrl(preset.svg))}
-                                title={preset.name}
-                                style={{
-                                    all: "unset",
-                                    width: "36px",
-                                    height: "36px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: "var(--background-secondary-alt, #1e1f22)",
-                                    borderRadius: "8px",
-                                    cursor: "pointer",
-                                    color: "var(--text-normal, #dbdee1)",
-                                    border: "1px solid rgba(255,255,255,0.06)",
-                                    transition: "all 0.15s ease"
-                                }}
-                            >
-                                <div dangerouslySetInnerHTML={{ __html: preset.svg }} style={{ width: "20px", height: "20px", display: "flex" }} />
-                            </button>
-                        ))}
                     </div>
                 </div>
 
