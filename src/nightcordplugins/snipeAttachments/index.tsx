@@ -7,14 +7,16 @@
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { Button, ChannelStore, GuildStore, openModal, React, SelectedChannelStore, TextInput, UserStore, showToast, Toasts } from "@webpack/common";
+import { Button, ChannelStore, GuildStore, MessageStore, openModal, React, SelectedChannelStore, TextInput, UserStore, showToast, Toasts } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { SnipeGalleryModal } from "./modal";
 import { SnipedAttachment, SnipePluginSettings } from "./types";
 import { t } from "../autoTranslateNightcord";
 
-const Native = VencordNative?.pluginHelpers?.SnipeAttachments as PluginNative<typeof import("./native")> | undefined;
+function getNative() {
+    return (window as any).VencordNative?.pluginHelpers?.SnipeAttachments as PluginNative<typeof import("./native")> | undefined;
+}
 
 const settings = definePluginSettings({
     savePath: {
@@ -69,7 +71,7 @@ const settings = definePluginSettings({
 });
 
 const snipedStore: SnipedAttachment[] = [];
-const processedAttachmentIds = new Set<string>();
+const processedUrls = new Set<string>();
 
 async function loadSnipedStore() {
     try {
@@ -77,7 +79,10 @@ async function loadSnipedStore() {
         if (Array.isArray(saved)) {
             snipedStore.length = 0;
             snipedStore.push(...saved);
-            saved.forEach(s => processedAttachmentIds.add(s.id));
+            saved.forEach(s => {
+                if (s.url) processedUrls.add(s.url);
+                if (s.id) processedUrls.add(s.id);
+            });
         }
     } catch { }
 }
@@ -88,10 +93,10 @@ async function saveSnipedStore() {
     } catch { }
 }
 
-function shouldDownloadFile(filename: string, contentType: string | undefined): boolean {
-    const isImage = /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(filename) || contentType?.startsWith("image/");
-    const isVideo = /\.(mp4|webm|mkv|mov|avi)$/i.test(filename) || contentType?.startsWith("video/");
-    const isAudio = /\.(mp3|ogg|wav|flac|m4a|opus)$/i.test(filename) || contentType?.startsWith("audio/");
+function isEligibleMediaType(filename: string, contentType: string | undefined): boolean {
+    const isImage = /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/i.test(filename) || contentType?.startsWith("image/");
+    const isVideo = /\.(mp4|webm|mkv|mov|avi|flv|wmv)$/i.test(filename) || contentType?.startsWith("video/");
+    const isAudio = /\.(mp3|ogg|wav|flac|m4a|opus|aac)$/i.test(filename) || contentType?.startsWith("audio/");
 
     if (isImage) return settings.store.saveImages !== false;
     if (isVideo) return settings.store.saveVideos !== false;
@@ -99,74 +104,132 @@ function shouldDownloadFile(filename: string, contentType: string | undefined): 
     return settings.store.saveDocuments !== false;
 }
 
-async function processIncomingMessage(message: any) {
-    if (!settings.store.autoDownload) return;
-    if (!message || !message.attachments || message.attachments.length === 0) return;
+interface MediaItemToDownload {
+    id: string;
+    url: string;
+    filename: string;
+    contentType?: string;
+    size?: number;
+}
 
-    const channelId = message.channel_id;
-    const channel = ChannelStore.getChannel(channelId);
-    const channelName = channel?.name || "DirectMessage";
+function extractMediaFromMessage(message: any): MediaItemToDownload[] {
+    const items: MediaItemToDownload[] = [];
+    if (!message) return items;
+
+    // 1. Regular Attachments
+    if (Array.isArray(message.attachments)) {
+        for (const att of message.attachments) {
+            const url = att.url || att.proxy_url || att.proxyUrl;
+            if (!url) continue;
+            const filename = att.filename || att.name || url.split("/").pop()?.split("?")[0] || "file";
+            const contentType = att.content_type || att.contentType;
+            const size = att.size;
+            items.push({ id: att.id || url, url, filename, contentType, size });
+        }
+    }
+
+    // 2. Embeds (Images, Videos, GIFs)
+    if (Array.isArray(message.embeds)) {
+        for (const embed of message.embeds) {
+            const mediaUrl = embed.video?.url || embed.image?.url || embed.thumbnail?.url;
+            if (mediaUrl && !items.some(i => i.url === mediaUrl)) {
+                const filename = mediaUrl.split("/").pop()?.split("?")[0] || "embed_media";
+                items.push({
+                    id: mediaUrl,
+                    url: mediaUrl,
+                    filename,
+                    contentType: embed.video ? "video/mp4" : "image/jpeg"
+                });
+            }
+        }
+    }
+
+    // 3. Discord CDN URLs in message content
+    if (typeof message.content === "string") {
+        const cdnMatches = message.content.match(/https?:\/\/(?:cdn|media)\.discordapp\.(?:com|net)\/attachments\/[^\s]+/gi);
+        if (cdnMatches) {
+            for (const url of cdnMatches) {
+                if (!items.some(i => i.url === url)) {
+                    const filename = url.split("/").pop()?.split("?")[0] || "discord_media";
+                    items.push({ id: url, url, filename });
+                }
+            }
+        }
+    }
+
+    return items;
+}
+
+async function processIncomingMessage(rawMessage: any) {
+    if (!settings.store.autoDownload) return;
+    if (!rawMessage) return;
+
+    const message = rawMessage.message || rawMessage;
+    const mediaItems = extractMediaFromMessage(message);
+    if (mediaItems.length === 0) return;
+
+    const channelId = message.channel_id || message.channelId || rawMessage.channelId;
+    const channel = channelId ? ChannelStore.getChannel(channelId) : null;
+    const channelName = channel?.name || (channel?.isDM() ? "DirectMessage" : "Chat");
     const guild = channel?.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
-    const guildName = guild?.name || "DMs";
+    const guildName = guild?.name || "DirectMessages";
 
     const author = message.author;
-    const authorName = author?.global_name || author?.globalName || author?.username || "UnknownUser";
+    const authorName = author?.global_name || author?.globalName || author?.username || "DiscordUser";
     const authorId = author?.id || "0";
 
     const maxBytes = (settings.store.maxFileSizeMB || 50) * 1024 * 1024;
     const customDir = settings.store.savePath || "";
+    const Native = getNative();
 
-    for (const att of message.attachments) {
-        if (!att.id || processedAttachmentIds.has(att.id)) continue;
-        if (att.size && att.size > maxBytes) continue;
-        if (!shouldDownloadFile(att.filename || "", att.content_type)) continue;
+    for (const item of mediaItems) {
+        if (processedUrls.has(item.url) || processedUrls.has(item.id)) continue;
+        if (item.size && item.size > maxBytes) continue;
+        if (!isEligibleMediaType(item.filename, item.contentType)) continue;
 
-        processedAttachmentIds.add(att.id);
+        processedUrls.add(item.url);
+        processedUrls.add(item.id);
 
         try {
-            const url = att.url || att.proxy_url;
-            if (!url) continue;
-
-            const res = await fetch(url);
-            if (!res.ok) continue;
-
-            const buffer = await res.arrayBuffer();
-
             let savedPath = "";
-            if (Native?.saveAttachmentFile) {
-                savedPath = await Native.saveAttachmentFile({
-                    buffer,
-                    filename: att.filename || "file",
+            let finalSize = item.size || 0;
+
+            if (Native?.downloadAndSaveMedia) {
+                const res = await Native.downloadAndSaveMedia({
+                    url: item.url,
+                    filename: item.filename,
                     guildName,
                     channelName,
                     authorName,
                     customDir
                 });
+                savedPath = res.savedPath;
+                finalSize = res.size;
             }
 
             const record: SnipedAttachment = {
-                id: att.id,
+                id: item.id,
                 messageId: message.id,
-                channelId,
+                channelId: channelId || "",
                 channelName,
                 guildId: channel?.guild_id,
                 guildName,
                 authorId,
                 authorName,
-                filename: att.filename || "file",
-                url,
-                size: att.size || buffer.byteLength,
-                contentType: att.content_type,
+                filename: item.filename,
+                url: item.url,
+                size: finalSize,
+                contentType: item.contentType,
                 savedPath,
                 timestamp: Date.now()
             };
 
             snipedStore.unshift(record);
-            if (snipedStore.length > 500) snipedStore.pop();
+            if (snipedStore.length > 1000) snipedStore.pop();
             saveSnipedStore();
 
         } catch (err) {
-            console.debug("[SnipeAttachments] Failed to download attachment:", err);
+            console.debug("[SnipeAttachments] Download error:", err);
         }
     }
 }
@@ -195,11 +258,30 @@ function handleMessageDelete(deletedIds: string[]) {
     }
 }
 
+export function snipeCurrentChannelMedia() {
+    const channelId = SelectedChannelStore.getChannelId();
+    if (!channelId) return;
+
+    const messages = MessageStore.getMessages(channelId);
+    if (!messages) return;
+
+    let count = 0;
+    const rawArray = typeof (messages as any).toArray === "function" ? (messages as any).toArray() : messages;
+
+    for (const msg of rawArray) {
+        processIncomingMessage(msg);
+        count++;
+    }
+
+    showToast(`Scanned ${count} messages for attachments in channel`, Toasts.Type.SUCCESS);
+}
+
 function SnipeAttachmentsSettingsComponent() {
     const [pathValue, setPathValue] = React.useState(settings.store.savePath || "");
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
 
     React.useEffect(() => {
+        const Native = getNative();
         if (!settings.store.savePath && Native?.getDefaultSaveDirectory) {
             Native.getDefaultSaveDirectory().then(def => {
                 if (def && !settings.store.savePath) {
@@ -211,6 +293,7 @@ function SnipeAttachmentsSettingsComponent() {
     }, []);
 
     const handleSelectFolder = async () => {
+        const Native = getNative();
         if (!Native?.selectSaveDirectory) return;
         const chosen = await Native.selectSaveDirectory();
         if (chosen) {
@@ -221,6 +304,7 @@ function SnipeAttachmentsSettingsComponent() {
     };
 
     const handleOpenFolder = () => {
+        const Native = getNative();
         const target = settings.store.savePath || pathValue;
         if (Native?.openFolder && target) {
             Native.openFolder(target);
@@ -236,6 +320,7 @@ function SnipeAttachmentsSettingsComponent() {
                     const idx = snipedStore.findIndex(s => s.id === id);
                     if (idx !== -1) {
                         const item = snipedStore[idx];
+                        const Native = getNative();
                         if (item.savedPath && Native?.deleteSavedFile) {
                             Native.deleteSavedFile(item.savedPath);
                         }
@@ -272,12 +357,20 @@ function SnipeAttachmentsSettingsComponent() {
                             {deletedCount > 0 && ` • ${deletedCount} ${t("preserved after author deleted message")}`}
                         </span>
                     </div>
-                    <Button
-                        variant="primary"
-                        onClick={handleOpenGallery}
-                    >
-                        {t("Open Sniped Attachments Gallery")}
-                    </Button>
+                    <Flex alignItems={FlexAlign.CENTER} gap="8px">
+                        <Button
+                            variant="secondary"
+                            onClick={snipeCurrentChannelMedia}
+                        >
+                            {t("Scan Current Channel")}
+                        </Button>
+                        <Button
+                            variant="primary"
+                            onClick={handleOpenGallery}
+                        >
+                            {t("Open Sniped Attachments Gallery")}
+                        </Button>
+                    </Flex>
                 </Flex>
             </Card>
 
@@ -325,11 +418,18 @@ export default definePlugin({
     settingsAboutComponent: SnipeAttachmentsSettingsComponent,
 
     flux: {
-        MESSAGE_CREATE({ message }: any) {
-            processIncomingMessage(message);
+        MESSAGE_CREATE(event: any) {
+            processIncomingMessage(event);
         },
-        MESSAGE_UPDATE({ message }: any) {
-            processIncomingMessage(message);
+        MESSAGE_UPDATE(event: any) {
+            processIncomingMessage(event);
+        },
+        LOAD_MESSAGES_SUCCESS(event: any) {
+            if (Array.isArray(event.messages)) {
+                for (const msg of event.messages) {
+                    processIncomingMessage(msg);
+                }
+            }
         },
         MESSAGE_DELETE({ id }: any) {
             if (id) handleMessageDelete([id]);
@@ -344,7 +444,6 @@ export default definePlugin({
     },
 
     stop() {
-        // Clean memory
-        processedAttachmentIds.clear();
+        processedUrls.clear();
     }
 });

@@ -25,6 +25,7 @@ export const translations: TranslationMap = {
     "cached files": {"en":"cached files","fr":"fichiers en cache","ar":"ملفات مخزنة","es":"archivos en caché","ru":"кэшированных файлов","zh":"个缓存文件"},
     "preserved after author deleted message": {"en":"preserved after author deleted message","fr":"préservés après suppression du message par l'auteur","ar":"تم الحفاظ عليها بعد حذف الرسالة","es":"conservados tras eliminación del mensaje","ru":"сохранено после удаления сообщения автором","zh":"在作者删除消息后保留"},
     "Open Sniped Attachments Gallery": {"en":"Open Sniped Attachments Gallery","fr":"Ouvrir la galerie des pièces jointes snipées","ar":"فتح معرض المرفقات المسترجعة","es":"Abrir galería de archivos adjuntos","ru":"Открыть галерею сохраненных вложений","zh":"打开已抓取附件图库"},
+    "Scan Current Channel": {"en":"Scan Current Channel","fr":"Scanner le salon actuel","ar":"فحص القناة الحالية","es":"Escanear canal actual","ru":"Сканировать текущий канал","zh":"扫描当前频道"},
     "Save Folder Directory": {"en":"Save Folder Directory","fr":"Répertoire du dossier d'enregistrement","ar":"دليل مجلد الحفظ","es":"Directorio de la carpeta de guardado","ru":"Папка для сохранения","zh":"保存文件夹目录"},
     "Browse Folder": {"en":"Browse Folder","fr":"Parcourir le dossier","ar":"تصفح المجلد","es":"Examinar carpeta","ru":"Обзор папки","zh":"浏览文件夹"},
     "Open Folder": {"en":"Open Folder","fr":"Ouvrir le dossier","ar":"فتح المجلد","es":"Abrir carpeta","ru":"Открыть папку","zh":"打开文件夹"},
