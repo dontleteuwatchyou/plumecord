@@ -25,11 +25,18 @@ console.log("[Nightcord] Starting up...");
 const injectorPath = require.main!.filename;
 
 // The original app.asar
-const _asarFromInjector = join(dirname(injectorPath), "..", "_app.asar");
-const _asarFromResources = join(process.resourcesPath, "_app.asar");
+const _asarFromInjector = join(dirname(injectorPath), "..", "app.asar");
+const _backupAsarFromInjector = join(dirname(injectorPath), "..", "_app.asar");
+const _asarFromResources = join(process.resourcesPath, "app.asar");
+const _backupAsarFromResources = join(process.resourcesPath, "_app.asar");
+
 const asarPath = (fsExistsSync(_asarFromInjector) && !fsStatSync(_asarFromInjector).isDirectory())
     ? _asarFromInjector
-    : _asarFromResources;
+    : (fsExistsSync(_asarFromResources) && !fsStatSync(_asarFromResources).isDirectory())
+        ? _asarFromResources
+        : (fsExistsSync(_backupAsarFromInjector) && !fsStatSync(_backupAsarFromInjector).isDirectory())
+            ? _backupAsarFromInjector
+            : _backupAsarFromResources;
 
 const discordPkg = require(join(asarPath, "package.json"));
 require.main!.filename = join(asarPath, discordPkg.main);

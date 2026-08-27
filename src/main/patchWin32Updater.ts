@@ -17,13 +17,13 @@ function patchResourcesDir(resourcesDir: string) {
         const appAsar = join(resourcesDir, "app.asar");
         const _appAsar = join(resourcesDir, "_app.asar");
 
-        // Check if already patched cleanly with app/index.js pointing to Nightcord
-        const loaderIndex = join(appDir, "index.js");
-        if (existsSync(loaderIndex)) {
-            try {
-                const content = readFileSync(loaderIndex, "utf-8");
-                if (content.includes("Nightcord")) return; // Already patched
-            } catch {}
+        // If _app.asar exists from previous legacy injections, restore it to app.asar
+        if (existsSync(_appAsar)) {
+            if (!existsSync(appAsar)) {
+                try { renameSync(_appAsar, appAsar); } catch {}
+            } else {
+                try { rmSync(_appAsar, { force: true }); } catch {}
+            }
         }
 
         // If app.asar is a directory (from old buggy patcher), clean it up
@@ -35,18 +35,18 @@ function patchResourcesDir(resourcesDir: string) {
             } catch {}
         }
 
-        // Backup original app.asar -> _app.asar if _app.asar doesn't exist yet
-        if (existsSync(appAsar) && !existsSync(_appAsar)) {
-            try {
-                if (!statSync(appAsar).isDirectory()) {
-                    renameSync(appAsar, _appAsar);
-                }
-            } catch {}
-        }
-
-        if (!existsSync(_appAsar) && !existsSync(appAsar)) {
+        if (!existsSync(appAsar)) {
             // Incomplete Discord update download
             return;
+        }
+
+        // Check if already patched cleanly with app/index.js pointing to Nightcord
+        const loaderIndex = join(appDir, "index.js");
+        if (existsSync(loaderIndex)) {
+            try {
+                const content = readFileSync(loaderIndex, "utf-8");
+                if (content.includes("Nightcord")) return; // Already patched
+            } catch {}
         }
 
         console.info(`[Nightcord] Auto-injecting into ${resourcesDir}...`);
@@ -56,8 +56,16 @@ function patchResourcesDir(resourcesDir: string) {
         }
         mkdirSync(appDir, { recursive: true });
 
+        let appPkgName = "discord";
+        try {
+            const lowerRes = resourcesDir.toLowerCase();
+            if (lowerRes.includes("canary")) appPkgName = "discordcanary";
+            else if (lowerRes.includes("ptb")) appPkgName = "discordptb";
+            else if (lowerRes.includes("development")) appPkgName = "discorddevelopment";
+        } catch {}
+
         writeFileSync(join(appDir, "package.json"), JSON.stringify({
-            name: "discord",
+            name: appPkgName,
             main: "index.js"
         }, null, 2));
 
@@ -69,8 +77,8 @@ function patchResourcesDir(resourcesDir: string) {
             "try {",
             `    require(${JSON.stringify(OUR_PATCHER_PATH)});`,
             "} catch (e) {",
-            "    console.error(\"[Nightcord] Injection failed, falling back to original _app.asar:\", e);",
-            "    const originalAsar = path.join(__dirname, \"..\", \"_app.asar\");",
+            "    console.error(\"[Nightcord] Injection failed, falling back to original app.asar:\", e);",
+            "    const originalAsar = path.join(__dirname, \"..\", \"app.asar\");",
             "    if (fs.existsSync(originalAsar)) {",
             "        require(originalAsar);",
             "    }",
@@ -99,23 +107,16 @@ function patchAllDiscordInstallations() {
             } catch { continue; }
 
             for (const ver of versions) {
-                const resourcesDir = join(base, ver, "resources");
-                if (existsSync(resourcesDir)) {
-                    patchResourcesDir(resourcesDir);
+                const resDir = join(base, ver, "resources");
+                if (existsSync(resDir)) {
+                    patchResourcesDir(resDir);
                 }
             }
         }
-    } catch (err) {
-        console.error("[Nightcord] Error in patchAllDiscordInstallations:", err);
+    } catch (e) {
+        console.error("[Nightcord] patchAllDiscordInstallations error:", e);
     }
 }
 
-// Run immediately at startup so any new Discord version downloaded before restart is patched right away
+// Run on startup
 patchAllDiscordInstallations();
-
-// Periodically check every 5 minutes in case Discord auto-updates in background
-setInterval(patchAllDiscordInstallations, 5 * 60 * 1000);
-
-// Run before quit as final safety net
-app.on("before-quit", patchAllDiscordInstallations);
-
