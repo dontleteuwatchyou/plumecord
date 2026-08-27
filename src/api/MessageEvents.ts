@@ -18,10 +18,14 @@
 
 import { Logger } from "@utils/Logger";
 import type { Channel, CloudUpload, CustomEmoji, Message } from "@vencord/discord-types";
+import { waitFor } from "@webpack";
 import { MessageStore } from "@webpack/common";
 import type { Promisable } from "type-fest";
 
 const MessageEventsLogger = new Logger("MessageEvents", "#e5c890");
+
+const PROCESSED_PRESEND = Symbol("PROCESSED_PRESEND");
+const PROCESSED_PREEDIT = Symbol("PROCESSED_PREEDIT");
 
 export interface MessageObject {
     content: string,
@@ -69,6 +73,10 @@ async function runWithTimeout<T>(fn: () => Promisable<T>, timeoutMs = 2500): Pro
 }
 
 export async function _handlePreSend(channelId: string, messageObj: MessageObject, options: MessageOptions, replyOptions: MessageReplyOptions) {
+    if ((messageObj as any)[PROCESSED_PRESEND]) {
+        return false;
+    }
+    (messageObj as any)[PROCESSED_PRESEND] = true;
     options.replyOptions = replyOptions;
     for (const listener of sendListeners) {
         try {
@@ -84,6 +92,10 @@ export async function _handlePreSend(channelId: string, messageObj: MessageObjec
 }
 
 export async function _handlePreEdit(channelId: string, messageId: string, messageObj: MessageObject) {
+    if ((messageObj as any)[PROCESSED_PREEDIT]) {
+        return false;
+    }
+    (messageObj as any)[PROCESSED_PREEDIT] = true;
     for (const listener of editListeners) {
         try {
             const result = await runWithTimeout(() => listener(channelId, messageId, messageObj));
@@ -96,6 +108,46 @@ export async function _handlePreEdit(channelId: string, messageId: string, messa
     }
     return false;
 }
+
+// Runtime hook on MessageActions to ensure preSend and preEdit always run even if AST patches are bypassed
+waitFor(["sendMessage", "editMessage"], (MessageActions: any) => {
+    if (!MessageActions) return;
+
+    if (typeof MessageActions.sendMessage === "function") {
+        const origSendMessage = MessageActions.sendMessage;
+        MessageActions.sendMessage = async function(channelId: string, message: any, ...rest: any[]) {
+            if (message && typeof message === "object" && !message[PROCESSED_PRESEND]) {
+                const options = rest[1] || rest[0] || {};
+                const cancel = await _handlePreSend(channelId, message, options, options.replyOptions || {});
+                if (cancel) return;
+            }
+            return origSendMessage.call(this, channelId, message, ...rest);
+        };
+    }
+
+    if (typeof MessageActions._sendMessage === "function") {
+        const orig_sendMessage = MessageActions._sendMessage;
+        MessageActions._sendMessage = async function(channelId: string, message: any, ...rest: any[]) {
+            if (message && typeof message === "object" && !message[PROCESSED_PRESEND]) {
+                const options = rest[0] || {};
+                const cancel = await _handlePreSend(channelId, message, options, options.replyOptions || {});
+                if (cancel) return;
+            }
+            return orig_sendMessage.call(this, channelId, message, ...rest);
+        };
+    }
+
+    if (typeof MessageActions.editMessage === "function") {
+        const origEditMessage = MessageActions.editMessage;
+        MessageActions.editMessage = async function(channelId: string, messageId: string, message: any, ...rest: any[]) {
+            if (message && typeof message === "object" && !message[PROCESSED_PREEDIT]) {
+                const cancel = await _handlePreEdit(channelId, messageId, message);
+                if (cancel) return;
+            }
+            return origEditMessage.call(this, channelId, messageId, message, ...rest);
+        };
+    }
+});
 
 /**
  * Note: This event fires off before a message is sent, allowing you to edit the message.
