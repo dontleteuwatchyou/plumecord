@@ -7,7 +7,7 @@
 import { DataStore } from "@api/index";
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Avatar, ChannelStore, Constants, FluxDispatcher, GuildActions, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
+import { Avatar, ChannelStore, Constants, FluxDispatcher, GuildActions, GuildStore, Menu, PermissionsBits, PermissionStore, React, RestAPI, ScrollerThin, SelectedGuildStore, Text, UserStore, VoiceActions, VoiceStateStore } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
@@ -119,7 +119,7 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { user
     const { user, channel } = ctx;
     if (!user || !Array.isArray(children)) return;
 
-    const guildId = ctx.guildId ?? channel?.guild_id ?? GuildStore.getGuildId();
+    const guildId = ctx.guildId ?? channel?.guild_id ?? (SelectedGuildStore as any)?.getGuildId?.();
     if (!guildId) return;
 
     const guild = GuildStore.getGuild(guildId);

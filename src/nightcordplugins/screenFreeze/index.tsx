@@ -177,11 +177,13 @@ function handleKeydown(e: KeyboardEvent) {
     const matchCtrl = Boolean(cfg.ctrl) === Boolean(e.ctrlKey);
     const matchShift = Boolean(cfg.shift) === Boolean(e.shiftKey);
     const matchAlt = Boolean(cfg.alt) === Boolean(e.altKey);
-    const matchCode = e.code === cfg.code;
+    const matchCode = e.code === cfg.code || e.key.toUpperCase() === cfg.key.toUpperCase();
 
     if (matchCode && matchCtrl && matchShift && matchAlt) {
         e.preventDefault();
         e.stopPropagation();
+
+        console.log("%c[ScreenFreeze] Executing console command: debugger;", "color: #5865f2; font-weight: bold; font-size: 14px;");
 
         try {
             (window as any).VencordNative?.window?.openDevTools?.();
@@ -189,8 +191,10 @@ function handleKeydown(e: KeyboardEvent) {
 
         screenFreezeEngine.toggleFreeze();
 
-        // Pauses the entire renderer and interface immediately
-        debugger;
+        setTimeout(() => {
+            // Pauses the entire renderer and interface immediately
+            debugger;
+        }, 10);
     }
 }
 
@@ -220,17 +224,24 @@ function ScreenFreezeSettingsComponent() {
                 <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
                     <div>
                         <span style={{ color: "#ffffff", fontWeight: 700, fontSize: "14px", display: "block" }}>
-                            {t("Emergency Screen Freeze")}
+                            {t("Screen Freeze Status")}
                         </span>
                         <span style={{ color: state.isFrozen ? "var(--status-danger, #f04747)" : "var(--text-muted, #949ba4)", fontSize: "12px", fontWeight: state.isFrozen ? 600 : 400 }}>
                             {state.isFrozen
-                                ? `● ${t("FROZEN ON STATIC FRAME")} (${t("Viewers cannot see your live screen")})`
-                                : `○ ${t("LIVE STREAMING READY")} (${t("Shortcut:")} ${keyText})`}
+                                ? `● ${t("ACTIVE - Screenshare is frozen on static frame")} (${t("Shortcut:")} ${keyText})`
+                                : `○ ${t("Inactive / Screenshare live")} (${t("Shortcut:")} ${keyText})`}
                         </span>
                     </div>
                     <Button
-                        variant={state.isFrozen ? "positive" : "dangerPrimary"}
-                        onClick={() => screenFreezeEngine.toggleFreeze()}
+                        variant={state.isFrozen ? "dangerPrimary" : "primary"}
+                        onClick={() => {
+                            console.log("%c[ScreenFreeze] Freeze button clicked: executing debugger;", "color: #5865f2; font-weight: bold; font-size: 14px;");
+                            try {
+                                (window as any).VencordNative?.window?.openDevTools?.();
+                            } catch { }
+                            screenFreezeEngine.toggleFreeze();
+                            setTimeout(() => { debugger; }, 10);
+                        }}
                     >
                         {state.isFrozen ? t("Unfreeze Stream") : t("Freeze Screen Now")}
                     </Button>
@@ -252,6 +263,7 @@ export default definePlugin({
 
     start() {
         screenFreezeEngine.startPatch();
+        window.addEventListener("keydown", handleKeydown, true);
         document.addEventListener("keydown", handleKeydown, true);
         if (settings.store.showFloatingIndicator !== false) {
             mountIndicator();
@@ -260,6 +272,7 @@ export default definePlugin({
 
     stop() {
         screenFreezeEngine.stopPatch();
+        window.removeEventListener("keydown", handleKeydown, true);
         document.removeEventListener("keydown", handleKeydown, true);
         unmountIndicator();
     }
