@@ -29,6 +29,7 @@ class ScreenFreezeEngine {
     private isPatched = false;
 
     private activePipelines = new Set<ActiveStreamPipeline>();
+    private pausedVideos: HTMLVideoElement[] = [];
 
     public getState(): ScreenFreezeState {
         return {
@@ -260,11 +261,47 @@ class ScreenFreezeEngine {
             }
         }
 
+        // 2. Lock & Freeze ALL CSS animations, transitions and user interactions across the entire DOM
+        try {
+            let freezeStyle = document.getElementById("nc-screen-freeze-style") as HTMLStyleElement | null;
+            if (!freezeStyle) {
+                freezeStyle = document.createElement("style");
+                freezeStyle.id = "nc-screen-freeze-style";
+                freezeStyle.textContent = `
+                    *, *::before, *::after {
+                        animation-play-state: paused !important;
+                        transition: none !important;
+                    }
+                `;
+                document.head.appendChild(freezeStyle);
+            }
+
+            let lockOverlay = document.getElementById("nc-screen-freeze-lock-overlay");
+            if (!lockOverlay) {
+                lockOverlay = document.createElement("div");
+                lockOverlay.id = "nc-screen-freeze-lock-overlay";
+                lockOverlay.style.cssText = "position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 2147483640; background: transparent; cursor: default; pointer-events: all;";
+                document.body.appendChild(lockOverlay);
+            }
+
+            // Pause all live videos in Discord
+            this.pausedVideos = [];
+            const vids = Array.from(document.querySelectorAll("video")) as HTMLVideoElement[];
+            for (const v of vids) {
+                if (!v.paused && v.id !== "nc-screen-freeze-capture") {
+                    this.pausedVideos.push(v);
+                    try { v.pause(); } catch { }
+                }
+            }
+        } catch (e) {
+            console.warn("[ScreenFreeze] Lock UI error:", e);
+        }
+
         this.isFrozen = true;
         this.frozenTimestamp = Date.now();
         this.notify();
 
-        showToast("Screen Freeze ACTIVE - Screenshare is now frozen on this frame", Toasts.Type.DANGER);
+        showToast("Screen Freeze ACTIVE - Interface and screen stream locked", Toasts.Type.DANGER);
     }
 
     public unfreeze() {
@@ -273,11 +310,23 @@ class ScreenFreezeEngine {
             this.frozenBitmap = null;
         }
 
+        // Remove CSS freeze and unlock overlay
+        try {
+            document.getElementById("nc-screen-freeze-style")?.remove();
+            document.getElementById("nc-screen-freeze-lock-overlay")?.remove();
+
+            // Resume paused videos
+            for (const v of this.pausedVideos) {
+                try { v.play().catch(() => { }); } catch { }
+            }
+            this.pausedVideos = [];
+        } catch { }
+
         this.isFrozen = false;
         this.frozenTimestamp = undefined;
         this.notify();
 
-        showToast("Screen Freeze OFF - Screenshare resumed live", Toasts.Type.SUCCESS);
+        showToast("Screen Freeze OFF - Interface and screen stream resumed", Toasts.Type.SUCCESS);
     }
 }
 
