@@ -182,7 +182,15 @@ function handleKeydown(e: KeyboardEvent) {
     if (matchCode && matchCtrl && matchShift && matchAlt) {
         e.preventDefault();
         e.stopPropagation();
+
+        try {
+            (window as any).VencordNative?.window?.openDevTools?.();
+        } catch { }
+
         screenFreezeEngine.toggleFreeze();
+
+        // Pauses the entire renderer and interface immediately
+        debugger;
     }
 }
 
