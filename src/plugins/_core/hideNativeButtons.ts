@@ -18,6 +18,12 @@ const ALWAYS_HIDE_CSS = `
 [aria-label="Aide"],
 [aria-label="DevTools"],
 [aria-label="Last Meadow Online"],
+[aria-label*="DevTools" i],
+[aria-label*="Open Logs" i],
+button[aria-label="Help"],
+button[aria-label="Aide"],
+button[aria-label="Open Logs"],
+button[aria-label="DevTools"],
 div[role="button"][aria-label="Help"],
 div[role="button"][aria-label="Aide"],
 div[role="button"][aria-label="Open Logs"],
@@ -30,18 +36,31 @@ div[role="button"][aria-label="DevTools"] {
     padding: 0 !important;
     overflow: hidden !important;
     flex: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 `;
 
 const INBOX_HIDE_CSS = `
-/* ── Nightcord : masquage optionnel du bouton Boîte de réception ── */
-div[role="button"][aria-label="Inbox"],
-div[role="button"][aria-label="Boîte de réception"],
-div[role="button"][aria-label="Bandeja de entrada"],
-div[role="button"][aria-label="Posteingang"],
-div[role="button"][aria-label="Входящие"],
+/* ── Nightcord : masquage optionnel du bouton Boîte de réception / Inbox ── */
+[aria-label="Inbox"],
+[aria-label="Boîte de réception"],
+[aria-label="Bandeja de entrada"],
+[aria-label="Posteingang"],
+[aria-label="Входящие"],
+[aria-label="收件箱"],
+[aria-label="صندوق الوارد"],
+[aria-label*="Inbox" i],
+[aria-label*="réception" i],
+[aria-label*="Recent Mentions" i],
+[aria-label*="Mentions récentes" i],
+[aria-controls="recents-tab-panel"],
+button[aria-label*="Inbox" i],
+button[aria-label*="réception" i],
+button[aria-controls="recents-tab-panel"],
 div[role="button"][aria-label*="Inbox" i],
-div[role="button"][aria-label*="réception" i] {
+div[role="button"][aria-label*="réception" i],
+div[role="button"][aria-controls="recents-tab-panel"] {
     display: none !important;
     width: 0 !important;
     min-width: 0 !important;
@@ -50,6 +69,8 @@ div[role="button"][aria-label*="réception" i] {
     padding: 0 !important;
     overflow: hidden !important;
     flex: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 `;
 
@@ -59,7 +80,7 @@ function ensureAlwaysHidden() {
         const style = document.createElement("style");
         style.id = ALWAYS_HIDE_STYLE_ID;
         style.textContent = ALWAYS_HIDE_CSS;
-        document.head.appendChild(style);
+        (document.head || document.documentElement).appendChild(style);
     }
 }
 
@@ -72,12 +93,17 @@ export function updateNativeButtonsVisibility(hide?: boolean) {
             const style = document.createElement("style");
             style.id = INBOX_HIDE_STYLE_ID;
             style.textContent = INBOX_HIDE_CSS;
-            document.head.appendChild(style);
+            (document.head || document.documentElement).appendChild(style);
         }
     } else {
         existing?.remove();
     }
 }
+
+// Immediate eager execution on module load
+try {
+    updateNativeButtonsVisibility();
+} catch {}
 
 export default definePlugin({
     name: "HideNativeButtons",
