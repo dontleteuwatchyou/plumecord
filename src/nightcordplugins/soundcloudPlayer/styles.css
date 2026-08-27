@@ -92,8 +92,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 
 .sc-header {
     padding: 14px 20px;
-    background: #1e1f22;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--background-secondary, #1e1f22);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -109,7 +109,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 .sc-header-title {
     font-weight: 700;
     font-size: 16px;
-    color: #ffffff;
+    color: var(--header-primary, #ffffff);
     letter-spacing: 0.01em;
 }
 
@@ -142,9 +142,9 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 }
 
 .sc-header-btn {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    color: var(--text-muted, #949ba4);
+    background: var(--background-modifier-hover, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+    color: var(--interactive-normal, #949ba4);
     width: 32px;
     height: 32px;
     border-radius: 8px;
@@ -156,14 +156,14 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 }
 
 .sc-header-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--background-modifier-selected, rgba(255, 255, 255, 0.08));
+    color: var(--header-primary, #ffffff);
+    border-color: var(--border-strong, rgba(255, 255, 255, 0.12));
 }
 
 .sc-header-btn--active {
     background: rgba(88, 101, 242, 0.15);
-    color: #5865f2;
+    color: var(--brand-500, #5865f2);
     border-color: rgba(88, 101, 242, 0.35);
 }
 
@@ -177,8 +177,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 
 .sc-settings-drawer {
     padding: 10px 20px;
-    background: #18191c;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--background-secondary-alt, #18191c);
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     display: flex;
     align-items: center;
     gap: 12px;
@@ -211,8 +211,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     position: relative;
     display: flex;
     align-items: center;
-    background: #2b2d31;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--background-tertiary, #2b2d31);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
     padding: 0 12px;
     gap: 10px;
@@ -223,14 +223,14 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 .sc-search-bar:focus-within {
     border-color: var(--brand-500, #5865f2);
     box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.2);
-    color: #ffffff;
+    color: var(--header-primary, #ffffff);
 }
 
 .sc-search-input {
     flex: 1;
     background: transparent;
     border: none;
-    color: #ffffff;
+    color: var(--text-normal, #ffffff);
     font-size: 14px;
     outline: none;
     padding: 10px 0;
@@ -495,16 +495,16 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     align-items: center;
     gap: 12px;
     padding: 8px 12px;
-    background: #1e1f22;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--background-secondary, #1e1f22);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.04));
     border-radius: 10px;
     cursor: pointer;
     transition: all 0.15s ease;
 }
 
 .sc-track-card:hover {
-    background: #2b2d31;
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--background-modifier-hover, #2b2d31);
+    border-color: var(--border-strong, rgba(255, 255, 255, 0.1));
     transform: translateX(2px);
 }
 
@@ -526,7 +526,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     border-radius: 8px;
     overflow: hidden;
     flex-shrink: 0;
-    background: #2b2d31;
+    background: var(--background-tertiary, #2b2d31);
 }
 
 .sc-track-art {
@@ -893,8 +893,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 /* ── Bottom Docked Player ────────────────────────────────────────────────── */
 
 .sc-docked-player {
-    background: #18191c;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--background-secondary-alt, #18191c);
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     padding: 12px 20px;
     display: flex;
     align-items: center;
@@ -1326,8 +1326,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 }
 
 .sc-artist-hero-card {
-    background: #232428;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--background-floating, #232428);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 12px;
     padding: 18px 20px;
     display: flex;
@@ -2049,7 +2049,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 
 /* Success Card */
 .sc-upload-success-card {
-    background: #232428;
+    background: var(--background-floating, #232428);
     border: 1px solid rgba(35, 165, 90, 0.35);
     border-radius: 14px;
     padding: 32px 24px;
@@ -2063,7 +2063,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 .sc-upload-success-title {
     font-size: 20px;
     font-weight: 800;
-    color: #ffffff;
+    color: var(--header-primary, #ffffff);
 }
 
 .sc-upload-success-desc {
@@ -2075,8 +2075,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     display: flex;
     align-items: center;
     gap: 14px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--background-secondary, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 10px;
     padding: 12px 18px;
     margin: 8px 0;
@@ -2093,7 +2093,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 }
 
 .sc-upload-success-art--placeholder {
-    background: #18191c;
+    background: var(--background-secondary-alt, #18191c);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2111,7 +2111,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 .sc-upload-success-name {
     font-size: 14px;
     font-weight: 700;
-    color: #ffffff;
+    color: var(--header-primary, #ffffff);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2140,8 +2140,8 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     flex: 1;
     display: flex;
     align-items: center;
-    background: #1e1f22;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: var(--background-secondary, #1e1f22);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
     border-radius: 8px;
     padding: 0 12px;
     gap: 10px;
@@ -2153,7 +2153,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
     border-color: rgba(255, 255, 255, 0.22) !important;
-    background: #18191c !important;
+    background: var(--background-secondary-alt, #18191c) !important;
 }
 
 .sc-suggestions-dropdown {
@@ -2161,9 +2161,9 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     top: 100%;
     left: -1px;
     right: -1px;
-    background: #18191c;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--background-floating, #18191c);
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.22));
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
     box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
@@ -2357,15 +2357,15 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     align-items: center;
     gap: 14px;
     padding: 10px 14px;
-    background: #232428;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--background-secondary, #232428);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     border-radius: 10px;
     transition: all 0.15s ease;
 }
 
 .sc-user-track-card:hover {
-    background: #2b2d31;
-    border-color: rgba(255, 255, 255, 0.12);
+    background: var(--background-modifier-hover, #2b2d31);
+    border-color: var(--border-strong, rgba(255, 255, 255, 0.12));
 }
 
 .sc-user-track-card--playing {
@@ -2381,7 +2381,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
     overflow: hidden;
     flex-shrink: 0;
     cursor: pointer;
-    background: #18191c;
+    background: var(--background-secondary-alt, #18191c);
 }
 
 .sc-user-track-art {
