@@ -34,7 +34,7 @@ class VoiceIsolatorEngine {
         this.listeners.forEach(l => l(s));
     }
 
-    public setLocalUserVolume(userId: string, volume: number) {
+    public setLocalUserVolume(userId: string, volume: number, mute: boolean = false) {
         try {
             FluxDispatcher.dispatch({
                 type: "AUDIO_SET_LOCAL_VOLUME",
@@ -45,9 +45,23 @@ class VoiceIsolatorEngine {
         } catch { }
 
         try {
+            FluxDispatcher.dispatch({
+                type: "AUDIO_SET_LOCAL_MUTE",
+                context: "default",
+                userId,
+                mute
+            });
+        } catch { }
+
+        try {
             const mediaEngine = (MediaEngineStore as any)?.getMediaEngine?.();
-            if (mediaEngine && typeof mediaEngine.setLocalVolume === "function") {
-                mediaEngine.setLocalVolume(userId, volume);
+            if (mediaEngine) {
+                if (typeof mediaEngine.setLocalVolume === "function") {
+                    mediaEngine.setLocalVolume(userId, volume);
+                }
+                if (typeof mediaEngine.setLocalMute === "function") {
+                    mediaEngine.setLocalMute(userId, mute);
+                }
             }
         } catch { }
     }
@@ -78,9 +92,16 @@ class VoiceIsolatorEngine {
 
         const originalVolumesBackup: Record<string, number> = {};
 
-        // 1. Get all users in channel
+        // Get all users in the channel
         const voiceStates = VoiceStateStore.getVoiceStatesForChannel(currentChannelId) || {};
-        const userIds = Object.keys(voiceStates);
+        let userIds = Object.keys(voiceStates);
+
+        if (userIds.length === 0) {
+            const allStates = (VoiceStateStore as any).getAllVoiceStates?.() || {};
+            userIds = Object.entries(allStates)
+                .filter(([_, st]: any) => st?.channelId === currentChannelId)
+                .map(([uid]) => uid);
+        }
 
         for (const uid of userIds) {
             if (uid === myId) continue;
@@ -89,9 +110,10 @@ class VoiceIsolatorEngine {
             originalVolumesBackup[uid] = curVol;
 
             if (uid === targetUserId) {
-                this.setLocalUserVolume(uid, targetVol);
+                this.setLocalUserVolume(uid, targetVol, false);
             } else {
-                this.setLocalUserVolume(uid, attenuation);
+                const shouldMute = attenuation === 0;
+                this.setLocalUserVolume(uid, attenuation, shouldMute);
             }
         }
 
@@ -110,15 +132,15 @@ class VoiceIsolatorEngine {
     public restoreAll() {
         if (!this.state.isolatedUserId && Object.keys(this.state.originalVolumes).length === 0) return;
 
-        // Restore everyone's volume
+        // Restore everyone's volume and unmute
         for (const [uid, origVol] of Object.entries(this.state.originalVolumes)) {
-            this.setLocalUserVolume(uid, origVol);
+            this.setLocalUserVolume(uid, origVol, false);
         }
 
-        // Restore target user volume if boosted
+        // Restore target user volume
         if (this.state.isolatedUserId) {
             const targetOrig = this.state.originalVolumes[this.state.isolatedUserId] ?? 100;
-            this.setLocalUserVolume(this.state.isolatedUserId, targetOrig);
+            this.setLocalUserVolume(this.state.isolatedUserId, targetOrig, false);
         }
 
         this.state = {
@@ -144,7 +166,6 @@ class VoiceIsolatorEngine {
         if (this.state.isolatedUserId === targetUserId) {
             this.restoreAll();
         } else {
-            // Restore previous before isolating new
             if (this.state.isolatedUserId) {
                 this.restoreAll();
             }
@@ -160,12 +181,12 @@ class VoiceIsolatorEngine {
         const myId = UserStore.getCurrentUser()?.id;
 
         if (channelId === this.state.channelId && uid !== myId && uid !== this.state.isolatedUserId) {
-            // New user joined while isolated -> auto-attenuate
             if (!(uid in this.state.originalVolumes)) {
                 const curVol = (MediaEngineStore as any)?.getLocalVolume?.(uid) ?? 100;
                 this.state.originalVolumes[uid] = curVol;
                 const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 5;
-                this.setLocalUserVolume(uid, attenuation);
+                const shouldMute = attenuation === 0;
+                this.setLocalUserVolume(uid, attenuation, shouldMute);
                 this.notify();
             }
         }

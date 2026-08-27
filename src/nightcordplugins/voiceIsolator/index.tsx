@@ -62,7 +62,7 @@ function unmountHud() {
     }
 }
 
-const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user, channel }) => {
+const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) => {
     if (!user || user.bot) return;
 
     const myId = UserStore.getCurrentUser()?.id;
@@ -71,9 +71,11 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user, cha
     const activeVoiceChannelId = SelectedChannelStore.getVoiceChannelId();
     if (!activeVoiceChannelId) return;
 
-    // Check if target user is in the same voice channel
-    const targetVoiceState = VoiceStateStore.getVoiceStateForChannel(activeVoiceChannelId, user.id);
-    if (!targetVoiceState) return;
+    // Check if target user is in the active voice channel
+    const targetState = VoiceStateStore.getVoiceStateForUser(user.id)
+        ?? (VoiceStateStore.getVoiceStatesForChannel(activeVoiceChannelId) || {})[user.id];
+
+    if (!targetState || targetState.channelId !== activeVoiceChannelId) return;
 
     const state = voiceIsolatorEngine.getState();
     const isCurrentlyIsolated = state.isolatedUserId === user.id;
@@ -96,6 +98,7 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user, cha
     const targetGroup = findGroupChildrenByChildId("user-volume", children)
         ?? findGroupChildrenByChildId("mute", children)
         ?? findGroupChildrenByChildId("server-mute", children)
+        ?? findGroupChildrenByChildId("user-profile-actions", children)
         ?? findGroupChildrenByChildId("roles", children);
 
     if (targetGroup && Array.isArray(targetGroup)) {
