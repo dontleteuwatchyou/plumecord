@@ -6,8 +6,9 @@
     max-height: min(720px, 88vh) !important;
     border-radius: 14px !important;
     overflow: hidden !important;
-    background: #111214 !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: var(--modal-background, var(--background-primary)) !important;
+    background-color: var(--modal-background, var(--background-primary)) !important;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
     outline: none !important;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75) !important;
     transition: all 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
@@ -62,8 +63,9 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 }
 
 .sc-player-root {
-    background: #111214;
-    color: #f2f3f5;
+    background: var(--modal-background, var(--background-primary));
+    background-color: var(--modal-background, var(--background-primary));
+    color: var(--text-normal, #f2f3f5);
     width: 100%;
     max-width: min(1040px, 92vw);
     height: min(720px, 88vh);
