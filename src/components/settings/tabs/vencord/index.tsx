@@ -42,8 +42,7 @@ const cl = classNameFactory("vc-vencord-tab-");
 const DEV_TEAM_IDS = [
     { 
         id: "1539701501679894678", 
-        role: "Creator", 
-        description: "Manager of app, site visuals, communication & ads" 
+        role: "Creator"
     }
 ];
 
@@ -77,22 +76,8 @@ function useDiscordUser(userId: string) {
     return user;
 }
 
-function DevCard({ id, role, description }: { id: string; role: string; description: string; }) {
+function DevCard({ id, role }: { id: string; role: string; }) {
     const user = useDiscordUser(id);
-    const [copied, setCopied] = React.useState(false);
-
-    const handleCopy = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const textToCopy = user?.username ? user.username.replace(/^@/, "") : (user?.name ?? id);
-        try {
-            copyToClipboard(textToCopy);
-        } catch {
-            navigator.clipboard.writeText(textToCopy);
-        }
-        setCopied(true);
-        try { showToast("Pseudo copié !", Toasts.Type.SUCCESS); } catch {}
-        setTimeout(() => setCopied(false), 1500);
-    };
 
     return (
         <Card variant="primary" outline style={{ padding: "12px" }}>
@@ -104,41 +89,12 @@ function DevCard({ id, role, description }: { id: string; role: string; descript
                 <Flex direction={Flex.Direction.VERTICAL} style={{ flex: 1, gap: "2px" }}>
                     <Flex align={Flex.Align.CENTER} justify={Flex.Justify.BETWEEN} style={{ width: "100%" }}>
                         <Heading tag="h3" style={{ marginBottom: "0px", fontSize: "14px", fontWeight: "bold" }}>{user?.name ?? "..."}</Heading>
-                        <Heading tag="h4" style={{ color: "var(--brand-experiment)", fontWeight: "bold", fontSize: "12px" }}>{role}</Heading>
+                        <Heading tag="h4" style={{ color: "var(--header-primary, #ffffff)", fontWeight: "bold", fontSize: "12px" }}>{role}</Heading>
                     </Flex>
 
-                    <div 
-                        onClick={handleCopy}
-                        title="Cliquer pour copier le pseudo"
-                        style={{ 
-                            display: "inline-flex", 
-                            alignItems: "center", 
-                            gap: "6px", 
-                            cursor: "pointer",
-                            fontSize: "11px",
-                            color: "var(--text-muted)",
-                            background: "var(--background-secondary-alt, rgba(0,0,0,0.2))",
-                            padding: "2px 6px",
-                            borderRadius: "4px",
-                            width: "fit-content",
-                            marginTop: "2px",
-                            marginBottom: "4px",
-                            userSelect: "none",
-                            transition: "all 0.15s ease"
-                        }}
-                    >
-                        <span>{user?.username || (user?.name ? `@${user.name}` : "...")}</span>
-                        {copied ? (
-                            <span style={{ color: "var(--status-positive, #43b581)", fontWeight: "bold", fontSize: "10px" }}>✓ Copié</span>
-                        ) : (
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                        )}
-                    </div>
-
-                    <Paragraph size="xs" color="text-muted" style={{ fontSize: "12px", lineHeight: "1.3" }}>{description}</Paragraph>
+                    <span style={{ fontSize: "12px", color: "var(--text-muted, #949ba4)" }}>
+                        {user?.username || (user?.name ? `@${user.name}` : "...")}
+                    </span>
                 </Flex>
             </Flex>
         </Card>
@@ -194,7 +150,7 @@ function DevTeamSection() {
                         }
                     `}</style>
                     {DEV_TEAM_IDS.map(dev => (
-                        <DevCard key={dev.id} id={dev.id} role={dev.role} description={dev.description} />
+                        <DevCard key={dev.id} id={dev.id} role={dev.role} />
                     ))}
                 </div>
             )}
