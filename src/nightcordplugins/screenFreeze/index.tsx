@@ -6,7 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, React, ReactDOM } from "@webpack/common";
+import { Button, React, ReactDOM, showToast, Toasts } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { screenFreezeEngine } from "./engine";
@@ -14,39 +14,45 @@ import { ScreenFreezeFloatingIndicator } from "./indicator";
 import { ScreenFreezeState } from "./types";
 import { t } from "../autoTranslateNightcord";
 
-const validKeycodes = [
-    "Backspace", "Tab", "Enter", "ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "Pause", "CapsLock",
-    "Escape", "Space", "PageUp", "PageDown", "End", "Home", "ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown", "PrintScreen", "Insert",
-    "Delete", "Digit0", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "KeyA", "KeyB", "KeyC",
-    "KeyD", "KeyE", "KeyF", "KeyG", "KeyH", "KeyI", "KeyJ", "KeyK", "KeyL", "KeyM", "KeyN", "KeyO", "KeyP", "KeyQ", "KeyR", "KeyS", "KeyT",
-    "KeyU", "KeyV", "KeyW", "KeyX", "KeyY", "KeyZ", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"
-];
+export interface KeybindConfig {
+    code: string;
+    key: string;
+    ctrl: boolean;
+    shift: boolean;
+    alt: boolean;
+    label: string;
+}
+
+const DEFAULT_KEYBIND: KeybindConfig = {
+    code: "KeyF",
+    key: "F",
+    ctrl: true,
+    shift: true,
+    alt: false,
+    label: "Ctrl + Shift + F"
+};
+
+function formatKeyLabel(code: string, key: string, ctrl: boolean, shift: boolean, alt: boolean): string {
+    const parts: string[] = [];
+    if (ctrl) parts.push("Ctrl");
+    if (shift) parts.push("Shift");
+    if (alt) parts.push("Alt");
+
+    let cleanKey = key.toUpperCase();
+    if (code.startsWith("Key")) cleanKey = code.slice(3);
+    else if (code.startsWith("Digit")) cleanKey = code.slice(5);
+    else if (code.startsWith("Numpad")) cleanKey = "Num " + code.slice(6);
+
+    parts.push(cleanKey);
+    return parts.join(" + ");
+}
 
 const settings = definePluginSettings({
-    keyBind: {
-        description: "The key code to toggle screenshare freeze when pressed.",
-        type: OptionType.STRING,
-        default: "KeyF",
-        isValid: (value: string) => validKeycodes.includes(value),
-        restartNeeded: false
-    },
-    reqCtrl: {
-        description: "Require Control (Ctrl) key to be held.",
-        type: OptionType.BOOLEAN,
-        default: true,
-        restartNeeded: false
-    },
-    reqShift: {
-        description: "Require Shift key to be held.",
-        type: OptionType.BOOLEAN,
-        default: true,
-        restartNeeded: false
-    },
-    reqAlt: {
-        description: "Require Alt key to be held.",
-        type: OptionType.BOOLEAN,
-        default: false,
-        restartNeeded: false
+    keybindConfig: {
+        type: OptionType.COMPONENT,
+        description: "Emergency freeze shortcut key combination.",
+        default: DEFAULT_KEYBIND,
+        component: KeybindRecorderComponent
     },
     showFloatingIndicator: {
         description: "Display a floating alert banner on screen while frozen.",
@@ -56,15 +62,88 @@ const settings = definePluginSettings({
     }
 });
 
+function KeybindRecorderComponent() {
+    const [isRecording, setIsRecording] = React.useState(false);
+    const [config, setConfig] = React.useState<KeybindConfig>(() => settings.store.keybindConfig || DEFAULT_KEYBIND);
+
+    React.useEffect(() => {
+        if (!isRecording) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Ignore standalone modifier presses
+            if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+                return;
+            }
+
+            const newConfig: KeybindConfig = {
+                code: e.code,
+                key: e.key,
+                ctrl: e.ctrlKey,
+                shift: e.shiftKey,
+                alt: e.altKey,
+                label: formatKeyLabel(e.code, e.key, e.ctrlKey, e.shiftKey, e.altKey)
+            };
+
+            settings.store.keybindConfig = newConfig;
+            setConfig(newConfig);
+            setIsRecording(false);
+            showToast(`Shortcut set to: ${newConfig.label}`, Toasts.Type.SUCCESS);
+        };
+
+        const handleBlur = () => setIsRecording(false);
+
+        document.addEventListener("keydown", handleKeyDown, true);
+        window.addEventListener("blur", handleBlur);
+
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown, true);
+            window.removeEventListener("blur", handleBlur);
+        };
+    }, [isRecording]);
+
+    return (
+        <div style={{ marginTop: "6px", marginBottom: "8px" }}>
+            <Flex alignItems={FlexAlign.CENTER} gap="10px">
+                <Button
+                    variant={isRecording ? "dangerPrimary" : "primary"}
+                    onClick={() => setIsRecording(!isRecording)}
+                    style={{
+                        minWidth: "180px",
+                        fontWeight: 600,
+                        border: isRecording ? "1px solid #f04747" : undefined,
+                        boxShadow: isRecording ? "0 0 12px rgba(240, 71, 71, 0.4)" : undefined
+                    }}
+                >
+                    {isRecording ? t("Press any key combo...") : config.label || "Ctrl + Shift + F"}
+                </Button>
+
+                <Button
+                    variant="secondary"
+                    onClick={() => {
+                        setIsRecording(false);
+                        settings.store.keybindConfig = DEFAULT_KEYBIND;
+                        setConfig(DEFAULT_KEYBIND);
+                        showToast("Reset to default (Ctrl + Shift + F)", Toasts.Type.INFO);
+                    }}
+                >
+                    {t("Reset to Default")}
+                </Button>
+            </Flex>
+            <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "12px", marginTop: "6px", display: "block" }}>
+                {isRecording
+                    ? t("Press your shortcut combination now (e.g. Shift + R, Ctrl + Space, F8)...")
+                    : t("Click the button above to record a new key combination.")}
+            </span>
+        </div>
+    );
+}
+
 function getKeyComboString(): string {
-    const parts: string[] = [];
-    if (settings.store.reqCtrl) parts.push("Ctrl");
-    if (settings.store.reqShift) parts.push("Shift");
-    if (settings.store.reqAlt) parts.push("Alt");
-    const rawKey = settings.store.keyBind || "KeyF";
-    const cleanKey = rawKey.replace(/^Key|^Digit/, "");
-    parts.push(cleanKey);
-    return parts.join(" + ");
+    const cfg = settings.store.keybindConfig || DEFAULT_KEYBIND;
+    return cfg.label || formatKeyLabel(cfg.code, cfg.key, cfg.ctrl, cfg.shift, cfg.alt);
 }
 
 let indicatorContainer: HTMLDivElement | null = null;
@@ -86,11 +165,14 @@ function unmountIndicator() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-    if (settings.store.reqCtrl && !e.ctrlKey) return;
-    if (settings.store.reqShift && !e.shiftKey) return;
-    if (settings.store.reqAlt && !e.altKey) return;
+    const cfg: KeybindConfig = settings.store.keybindConfig || DEFAULT_KEYBIND;
 
-    if (e.code === (settings.store.keyBind || "KeyF")) {
+    const matchCtrl = Boolean(cfg.ctrl) === Boolean(e.ctrlKey);
+    const matchShift = Boolean(cfg.shift) === Boolean(e.shiftKey);
+    const matchAlt = Boolean(cfg.alt) === Boolean(e.altKey);
+    const matchCode = e.code === cfg.code;
+
+    if (matchCode && matchCtrl && matchShift && matchAlt) {
         e.preventDefault();
         e.stopPropagation();
         screenFreezeEngine.toggleFreeze();
