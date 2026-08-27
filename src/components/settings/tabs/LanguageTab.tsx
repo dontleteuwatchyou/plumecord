@@ -14,7 +14,7 @@ import { Paragraph } from "@components/Paragraph";
 import { SettingsTab, wrapTab } from "@components/settings/tabs/BaseTab";
 import { Margins } from "@utils/margins";
 import { findByProps, findByPropsLazy } from "@webpack";
-import { FluxDispatcher, ConfirmModal } from "@webpack/common";
+import { FluxDispatcher, ConfirmModal, Alerts } from "@webpack/common";
 import { SafeSearchableSelect } from "@components/SafeSearchableSelect";
 import { openModal } from "@utils/modal";
 

@@ -80,28 +80,58 @@ export async function translate(kind: "received" | "sent", text: string): Promis
 }
 
 async function googleTranslate(text: string, sourceLang: string, targetLang: string): Promise<TranslationValue> {
-    const url = "https://translate-pa.googleapis.com/v1/translate?" + new URLSearchParams({
-        "params.client": "gtx",
-        "dataTypes": "TRANSLATION",
-        "key": "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA", // some google API key
-        "query.sourceLanguage": sourceLang,
-        "query.targetLanguage": targetLang,
-        "query.text": text,
-    });
+    const sl = sourceLang === "auto" || !sourceLang ? "auto" : sourceLang;
+    const tl = targetLang || "en";
 
-    const res = await fetch(url);
-    if (!res.ok)
-        throw new Error(
-            `Failed to translate "${text}" (${sourceLang} -> ${targetLang})`
-            + `\n${res.status} ${res.statusText}`
-        );
+    // 1. Primary: Direct translate_a/single (no API key required, highly reliable)
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?${new URLSearchParams({
+            client: "gtx",
+            sl,
+            tl,
+            dt: "t",
+            dj: "1",
+            source: "input",
+            q: text
+        })}`;
+        const res = await fetch(url);
+        if (res.ok) {
+            const data = await res.json();
+            const translatedText = data.sentences?.map((s: any) => s.trans).filter(Boolean).join("") || "";
+            if (translatedText) {
+                const detected = data.src || sl;
+                return {
+                    sourceLanguage: GoogleLanguages[detected] ?? detected,
+                    text: translatedText
+                };
+            }
+        }
+    } catch {}
 
-    const { sourceLanguage, translation }: GoogleData = await res.json();
+    // 2. Secondary: translate-pa.googleapis.com
+    try {
+        const url = "https://translate-pa.googleapis.com/v1/translate?" + new URLSearchParams({
+            "params.client": "gtx",
+            "dataTypes": "TRANSLATION",
+            "key": "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA",
+            "query.sourceLanguage": sl,
+            "query.targetLanguage": tl,
+            "query.text": text,
+        });
 
-    return {
-        sourceLanguage: GoogleLanguages[sourceLanguage] ?? sourceLanguage,
-        text: translation
-    };
+        const res = await fetch(url);
+        if (res.ok) {
+            const data: GoogleData = await res.json();
+            if (data.translation) {
+                return {
+                    sourceLanguage: GoogleLanguages[data.sourceLanguage] ?? data.sourceLanguage,
+                    text: data.translation
+                };
+            }
+        }
+    } catch {}
+
+    throw new Error(`Failed to translate "${text}" (${sl} -> ${tl})`);
 }
 
 function fallbackToGoogle(text: string, sourceLang: string, targetLang: string): Promise<TranslationValue> {
