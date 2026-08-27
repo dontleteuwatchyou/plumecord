@@ -25,10 +25,10 @@ console.log("[Nightcord] Starting up...");
 const injectorPath = require.main!.filename;
 
 // The original app.asar
-const _asarFromInjector = join(dirname(injectorPath), "..", "app.asar");
-const _backupAsarFromInjector = join(dirname(injectorPath), "..", "_app.asar");
-const _asarFromResources = join(process.resourcesPath, "app.asar");
-const _backupAsarFromResources = join(process.resourcesPath, "_app.asar");
+const _asarFromInjector = join(dirname(injectorPath), "..", "_app.asar");
+const _backupAsarFromInjector = join(dirname(injectorPath), "..", "app.asar");
+const _asarFromResources = join(process.resourcesPath, "_app.asar");
+const _backupAsarFromResources = join(process.resourcesPath, "app.asar");
 
 const asarPath = (fsExistsSync(_asarFromInjector) && !fsStatSync(_asarFromInjector).isDirectory())
     ? _asarFromInjector

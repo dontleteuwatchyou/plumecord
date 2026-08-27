@@ -1,10 +1,9 @@
 /*
  * Nightcord — Local injector for Discord Desktop
- * Injecte Nightcord dans une installation Discord existante de manière propre et non-destructive :
+ * Injecte Nightcord dans une installation Discord existante :
  * 1. Trouve le répertoire resources de Discord
- * 2. Si un ancien _app.asar existe (résidu d'anciennes versions), il est restauré en app.asar
+ * 2. Déplace app.asar → _app.asar (pour que Electron charge le dossier app/)
  * 3. Crée le dossier app/ avec package.json et index.js qui charge patcher.js
- * 4. Préserve l'intégrité de app.asar (évite les déconnexions et la corruption de session)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -86,36 +85,32 @@ function inject(resourcesDir) {
         }
     }
 
-    // Étape 1 : Si _app.asar existe (issu d'une ancienne injection), restaurer app.asar
-    if (existsSync(backupPath)) {
-        if (!existsSync(appAsarPath)) {
-            console.log("[Nightcord] Restauration du fichier original : _app.asar → app.asar...");
-            try {
-                renameSync(backupPath, appAsarPath);
-            } catch {
-                try {
-                    copyFileSync(backupPath, appAsarPath);
-                    try { rmSync(backupPath, { force: true }); } catch {}
-                } catch (e) {
-                    console.warn(`[Nightcord] Impossible de déplacer _app.asar : ${e.message}`);
-                }
-            }
-        } else {
-            try { rmSync(backupPath, { force: true }); } catch {}
-        }
-    }
-
-    // Nettoyer app.asar s'il est un dossier résiduel
+    // Étape 1 : Si app.asar est présent, on le déplace vers _app.asar
     if (existsSync(appAsarPath)) {
         let isDir = false;
         try { isDir = statSync(appAsarPath).isDirectory(); } catch { }
         if (isDir) {
             try { rmSync(appAsarPath, { recursive: true, force: true }); } catch { }
+        } else if (!existsSync(backupPath)) {
+            console.log("[Nightcord] Déplacement app.asar → _app.asar...");
+            try {
+                renameSync(appAsarPath, backupPath);
+            } catch {
+                try {
+                    copyFileSync(appAsarPath, backupPath);
+                    try { rmSync(appAsarPath, { force: true }); } catch {}
+                } catch (e) {
+                    console.warn(`[Nightcord] Erreur de copie app.asar : ${e.message}`);
+                }
+            }
+        } else {
+            // _app.asar existe déjà comme backup valide
+            try { rmSync(appAsarPath, { force: true }); } catch {}
         }
     }
 
-    // Vérifier l'existence de app.asar ou _app.asar
-    if (!existsSync(appAsarPath) && !existsSync(backupPath)) {
+    // Vérifier l'existence de _app.asar
+    if (!existsSync(backupPath)) {
         console.error("\x1b[31m[Nightcord] Aucun app.asar ou _app.asar trouvé dans resources !\x1b[0m");
         return false;
     }
@@ -129,7 +124,7 @@ function inject(resourcesDir) {
         }
     }
 
-    // Étape 2 : Créer le dossier app/ avec le loader Nightcord non-destructif
+    // Étape 2 : Créer le dossier app/ avec le loader Nightcord
     mkdirSync(appDirPath, { recursive: true });
 
     // Récupérer le nom de package Discord approprié (discord, discordcanary, discordptb)
@@ -151,7 +146,7 @@ function inject(resourcesDir) {
         `// Nightcord Injector — auto-generated, do not edit\n"use strict";\nrequire("${patcherPath}");\n`
     );
 
-    console.log(`\x1b[32m[Nightcord] Injecté avec succès (mode non-destructif) dans : ${resourcesDir}\x1b[0m`);
+    console.log(`\x1b[32m[Nightcord] Injecté avec succès dans : ${resourcesDir}\x1b[0m`);
     return true;
 }
 
@@ -172,4 +167,4 @@ for (const res of allResources) {
     if (inject(res)) injectedCount++;
 }
 console.log(`\n\x1b[32m[Nightcord] ${injectedCount}/${allResources.length} injection(s) réussie(s).\x1b[0m`);
-console.log("\x1b[36m[Nightcord] Vos comptes et sessions restent 100% préservés.\x1b[0m");
+console.log("\x1b[36m[Nightcord] Redémarrez Discord pour lancer Nightcord.\x1b[0m");
