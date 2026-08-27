@@ -1,8 +1,8 @@
 /*
  * Nightcord — Local un-injector for Discord Desktop
- * Annule l'injection de manière propre et non-destructive en :
- * 1. Supprimant le dossier app/ créé par inject.mjs
- * 2. Restaurant _app.asar → app.asar si nécessaire
+ * Annule l'injection en :
+ * 1. Supprimant le dossier app/ et le loader app.asar
+ * 2. Restaurant _app.asar → app.asar officiel
  *
  * Usage: pnpm uninject   (ou: node scripts/uninject.mjs)
  *
@@ -11,7 +11,7 @@
 
 import "./checkNodeVersion.js";
 
-import { existsSync, readdirSync, readFileSync, renameSync, rmSync } from "fs";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "fs";
 import { join } from "path";
 
 // ── Locate Discord installations ─────────────────────────────────────────────
@@ -66,19 +66,22 @@ function uninject(resourcesDir) {
     if (existsSync(appDirPath)) {
         try {
             rmSync(appDirPath, { recursive: true, force: true });
-            console.log(`[Nightcord] Dossier app/ supprimé avec succès dans : ${resourcesDir}`);
+            console.log(`[Nightcord] Dossier app/ supprimé dans : ${resourcesDir}`);
         } catch (e) {
-            console.warn(`[Nightcord] Erreur lors de la suppression de app/ : ${e.message}`);
+            console.warn(`[Nightcord] Erreur suppression app/ : ${e.message}`);
         }
     }
 
-    // Restaurer le backup si app.asar était manquant
+    // Restaurer le backup _app.asar → app.asar
     if (existsSync(backupPath)) {
-        if (!existsSync(appAsarPath)) {
+        try {
+            if (existsSync(appAsarPath)) {
+                rmSync(appAsarPath, { force: true });
+            }
             console.log("[Nightcord] Restauration _app.asar → app.asar...");
-            try { renameSync(backupPath, appAsarPath); } catch {}
-        } else {
-            try { rmSync(backupPath, { force: true }); } catch {}
+            renameSync(backupPath, appAsarPath);
+        } catch (e) {
+            console.warn(`[Nightcord] Erreur restauration asar : ${e.message}`);
         }
     }
 
@@ -90,7 +93,7 @@ function uninject(resourcesDir) {
 const allResources = findAllDiscordResources();
 
 if (allResources.length === 0) {
-    console.log("\x1b[33m[Nightcord] Aucune injection Nightcord active à désinjecter.\x1b[0m");
+    console.log("\x1b[33m[Nightcord] Aucune injection active à désinjecter.\x1b[0m");
     process.exit(0);
 }
 
