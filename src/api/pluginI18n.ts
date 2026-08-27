@@ -4,7 +4,7 @@
  */
 
 import { Settings } from "@api/Settings";
-import { t as tATC } from "../nightcordplugins/autoTranslateNightcord";
+import { getActiveLanguage, t as tATC } from "../nightcordplugins/autoTranslateNightcord";
 
 type LangMap = { fr?: string; es?: string; ru?: string; zh?: string };
 
@@ -3547,7 +3547,7 @@ const pluginTranslations: Record<string, LangMap> = {
  * Falls back to the original English string if no translation is available.
  */
 export function tPlugin(key: string): string {
-    const lang = (Settings.language as string) ?? "en";
+    const lang = getActiveLanguage();
     if (!lang || lang === "en") return key;
     return pluginTranslations[key]?.[lang as keyof LangMap] ?? tATC(key);
 }

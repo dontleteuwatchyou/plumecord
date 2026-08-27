@@ -5,7 +5,7 @@
  */
 
 import { Settings } from "@api/Settings";
-import { t as pluginT } from "../nightcordplugins/autoTranslateNightcord";
+import { getActiveLanguage, t as pluginT } from "../nightcordplugins/autoTranslateNightcord";
 
 export type Language = "en" | "fr" | "es" | "ru" | "zh" | "ar";
 
@@ -615,7 +615,7 @@ const translations: Record<string, Partial<Record<Language, string>>> = {
  * Falls back to the original English string if no translation is found.
  */
 export function t(key: string): string {
-    const lang = (Settings.language as Language) ?? "en";
+    const lang = getActiveLanguage() as Language;
     if (lang === "en") return key;
     const direct = translations[key]?.[lang];
     if (direct) return direct;

@@ -4539,7 +4539,7 @@ export default definePlugin({
     },
 });
 
-function normalizeLang(lang: string): SupportedLang {
+export function normalizeLang(lang: string): SupportedLang {
     if (!lang) return "en";
     const l = lang.toLowerCase();
     if (l.startsWith("fr")) return "fr";
@@ -4550,16 +4550,45 @@ function normalizeLang(lang: string): SupportedLang {
     return "en";
 }
 
+export function getActiveLanguage(): SupportedLang {
+    // 1. If plugin is explicitly disabled, revert to English
+    const pluginEnabled = Settings.plugins?.AutoTranslateNightcord?.enabled ?? true;
+    if (!pluginEnabled) return "en";
+
+    // 2. Check plugin-specific option if selected
+    const pluginOpt = (Settings.plugins?.AutoTranslateNightcord as any)?.autoTranslate;
+    if (pluginOpt && pluginOpt !== "auto") return normalizeLang(pluginOpt);
+
+    // 3. Check global Nightcord setting
+    const globalLang = Settings.language;
+    if (globalLang && globalLang !== "en") return normalizeLang(globalLang);
+
+    // 4. Auto-detect from Discord client DOM / browser
+    try {
+        if (typeof document !== "undefined" && document.documentElement?.lang) {
+            const htmlLang = normalizeLang(document.documentElement.lang);
+            if (htmlLang !== "en") return htmlLang;
+        }
+    } catch {}
+
+    try {
+        if (typeof navigator !== "undefined" && navigator.language) {
+            const navLang = normalizeLang(navigator.language);
+            if (navLang !== "en") return navLang;
+        }
+    } catch {}
+
+    return "fr";
+}
+
 export function t(key: string): string {
-    const rawLang = (Settings.language as string) ?? "en";
-    const lang = normalizeLang(rawLang);
+    const lang = getActiveLanguage();
     if (lang === "en") return key;
     return translations[key]?.[lang] ?? translations[key]?.en ?? key;
 }
 
 export function useTranslation() {
-    const rawLang = (Settings.language as string) ?? "en";
-    const lang = normalizeLang(rawLang);
+    const lang = getActiveLanguage();
     return {
         t: (key: string) => {
             if (lang === "en") return key;
