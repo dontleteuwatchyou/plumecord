@@ -1610,22 +1610,6 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                             </svg>
                         </button>
                     </TooltipContainer>
-
-                    {/* Fullscreen / Grand écran button */}
-                    <TooltipContainer text={isFullscreen ? t("Exit Full Screen") : t("Full Screen")}>
-                        <button
-                            className={`sc-header-btn ${isFullscreen ? "sc-header-btn--active" : ""}`}
-                            onClick={() => setIsFullscreen(v => !v)}
-                        >
-                            {isFullscreen ? <IconRestore /> : <IconMaximize />}
-                        </button>
-                    </TooltipContainer>
-
-                    <TooltipContainer text={t("Close")}>
-                        <button className="sc-header-btn sc-header-btn--close" onClick={onClose}>
-                            <IconClose />
-                        </button>
-                    </TooltipContainer>
                 </div>
             </div>
 
