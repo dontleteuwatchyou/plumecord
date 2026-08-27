@@ -6,6 +6,7 @@
 
 import { onceDefined } from "@shared/onceDefined";
 import electron, { app, BrowserWindowConstructorOptions, Menu, session } from "electron";
+import { existsSync as fsExistsSync, statSync as fsStatSync } from "original-fs";
 import { dirname, join } from "path";
 
 import { registerMediaPermissionsForSession } from "../nightcord/main/mediaPermissions";
@@ -23,8 +24,19 @@ console.log("[Nightcord] Starting up...");
 // Our injector file inside app.asar / app/index.js
 const injectorPath = require.main!.filename;
 
-// The original app.asar
-const asarPath = join(dirname(injectorPath), "..", "_app.asar");
+// The original app.asar (discord_app.asar is immune to Squirrel cleaner, _app.asar fallback)
+const _primaryAsar = join(dirname(injectorPath), "..", "discord_app.asar");
+const _secondaryAsar = join(dirname(injectorPath), "..", "_app.asar");
+const _resourcesPrimary = join(process.resourcesPath, "discord_app.asar");
+const _resourcesSecondary = join(process.resourcesPath, "_app.asar");
+
+const asarPath = (fsExistsSync(_primaryAsar) && !fsStatSync(_primaryAsar).isDirectory())
+    ? _primaryAsar
+    : (fsExistsSync(_secondaryAsar) && !fsStatSync(_secondaryAsar).isDirectory())
+        ? _secondaryAsar
+        : (fsExistsSync(_resourcesPrimary) && !fsStatSync(_resourcesPrimary).isDirectory())
+            ? _resourcesPrimary
+            : _resourcesSecondary;
 
 const discordPkg = require(join(asarPath, "package.json"));
 require.main!.filename = join(asarPath, discordPkg.main);

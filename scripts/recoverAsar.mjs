@@ -6,15 +6,23 @@ const localAppData = process.env.LOCALAPPDATA || "";
 const packagesDir = join(localAppData, "Discord", "packages");
 
 export function recoverOriginalAsar(resourcesDir) {
+    const discordAppPath = join(resourcesDir, "discord_app.asar");
     const backupPath = join(resourcesDir, "_app.asar");
     const appAsarPath = join(resourcesDir, "app.asar");
 
+    if (existsSync(discordAppPath) && statSync(discordAppPath).size > 1000000) {
+        try { copyFileSync(discordAppPath, backupPath); } catch {}
+        return true;
+    }
+
     if (existsSync(backupPath) && statSync(backupPath).size > 1000000) {
+        try { copyFileSync(backupPath, discordAppPath); } catch {}
         return true;
     }
 
     if (existsSync(appAsarPath) && statSync(appAsarPath).size > 1000000) {
         try {
+            copyFileSync(appAsarPath, discordAppPath);
             copyFileSync(appAsarPath, backupPath);
             rmSync(appAsarPath, { force: true });
             return true;
@@ -37,9 +45,10 @@ export function recoverOriginalAsar(resourcesDir) {
                 
                 const extracted = join(tempExtractDir, "lib", "net45", "resources", "app.asar");
                 if (existsSync(extracted) && statSync(extracted).size > 1000000) {
+                    copyFileSync(extracted, discordAppPath);
                     copyFileSync(extracted, backupPath);
                     rmSync(tempExtractDir, { recursive: true, force: true });
-                    console.log(`[Nightcord] _app.asar extrait avec succès depuis ${pkg} (Taille : ${statSync(backupPath).size} octets)`);
+                    console.log(`[Nightcord] discord_app.asar extrait avec succès depuis ${pkg} (Taille : ${statSync(discordAppPath).size} octets)`);
                     return true;
                 }
             } catch (err) {
