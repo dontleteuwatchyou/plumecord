@@ -2,15 +2,15 @@
  * Nightcord — Local injector for Discord Desktop (Equilotl Architecture)
  * Injecte Nightcord dans une installation Discord existante :
  * 1. Trouve le répertoire resources de Discord
- * 2. Déplace l'original app.asar → _app.asar
+ * 2. Garantit la présence et l'intégrité de _app.asar (auto-restauration depuis nupkg si nécessaire)
  * 3. Génère un app.asar binaire valide (format Equilotl) chargeant patcher.js
- * 4. Crée également le dossier app/ pour une compatibilité totale 100%
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import "./checkNodeVersion.js";
 
+import { execSync } from "child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -20,7 +20,6 @@ const DIST_DIR = join(BASE_DIR, "dist", "desktop");
 
 /**
  * Génère un binaire app.asar minimaliste et conforme au standard ASAR d'Electron / Equilotl
- * Contient index.js (require du patcher Nightcord) et package.json
  */
 function createAppAsarBuffer(patcherJsPath, pkgName = "discord") {
     const packageJson = JSON.stringify({
@@ -75,6 +74,52 @@ function createAppAsarBuffer(patcherJsPath, pkgName = "discord") {
     ]);
 }
 
+function ensureOriginalAsar(resourcesDir) {
+    const backupPath = join(resourcesDir, "_app.asar");
+    const appAsarPath = join(resourcesDir, "app.asar");
+
+    if (existsSync(backupPath) && statSync(backupPath).size > 1000000) {
+        return true;
+    }
+
+    if (existsSync(appAsarPath) && statSync(appAsarPath).size > 1000000) {
+        try {
+            renameSync(appAsarPath, backupPath);
+            return true;
+        } catch {
+            try {
+                copyFileSync(appAsarPath, backupPath);
+                rmSync(appAsarPath, { force: true });
+                return true;
+            } catch {}
+        }
+    }
+
+    // Auto-restauration depuis les packages .nupkg officiels
+    const localAppData = process.env.LOCALAPPDATA || "";
+    const packagesDir = join(localAppData, "Discord", "packages");
+    if (existsSync(packagesDir)) {
+        try {
+            const pkgs = readdirSync(packagesDir).filter(f => f.endsWith(".nupkg"));
+            for (const pkg of pkgs) {
+                const pkgPath = join(packagesDir, pkg);
+                try {
+                    execSync(`tar -xf "${pkgPath}" -C "${resourcesDir}" lib/net45/resources/app.asar`);
+                    const extracted = join(resourcesDir, "lib", "net45", "resources", "app.asar");
+                    if (existsSync(extracted)) {
+                        copyFileSync(extracted, backupPath);
+                        rmSync(join(resourcesDir, "lib"), { recursive: true, force: true });
+                        console.log(`[Nightcord] _app.asar auto-restauré depuis ${pkg} (${statSync(backupPath).size} octets)`);
+                        return true;
+                    }
+                } catch {}
+            }
+        } catch {}
+    }
+
+    return false;
+}
+
 // ── Locate Discord installations ─────────────────────────────────────────────
 function findAllDiscordResources() {
     const platform = process.platform;
@@ -113,10 +158,7 @@ function findAllDiscordResources() {
         );
     }
 
-    return candidates.filter(p => {
-        if (!existsSync(p)) return false;
-        return existsSync(join(p, "app.asar")) || existsSync(join(p, "app")) || existsSync(join(p, "_app.asar"));
-    });
+    return candidates.filter(p => existsSync(p));
 }
 
 // ── Check dist/ exists ───────────────────────────────────────────────────────
@@ -132,7 +174,6 @@ function checkBuild() {
 // ── Inject ───────────────────────────────────────────────────────────────────
 function inject(resourcesDir) {
     const appAsarPath = join(resourcesDir, "app.asar");
-    const backupPath = join(resourcesDir, "_app.asar");
     const appDirPath = join(resourcesDir, "app");
 
     // Nettoyer les fichiers de mods tiers
@@ -143,40 +184,10 @@ function inject(resourcesDir) {
         }
     }
 
-    // Étape 1 : Si app.asar est présent (et n'est pas un loader asar), on le déplace vers _app.asar
-    if (existsSync(appAsarPath)) {
-        let isDir = false;
-        let isLoader = false;
-        try {
-            const st = statSync(appAsarPath);
-            isDir = st.isDirectory();
-            if (!isDir && st.size < 131072) {
-                // Moins de 128KB = loader existant
-                isLoader = true;
-            }
-        } catch { }
-
-        if (isDir) {
-            try { rmSync(appAsarPath, { recursive: true, force: true }); } catch { }
-        } else if (!isLoader) {
-            console.log("[Nightcord] Sauvegarde de l'original : app.asar → _app.asar...");
-            try {
-                if (existsSync(backupPath)) try { rmSync(backupPath, { force: true }); } catch {}
-                renameSync(appAsarPath, backupPath);
-            } catch {
-                try {
-                    copyFileSync(appAsarPath, backupPath);
-                    try { rmSync(appAsarPath, { force: true }); } catch {}
-                } catch (e) {
-                    console.warn(`[Nightcord] Erreur de copie app.asar : ${e.message}`);
-                }
-            }
-        }
-    }
-
-    // Vérifier l'existence de _app.asar
-    if (!existsSync(backupPath)) {
-        console.error("\x1b[31m[Nightcord] Aucun _app.asar original trouvé dans resources !\x1b[0m");
+    // Étape 1 : Garantir la présence de _app.asar original
+    const hasOriginal = ensureOriginalAsar(resourcesDir);
+    if (!hasOriginal) {
+        console.error(`\x1b[31m[Nightcord] Impossible de localiser l'archive originale Discord pour ${resourcesDir} !\x1b[0m`);
         return false;
     }
 
@@ -185,11 +196,11 @@ function inject(resourcesDir) {
         try {
             rmSync(appDirPath, { recursive: true, force: true });
         } catch (e) {
-            console.error(`\x1b[31m[Nightcord] Impossible de supprimer l'ancien app/ : ${e.message}\x1b[0m`);
+            console.error(`\x1b[31m[Nightcord] Impossible de supprimer app/ : ${e.message}\x1b[0m`);
         }
     }
 
-    // Récupérer le nom de package Discord approprié (discord, discordcanary, discordptb)
+    // Récupérer le nom de package Discord
     let appPkgName = "discord";
     try {
         const lowerRes = resourcesDir.toLowerCase();
@@ -200,21 +211,11 @@ function inject(resourcesDir) {
 
     const patcherPath = join(DIST_DIR, "patcher.js");
 
-    // Étape 2 : Écrire le vrai fichier binaire app.asar (Format Equilotl)
+    // Étape 2 : Écrire le loader binaire app.asar
     const asarBuffer = createAppAsarBuffer(patcherPath, appPkgName);
     writeFileSync(appAsarPath, asarBuffer);
 
-    // Étape 3 : Créer également le dossier app/ en secours
-    mkdirSync(appDirPath, { recursive: true });
-    writeFileSync(join(appDirPath, "package.json"), JSON.stringify({
-        name: appPkgName,
-        main: "index.js"
-    }, null, 2));
-    writeFileSync(join(appDirPath, "index.js"),
-        `// Nightcord Injector\n"use strict";\nrequire("${patcherPath.replace(/\\/g, "\\\\")}");\n`
-    );
-
-    console.log(`\x1b[32m[Nightcord] Injecté avec succès (ASAR + App Loader) dans : ${resourcesDir}\x1b[0m`);
+    console.log(`\x1b[32m[Nightcord] Injecté avec succès dans : ${resourcesDir}\x1b[0m`);
     return true;
 }
 
@@ -224,7 +225,6 @@ checkBuild();
 const allResources = findAllDiscordResources();
 if (allResources.length === 0) {
     console.error("\x1b[31m[Nightcord] Aucune installation Discord trouvée !\x1b[0m");
-    console.error("\x1b[33m           Assurez-vous que Discord (Stable, PTB ou Canary) est installé.\x1b[0m");
     process.exit(1);
 }
 
@@ -235,4 +235,4 @@ for (const res of allResources) {
     if (inject(res)) injectedCount++;
 }
 console.log(`\n\x1b[32m[Nightcord] ${injectedCount}/${allResources.length} injection(s) réussie(s).\x1b[0m`);
-console.log("\x1b[36m[Nightcord] Redémarrez Discord pour lancer Nightcord.\x1b[0m");
+console.log("\x1b[36m[Nightcord] Lancez Discord pour démarrer Nightcord.\x1b[0m");
