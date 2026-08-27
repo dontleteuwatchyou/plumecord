@@ -46,7 +46,6 @@ if (location.protocol !== "data:") {
             });
         `);
 
-        webFrame.executeJavaScript(sendSync<string>(IpcEvents.PRELOAD_GET_RENDERER_JS));
         if (process.env.DISCORD_PRELOAD) {
             try {
                 require(process.env.DISCORD_PRELOAD);
@@ -54,6 +53,8 @@ if (location.protocol !== "data:") {
                 console.error("[Nightcord] Error loading original Discord preload:", e);
             }
         }
+
+        webFrame.executeJavaScript(sendSync<string>(IpcEvents.PRELOAD_GET_RENDERER_JS));
 
         // Remplace "Discord" par "Nightcord" dans le titre de la fenêtre (document.title)
         // Discord change le titre dynamiquement depuis le renderer — on intercepte ça ici
