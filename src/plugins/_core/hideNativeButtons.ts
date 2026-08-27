@@ -19,7 +19,9 @@ const CSS = `
 [aria-label="Last Meadow Online"],
 [aria-label="Inbox"],
 [aria-label="Boîte de réception"],
-[aria-label="Bandeja de entrada"] {
+[aria-label="Bandeja de entrada"],
+[aria-label="Posteingang"],
+[aria-label="Входящие"] {
     display: none !important;
     width: 0 !important;
     min-width: 0 !important;
@@ -47,7 +49,7 @@ export function updateNativeButtonsVisibility(hide?: boolean) {
 
 export default definePlugin({
     name: "HideNativeButtons",
-    description: "Hides unwanted native Discord buttons (Logs, Help, DevTools, Inbox)",
+    description: "Hides unwanted native Discord buttons (Inbox, Help, Logs)",
     authors: [Devs.Ven],
     required: true,
     patches: [],

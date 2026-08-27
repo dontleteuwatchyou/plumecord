@@ -610,6 +610,22 @@ export function _addHeaderBarButtons() {
                 background-color: var(--background-modifier-hover, rgba(78, 80, 88, 0.3));
                 color: var(--interactive-hover, oklab(0.89908 -0.00192902 -0.01033)) !important;
             }
+            /* Harmoniser l'alignement et espacement du bouton Boîte de réception native Discord */
+            [aria-label="Inbox"],
+            [aria-label="Boîte de réception"],
+            [aria-label="Bandeja de entrada"],
+            [aria-label="Posteingang"],
+            [aria-label="Входящие"] {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                margin: 0 2px !important;
+                padding: 3px !important;
+                border-radius: 4px !important;
+                box-sizing: content-box !important;
+                line-height: normal !important;
+                vertical-align: middle !important;
+            }
         `}</style>,
         <HeaderBarButtons key="vc-header-bar-buttons" />
     ];

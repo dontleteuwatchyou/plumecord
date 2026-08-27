@@ -345,8 +345,8 @@ function EquicordSettings() {
             },
             {
                 key: "hideNativeHeaderButtons",
-                title: t("Hide Native Header Buttons (Inbox, Help, DevTools)"),
-                description: t("Hides native Discord header buttons like the notification inbox, help, and logs. Turn OFF to show the notification inbox button again."),
+                title: t("Hide Native Header Buttons (Inbox)"),
+                description: t("Hides native Discord header buttons like the notification inbox. Turn OFF to show the notification inbox button again."),
                 restartRequired: false,
                 warning: { enabled: false },
             },
