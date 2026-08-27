@@ -220,9 +220,6 @@ export default definePlugin({
     },
 
     start() {
-        // Force disable outgoing auto-translate — only incoming is supported
-        settings.store.autoTranslate = false;
-
         setOnAutoTranslateReceivedToggled((enabled) => {
             if (enabled) {
                 const channelId = SelectedChannelStore.getChannelId();

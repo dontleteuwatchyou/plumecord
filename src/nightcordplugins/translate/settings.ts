@@ -76,9 +76,8 @@ export const settings = definePluginSettings({
     },
     autoTranslate: {
         type: OptionType.BOOLEAN,
-        description: "Automatically translate your messages before sending. You can also shift/right click the translate button to toggle this",
-        default: false,
-        disabled: () => true // Disabled — never auto-translate
+        description: "Automatically translate your messages before sending. You can also click the translate button in chat to toggle this",
+        default: false
     },
     autoTranslateReceived: {
         type: OptionType.BOOLEAN,
