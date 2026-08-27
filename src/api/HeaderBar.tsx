@@ -593,95 +593,95 @@ function ChannelToolbarButtons() {
     );
 }
 
+const HEADER_STYLE_ID = "nightcord-headerbar-style";
+const HEADER_STYLE_CSS = `
+    div[role="button"][aria-label="Boîte de réception"],
+    div[role="button"][aria-label="Inbox"],
+    div[role="button"][aria-label="Bandeja de entrada"],
+    div[role="button"][aria-label="Posteingang"],
+    div[role="button"][aria-label="Входящие"],
+    div[role="button"][aria-label*="Inbox" i],
+    div[role="button"][aria-label*="réception" i],
+    .nightcord-header-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        align-self: center !important;
+        height: 24px !important;
+        min-height: 24px !important;
+        max-height: 24px !important;
+        width: 24px !important;
+        min-width: 24px !important;
+        max-width: 24px !important;
+        margin: 0 2px !important;
+        margin-left: 2px !important;
+        margin-right: 2px !important;
+        margin-inline: 2px !important;
+        padding: 0 !important;
+        border-radius: 4px !important;
+        box-sizing: border-box !important;
+        vertical-align: middle !important;
+        line-height: normal !important;
+        flex: 0 0 24px !important;
+        position: relative !important;
+        color: var(--interactive-normal, oklab(0.745437 0.00131872 -0.00849736)) !important;
+        transition: background-color 0.15s ease-out, color 0.15s ease-out !important;
+    }
+
+    div[role="button"][aria-label="Boîte de réception"]:hover,
+    div[role="button"][aria-label="Inbox"]:hover,
+    div[role="button"][aria-label="Bandeja de entrada"]:hover,
+    div[role="button"][aria-label="Posteingang"]:hover,
+    div[role="button"][aria-label="Входящие"]:hover,
+    div[role="button"][aria-label*="Inbox" i]:hover,
+    div[role="button"][aria-label*="réception" i]:hover,
+    .nightcord-header-btn:hover {
+        background-color: var(--background-modifier-hover, rgba(78, 80, 88, 0.3)) !important;
+        color: var(--interactive-hover, oklab(0.89908 -0.00192902 -0.01033)) !important;
+    }
+
+    div[role="button"][aria-label="Boîte de réception"] svg,
+    div[role="button"][aria-label="Inbox"] svg,
+    div[role="button"][aria-label="Bandeja de entrada"] svg,
+    div[role="button"][aria-label="Posteingang"] svg,
+    div[role="button"][aria-label="Входящие"] svg,
+    div[role="button"][aria-label*="Inbox" i] svg,
+    div[role="button"][aria-label*="réception" i] svg,
+    .nightcord-header-btn svg {
+        width: 18px !important;
+        height: 18px !important;
+        min-width: 18px !important;
+        min-height: 18px !important;
+        max-width: 18px !important;
+        max-height: 18px !important;
+        display: block !important;
+        margin: auto !important;
+        flex-shrink: 0 !important;
+    }
+`;
+
+function ensureHeaderStyles() {
+    if (typeof document === "undefined") return;
+    if (!document.getElementById(HEADER_STYLE_ID)) {
+        const style = document.createElement("style");
+        style.id = HEADER_STYLE_ID;
+        style.textContent = HEADER_STYLE_CSS;
+        document.head.appendChild(style);
+    }
+}
+try { ensureHeaderStyles(); } catch {}
+
 /** @internal Injected by HeaderBarAPI patch (do NOT call directly) */
 export function _addHeaderBarButtons() {
+    ensureHeaderStyles();
     return [
-        <style key="nightcord-headerbar-style">{`
-            .nightcord-header-btn {
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                align-self: center !important;
-                height: 24px !important;
-                width: 24px !important;
-                min-width: 24px !important;
-                max-width: 24px !important;
-                min-height: 24px !important;
-                max-height: 24px !important;
-                margin: 0 2px !important;
-                padding: 3px !important;
-                border-radius: 4px !important;
-                box-sizing: border-box !important;
-                vertical-align: middle !important;
-                color: var(--interactive-normal, oklab(0.745437 0.00131872 -0.00849736)) !important;
-                transition: background-color 0.15s ease-out, color 0.15s ease-out;
-            }
-            .nightcord-header-btn:hover {
-                background-color: var(--background-modifier-hover, rgba(78, 80, 88, 0.3));
-                color: var(--interactive-hover, oklab(0.89908 -0.00192902 -0.01033)) !important;
-            }
-            .nightcord-header-btn svg {
-                width: 18px !important;
-                height: 18px !important;
-                min-width: 18px !important;
-                min-height: 18px !important;
-                max-width: 18px !important;
-                max-height: 18px !important;
-                display: block !important;
-                margin: auto !important;
-            }
-
-            /* Bouton natif Boîte de réception Discord UNIQUEMENT (div[role="button"]) */
-            div[role="button"][aria-label="Boîte de réception"],
-            div[role="button"][aria-label="Inbox"],
-            div[role="button"][aria-label="Bandeja de entrada"],
-            div[role="button"][aria-label="Posteingang"],
-            div[role="button"][aria-label="Входящие"],
-            div[role="button"][aria-label*="Inbox" i],
-            div[role="button"][aria-label*="réception" i] {
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                align-self: center !important;
-                margin: 0 2px !important;
-                margin-right: 2px !important;
-                margin-inline-end: 2px !important;
-                padding: 3px !important;
-                border-radius: 4px !important;
-                height: 24px !important;
-                width: 24px !important;
-                min-width: 24px !important;
-                max-width: 24px !important;
-                min-height: 24px !important;
-                max-height: 24px !important;
-                box-sizing: border-box !important;
-                line-height: normal !important;
-                vertical-align: middle !important;
-                flex: none !important;
-            }
-
-            div[role="button"][aria-label="Boîte de réception"] svg,
-            div[role="button"][aria-label="Inbox"] svg,
-            div[role="button"][aria-label="Bandeja de entrada"] svg,
-            div[role="button"][aria-label="Posteingang"] svg,
-            div[role="button"][aria-label="Входящие"] svg,
-            div[role="button"][aria-label*="Inbox" i] svg,
-            div[role="button"][aria-label*="réception" i] svg {
-                width: 18px !important;
-                height: 18px !important;
-                min-width: 18px !important;
-                min-height: 18px !important;
-                max-width: 18px !important;
-                max-height: 18px !important;
-                display: block !important;
-                margin: auto !important;
-            }
-        `}</style>,
         <HeaderBarButtons key="vc-header-bar-buttons" />
     ];
 }
 
 /** @internal Injected by HeaderBarAPI patch (do NOT call directly) */
 export function _addChannelToolbarButtons(children: any[]) {
+    ensureHeaderStyles();
     children.push(<ChannelToolbarButtons key="vc-channel-toolbar-buttons" />);
 }
+
