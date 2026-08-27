@@ -1,20 +1,8 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2023 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import { Settings } from "@api/Settings";
 import { Queue } from "@utils/Queue";
@@ -28,7 +16,7 @@ import { openNotificationLogModal, persistNotification } from "./notificationLog
 const NotificationQueue = new Queue();
 
 let reactRoot: Root;
-let id = 42;
+let notifCounter = 42;
 let missedCount = 0;
 
 window.addEventListener("focus", () => {
@@ -38,6 +26,7 @@ window.addEventListener("focus", () => {
         showNotification({
             title: "While you were away",
             body: `${missedCount} notifications received`,
+            type: "info",
             onClick: () => openNotificationLogModal(),
         });
         missedCount = 0;
@@ -46,34 +35,37 @@ window.addEventListener("focus", () => {
 
 function getRoot() {
     if (!reactRoot) {
-        const container = document.createElement("div");
-        container.id = "vc-notification-container";
-        document.body.append(container);
+        let container = document.getElementById("vc-notification-container");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "vc-notification-container";
+            document.body.append(container);
+        }
         reactRoot = createRoot(container);
     }
     return reactRoot;
 }
 
 export interface NotificationData {
+    id?: string;
     title: string;
     body: string;
-    /**
-     * Same as body but can be a custom component.
-     * Will be used over body if present.
-     * Not supported on desktop notifications, those will fall back to body */
     richBody?: ReactNode;
-    /** Small icon. This is for things like profile pictures and should be square */
-    icon?: string;
-    /** Large image. Optimally, this should be around 16x9 but it doesn't matter much. Desktop Notifications might not support this */
+    type?: "success" | "info" | "warning" | "error";
+    icon?: string | React.ComponentType<any>;
     image?: string;
+    duration?: number;
+    actions?: Array<{
+        label: string;
+        onClick?(e?: any): void;
+        color?: any;
+        look?: any;
+    }>;
     onClick?(): void;
     onClose?(): void;
     color?: string;
-    /** Whether this notification should not have a timeout */
     permanent?: boolean;
-    /** Whether this notification should not be persisted in the Notification Log */
     noPersist?: boolean;
-    /** Whether this notification should be dismissed when clicked (defaults to true) */
     dismissOnClick?: boolean;
 }
 
@@ -81,11 +73,15 @@ function _showNotification(notification: NotificationData, id: number) {
     const root = getRoot();
     return new Promise<void>(resolve => {
         root.render(
-            <NotificationComponent key={id} {...notification} onClose={() => {
-                notification.onClose?.();
-                root.render(null);
-                resolve();
-            }} />,
+            <NotificationComponent
+                key={id}
+                {...notification}
+                onClose={() => {
+                    notification.onClose?.();
+                    root.render(null);
+                    resolve();
+                }}
+            />
         );
     });
 }
@@ -113,7 +109,7 @@ export async function showNotification(data: NotificationData) {
         const { title, body, icon, image, onClick = null, onClose = null } = data;
         const n = new Notification(title, {
             body,
-            icon,
+            icon: typeof icon === "string" ? icon : undefined,
             // @ts-expect-error ts is drunk
             image
         });
@@ -129,7 +125,7 @@ export async function showNotification(data: NotificationData) {
                     data.onClose?.();
                     if (!WindowStore.isFocused()) missedCount++;
                 }
-            }, id++)
+            }, notifCounter++)
         );
     }
 }

@@ -279,6 +279,24 @@ async function init() {
         setInterval(runUpdateCheck, 1000 * 60 * 30); // 30 minutes
     }
 
+    // BetterDiscord-style startup notification test
+    setTimeout(() => {
+        showNotification({
+            title: "Nightcord",
+            body: "Nightcord is active and up to date.",
+            type: "success",
+            duration: 6000,
+            actions: [
+                {
+                    label: "Settings",
+                    onClick: () => {
+                        try { SettingsRouter.open("equicord_general"); } catch {}
+                    }
+                }
+            ]
+        });
+    }, 1200);
+
     if (IS_DEV) {
         const pendingPatches = patches.filter(p => !p.all && p.predicate?.() !== false);
         if (pendingPatches.length)
