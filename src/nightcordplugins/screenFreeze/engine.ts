@@ -17,6 +17,26 @@ interface ActiveStreamPipeline {
     renderLoopId: number | null;
 }
 
+const BLOCKED_EVENT_TYPES = [
+    "click",
+    "mousedown",
+    "mouseup",
+    "pointerdown",
+    "pointerup",
+    "mousemove",
+    "pointermove",
+    "mouseleave",
+    "mouseout",
+    "pointerleave",
+    "pointerout",
+    "contextmenu",
+    "wheel",
+    "touchstart",
+    "touchend",
+    "touchmove",
+    "blur"
+];
+
 class ScreenFreezeEngine {
     private isFrozen = false;
     private frozenTimestamp: number | undefined = undefined;
@@ -29,6 +49,8 @@ class ScreenFreezeEngine {
 
     private activePipelines = new Set<ActiveStreamPipeline>();
     private pausedVideos: HTMLVideoElement[] = [];
+
+    private isEventBlockerAttached = false;
 
     public getState(): ScreenFreezeState {
         return {
@@ -46,6 +68,39 @@ class ScreenFreezeEngine {
     private notify() {
         const state = this.getState();
         this.listeners.forEach(l => l(state));
+    }
+
+    private blockEvent = (e: Event) => {
+        if (!this.isFrozen) return;
+
+        // Allow keyboard events for shortcut handling
+        if (e.type === "keydown" || e.type === "keyup") return;
+
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        try {
+            e.preventDefault();
+        } catch { }
+    };
+
+    private attachEventBlockers() {
+        if (this.isEventBlockerAttached || typeof window === "undefined") return;
+
+        for (const type of BLOCKED_EVENT_TYPES) {
+            window.addEventListener(type, this.blockEvent, { capture: true, passive: false });
+            document.addEventListener(type, this.blockEvent, { capture: true, passive: false });
+        }
+        this.isEventBlockerAttached = true;
+    }
+
+    private removeEventBlockers() {
+        if (!this.isEventBlockerAttached || typeof window === "undefined") return;
+
+        for (const type of BLOCKED_EVENT_TYPES) {
+            window.removeEventListener(type, this.blockEvent, { capture: true });
+            document.removeEventListener(type, this.blockEvent, { capture: true });
+        }
+        this.isEventBlockerAttached = false;
     }
 
     public startPatch() {
@@ -103,6 +158,7 @@ class ScreenFreezeEngine {
             this.cleanupPipeline(pipe);
         }
         this.activePipelines.clear();
+        this.removeEventBlockers();
     }
 
     private async createProxyStreamPipeline(rawStream: MediaStream): Promise<MediaStream> {
@@ -260,7 +316,7 @@ class ScreenFreezeEngine {
             }
         }
 
-        // 2. Lock & Freeze ALL CSS animations, transitions and user interactions across the entire DOM
+        // 2. Lock & Freeze ALL CSS animations & transitions
         try {
             let freezeStyle = document.getElementById("nc-screen-freeze-style") as HTMLStyleElement | null;
             if (!freezeStyle) {
@@ -275,13 +331,8 @@ class ScreenFreezeEngine {
                 document.head.appendChild(freezeStyle);
             }
 
-            let lockOverlay = document.getElementById("nc-screen-freeze-lock-overlay");
-            if (!lockOverlay) {
-                lockOverlay = document.createElement("div");
-                lockOverlay.id = "nc-screen-freeze-lock-overlay";
-                lockOverlay.style.cssText = "position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 2147483640; background: transparent; cursor: default; pointer-events: all;";
-                document.body.appendChild(lockOverlay);
-            }
+            // Attach high-priority capture-phase event blockers so mouseleave/mouseout never fires on active popups/tooltips
+            this.attachEventBlockers();
 
             // Pause all live videos in Discord
             this.pausedVideos = [];
@@ -307,10 +358,10 @@ class ScreenFreezeEngine {
             this.frozenBitmap = null;
         }
 
-        // Remove CSS freeze and unlock overlay
+        // Remove CSS freeze and event blockers
         try {
             document.getElementById("nc-screen-freeze-style")?.remove();
-            document.getElementById("nc-screen-freeze-lock-overlay")?.remove();
+            this.removeEventBlockers();
 
             // Resume paused videos
             for (const v of this.pausedVideos) {
