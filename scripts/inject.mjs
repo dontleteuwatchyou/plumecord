@@ -10,10 +10,10 @@
 
 import "./checkNodeVersion.js";
 
-import { execSync } from "child_process";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { recoverOriginalAsar } from "./recoverAsar.mjs";
 
 const BASE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST_DIR = join(BASE_DIR, "dist", "desktop");
@@ -72,52 +72,6 @@ function createAppAsarBuffer(patcherJsPath, pkgName = "discord") {
         indexBuf,
         pkgBuf
     ]);
-}
-
-function ensureOriginalAsar(resourcesDir) {
-    const backupPath = join(resourcesDir, "_app.asar");
-    const appAsarPath = join(resourcesDir, "app.asar");
-
-    if (existsSync(backupPath) && statSync(backupPath).size > 1000000) {
-        return true;
-    }
-
-    if (existsSync(appAsarPath) && statSync(appAsarPath).size > 1000000) {
-        try {
-            renameSync(appAsarPath, backupPath);
-            return true;
-        } catch {
-            try {
-                copyFileSync(appAsarPath, backupPath);
-                rmSync(appAsarPath, { force: true });
-                return true;
-            } catch {}
-        }
-    }
-
-    // Auto-restauration depuis les packages .nupkg officiels
-    const localAppData = process.env.LOCALAPPDATA || "";
-    const packagesDir = join(localAppData, "Discord", "packages");
-    if (existsSync(packagesDir)) {
-        try {
-            const pkgs = readdirSync(packagesDir).filter(f => f.endsWith(".nupkg"));
-            for (const pkg of pkgs) {
-                const pkgPath = join(packagesDir, pkg);
-                try {
-                    execSync(`tar -xf "${pkgPath}" -C "${resourcesDir}" lib/net45/resources/app.asar`);
-                    const extracted = join(resourcesDir, "lib", "net45", "resources", "app.asar");
-                    if (existsSync(extracted)) {
-                        copyFileSync(extracted, backupPath);
-                        rmSync(join(resourcesDir, "lib"), { recursive: true, force: true });
-                        console.log(`[Nightcord] _app.asar auto-restauré depuis ${pkg} (${statSync(backupPath).size} octets)`);
-                        return true;
-                    }
-                } catch {}
-            }
-        } catch {}
-    }
-
-    return false;
 }
 
 // ── Locate Discord installations ─────────────────────────────────────────────
@@ -184,10 +138,10 @@ function inject(resourcesDir) {
         }
     }
 
-    // Étape 1 : Garantir la présence de _app.asar original
-    const hasOriginal = ensureOriginalAsar(resourcesDir);
+    // Étape 1 : Garantir la présence de _app.asar original (> 1MB)
+    const hasOriginal = recoverOriginalAsar(resourcesDir);
     if (!hasOriginal) {
-        console.error(`\x1b[31m[Nightcord] Impossible de localiser l'archive originale Discord pour ${resourcesDir} !\x1b[0m`);
+        console.error(`\x1b[31m[Nightcord] Impossible de localiser ou d'extraire l'archive originale Discord pour ${resourcesDir} !\x1b[0m`);
         return false;
     }
 
