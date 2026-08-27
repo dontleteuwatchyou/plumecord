@@ -225,10 +225,25 @@ try {
                 (window as any).VencordNative.setContentProtection(newVal);
             }
             try {
-                showToast(
-                    newVal ? "StreamProof Enabled" : "StreamProof Disabled",
-                    newVal ? Toasts.Type.SUCCESS : Toasts.Type.FAILURE
-                );
+                if (newVal) {
+                    showNotification({
+                        id: "nightcord-streamproof-mode",
+                        title: "Nightcord",
+                        body: "To disable StreamProof press Ctrl+Shift+G",
+                        icon: NIGHTCORD_LOGO_URI,
+                        type: "info",
+                        duration: 6000
+                    });
+                } else {
+                    showNotification({
+                        id: "nightcord-streamproof-mode",
+                        title: "Nightcord",
+                        body: "StreamProof has been disabled.",
+                        icon: NIGHTCORD_LOGO_URI,
+                        type: "success",
+                        duration: 4000
+                    });
+                }
             } catch {}
         }
     }, true);
