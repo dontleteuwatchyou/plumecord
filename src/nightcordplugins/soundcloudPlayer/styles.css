@@ -94,7 +94,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 
 .sc-header {
     padding: 14px 20px;
-    background: var(--background-secondary, #1e1f22);
+    background: var(--modal-background, var(--background-primary));
     border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     display: flex;
     align-items: center;
@@ -179,7 +179,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 
 .sc-settings-drawer {
     padding: 10px 20px;
-    background: var(--background-secondary-alt, #18191c);
+    background: var(--modal-background, var(--background-primary));
     border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
     display: flex;
     align-items: center;
@@ -895,7 +895,7 @@ body:has(.sc-modal-root--fullscreen) [class*="layerContainer"] {
 /* ── Bottom Docked Player ────────────────────────────────────────────────── */
 
 .sc-docked-player {
-    background: var(--background-secondary-alt, #18191c);
+    background: var(--modal-background, var(--background-primary));
     border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     padding: 12px 20px;
     display: flex;
