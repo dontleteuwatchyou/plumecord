@@ -598,11 +598,19 @@ export function _addHeaderBarButtons() {
     return [
         <style key="nightcord-headerbar-style">{`
             .nightcord-header-btn {
-                display: flex;
-                align-items: center;
-                margin: 0 2px;
-                padding: 3px;
-                border-radius: 4px;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                align-self: center !important;
+                height: 24px !important;
+                width: 24px !important;
+                max-height: 24px !important;
+                max-width: 24px !important;
+                margin: 0 2px !important;
+                padding: 3px !important;
+                border-radius: 4px !important;
+                box-sizing: border-box !important;
+                vertical-align: middle !important;
                 color: var(--interactive-normal, oklab(0.745437 0.00131872 -0.00849736)) !important;
                 transition: background-color 0.15s ease-out, color 0.15s ease-out;
             }
@@ -610,21 +618,76 @@ export function _addHeaderBarButtons() {
                 background-color: var(--background-modifier-hover, rgba(78, 80, 88, 0.3));
                 color: var(--interactive-hover, oklab(0.89908 -0.00192902 -0.01033)) !important;
             }
-            /* Harmoniser l'alignement et espacement du bouton Boîte de réception native Discord */
+            .nightcord-header-btn svg {
+                width: 18px !important;
+                height: 18px !important;
+                max-width: 18px !important;
+                max-height: 18px !important;
+                display: block !important;
+                margin: auto !important;
+            }
+
+            /* Harmoniser parfaitement le bouton Boîte de réception native Discord */
             [aria-label="Inbox"],
             [aria-label="Boîte de réception"],
             [aria-label="Bandeja de entrada"],
             [aria-label="Posteingang"],
-            [aria-label="Входящие"] {
+            [aria-label="Входящие"],
+            [aria-label*="Inbox" i],
+            [aria-label*="réception" i] {
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
+                align-self: center !important;
+                height: 24px !important;
+                width: 24px !important;
+                max-height: 24px !important;
+                max-width: 24px !important;
                 margin: 0 2px !important;
+                margin-right: 2px !important;
+                margin-inline-end: 2px !important;
                 padding: 3px !important;
                 border-radius: 4px !important;
-                box-sizing: content-box !important;
+                box-sizing: border-box !important;
                 line-height: normal !important;
                 vertical-align: middle !important;
+                flex: none !important;
+            }
+
+            /* Supprimer le gap / marge externe du conteneur parent natif de la boîte de réception */
+            div:has(> [aria-label="Inbox"]),
+            div:has(> [aria-label="Boîte de réception"]),
+            div:has(> [aria-label*="Inbox" i]),
+            div:has(> [aria-label*="réception" i]),
+            div:has(> [aria-label="Bandeja de entrada"]),
+            div:has(> [aria-label="Posteingang"]),
+            div:has(> [aria-label="Входящие"]) {
+                margin: 0 !important;
+                margin-right: 0 !important;
+                margin-inline-end: 0 !important;
+                padding: 0 !important;
+                padding-right: 0 !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                align-self: center !important;
+                height: 24px !important;
+                flex: none !important;
+            }
+
+            [aria-label="Inbox"] svg,
+            [aria-label="Boîte de réception"] svg,
+            [aria-label*="Inbox" i] svg,
+            [aria-label*="réception" i] svg,
+            [aria-label="Bandeja de entrada"] svg,
+            [aria-label="Posteingang"] svg,
+            [aria-label="Входящие"] svg {
+                width: 18px !important;
+                height: 18px !important;
+                max-width: 18px !important;
+                max-height: 18px !important;
+                display: block !important;
+                margin: auto !important;
             }
         `}</style>,
         <HeaderBarButtons key="vc-header-bar-buttons" />
