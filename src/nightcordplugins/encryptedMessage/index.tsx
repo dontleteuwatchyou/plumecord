@@ -746,7 +746,7 @@ const EncryptionToggleButton: ChatBarButtonFactory = ({ type }) => {
 
     return (
         <ChatBarButton
-            tooltip={t("Securecord Password Manager")}
+            tooltip={enabled ? t("Encrypted Messages: Active") : t("Encrypted Messages: Inactive")}
             onClick={() => {
                 openModal(props => <EncryptionSettingsModal modalProps={props} close={props.onClose} />);
             }}
@@ -1031,7 +1031,7 @@ const settings = definePluginSettings({
     },
     acceptLegacyPayloads: {
         type: OptionType.BOOLEAN,
-        description: "Allow decrypting older Securecord version 1 payloads.",
+        description: "Allow decrypting legacy version 1 payloads.",
         default: true
     },
     maxFailedAttempts: {
