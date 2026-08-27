@@ -13,6 +13,7 @@ import {
     LanguageTab,
     PatchHelperTab,
     PluginsTab,
+    StatusTab,
     SyncTab,
     ThemesTab,
     UpdaterTab,
@@ -20,6 +21,14 @@ import {
 } from "@components/settings";
 import { CreateThemeTab } from "@components/settings/tabs/createTheme/CreateThemeTab";
 import { PencilSparkleIcon } from "@components/settings/tabs/createTheme/PencilSparkleIcon";
+
+function StatusPulseIcon(props: IconProps) {
+    return (
+        <svg {...props} width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+    );
+}
 
 function CodeIcon(props: IconProps) {
     return (
@@ -293,6 +302,13 @@ export default definePlugin({
                 title: "Language",
                 Component: LanguageTab,
                 Icon: LangIcon
+            }),
+            buildEntry({
+                key: "nightcord_status",
+                title: "Status",
+                panelTitle: "Nightcord Status",
+                Component: StatusTab,
+                Icon: StatusPulseIcon
             }),
             IS_DEV && PatchHelperTab && buildEntry({
                 key: "equicord_patch_helper",
