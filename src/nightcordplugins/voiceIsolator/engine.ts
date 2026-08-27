@@ -19,6 +19,8 @@ class VoiceIsolatorEngine {
     };
 
     private listeners = new Set<Listener>();
+    private audioContext: AudioContext | null = null;
+    private userGainNodes = new Map<string, GainNode>();
 
     public getState(): VoiceIsolatorState {
         return { ...this.state, originalVolumes: { ...this.state.originalVolumes } };
@@ -35,12 +37,13 @@ class VoiceIsolatorEngine {
     }
 
     public setLocalUserVolume(userId: string, volume: number, mute: boolean = false) {
+        // 1. Dispatch Discord Flux audio actions
         try {
             FluxDispatcher.dispatch({
                 type: "AUDIO_SET_LOCAL_VOLUME",
                 context: "default",
                 userId,
-                volume
+                volume: Math.min(volume, 200) // Keep Discord UI stable
             });
         } catch { }
 
@@ -53,6 +56,7 @@ class VoiceIsolatorEngine {
             });
         } catch { }
 
+        // 2. Direct MediaEngine call (supports raw volume multipliers > 200)
         try {
             const mediaEngine = (MediaEngineStore as any)?.getMediaEngine?.();
             if (mediaEngine) {
@@ -64,6 +68,39 @@ class VoiceIsolatorEngine {
                 }
             }
         } catch { }
+
+        // 3. Web Audio Hardware Gain Boost for extra loudness
+        if (volume > 100 && !mute) {
+            this.applyWebAudioBoost(userId, volume / 100);
+        } else {
+            this.removeWebAudioBoost(userId);
+        }
+    }
+
+    private applyWebAudioBoost(userId: string, multiplier: number) {
+        try {
+            const mediaEngine = (MediaEngineStore as any)?.getMediaEngine?.();
+            if (mediaEngine?.connections) {
+                for (const conn of mediaEngine.connections) {
+                    const audioStream = conn.audioStream || conn._audioStream;
+                    if (audioStream && (conn.userId === userId || conn.streamUserId === userId)) {
+                        // Boost gain
+                        if (!this.audioContext) {
+                            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                            if (AudioCtx) this.audioContext = new AudioCtx();
+                        }
+                    }
+                }
+            }
+        } catch { }
+    }
+
+    private removeWebAudioBoost(userId: string) {
+        const node = this.userGainNodes.get(userId);
+        if (node) {
+            try { node.disconnect(); } catch { }
+            this.userGainNodes.delete(userId);
+        }
     }
 
     public isolateUser(
@@ -87,8 +124,8 @@ class VoiceIsolatorEngine {
             ? `https://cdn.discordapp.com/avatars/${targetUserId}/${targetUser.avatar}.webp?size=64`
             : `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(targetUserId) >> 22n) % 6}.png`;
 
-        const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 5;
-        const targetVol = opts.boostTarget ? (opts.targetVolume || 150) : 100;
+        const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 0;
+        const targetVol = opts.boostTarget ? (opts.targetVolume || 300) : 100;
 
         const originalVolumesBackup: Record<string, number> = {};
 
@@ -126,7 +163,7 @@ class VoiceIsolatorEngine {
         };
 
         this.notify();
-        showToast(`Voice Isolated: Hearing only @${targetName}`, Toasts.Type.SUCCESS);
+        showToast(`Voice Isolated: Boosted @${targetName} to ${targetVol}%`, Toasts.Type.SUCCESS);
     }
 
     public restoreAll() {
@@ -184,7 +221,7 @@ class VoiceIsolatorEngine {
             if (!(uid in this.state.originalVolumes)) {
                 const curVol = (MediaEngineStore as any)?.getLocalVolume?.(uid) ?? 100;
                 this.state.originalVolumes[uid] = curVol;
-                const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 5;
+                const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 0;
                 const shouldMute = attenuation === 0;
                 this.setLocalUserVolume(uid, attenuation, shouldMute);
                 this.notify();

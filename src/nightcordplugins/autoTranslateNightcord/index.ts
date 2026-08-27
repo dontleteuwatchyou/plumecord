@@ -28,6 +28,7 @@ export const translations: TranslationMap = {
     "Restore All": {"en":"Restore All","fr":"Tout rétablir","ar":"استعادة الكل","es":"Restablecer todo","ru":"Восстановить все","zh":"全部恢复"},
     "Voice Isolation Status": {"en":"Voice Isolation Status","fr":"Statut de l'isolation vocale","ar":"حالة العزل الصوتي","es":"Estado del aislamiento de voz","ru":"Статус изоляции голоса","zh":"语音隔离状态"},
     "Active:": {"en":"Active:","fr":"Actif :","ar":"نشط:","es":"Activo:","ru":"Активен:","zh":"活跃："},
+    "Boosted to": {"en":"Boosted to","fr":"Amplifié à","ar":"تم التضخيم إلى","es":"Amplificado a","ru":"Усилен до","zh":"增强至"},
     "Others lowered to": {"en":"Others lowered to","fr":"Autres baissés à","ar":"تم خفض الآخرين إلى","es":"Otros reducidos al","ru":"Остальные снижены до","zh":"其他人降低至"},
     "Inactive / Normal voice mixing": {"en":"Inactive / Normal voice mixing","fr":"Inactif / Mixage vocal normal","ar":"غير نشط / خلط صوتي طبيعي","es":"Inactivo / Mezcla de voz normal","ru":"Неактивно / Обычное сведение звука","zh":"未激活 / 正常语音混合"},
     "Restore All Volumes": {"en":"Restore All Volumes","fr":"Rétablir tous les volumes","ar":"استعادة جميع مستويات الصوت","es":"Restablecer todos los volúmenes","ru":"Восстановить всю громкость","zh":"恢复所有音量"},

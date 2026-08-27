@@ -17,23 +17,23 @@ import { t } from "../autoTranslateNightcord";
 
 const settings = definePluginSettings({
     attenuationVolume: {
-        description: "Background volume level percentage for other users when isolation is active.",
+        description: "Background volume level percentage for other users when isolation is active (0% = complete silence).",
         type: OptionType.SLIDER,
         markers: [0, 5, 10, 20, 30, 50],
-        default: 5,
+        default: 0,
         restartNeeded: false
     },
     boostTarget: {
-        description: "Boost the isolated user's volume above 100% for maximum voice clarity.",
+        description: "Boost the isolated user's volume above 100% for maximum voice loudness and clarity.",
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: false
     },
     targetVolume: {
-        description: "Target user volume level percentage when boosted.",
+        description: "Target user volume level percentage when boosted (up to 500% extreme loudness).",
         type: OptionType.SLIDER,
-        markers: [100, 125, 150, 175, 200],
-        default: 150,
+        markers: [100, 150, 200, 250, 300, 400, 500],
+        default: 300,
         restartNeeded: false
     },
     showFloatingHud: {
@@ -147,7 +147,7 @@ function VoiceIsolatorSettingsComponent() {
                             </span>
                             <span style={{ color: state.isolatedUserId ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)", fontSize: "12px", fontWeight: state.isolatedUserId ? 600 : 400 }}>
                                 {state.isolatedUserId
-                                    ? `● ${t("Active:")} ${state.isolatedUserName} (${t("Others lowered to")} ${settings.store.attenuationVolume}%)`
+                                    ? `● ${t("Active:")} ${state.isolatedUserName} (${t("Boosted to")} ${settings.store.targetVolume}% • ${t("Others lowered to")} ${settings.store.attenuationVolume}%)`
                                     : `○ ${t("Inactive / Normal voice mixing")}`}
                             </span>
                         </div>
