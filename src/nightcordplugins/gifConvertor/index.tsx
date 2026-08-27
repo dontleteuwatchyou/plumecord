@@ -10,6 +10,7 @@ import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
 import definePlugin from "@utils/types";
 import { CloudUploadPlatform } from "@vencord/discord-types/enums";
 import {
+    Button,
     CloudUploader,
     Constants,
     FluxDispatcher,
@@ -31,11 +32,11 @@ import { encodeGIF } from "./gifEncoder";
 type Stage = "idle" | "converting" | "preview" | "sending" | "error";
 
 interface PopoverPosition {
-    bottom: number; // px from bottom of viewport
-    left: number;   // px from left of viewport (centre of button)
+    bottom: number;
+    left: number;
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Upload Helper ────────────────────────────────────────────────────────────
 
 async function sendGIF(gifBlob: Blob, filename: string) {
     const channelId = SelectedChannelStore.getChannelId();
@@ -83,20 +84,16 @@ async function sendGIF(gifBlob: Blob, filename: string) {
 function GifIcon({ active }: { active?: boolean }) {
     return (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="3" y="4" width="18" height="16" rx="2.5"
+            <rect x="3" y="4" width="18" height="16" rx="3"
                 stroke="currentColor" strokeWidth="1.8" fill="none"
-                opacity={active ? 1 : 0.8} />
+                opacity={active ? 1 : 0.85} />
             <path d="M3 15l4-4.5 3.5 4L14 9l7 9.5" stroke="currentColor" strokeWidth="1.5"
-                strokeLinecap="round" strokeLinejoin="round" opacity={active ? 0.6 : 0.3} />
-            {/* GIF badge */}
+                strokeLinecap="round" strokeLinejoin="round" opacity={active ? 0.6 : 0.4} />
             <rect x="12.5" y="12" width="9.5" height="6" rx="2"
-                fill={active ? "#5865f2" : "currentColor"}
-                opacity={active ? 1 : 0.55} />
-            {/* G */}
+                fill={active ? "var(--brand-500, #5865f2)" : "currentColor"}
+                opacity={active ? 1 : 0.7} />
             <path d="M13.8 13.8h1.3v.6h-.75v.9h.75v-.25h-.38v-.55h.88v1.3h-1.8v-2.0z" fill="#fff" />
-            {/* I */}
             <path d="M15.55 13.8h.55v2.05h-.55z" fill="#fff" />
-            {/* F */}
             <path d="M16.55 13.8h1.35v.55h-.8v.4h.72v.5h-.72v.6h-.55z" fill="#fff" />
         </svg>
     );
@@ -104,26 +101,34 @@ function GifIcon({ active }: { active?: boolean }) {
 
 function CloseIcon() {
     return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5"
-                strokeLinecap="round" />
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
     );
 }
 
-function UploadImageIcon() {
+function UploadIcon() {
     return (
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-            <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M3 15l4-4.5 3.5 4L14 9l7 9.5" stroke="currentColor" strokeWidth="1.5"
-                strokeLinecap="round" strokeLinejoin="round" opacity="0.5" />
-            <circle cx="18" cy="6" r="5" fill="var(--background-primary, #313338)" />
-            <path d="M18 3.5v5M15.5 6h5" stroke="#5865f2" strokeWidth="1.8" strokeLinecap="round" />
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
     );
 }
 
-// ─── Popover component ────────────────────────────────────────────────────────
+function AlertTriangleIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+    );
+}
+
+// ─── Popover Component ────────────────────────────────────────────────────────
 
 interface PopoverProps {
     position: PopoverPosition;
@@ -232,15 +237,22 @@ function GifConvertorPopover({ position, onClose }: PopoverProps) {
             style={popoverStyle}
             onClick={e => e.stopPropagation()}
         >
-            {/* Header */}
+            {/* Clean Discord Native Header */}
             <div className="nc-gifconv-header">
-                <span className="nc-gifconv-title">{t("✦ GIF Convertor")}</span>
-                <button className="nc-gifconv-close" onClick={onClose} aria-label="Close">
+                <div className="nc-gifconv-header-title-wrap">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand-500, #5865f2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    <span className="nc-gifconv-title">{t("GIF Converter")}</span>
+                </div>
+                <button className="nc-gifconv-close" onClick={onClose} aria-label={t("Close")}>
                     <CloseIcon />
                 </button>
             </div>
 
-            {/* Hidden file input */}
+            {/* Hidden File Input */}
             <input
                 ref={fileInputRef}
                 type="file"
@@ -249,7 +261,7 @@ function GifConvertorPopover({ position, onClose }: PopoverProps) {
                 onChange={onFileInput}
             />
 
-            {/* Idle / Error */}
+            {/* Idle / Error State */}
             {(stage === "idle" || stage === "error") && (
                 <>
                     <div
@@ -263,72 +275,98 @@ function GifConvertorPopover({ position, onClose }: PopoverProps) {
                         onKeyDown={e => e.key === "Enter" && onClickZone()}
                         aria-label={t("Drop media to convert to GIF")}
                     >
-                        <span className="nc-gifconv-dropzone-icon">
-                            <UploadImageIcon />
-                        </span>
+                        <div className="nc-gifconv-dropzone-icon-wrap">
+                            <UploadIcon />
+                        </div>
                         <span className="nc-gifconv-dropzone-label">
                             {isDragOver ? t("Release to convert!") : t("Drop media here")}
                         </span>
                         <span className="nc-gifconv-dropzone-sub">
-                            {t("or click to browse · Ctrl+V to paste")}<br />
-                            {t("Images & Videos (MP4, WebM…)")}
+                            {t("or click to browse · Ctrl+V to paste")}
                         </span>
+                        <div className="nc-gifconv-formats">
+                            <span className="nc-gifconv-format-pill">MP4</span>
+                            <span className="nc-gifconv-format-pill">WebM</span>
+                            <span className="nc-gifconv-format-pill">PNG</span>
+                            <span className="nc-gifconv-format-pill">JPG</span>
+                            <span className="nc-gifconv-format-pill">APNG</span>
+                        </div>
                     </div>
+
                     {stage === "error" && (
-                        <div className="nc-gifconv-error">⚠ {errorMsg}</div>
+                        <div className="nc-gifconv-error-banner">
+                            <AlertTriangleIcon />
+                            <span>{errorMsg}</span>
+                        </div>
                     )}
                 </>
             )}
 
-            {/* Converting */}
+            {/* Converting State */}
             {stage === "converting" && (
-                <div className="nc-gifconv-loading">
+                <div className="nc-gifconv-loading-card">
                     <div className="nc-gifconv-spinner" />
                     <span className="nc-gifconv-loading-label">
-                        {t("Converting to GIF… ")} {progress > 0 && `(${Math.round(progress * 100)}%)`}
+                        {t("Converting to GIF...")} {progress > 0 ? `${Math.round(progress * 100)}%` : ""}
                     </span>
+                    {progress > 0 && (
+                        <div className="nc-gifconv-progress-bar-bg">
+                            <div
+                                className="nc-gifconv-progress-bar-fill"
+                                style={{ width: `${Math.round(progress * 100)}%` }}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* Preview */}
+            {/* Preview State */}
             {stage === "preview" && previewUrl && (
                 <div className="nc-gifconv-preview-wrap">
-                    <img src={previewUrl} alt={t("GIF preview")} className="nc-gifconv-preview-img" />
-                    <span className="nc-gifconv-preview-label">{t("Preview · ")}{filename}</span>
+                    <div className="nc-gifconv-preview-frame">
+                        <img src={previewUrl} alt={t("GIF preview")} className="nc-gifconv-preview-img" />
+                    </div>
+                    <span className="nc-gifconv-preview-filename">{filename}</span>
                     <div className="nc-gifconv-actions">
-                        <button
-                            className="nc-gifconv-btn nc-gifconv-btn-secondary"
+                        <Button
+                            size={Button.Sizes.MEDIUM}
+                            color={Button.Colors.PRIMARY}
+                            look={Button.Looks.FILLED}
                             onClick={() => {
                                 setStage("idle");
                                 setGifBlob(null);
                                 if (previewUrl) URL.revokeObjectURL(previewUrl);
                                 setPreviewUrl(null);
                             }}
+                            className="nc-gifconv-action-btn"
                         >
-                            {t("← Try Again")}
-                        </button>
-                        <button
-                            className="nc-gifconv-btn nc-gifconv-btn-primary"
+                            {t("Try Again")}
+                        </Button>
+                        <Button
+                            size={Button.Sizes.MEDIUM}
+                            color={Button.Colors.BRAND}
+                            look={Button.Looks.FILLED}
                             onClick={handleSend}
+                            className="nc-gifconv-action-btn"
                         >
-                            {t("✦ Send GIF")}
-                        </button>
+                            {t("Send GIF")}
+                        </Button>
                     </div>
                 </div>
             )}
 
-            {/* Sending */}
+            {/* Sending State */}
             {stage === "sending" && (
-                <div className="nc-gifconv-loading">
+                <div className="nc-gifconv-loading-card">
                     <div className="nc-gifconv-spinner" />
-                    <span className="nc-gifconv-loading-label">{t("Uploading…")}</span>
+                    <span className="nc-gifconv-loading-label">{t("Uploading and sending GIF...")}</span>
                 </div>
             )}
         </div>
     );
 }
 
-// ─── ChatBar button ───────────────────────────────────────────────────────────
+// ─── ChatBar Button ───────────────────────────────────────────────────────────
 
 const GifConvertorChatBarButton: ChatBarButtonFactory = ({ isMainChat }) => {
     const [open, setOpen] = React.useState(false);
@@ -341,9 +379,7 @@ const GifConvertorChatBarButton: ChatBarButtonFactory = ({ isMainChat }) => {
         if (!open && btnWrapRef.current) {
             const rect = btnWrapRef.current.getBoundingClientRect();
             setPos({
-                // Position above the button with 10px gap
                 bottom: window.innerHeight - rect.top + 10,
-                // Horizontally centred on the button
                 left: rect.left + rect.width / 2,
             });
         }
@@ -384,14 +420,13 @@ const GifConvertorChatBarButton: ChatBarButtonFactory = ({ isMainChat }) => {
     );
 };
 
-// ─── Plugin definition ────────────────────────────────────────────────────────
+// ─── Plugin Definition ────────────────────────────────────────────────────────
 
 export default definePlugin({
     name: "GifConvertor",
     enabledByDefault: true,
     description: "Converts an image or video to GIF and sends it in the current channel.",
-    authors: [{ name: "Nightcord",
-     id: 0n }],
+    authors: [{ name: "Nightcord", id: 0n }],
     dependencies: ["ChatInputButtonAPI"],
 
     chatBarButton: {

@@ -1,51 +1,56 @@
-/* ── GifConvertor plugin styles ─────────────────────────────────────────── */
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
-/* ── Popover container ───────────────────────────────────────────────────── */
+/* ── Popover Container ───────────────────────────────────────────────────── */
 .nc-gifconv-popover {
     position: fixed;
     z-index: 9999;
-    width: 340px;
-
-    background: rgba(15, 15, 20, 0.92);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    box-shadow:
-        0 4px 40px rgba(0, 0, 0, 0.6),
-        0 0 0 1px rgba(88, 101, 242, 0.12),
-        inset 0 1px 0 rgba(255, 255, 255, 0.07);
-
+    width: 360px;
+    background-color: var(--background-floating, #232428);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 12px;
+    box-shadow: var(--elevation-high, 0 8px 24px rgba(0, 0, 0, 0.45));
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-
-    animation: nc-gifconv-enter 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation: nc-gifconv-popover-enter 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+    user-select: none;
 }
 
-@keyframes nc-gifconv-enter {
-    from { opacity: 0; margin-bottom: -8px; }
-    to   { opacity: 1; margin-bottom: 0; }
+@keyframes nc-gifconv-popover-enter {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 8px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
 }
 
-/* ── Title row ───────────────────────────────────────────────────────────── */
+/* ── Header ──────────────────────────────────────────────────────────────── */
 .nc-gifconv-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding-bottom: 2px;
+}
+
+.nc-gifconv-header-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .nc-gifconv-title {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--header-primary, #fff);
-    background: linear-gradient(90deg, #5865f2, #a78bfa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--header-primary, #ffffff);
+    letter-spacing: 0.2px;
 }
 
 .nc-gifconv-close {
@@ -57,92 +62,111 @@
     border-radius: 6px;
     display: flex;
     align-items: center;
-    transition: color 0.15s, background 0.15s;
-}
-.nc-gifconv-close:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.08);
+    justify-content: center;
+    transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-/* ── Drop zone ───────────────────────────────────────────────────────────── */
+.nc-gifconv-close:hover {
+    color: var(--interactive-hover, #ffffff);
+    background-color: var(--background-modifier-hover, rgba(255, 255, 255, 0.08));
+}
+
+/* ── Dropzone ────────────────────────────────────────────────────────────── */
 .nc-gifconv-dropzone {
-    position: relative;
-    border: 2px dashed rgba(88, 101, 242, 0.4);
-    border-radius: 12px;
-    padding: 28px 20px;
+    border: 1.5px dashed var(--border-subtle, rgba(255, 255, 255, 0.16));
+    background-color: var(--background-secondary, #2b2d31);
+    border-radius: 10px;
+    padding: 24px 16px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    background: rgba(88, 101, 242, 0.04);
     text-align: center;
-    min-height: 130px;
-    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .nc-gifconv-dropzone:hover,
 .nc-gifconv-dropzone.nc-gifconv-drag-over {
-    border-color: #5865f2;
-    background: rgba(88, 101, 242, 0.1);
+    border-color: var(--brand-500, #5865f2);
+    background-color: var(--brand-500-hsl, rgba(88, 101, 242, 0.08));
 }
 
-.nc-gifconv-dropzone.nc-gifconv-drag-over::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(88, 101, 242, 0.15), rgba(167, 139, 250, 0.08));
-    animation: nc-gifconv-pulse 1.5s ease-in-out infinite;
-    pointer-events: none;
+.nc-gifconv-dropzone-icon-wrap {
+    color: var(--brand-500, #5865f2);
+    margin-bottom: 8px;
+    transition: transform 0.15s ease;
 }
 
-@keyframes nc-gifconv-pulse {
-    0%, 100% { opacity: 0.6; }
-    50%       { opacity: 1; }
-}
-
-.nc-gifconv-dropzone-icon {
-    color: #5865f2;
-    opacity: 0.8;
-    transition: transform 0.2s;
-}
-.nc-gifconv-dropzone:hover .nc-gifconv-dropzone-icon,
-.nc-gifconv-dropzone.nc-gifconv-drag-over .nc-gifconv-dropzone-icon {
-    transform: translateY(-3px) scale(1.1);
+.nc-gifconv-dropzone:hover .nc-gifconv-dropzone-icon-wrap,
+.nc-gifconv-dropzone.nc-gifconv-drag-over .nc-gifconv-dropzone-icon-wrap {
+    transform: translateY(-2px);
 }
 
 .nc-gifconv-dropzone-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--header-primary, #fff);
-    line-height: 1.4;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--header-primary, #ffffff);
+    margin-bottom: 4px;
 }
 
 .nc-gifconv-dropzone-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-muted, #949ba4);
-    line-height: 1.4;
+    margin-bottom: 12px;
 }
 
-/* ── Loading state ───────────────────────────────────────────────────────── */
-.nc-gifconv-loading {
+.nc-gifconv-formats {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.nc-gifconv-format-pill {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background-color: var(--background-tertiary, #1e1f22);
+    color: var(--text-normal, #dbdee1);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+
+/* ── Error Banner ────────────────────────────────────────────────────────── */
+.nc-gifconv-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background-color: rgba(237, 66, 69, 0.1);
+    border: 1px solid rgba(237, 66, 69, 0.3);
+    border-radius: 8px;
+    color: var(--text-danger, #ed4245);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* ── Loading Card ────────────────────────────────────────────────────────── */
+.nc-gifconv-loading-card {
+    background-color: var(--background-secondary, #2b2d31);
+    border-radius: 10px;
+    padding: 28px 16px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-    padding: 20px 0;
+    justify-content: center;
+    gap: 12px;
 }
 
 .nc-gifconv-spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid rgba(88, 101, 242, 0.2);
-    border-top-color: #5865f2;
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--brand-500, #5865f2);
     border-radius: 50%;
-    animation: nc-gifconv-spin 0.8s linear infinite;
+    animation: nc-gifconv-spin 0.75s linear infinite;
 }
 
 @keyframes nc-gifconv-spin {
@@ -150,79 +174,68 @@
 }
 
 .nc-gifconv-loading-label {
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
-    color: var(--text-muted, #949ba4);
+    color: var(--header-primary, #ffffff);
 }
 
-/* ── Preview + actions ───────────────────────────────────────────────────── */
+.nc-gifconv-progress-bar-bg {
+    width: 80%;
+    height: 6px;
+    background-color: var(--background-tertiary, #1e1f22);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.nc-gifconv-progress-bar-fill {
+    height: 100%;
+    background-color: var(--brand-500, #5865f2);
+    border-radius: 4px;
+    transition: width 0.15s ease;
+}
+
+/* ── Preview Card ────────────────────────────────────────────────────────── */
 .nc-gifconv-preview-wrap {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 10px;
+}
+
+.nc-gifconv-preview-frame {
+    background-color: var(--background-secondary, #2b2d31);
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-height: 200px;
+    overflow: hidden;
 }
 
 .nc-gifconv-preview-img {
     max-width: 100%;
-    max-height: 180px;
-    border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
+    max-height: 184px;
+    border-radius: 6px;
     object-fit: contain;
-    image-rendering: pixelated;
-    background: rgba(0,0,0,0.3);
 }
 
-.nc-gifconv-preview-label {
-    font-size: 11px;
+.nc-gifconv-preview-filename {
+    font-size: 12px;
+    font-weight: 600;
     color: var(--text-muted, #949ba4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
 }
 
 .nc-gifconv-actions {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
 }
 
-.nc-gifconv-btn {
+.nc-gifconv-action-btn {
     flex: 1;
-    padding: 9px 14px;
-    border-radius: 10px;
-    border: none;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: filter 0.15s, transform 0.1s;
-}
-.nc-gifconv-btn:active { transform: scale(0.97); }
-
-.nc-gifconv-btn-primary {
-    background: linear-gradient(135deg, #5865f2, #7c3aed);
-    color: #fff;
-    box-shadow: 0 2px 10px rgba(88, 101, 242, 0.4);
-}
-.nc-gifconv-btn-primary:hover { filter: brightness(1.1); }
-
-.nc-gifconv-btn-secondary {
-    background: rgba(255, 255, 255, 0.07);
-    color: var(--header-primary, #fff);
-    border: 1px solid rgba(255,255,255,0.1);
-}
-.nc-gifconv-btn-secondary:hover { background: rgba(255,255,255,0.12); }
-
-.nc-gifconv-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
-/* ── Error state ─────────────────────────────────────────────────────────── */
-.nc-gifconv-error {
-    font-size: 12px;
-    color: var(--text-danger, #f04747);
-    text-align: center;
-    padding: 8px;
-    background: rgba(240, 71, 71, 0.1);
-    border-radius: 8px;
-    border: 1px solid rgba(240, 71, 71, 0.2);
 }
