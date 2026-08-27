@@ -83,27 +83,33 @@ async function googleTranslate(text: string, sourceLang: string, targetLang: str
     const sl = sourceLang === "auto" || !sourceLang ? "auto" : sourceLang;
     const tl = targetLang || "en";
 
-    // 1. Primary: Direct translate_a/single (no API key required, highly reliable)
+    // 1. Primary: clients5.google.com (Chrome Extension API - extremely fast, never 429 blocked)
     try {
-        const url = `https://translate.googleapis.com/translate_a/single?${new URLSearchParams({
-            client: "gtx",
+        const url = `https://clients5.google.com/translate_a/t?${new URLSearchParams({
+            client: "dict-chrome-ex",
             sl,
             tl,
-            dt: "t",
-            dj: "1",
-            source: "input",
             q: text
         })}`;
         const res = await fetch(url);
         if (res.ok) {
             const data = await res.json();
-            const translatedText = data.sentences?.map((s: any) => s.trans).filter(Boolean).join("") || "";
-            if (translatedText) {
-                const detected = data.src || sl;
-                return {
-                    sourceLanguage: GoogleLanguages[detected] ?? detected,
-                    text: translatedText
-                };
+            if (Array.isArray(data)) {
+                let transStr = "";
+                let srcDetected = sl;
+                if (typeof data[0] === "string") {
+                    transStr = data[0];
+                    if (data[1]) srcDetected = data[1];
+                } else if (Array.isArray(data[0])) {
+                    transStr = data[0][0];
+                    if (data[0][1]) srcDetected = data[0][1];
+                }
+                if (transStr) {
+                    return {
+                        sourceLanguage: GoogleLanguages[srcDetected] ?? srcDetected,
+                        text: transStr
+                    };
+                }
             }
         }
     } catch {}
@@ -126,6 +132,25 @@ async function googleTranslate(text: string, sourceLang: string, targetLang: str
                 return {
                     sourceLanguage: GoogleLanguages[data.sourceLanguage] ?? data.sourceLanguage,
                     text: data.translation
+                };
+            }
+        }
+    } catch {}
+
+    // 3. Tertiary: MyMemory Translation API
+    try {
+        const langPair = `${sl === "auto" ? "autodetect" : sl}|${tl}`;
+        const url = `https://api.mymemory.translated.net/get?${new URLSearchParams({
+            q: text,
+            langpair: langPair
+        })}`;
+        const res = await fetch(url);
+        if (res.ok) {
+            const data = await res.json();
+            if (data?.responseData?.translatedText) {
+                return {
+                    sourceLanguage: GoogleLanguages[sl] ?? sl,
+                    text: data.responseData.translatedText
                 };
             }
         }

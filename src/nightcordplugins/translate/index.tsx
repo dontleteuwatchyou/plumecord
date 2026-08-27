@@ -274,15 +274,24 @@ export default definePlugin({
         }
     },
 
-    async onBeforeMessageSend(_, message) {
+    async onBeforeMessageSend(_, message, options) {
         if (!settings.store.autoTranslate) return;
-        if (!message.content) return;
+        if (!message?.content?.trim()) return;
 
-        setShouldShowTranslateEnabledTooltip?.(true);
-        clearTimeout(tooltipTimeout);
-        tooltipTimeout = setTimeout(() => setShouldShowTranslateEnabledTooltip?.(false), 2000);
+        try {
+            setShouldShowTranslateEnabledTooltip?.(true);
+            clearTimeout(tooltipTimeout);
+            tooltipTimeout = setTimeout(() => setShouldShowTranslateEnabledTooltip?.(false), 2000);
 
-        const trans = await translate("sent", message.content);
-        message.content = trans.text;
+            const trans = await translate("sent", message.content);
+            if (trans?.text) {
+                message.content = trans.text;
+                if (options && typeof options.content === "string") {
+                    options.content = trans.text;
+                }
+            }
+        } catch (e) {
+            console.error("[Translate] onBeforeMessageSend error:", e);
+        }
     }
 });
