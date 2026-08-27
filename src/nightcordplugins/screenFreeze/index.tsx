@@ -6,7 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, React, ReactDOM, showToast, Toasts } from "@webpack/common";
+import { Button, createRoot, React, showToast, Toasts } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { screenFreezeEngine } from "./engine";
@@ -147,18 +147,25 @@ function getKeyComboString(): string {
 }
 
 let indicatorContainer: HTMLDivElement | null = null;
+let indicatorRoot: ReturnType<typeof createRoot> | null = null;
 
 function mountIndicator() {
     if (indicatorContainer || typeof document === "undefined") return;
     indicatorContainer = document.createElement("div");
     indicatorContainer.id = "nc-screen-freeze-indicator-root";
     document.body.appendChild(indicatorContainer);
-    ReactDOM.render(<ScreenFreezeFloatingIndicator keyComboText={getKeyComboString()} />, indicatorContainer);
+    if (createRoot) {
+        indicatorRoot = createRoot(indicatorContainer);
+        indicatorRoot.render(<ScreenFreezeFloatingIndicator keyComboText={getKeyComboString()} />);
+    }
 }
 
 function unmountIndicator() {
+    if (indicatorRoot) {
+        try { indicatorRoot.unmount(); } catch { }
+        indicatorRoot = null;
+    }
     if (indicatorContainer) {
-        ReactDOM.unmountComponentAtNode(indicatorContainer);
         indicatorContainer.remove();
         indicatorContainer = null;
     }

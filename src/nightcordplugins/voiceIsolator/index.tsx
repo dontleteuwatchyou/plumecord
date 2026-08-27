@@ -7,7 +7,7 @@
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Avatar, Button, Menu, React, ReactDOM, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { Avatar, Button, createRoot, Menu, React, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { voiceIsolatorEngine } from "./engine";
@@ -45,18 +45,25 @@ const settings = definePluginSettings({
 });
 
 let hudContainer: HTMLDivElement | null = null;
+let hudRoot: ReturnType<typeof createRoot> | null = null;
 
 function mountHud() {
     if (hudContainer || typeof document === "undefined") return;
     hudContainer = document.createElement("div");
     hudContainer.id = "nc-voice-isolator-hud-root";
     document.body.appendChild(hudContainer);
-    ReactDOM.render(<VoiceIsolatorFloatingHud />, hudContainer);
+    if (createRoot) {
+        hudRoot = createRoot(hudContainer);
+        hudRoot.render(<VoiceIsolatorFloatingHud />);
+    }
 }
 
 function unmountHud() {
+    if (hudRoot) {
+        try { hudRoot.unmount(); } catch { }
+        hudRoot = null;
+    }
     if (hudContainer) {
-        ReactDOM.unmountComponentAtNode(hudContainer);
         hudContainer.remove();
         hudContainer = null;
     }
