@@ -87,7 +87,7 @@ export function HeaderBarButton(props: HeaderBarButtonProps & { ref?: React.RefO
                 <Clickable
                     {...{ innerRef: ref } as any}
                     className={classes(HeaderBarClasses.clickable, "nightcord-header-btn", className)}
-                    style={{ width: iconSize, boxSizing: "content-box", justifyContent: "center", cursor: "pointer" }}
+                    style={{ justifyContent: "center", cursor: "pointer" }}
                     onClick={onClick}
                     onContextMenu={onContextMenu}
                     onMouseEnter={onMouseEnter}
@@ -604,8 +604,10 @@ export function _addHeaderBarButtons() {
                 align-self: center !important;
                 height: 24px !important;
                 width: 24px !important;
-                max-height: 24px !important;
+                min-width: 24px !important;
                 max-width: 24px !important;
+                min-height: 24px !important;
+                max-height: 24px !important;
                 margin: 0 2px !important;
                 padding: 3px !important;
                 border-radius: 4px !important;
@@ -621,69 +623,54 @@ export function _addHeaderBarButtons() {
             .nightcord-header-btn svg {
                 width: 18px !important;
                 height: 18px !important;
+                min-width: 18px !important;
+                min-height: 18px !important;
                 max-width: 18px !important;
                 max-height: 18px !important;
                 display: block !important;
                 margin: auto !important;
             }
 
-            /* Harmoniser parfaitement le bouton Boîte de réception native Discord */
-            [aria-label="Inbox"],
-            [aria-label="Boîte de réception"],
-            [aria-label="Bandeja de entrada"],
-            [aria-label="Posteingang"],
-            [aria-label="Входящие"],
-            [aria-label*="Inbox" i],
-            [aria-label*="réception" i] {
+            /* Bouton natif Boîte de réception Discord UNIQUEMENT (div[role="button"]) */
+            div[role="button"][aria-label="Boîte de réception"],
+            div[role="button"][aria-label="Inbox"],
+            div[role="button"][aria-label="Bandeja de entrada"],
+            div[role="button"][aria-label="Posteingang"],
+            div[role="button"][aria-label="Входящие"],
+            div[role="button"][aria-label*="Inbox" i],
+            div[role="button"][aria-label*="réception" i] {
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
                 align-self: center !important;
-                height: 24px !important;
-                width: 24px !important;
-                max-height: 24px !important;
-                max-width: 24px !important;
                 margin: 0 2px !important;
                 margin-right: 2px !important;
                 margin-inline-end: 2px !important;
                 padding: 3px !important;
                 border-radius: 4px !important;
+                height: 24px !important;
+                width: 24px !important;
+                min-width: 24px !important;
+                max-width: 24px !important;
+                min-height: 24px !important;
+                max-height: 24px !important;
                 box-sizing: border-box !important;
                 line-height: normal !important;
                 vertical-align: middle !important;
                 flex: none !important;
             }
 
-            /* Supprimer le gap / marge externe du conteneur parent natif de la boîte de réception */
-            div:has(> [aria-label="Inbox"]),
-            div:has(> [aria-label="Boîte de réception"]),
-            div:has(> [aria-label*="Inbox" i]),
-            div:has(> [aria-label*="réception" i]),
-            div:has(> [aria-label="Bandeja de entrada"]),
-            div:has(> [aria-label="Posteingang"]),
-            div:has(> [aria-label="Входящие"]) {
-                margin: 0 !important;
-                margin-right: 0 !important;
-                margin-inline-end: 0 !important;
-                padding: 0 !important;
-                padding-right: 0 !important;
-                display: inline-flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                align-self: center !important;
-                height: 24px !important;
-                flex: none !important;
-            }
-
-            [aria-label="Inbox"] svg,
-            [aria-label="Boîte de réception"] svg,
-            [aria-label*="Inbox" i] svg,
-            [aria-label*="réception" i] svg,
-            [aria-label="Bandeja de entrada"] svg,
-            [aria-label="Posteingang"] svg,
-            [aria-label="Входящие"] svg {
+            div[role="button"][aria-label="Boîte de réception"] svg,
+            div[role="button"][aria-label="Inbox"] svg,
+            div[role="button"][aria-label="Bandeja de entrada"] svg,
+            div[role="button"][aria-label="Posteingang"] svg,
+            div[role="button"][aria-label="Входящие"] svg,
+            div[role="button"][aria-label*="Inbox" i] svg,
+            div[role="button"][aria-label*="réception" i] svg {
                 width: 18px !important;
                 height: 18px !important;
+                min-width: 18px !important;
+                min-height: 18px !important;
                 max-width: 18px !important;
                 max-height: 18px !important;
                 display: block !important;
