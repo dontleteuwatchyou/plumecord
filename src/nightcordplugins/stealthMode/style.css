@@ -1,4 +1,10 @@
-/* Stealth Mode - hide Nightcord plugin UI (but NOT settings access) */
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/* Stealth Mode - hide Nightcord plugin UI and settings */
 
 /* Plugin buttons: header bar, channel toolbar, chat bar, user area */
 body.nightcord-stealth .vc-header-bar-btns,
@@ -11,6 +17,14 @@ body.nightcord-stealth #nightcord-titlebar-btn,
 body.nightcord-stealth #nightcord-titlebar-link-style,
 
 /* NightcordAI nav button */
-body.nightcord-stealth .nai-nav-item {
+body.nightcord-stealth .nai-nav-item,
+
+/* Nightcord settings in Discord settings sidebar */
+body.nightcord-stealth [data-tab-id^="equicord"],
+body.nightcord-stealth [data-tab-id^="nightcord"],
+body.nightcord-stealth [data-tab-id^="vencord"],
+body.nightcord-stealth [aria-controls*="equicord"],
+body.nightcord-stealth [aria-controls*="nightcord"],
+body.nightcord-stealth .nc-modal-root {
     display: none !important;
 }

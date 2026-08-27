@@ -326,17 +326,17 @@ export default definePlugin({
             ...this.customEntries.map(buildEntry)
         ].filter(isTruthy);
 
+        try {
+            if (localStorage.getItem("Nightcord_stealthMode") === "1") {
+                return layout;
+            }
+        } catch { }
+
         const equicordSection: SettingsLayoutNode = {
             key: "equicord_section",
             type: LayoutTypes.SECTION,
-            useTitle: () => {
-                try { if (localStorage.getItem("Nightcord_stealthMode") === "1") return ""; } catch { }
-                return t("Nightcord Settings");
-            },
-            buildLayout: () => {
-                try { if (localStorage.getItem("Nightcord_stealthMode") === "1") return [mainEntry]; } catch { }
-                return fullEntries;
-            }
+            useTitle: () => t("Nightcord Settings"),
+            buildLayout: () => fullEntries
         };
 
         const { settingsLocation } = settings.store;
