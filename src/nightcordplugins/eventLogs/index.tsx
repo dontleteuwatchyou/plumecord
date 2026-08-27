@@ -97,6 +97,12 @@ export const settings = definePluginSettings({
         description: "Ignore Bots — Do not log message edits or deletions from bots and webhooks",
         restartNeeded: false,
     },
+    maxLogsLimit: {
+        type: OptionType.NUMBER,
+        default: 0,
+        description: "Max Logs Limit — Limit the maximum number of logs to retain (0 = Unlimited, no auto-deletion)",
+        restartNeeded: false,
+    },
     persistentLogs: [] as Omit<LogEntry, "id" | "timeStr">[]
 });
 
@@ -132,7 +138,12 @@ function safeSanitizeLogs(arr: any[]): any[] {
 
 function savePersistLogs() {
     try {
-        const toSave = logs.filter(l => PERSISTENT_TYPES.has(l.type)).slice(0, 1000).map(l => {
+        const limit = settings.store.maxLogsLimit ?? 0;
+        let persistentFiltered = logs.filter(l => PERSISTENT_TYPES.has(l.type));
+        if (limit > 0) {
+            persistentFiltered = persistentFiltered.slice(0, limit);
+        }
+        const toSave = persistentFiltered.map(l => {
             const { id, timeStr, ...rest } = l;
             return rest;
         });
@@ -176,7 +187,10 @@ function fmtNow(): string {
 
 function pushLog(entry: Omit<LogEntry, "id" | "timestamp" | "timeStr">) {
     const now = Date.now();
-    if (logs.length >= MAX_LOGS) logs.pop();
+    const limit = settings.store.maxLogsLimit ?? 0;
+    if (limit > 0 && logs.length >= limit) {
+        logs.pop();
+    }
     const newLog: LogEntry = { id: `${now}_${logCount++}`, timestamp: now, timeStr: fmtNow(), ...(entry as any) };
     logs.unshift(newLog);
     if (NOTIF_TYPES.has(newLog.type)) {

@@ -6,6 +6,7 @@
 
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
+import { Settings } from "@api/Settings";
 
 const STYLE_ID = "nightcord-hide-native-buttons";
 
@@ -29,6 +30,21 @@ const CSS = `
 }
 `;
 
+export function updateNativeButtonsVisibility(hide?: boolean) {
+    const shouldHide = hide ?? (Settings.hideNativeHeaderButtons ?? true);
+    const existing = document.getElementById(STYLE_ID);
+    if (shouldHide) {
+        if (!existing) {
+            const style = document.createElement("style");
+            style.id = STYLE_ID;
+            style.textContent = CSS;
+            document.head.appendChild(style);
+        }
+    } else {
+        existing?.remove();
+    }
+}
+
 export default definePlugin({
     name: "HideNativeButtons",
     description: "Hides unwanted native Discord buttons (Logs, Help, DevTools, Inbox)",
@@ -37,12 +53,7 @@ export default definePlugin({
     patches: [],
 
     start() {
-        const existing = document.getElementById(STYLE_ID);
-        if (existing) return;
-        const style = document.createElement("style");
-        style.id = STYLE_ID;
-        style.textContent = CSS;
-        document.head.appendChild(style);
+        updateNativeButtonsVisibility();
     },
 
     stop() {

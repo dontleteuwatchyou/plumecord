@@ -36,6 +36,7 @@ import { MELLOWTEL_ONBOARDING_VERSION } from "@components/MellowtelConsentModal"
 import { ContributeModal } from "../../../../nightcord/renderer/components/ContributeModal";
 import { copyToClipboard } from "@utils/clipboard";
 import { openNotificationSettingsModal } from "./NotificationSettings";
+import { updateNativeButtonsVisibility } from "../../../../plugins/_core/hideNativeButtons";
 
 const cl = classNameFactory("vc-vencord-tab-");
 
@@ -342,6 +343,13 @@ function EquicordSettings() {
                 restartRequired: false,
                 warning: { enabled: false },
             },
+            {
+                key: "hideNativeHeaderButtons",
+                title: t("Hide Native Header Buttons (Inbox, Help, DevTools)"),
+                description: t("Hides native Discord header buttons like the notification inbox, help, and logs. Turn OFF to show the notification inbox button again."),
+                restartRequired: false,
+                warning: { enabled: false },
+            },
         ];
 
     return (
@@ -386,6 +394,9 @@ function EquicordSettings() {
                                  settings[s.key] = v;
                                  if (s.key === "streamProof" && typeof VencordNative !== "undefined") {
                                      VencordNative?.setContentProtection?.(v);
+                                 }
+                                 if (s.key === "hideNativeHeaderButtons") {
+                                     updateNativeButtonsVisibility(v);
                                  }
                              }}
                             title={s.title}
