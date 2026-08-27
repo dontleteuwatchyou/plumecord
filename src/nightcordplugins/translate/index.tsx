@@ -183,6 +183,7 @@ export default definePlugin({
     name: "Translate",
     enabledByDefault: true,
     description: "Translate messages with Google Translate or DeepL",
+    dependencies: ["MessageEventsAPI", "MessageAccessoriesAPI", "MessagePopoverAPI", "ChatInputButtonAPI"],
     authors: [Devs.Ven, Devs.AshtonMemer],
     settings,
     contextMenus: {

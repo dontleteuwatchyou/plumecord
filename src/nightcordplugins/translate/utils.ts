@@ -56,15 +56,18 @@ export const getLanguages = () => IS_WEB || settings.store.service === "google"
     : DeeplLanguages;
 
 export async function translate(kind: "received" | "sent", text: string): Promise<TranslationValue> {
-    const translate = IS_WEB || settings.store.service === "google"
+    const translateFn = IS_WEB || settings.store.service === "google"
         ? googleTranslate
         : deeplTranslate;
 
+    const sourceLang = settings.store[`${kind}Input`] || "auto";
+    const targetLang = settings.store[`${kind}Output`] || (kind === "sent" ? "en" : "fr");
+
     try {
-        return await translate(
+        return await translateFn(
             text,
-            settings.store[`${kind}Input`],
-            settings.store[`${kind}Output`]
+            sourceLang,
+            targetLang
         );
     } catch (e) {
         const userMessage = typeof e === "string"
