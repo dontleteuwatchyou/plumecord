@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { showToast, Toasts } from "@webpack/common";
 import { ScreenFreezeState } from "./types";
 
 type Listener = (state: ScreenFreezeState) => void;
@@ -300,8 +299,6 @@ class ScreenFreezeEngine {
         this.isFrozen = true;
         this.frozenTimestamp = Date.now();
         this.notify();
-
-        showToast("Screen Freeze ACTIVE - Interface and screen stream locked", Toasts.Type.DANGER);
     }
 
     public unfreeze() {
@@ -325,8 +322,6 @@ class ScreenFreezeEngine {
         this.isFrozen = false;
         this.frozenTimestamp = undefined;
         this.notify();
-
-        showToast("Screen Freeze OFF - Interface and screen stream resumed", Toasts.Type.SUCCESS);
     }
 }
 

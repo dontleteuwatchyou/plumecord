@@ -6,11 +6,10 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, createRoot, React, showToast, Toasts } from "@webpack/common";
+import { Button, React } from "@webpack/common";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { screenFreezeEngine } from "./engine";
-import { ScreenFreezeFloatingIndicator } from "./indicator";
 import { ScreenFreezeState } from "./types";
 import { t } from "../autoTranslateNightcord";
 
@@ -53,12 +52,6 @@ const settings = definePluginSettings({
         description: "Emergency freeze shortcut key combination.",
         default: DEFAULT_KEYBIND,
         component: KeybindRecorderComponent
-    },
-    showFloatingIndicator: {
-        description: "Display a floating alert banner on screen while frozen.",
-        type: OptionType.BOOLEAN,
-        default: true,
-        restartNeeded: false
     }
 });
 
@@ -73,7 +66,6 @@ function KeybindRecorderComponent() {
             e.preventDefault();
             e.stopPropagation();
 
-            // Ignore standalone modifier presses
             if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
                 return;
             }
@@ -90,7 +82,6 @@ function KeybindRecorderComponent() {
             settings.store.keybindConfig = newConfig;
             setConfig(newConfig);
             setIsRecording(false);
-            showToast(`Shortcut set to: ${newConfig.label}`, Toasts.Type.SUCCESS);
         };
 
         const handleBlur = () => setIsRecording(false);
@@ -126,7 +117,6 @@ function KeybindRecorderComponent() {
                         setIsRecording(false);
                         settings.store.keybindConfig = DEFAULT_KEYBIND;
                         setConfig(DEFAULT_KEYBIND);
-                        showToast("Reset to default (Ctrl + Shift + F)", Toasts.Type.INFO);
                     }}
                 >
                     {t("Reset to Default")}
@@ -146,31 +136,6 @@ function getKeyComboString(): string {
     return cfg.label || formatKeyLabel(cfg.code, cfg.key, cfg.ctrl, cfg.shift, cfg.alt);
 }
 
-let indicatorContainer: HTMLDivElement | null = null;
-let indicatorRoot: ReturnType<typeof createRoot> | null = null;
-
-function mountIndicator() {
-    if (indicatorContainer || typeof document === "undefined") return;
-    indicatorContainer = document.createElement("div");
-    indicatorContainer.id = "nc-screen-freeze-indicator-root";
-    document.body.appendChild(indicatorContainer);
-    if (createRoot) {
-        indicatorRoot = createRoot(indicatorContainer);
-        indicatorRoot.render(<ScreenFreezeFloatingIndicator keyComboText={getKeyComboString()} />);
-    }
-}
-
-function unmountIndicator() {
-    if (indicatorRoot) {
-        try { indicatorRoot.unmount(); } catch { }
-        indicatorRoot = null;
-    }
-    if (indicatorContainer) {
-        indicatorContainer.remove();
-        indicatorContainer = null;
-    }
-}
-
 function handleKeydown(e: KeyboardEvent) {
     const cfg: KeybindConfig = settings.store.keybindConfig || DEFAULT_KEYBIND;
 
@@ -183,18 +148,7 @@ function handleKeydown(e: KeyboardEvent) {
         e.preventDefault();
         e.stopPropagation();
 
-        console.log("%c[ScreenFreeze] Executing console command: debugger;", "color: #5865f2; font-weight: bold; font-size: 14px;");
-
-        try {
-            (window as any).VencordNative?.window?.openDevTools?.();
-        } catch { }
-
         screenFreezeEngine.toggleFreeze();
-
-        setTimeout(() => {
-            // Pauses the entire renderer and interface immediately
-            debugger;
-        }, 10);
     }
 }
 
@@ -234,14 +188,7 @@ function ScreenFreezeSettingsComponent() {
                     </div>
                     <Button
                         variant={state.isFrozen ? "dangerPrimary" : "primary"}
-                        onClick={() => {
-                            console.log("%c[ScreenFreeze] Freeze button clicked: executing debugger;", "color: #5865f2; font-weight: bold; font-size: 14px;");
-                            try {
-                                (window as any).VencordNative?.window?.openDevTools?.();
-                            } catch { }
-                            screenFreezeEngine.toggleFreeze();
-                            setTimeout(() => { debugger; }, 10);
-                        }}
+                        onClick={() => screenFreezeEngine.toggleFreeze()}
                     >
                         {state.isFrozen ? t("Unfreeze Stream") : t("Freeze Screen Now")}
                     </Button>
@@ -265,15 +212,11 @@ export default definePlugin({
         screenFreezeEngine.startPatch();
         window.addEventListener("keydown", handleKeydown, true);
         document.addEventListener("keydown", handleKeydown, true);
-        if (settings.store.showFloatingIndicator !== false) {
-            mountIndicator();
-        }
     },
 
     stop() {
         screenFreezeEngine.stopPatch();
         window.removeEventListener("keydown", handleKeydown, true);
         document.removeEventListener("keydown", handleKeydown, true);
-        unmountIndicator();
     }
 });
