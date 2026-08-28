@@ -1,6 +1,6 @@
 /*
  * Vencord, a Discord client mod
- * Copyright (c) 2023 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -16,18 +16,46 @@ export function invoke<T = any>(event: IpcEvents, ...args: any[]) {
 }
 
 export function sendSync<T = any>(event: IpcEvents, ...args: any[]) {
-    return ipcRenderer.sendSync(event, ...args) as T;
-}
-
-const PluginHelpers = {} as Record<string, Record<string, (...args: any[]) => Promise<any>>>;
-const pluginIpcMap = sendSync<PluginIpcMappings>(IpcEvents.GET_PLUGIN_IPC_METHOD_MAP);
-
-for (const [plugin, methods] of Object.entries(pluginIpcMap)) {
-    const map = PluginHelpers[plugin] = {};
-    for (const [methodName, method] of Object.entries(methods)) {
-        map[methodName] = (...args: any[]) => invoke(method as IpcEvents, ...args);
+    try {
+        return ipcRenderer.sendSync(event, ...args) as T;
+    } catch {
+        return null as unknown as T;
     }
 }
+
+const rawPluginHelpers = {} as Record<string, Record<string, (...args: any[]) => Promise<any>>>;
+let pluginIpcMap: PluginIpcMappings = {} as any;
+try {
+    pluginIpcMap = sendSync<PluginIpcMappings>(IpcEvents.GET_PLUGIN_IPC_METHOD_MAP) || ({} as any);
+} catch {}
+
+if (pluginIpcMap && typeof pluginIpcMap === "object") {
+    for (const [plugin, methods] of Object.entries(pluginIpcMap)) {
+        if (!methods || typeof methods !== "object") continue;
+        const map = (rawPluginHelpers[plugin] = {});
+        for (const [methodName, method] of Object.entries(methods)) {
+            map[methodName] = (...args: any[]) => invoke(method as IpcEvents, ...args);
+        }
+    }
+}
+
+const PluginHelpers = new Proxy(rawPluginHelpers, {
+    get(target, prop: string) {
+        if (typeof prop !== "string") return undefined;
+        if (!target[prop]) {
+            target[prop] = new Proxy(
+                {},
+                {
+                    get(_, method: string) {
+                        return (...args: any[]) =>
+                            invoke(`VencordPluginNative_${prop}_${method}` as IpcEvents, ...args);
+                    }
+                }
+            );
+        }
+        return target[prop];
+    }
+});
 
 export default {
     themes: {
@@ -51,7 +79,7 @@ export default {
     },
 
     settings: {
-        get: () => sendSync<Settings>(IpcEvents.GET_SETTINGS),
+        get: () => sendSync<Settings>(IpcEvents.GET_SETTINGS) || ({ plugins: {} } as Settings),
         set: (settings: Settings, pathToNotify?: string) => invoke<void>(IpcEvents.SET_SETTINGS, settings, pathToNotify),
         getSettingsDir: () => invoke<string>(IpcEvents.GET_SETTINGS_DIR),
         openFolder: () => invoke<void>(IpcEvents.OPEN_SETTINGS_FOLDER),
@@ -69,7 +97,7 @@ export default {
         },
         openFile: () => invoke<void>(IpcEvents.OPEN_QUICKCSS),
         openEditor: () => invoke<void>(IpcEvents.OPEN_MONACO_EDITOR),
-        getEditorTheme: () => sendSync<string>(IpcEvents.GET_MONACO_THEME),
+        getEditorTheme: () => sendSync<string>(IpcEvents.GET_MONACO_THEME) || "vs-dark",
     },
 
     native: {
@@ -100,7 +128,7 @@ export default {
     },
 
     nightcord: {
-        getInstallerPrefs: () => sendSync<{defaultPlugins: boolean, autoUpdate: boolean}>(IpcEvents.GET_INSTALLER_PREFS),
+        getInstallerPrefs: () => sendSync<{defaultPlugins: boolean, autoUpdate: boolean}>(IpcEvents.GET_INSTALLER_PREFS) || { defaultPlugins: true, autoUpdate: true },
         checkVBCable: () => invoke<{ installed: boolean; }>(IpcEvents.CHECK_VB_CABLE),
         installVBCable: () => invoke<{ success: boolean; error?: string; }>(IpcEvents.INSTALL_VB_CABLE),
 
@@ -134,18 +162,12 @@ export default {
         type: (text: string, delay: number) => invoke(IpcEvents.WORLD_BOMB_TYPE, text, delay),
         pressEnter: () => invoke(IpcEvents.WORLD_BOMB_PRESS_ENTER),
         pressBackspace: () => invoke(IpcEvents.WORLD_BOMB_PRESS_BACKSPACE),
-        // SÃ©quence complÃ¨te en un seul processus PowerShell (clic auto au centre + frappe + enter)
-        // targetX/targetY : position calibrÃ©e du clic (-1 = centre de la fenÃªtre par dÃ©faut)
         sequence: (word: string, lps: number, humanChance: number, targetX: number = -1, targetY: number = -1) =>
             invoke(IpcEvents.WORLD_BOMB_SEQUENCE, word, lps, humanChance, targetX, targetY),
-        // Ouvre la fenÃªtre externe Stream Proof
         openWindow: (lps: number, humanChance: number, safeMode: boolean, theme: string, playMode: string, noSpace: boolean, groqKey: string, words: string[], streamProof: boolean) => invoke(IpcEvents.WORLD_BOMB_OPEN_WINDOW, lps, humanChance, safeMode, theme, playMode, noSpace, groqKey, words, streamProof),
-        // Ferme la fenÃªtre externe Stream Proof
         closeWindow: () => invoke(IpcEvents.WORLD_BOMB_CLOSE_WINDOW),
-        // Retourne la position actuelle du curseur (plus utilisÃ© mais gardÃ© au cas oÃ¹)
         getCursorPos: (): Promise<{ x: number; y: number; }> => invoke(IpcEvents.WORLD_BOMB_GET_CURSOR_POS),
     },
     setContentProtection: (enabled: boolean) =>
         invoke<boolean>(IpcEvents.SET_CONTENT_PROTECTION, enabled),
 };
-
