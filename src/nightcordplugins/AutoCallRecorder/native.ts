@@ -9,6 +9,7 @@ import { createWriteStream, WriteStream } from "node:fs";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import fixWebmDuration from "fix-webm-duration";
+import { patchWebmSeekable } from "./webmFixer";
 
 // Polyfill FileReader side-effect for Node.js main process environment
 if (typeof globalThis.FileReader === "undefined") {
@@ -125,14 +126,19 @@ export async function finalizeStreamRecording(
         const sourcePath = activeTempPath;
         activeTempPath = null;
 
-        // Patche la durée EBML avec fixWebmDuration AVANT de déplacer le fichier
+        // Patche la durée EBML et génère l'index de recherche Cues pour avancer librement
         if (durationMs > 0 && /\.(webm|mkv|ogg)$/i.test(filename)) {
             try {
                 const rawBuf = await readFile(sourcePath);
-                const blob = new Blob([rawBuf], { type: "video/webm" });
-                const fixedBlob = await fixWebmDuration(blob, durationMs);
-                const arrayBuffer = await fixedBlob.arrayBuffer();
-                await writeFile(sourcePath, Buffer.from(arrayBuffer));
+                let finalBuf = rawBuf;
+                try {
+                    const blob = new Blob([rawBuf], { type: "video/webm" });
+                    const fixedBlob = await fixWebmDuration(blob, durationMs);
+                    const arrayBuffer = await fixedBlob.arrayBuffer();
+                    finalBuf = Buffer.from(arrayBuffer);
+                } catch { }
+                const seekable = patchWebmSeekable(finalBuf, durationMs);
+                await writeFile(sourcePath, Buffer.from(seekable));
             } catch (err) {
                 console.warn("[AutoCallRecorder] fixWebmDuration failed:", err);
             }
@@ -169,7 +175,8 @@ export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Arr
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
         await mkdir(targetFolder, { recursive: true });
         const dest = path.join(targetFolder, filename);
-        const buf = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        const seekable = patchWebmSeekable(buffer, 0);
+        const buf = Buffer.from(seekable.buffer, seekable.byteOffset, seekable.byteLength);
         await writeFile(dest, buf);
         return true;
     } catch (e) {

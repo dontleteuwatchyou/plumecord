@@ -7,6 +7,7 @@
 import { Toasts } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import fixWebmDuration from "fix-webm-duration";
+import { patchWebmSeekable } from "./webmFixer";
 
 export interface RecordingOptions {
     mode: "voice" | "video";
@@ -197,7 +198,9 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             }
         }
 
-        const recorderOptions: any = {};
+        const recorderOptions: any = {
+            audioBitsPerSecond: 128000
+        };
         if (mimeType && MediaRecorder.isTypeSupported(mimeType)) {
             recorderOptions.mimeType = mimeType;
         }
@@ -341,16 +344,23 @@ async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: st
     };
 
     let finalBlob = blob;
+    const durationMs = Math.max(0, Date.now() - startTimeMs);
     try {
-        const durationMs = Date.now() - startTimeMs;
         finalBlob = await fixWebmDuration(blob, durationMs);
     } catch { }
+
+    let uint8Array: Uint8Array;
+    try {
+        const arrayBuffer = await finalBlob.arrayBuffer();
+        uint8Array = patchWebmSeekable(new Uint8Array(arrayBuffer), durationMs);
+    } catch {
+        const arrayBuffer = await finalBlob.arrayBuffer();
+        uint8Array = new Uint8Array(arrayBuffer);
+    }
 
     const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
     if (native?.saveRecording) {
         try {
-            const arrayBuffer = await finalBlob.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
             if (!opts.autoSave && native?.promptSaveRecording) {
                 const success = await native.promptSaveRecording(uint8Array, filename);
                 if (success) notifySuccess();
