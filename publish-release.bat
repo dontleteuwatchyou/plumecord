@@ -51,7 +51,7 @@ echo  [1/8] Version mise a jour : %VERSION%
 
 REM 2. Envoi du code source sur Gitea
 echo.
-echo  [2/8] Committer et pusher le code source...
+echo  [2/8] Committer et synchroniser le code source...
 git add .
 git diff --quiet --cached
 if errorlevel 1 (
@@ -59,11 +59,28 @@ if errorlevel 1 (
 ) else (
     echo  Aucun changement a committer.
 )
-git push --set-upstream origin master
-if errorlevel 1 (
-    echo  [AVERTISSEMENT] Impossible de push sur Gitea directement via git. Continuation du build...
+
+set "GITEA_TOK="
+if exist ".gitea_token" set /p GITEA_TOK=<.gitea_token
+if "!GITEA_TOK!"=="" if exist "%USERPROFILE%\.gitea_token" set /p GITEA_TOK=<%USERPROFILE%\.gitea_token
+if "!GITEA_TOK!"=="" set "GITEA_TOK=%GITEA_TOKEN%"
+
+if not "!GITEA_TOK!"=="" (
+    echo  [2/8] Push du code source vers Gitea...
+    git push "https://oauth2:!GITEA_TOK!@source.nightcord.st/nightcord/nightcord.git" master --quiet
+    if errorlevel 1 (
+        echo  [AVERTISSEMENT] Le push securise a echoue. La release API prendra le relais pour le tag.
+    ) else (
+        echo  [2/8] Code source synchronise avec Gitea.
+    )
 ) else (
-    echo  [2/8] Code source synchronise avec Gitea.
+    set GIT_TERMINAL_PROMPT=0
+    git push --set-upstream origin master --quiet 2>nul
+    if errorlevel 1 (
+        echo  [AVERTISSEMENT] Git non authentifie directement. La release API prendra le relais pour le tag.
+    ) else (
+        echo  [2/8] Code source synchronise avec Gitea.
+    )
 )
 
 REM 3. Build Extensions Web et Desktop
