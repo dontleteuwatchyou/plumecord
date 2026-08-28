@@ -734,20 +734,20 @@ function HeaderBarButtons() {
                     }
                 }
 
-                /* ── Export DMs Arrow Orbit Animation ── */
+                /* ── Export DMs Fluid Squishy Bending Arrow Animation ── */
                 .nc-export-icon {
                     overflow: visible !important;
                 }
 
                 .nc-export-arrow {
-                    transform-origin: 12px 10px;
+                    transform-origin: 50% 50%;
                     will-change: transform;
                     backface-visibility: hidden;
                     -webkit-backface-visibility: hidden;
                 }
 
                 .nc-export-tray {
-                    transform-origin: 12px 17px;
+                    transform-origin: 50% 75%;
                     will-change: transform;
                     backface-visibility: hidden;
                     -webkit-backface-visibility: hidden;
@@ -759,7 +759,7 @@ function HeaderBarButtons() {
                 .nightcord-header-btn:hover .nc-export-icon .nc-export-arrow,
                 button:hover .nc-export-icon .nc-export-arrow,
                 .nc-export-icon:hover .nc-export-arrow {
-                    animation: nc-export-arrow-orbit 0.68s cubic-bezier(0.25, 1, 0.4, 1) 1;
+                    animation: nc-export-arrow-orbit 0.85s cubic-bezier(0.35, 0, 0.25, 1) 1;
                 }
 
                 :hover > .nc-export-icon .nc-export-tray,
@@ -768,48 +768,75 @@ function HeaderBarButtons() {
                 .nightcord-header-btn:hover .nc-export-icon .nc-export-tray,
                 button:hover .nc-export-icon .nc-export-tray,
                 .nc-export-icon:hover .nc-export-tray {
-                    animation: nc-export-tray-bounce 0.68s cubic-bezier(0.25, 1, 0.4, 1) 1;
+                    animation: nc-export-tray-bounce 0.85s cubic-bezier(0.35, 0, 0.25, 1) 1;
                 }
 
                 @keyframes nc-export-arrow-orbit {
                     0% {
-                        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+                        transform: translate3d(0, 0, 0) rotate(0deg) skew(0deg, 0deg) scale(1, 1);
                     }
-                    18% {
-                        transform: translate3d(0, -9px, 0) rotate(20deg) scale(1.08);
+                    10% {
+                        /* Anticipation: soft squash in tray */
+                        transform: translate3d(0, 2px, 0) rotate(0deg) skew(0deg, 0deg) scale(1.18, 0.82);
                     }
-                    38% {
-                        transform: translate3d(9px, -1px, 0) rotate(100deg) scale(1.04);
+                    20% {
+                        /* Shoots up: elongated stretch */
+                        transform: translate3d(0, -9px, 0) rotate(12deg) skew(-8deg, 4deg) scale(0.85, 1.25);
                     }
-                    58% {
-                        transform: translate3d(1px, 9px, 0) rotate(195deg) scale(1);
+                    35% {
+                        /* Bends & curves towards the right */
+                        transform: translate3d(7px, -6px, 0) rotate(65deg) skew(-18deg, 12deg) scale(0.88, 1.18);
                     }
-                    76% {
-                        transform: translate3d(-9px, -1px, 0) rotate(285deg) scale(1.04);
+                    48% {
+                        /* Slides down the right side */
+                        transform: translate3d(10px, 2px, 0) rotate(125deg) skew(-12deg, 8deg) scale(0.86, 1.2);
                     }
-                    90% {
-                        transform: translate3d(0, -4px, 0) rotate(360deg) scale(1.02);
+                    60% {
+                        /* Rounds under the tray: horizontal curve */
+                        transform: translate3d(2px, 9px, 0) rotate(205deg) skew(-6deg, -12deg) scale(1.18, 0.86);
+                    }
+                    72% {
+                        /* Climbs up the left edge */
+                        transform: translate3d(-9px, 0px, 0) rotate(290deg) skew(14deg, -8deg) scale(0.86, 1.18);
+                    }
+                    85% {
+                        /* Curves over the top right to dive back in */
+                        transform: translate3d(3px, -5px, 0) rotate(350deg) skew(8deg, -4deg) scale(0.9, 1.14);
+                    }
+                    93% {
+                        /* Dives into the tray: soft jelly squash */
+                        transform: translate3d(0, 1.8px, 0) rotate(360deg) skew(0deg, 0deg) scale(1.22, 0.8);
+                    }
+                    97% {
+                        /* Small elastic rebound */
+                        transform: translate3d(0, -0.8px, 0) rotate(360deg) skew(0deg, 0deg) scale(0.96, 1.05);
                     }
                     100% {
-                        transform: translate3d(0, 0, 0) rotate(360deg) scale(1);
+                        transform: translate3d(0, 0, 0) rotate(360deg) skew(0deg, 0deg) scale(1, 1);
                     }
                 }
 
                 @keyframes nc-export-tray-bounce {
                     0% {
-                        transform: translate3d(0, 0, 0) scale(1);
+                        transform: translate3d(0, 0, 0) scale(1, 1);
                     }
-                    18% {
-                        transform: translate3d(0, 1.2px, 0) scale(0.96);
+                    10% {
+                        transform: translate3d(0, 1.5px, 0) scale(1.05, 0.93);
                     }
-                    50% {
-                        transform: translate3d(0, 0, 0) scale(1);
+                    22% {
+                        transform: translate3d(0, -1px, 0) scale(0.97, 1.03);
                     }
-                    88% {
-                        transform: translate3d(0, 0.8px, 0) scale(0.98);
+                    60% {
+                        transform: translate3d(0, 0, 0) scale(1, 1);
+                    }
+                    93% {
+                        transform: translate3d(0, 1.5px, 0) scale(1.07, 0.91);
+                    }
+                    97% {
+                        transform: translate3d(0, -0.5px, 0) scale(0.98, 1.02);
                     }
                     100% {
-                        transform: translate3d(0, 0, 0) scale(1);
+                        transform: translate3d(0, 0, 0) scale(1, 1);
                     }
                 }
             `}</style>
