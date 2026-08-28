@@ -135,15 +135,54 @@ async function main() {
         }
     }
 
+    // 1b. Ensure multiplatform GUI installers exist for Linux & macOS
+    console.log("  Verification/Telechargement des installateurs Linux et macOS...");
+    const platformBinaries = [
+        { remote: "Equilotl", local: "Nightcord-Linux" },
+        { remote: "Equilotl-x11", local: "Nightcord-Linux-x11" },
+        { remote: "Equilotl-wayland", local: "Nightcord-Linux-wayland" },
+        { remote: "Equilotl-darwin-arm64.zip", local: "Nightcord-darwin-arm64.zip" },
+        { remote: "Equilotl-darwin-x64.zip", local: "Nightcord-darwin-x64.zip" }
+    ];
+    const installerBaseUrl = "https://github.com/Equicord/Equilotl/releases/latest/download/";
+    const installerOutDir = path.join("release", "installer");
+    if (!fs.existsSync(installerOutDir)) fs.mkdirSync(installerOutDir, { recursive: true });
+
+    for (const b of platformBinaries) {
+        const dest = path.join(installerOutDir, b.local);
+        if (fs.existsSync(dest) && fs.statSync(dest).size > 100000) {
+            continue;
+        }
+        try {
+            console.log(`    -> Telechargement ${b.local}...`);
+            const res = await fetch(installerBaseUrl + b.remote, {
+                headers: { "User-Agent": "Nightcord (https://github.com/nightcordfr/nightcord)" }
+            });
+            if (res.ok) {
+                const buf = Buffer.from(await res.arrayBuffer());
+                fs.writeFileSync(dest, buf);
+                console.log(`       OK : ${b.local} (${(buf.length / (1024 * 1024)).toFixed(1)} MB)`);
+            }
+        } catch (e) {
+            console.warn(`    [Avertissement] Impossible de telecharger ${b.remote}:`, e.message);
+        }
+    }
+
     const releaseId = release.id;
     console.log(`  Release ID: ${releaseId} (Nom: ${release.name}, Tag: ${release.tag_name})`);
 
     // 2. Assets to upload
     const filesToUpload = [
         { name: "Nightcord-Installer.exe", path: path.join("release", "installer", "Nightcord-Installer.exe"), type: "application/octet-stream" },
+        { name: "Nightcord-Linux", path: path.join("release", "installer", "Nightcord-Linux"), type: "application/octet-stream" },
+        { name: "Nightcord-Linux-x11", path: path.join("release", "installer", "Nightcord-Linux-x11"), type: "application/octet-stream" },
+        { name: "Nightcord-Linux-wayland", path: path.join("release", "installer", "Nightcord-Linux-wayland"), type: "application/octet-stream" },
+        { name: "Nightcord-darwin-arm64.zip", path: path.join("release", "installer", "Nightcord-darwin-arm64.zip"), type: "application/zip" },
+        { name: "Nightcord-darwin-x64.zip", path: path.join("release", "installer", "Nightcord-darwin-x64.zip"), type: "application/zip" },
         { name: "desktop.asar", path: path.join("dist", "desktop.asar"), type: "application/octet-stream" },
         { name: "nightcordDesktop.asar", path: path.join("dist", "desktop.asar"), type: "application/octet-stream" },
         { name: "install.sh", path: path.join("install.sh"), type: "text/x-shellscript" },
+        { name: "install.ps1", path: path.join("install.ps1"), type: "text/plain" },
         { name: "extension-chrome.zip", path: path.join("dist", "extension-chrome.zip"), type: "application/zip" },
         { name: "extension-firefox.zip", path: path.join("dist", "extension-firefox.zip"), type: "application/zip" },
         { name: "nightcord-dist.zip", path: path.join("release", "installer", "nightcord-dist.zip"), type: "application/zip" },
@@ -207,7 +246,7 @@ async function main() {
         });
     }
 
-    console.log("\n  Tous les 6 assets ont ete publies avec succes !");
+    console.log(`\n  Tous les ${filesToUpload.length} assets ont ete publies avec succes !`);
 }
 
 main().catch(err => {
