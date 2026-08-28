@@ -1,42 +1,49 @@
 {
-  description = "Nightcord development shell";
+  description = "Nightcord - Everything Discord doesn't build, we create";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
-    nixpkgs-node16.url = "github:NixOS/nixpkgs/nixos-22.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, nixpkgs-node16, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
           inherit system;
           config.allowUnfree = true;
         };
-
-        pkgsNode16 = import nixpkgs-node16 {
-          inherit system;
-          config.allowUnfree = true;
+      in rec {
+        packages = {
+          default = packages.nightcord;
+          nightcord = pkgs.callPackage ./default.nix { };
         };
-      in {
-        devShells.default = pkgs.mkShell {
-          packages = [
-            pkgsNode16.nodejs-16_x
-            pkgs.pnpm
-            pkgs.git
-            pkgs.curl
-            pkgs.zip
-            pkgs.unzip
-            pkgs.jq
-            pkgs.powershell
-          ];
 
-          shellHook = ''
-            export npm_config_update_notifier=false
-            export ELECTRON_SKIP_BINARY_DOWNLOAD=1
-            echo "Nightcord dev shell active (Node $(node -v))"
-          '';
+        apps.default = flake-utils.lib.mkApp {
+          drv = packages.nightcord;
         };
-      });
+      }
+    ) // {
+      overlays.default = final: prev: {
+        nightcord = final.callPackage ./default.nix { };
+      };
+
+      nixosModules.default = { config, lib, pkgs, ... }:
+        let
+          cfg = config.programs.nightcord;
+        in {
+          options.programs.nightcord = {
+            enable = lib.mkEnableOption "Nightcord Discord client mod";
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = pkgs.callPackage ./default.nix { };
+              description = "The Nightcord package to use.";
+            };
+          };
+
+          config = lib.mkIf cfg.enable {
+            environment.systemPackages = [ cfg.package ];
+          };
+        };
+    };
 }

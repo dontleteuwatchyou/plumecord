@@ -253,6 +253,7 @@ export async function getBrowserSoundCloudToken(_?: any): Promise<{
     browser: string;
 } | null> {
     if (!IS_ELECTRON) return null;
+    if (process.platform !== "win32") return null;
     try {
         const { spawnSync } = require("child_process") as typeof import("child_process");
 

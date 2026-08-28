@@ -102,48 +102,14 @@ function getThemeData(fileName: string) {
     return readFile(safePath, "utf-8");
 }
 
+import { simulateKey, simulateTyping } from "./platform/systemInput";
+
 ipcMain.handle(IpcEvents.WORLD_BOMB_TYPE, async (event, text: string, delay: number = 50) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
-    if (process.platform !== "win32") return;
-    const { spawn } = require("child_process");
-    const { writeFileSync, unlinkSync, mkdtempSync, rmSync } = require("fs");
-    const { join } = require("path");
-    const { tmpdir } = require("os");
-
     if (!/^[\x20-\x7E]*$/.test(text)) {
         throw new Error("WorldBombType: disallowed characters");
     }
-    const safeDelay = Math.max(0, Math.min(10000, delay));
-
-    const psLines = [
-        "Add-Type -AssemblyName System.WindowsForms;",
-        "$text = $args[0];",
-        "$delay = [int]$args[1];",
-        "foreach ($char in $text.ToCharArray()) {",
-        "  [System.Windows.Forms.SendKeys]::SendWait($char);",
-        "  if ($delay -gt 0) { Start-Sleep -m $delay; }",
-        "}",
-    ];
-    const psScript = psLines.join("\r\n");
-    const tempDir = mkdtempSync(join(tmpdir(), "nightcord-wb-"));
-    const tempFile = join(tempDir, "sendkeys.ps1");
-    try {
-        writeFileSync(tempFile, "\uFEFF" + psScript, "utf8");
-        const child = spawn("powershell", [
-            "-NoProfile", "-ExecutionPolicy", "Bypass",
-            "-File", tempFile, text, String(safeDelay)
-        ]);
-        await new Promise<void>((resolve, reject) => {
-            child.on("error", reject);
-            child.on("exit", code => {
-                if (code === 0) resolve();
-                else reject(new Error(`PowerShell exit code ${code}`));
-            });
-        });
-    } finally {
-        try { unlinkSync(tempFile); } catch {}
-        try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
-    }
+    return simulateTyping(text, delay);
 });
 
 function runPowershellScript(psScript: string): Promise<void> {
@@ -182,22 +148,17 @@ function runPowershellScript(psScript: string): Promise<void> {
 
 ipcMain.handle(IpcEvents.WORLD_BOMB_PRESS_ENTER, (event) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
-    return runPowershellScript(`
-        $sig = '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);'
-        Add-Type -MemberDefinition $sig -Name WinAPI -Namespace NC -ErrorAction SilentlyContinue
-        [NC.WinAPI]::keybd_event(0x0D, 0x1C, 0, [UIntPtr]::Zero)
-        Start-Sleep -Milliseconds 20
-        [NC.WinAPI]::keybd_event(0x0D, 0x1C, 2, [UIntPtr]::Zero)
-    `);
+    return simulateKey("ENTER");
 });
 
 ipcMain.handle(IpcEvents.WORLD_BOMB_PRESS_BACKSPACE, (event) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
-    return runPowershellScript("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{BACKSPACE}')");
+    return simulateKey("BACKSPACE");
 });
 
 ipcMain.handle(IpcEvents.WORLD_BOMB_CLICK, (event, x: number, y: number) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
+    if (process.platform !== "win32") return Promise.resolve();
     const safeX = Math.max(0, Math.min(99999, Math.round(x)));
     const safeY = Math.max(0, Math.min(99999, Math.round(y)));
     return runPowershellScript(`
