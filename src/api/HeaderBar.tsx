@@ -183,9 +183,9 @@ export function toggleStealthMode() {
             document.body?.classList.add("nightcord-stealth");
             showNotification({
                 id: "nightcord-stealth-mode",
-                title: "Nightcord",
-                body: "To restore Nightcord press Ctrl+Shift+H",
-                icon: NIGHTCORD_LOGO_URI,
+                title: "Stealth Mode Activated 🛡️",
+                body: "All Nightcord visual elements are hidden. Press Ctrl+Shift+H to restore Nightcord.",
+                icon: "nightcord",
                 type: "info",
                 duration: 6000
             });
@@ -193,9 +193,9 @@ export function toggleStealthMode() {
             document.body?.classList.remove("nightcord-stealth");
             showNotification({
                 id: "nightcord-stealth-mode",
-                title: "Nightcord",
-                body: "Nightcord has been restored.",
-                icon: NIGHTCORD_LOGO_URI,
+                title: "Stealth Mode Deactivated ✅",
+                body: "Nightcord visual elements and settings have been restored.",
+                icon: "nightcord",
                 type: "success",
                 duration: 4000
             });
@@ -228,18 +228,18 @@ try {
                 if (newVal) {
                     showNotification({
                         id: "nightcord-streamproof-mode",
-                        title: "Nightcord",
-                        body: "To disable StreamProof press Ctrl+Shift+G",
-                        icon: NIGHTCORD_LOGO_URI,
+                        title: "StreamProof Activated 🛡️",
+                        body: "Window content protection is enabled. Press Ctrl+Shift+G to disable.",
+                        icon: "nightcord",
                         type: "info",
                         duration: 6000
                     });
                 } else {
                     showNotification({
                         id: "nightcord-streamproof-mode",
-                        title: "Nightcord",
-                        body: "StreamProof has been disabled.",
-                        icon: NIGHTCORD_LOGO_URI,
+                        title: "StreamProof Deactivated ✅",
+                        body: "Window content protection is now disabled.",
+                        icon: "nightcord",
                         type: "success",
                         duration: 4000
                     });

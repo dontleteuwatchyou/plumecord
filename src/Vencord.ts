@@ -211,9 +211,9 @@ async function silentlyStageUpdate() {
         // Notify user in the top-right corner that the update is ready to be applied on restart
         showNotification({
             id: "nightcord-update-downloaded",
-            title: "Nightcord",
-            body: "A new update has been downloaded. Restart your client to apply and discover it.",
-            icon: NIGHTCORD_LOGO_URI,
+            title: "Update Downloaded 🚀",
+            body: "A new update has been downloaded. Restart your client to apply and discover what's new.",
+            icon: "nightcord",
             type: "info",
             duration: 9000,
             actions: [
@@ -308,10 +308,10 @@ async function init() {
             setTimeout(() => {
                 showNotification({
                     id: "nightcord-update-notify",
-                    title: "Nightcord",
-                    body: `Nightcord updated to ${currentVersion}`,
-                    icon: NIGHTCORD_LOGO_URI,
-                    type: "info",
+                    title: "Nightcord Updated 🚀",
+                    body: `Nightcord updated to ${currentVersion}. Open settings to discover what's new.`,
+                    icon: "nightcord",
+                    type: "success",
                     duration: 6000,
                     actions: [
                         {
