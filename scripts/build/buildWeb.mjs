@@ -51,8 +51,10 @@ const extensionStubPlugin = {
         build.onLoad({ filter: /.*/, namespace: "ext-stub-autoTranslate" }, () => ({
             loader: "js",
             contents: `
+export function getActiveLanguage() { return "en"; }
 export function t(key) { return key; }
-export function useTranslation() { return { t }; }
+export function tPlugin(key) { return key; }
+export function useTranslation() { return { t: (key) => key, lang: "en" }; }
 export const translations = {};
 export default {};
 `
