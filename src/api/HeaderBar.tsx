@@ -627,9 +627,9 @@ function HeaderBarButtons() {
                     backface-visibility: hidden;
                     -webkit-backface-visibility: hidden;
                 }
-                .nightcord-header-btn:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim),
-                .vc-header-bar-btns [class*="clickable"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim),
-                .vc-header-bar-btns [class*="iconWrapper"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim) {
+                .nightcord-header-btn:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-export-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="clickable"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-export-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="iconWrapper"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-export-icon):not(.nc-no-anim) {
                     animation: nc-header-btn-spring 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
                 }
                 @keyframes nc-header-btn-spring {
@@ -731,6 +731,85 @@ function HeaderBarButtons() {
                     }
                     100% {
                         transform: translate3d(0, 0, 0) rotate(0deg);
+                    }
+                }
+
+                /* ── Export DMs Arrow Orbit Animation ── */
+                .nc-export-icon {
+                    overflow: visible !important;
+                }
+
+                .nc-export-arrow {
+                    transform-origin: 12px 10px;
+                    will-change: transform;
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+
+                .nc-export-tray {
+                    transform-origin: 12px 17px;
+                    will-change: transform;
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+
+                :hover > .nc-export-icon .nc-export-arrow,
+                [class*="iconWrapper"]:hover .nc-export-icon .nc-export-arrow,
+                [class*="clickable"]:hover .nc-export-icon .nc-export-arrow,
+                .nightcord-header-btn:hover .nc-export-icon .nc-export-arrow,
+                button:hover .nc-export-icon .nc-export-arrow,
+                .nc-export-icon:hover .nc-export-arrow {
+                    animation: nc-export-arrow-orbit 0.68s cubic-bezier(0.25, 1, 0.4, 1) 1;
+                }
+
+                :hover > .nc-export-icon .nc-export-tray,
+                [class*="iconWrapper"]:hover .nc-export-icon .nc-export-tray,
+                [class*="clickable"]:hover .nc-export-icon .nc-export-tray,
+                .nightcord-header-btn:hover .nc-export-icon .nc-export-tray,
+                button:hover .nc-export-icon .nc-export-tray,
+                .nc-export-icon:hover .nc-export-tray {
+                    animation: nc-export-tray-bounce 0.68s cubic-bezier(0.25, 1, 0.4, 1) 1;
+                }
+
+                @keyframes nc-export-arrow-orbit {
+                    0% {
+                        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+                    }
+                    18% {
+                        transform: translate3d(0, -9px, 0) rotate(20deg) scale(1.08);
+                    }
+                    38% {
+                        transform: translate3d(9px, -1px, 0) rotate(100deg) scale(1.04);
+                    }
+                    58% {
+                        transform: translate3d(1px, 9px, 0) rotate(195deg) scale(1);
+                    }
+                    76% {
+                        transform: translate3d(-9px, -1px, 0) rotate(285deg) scale(1.04);
+                    }
+                    90% {
+                        transform: translate3d(0, -4px, 0) rotate(360deg) scale(1.02);
+                    }
+                    100% {
+                        transform: translate3d(0, 0, 0) rotate(360deg) scale(1);
+                    }
+                }
+
+                @keyframes nc-export-tray-bounce {
+                    0% {
+                        transform: translate3d(0, 0, 0) scale(1);
+                    }
+                    18% {
+                        transform: translate3d(0, 1.2px, 0) scale(0.96);
+                    }
+                    50% {
+                        transform: translate3d(0, 0, 0) scale(1);
+                    }
+                    88% {
+                        transform: translate3d(0, 0.8px, 0) scale(0.98);
+                    }
+                    100% {
+                        transform: translate3d(0, 0, 0) scale(1);
                     }
                 }
             `}</style>
