@@ -80,9 +80,11 @@
 }
 
 .nc-notif-custom-icon {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     border-radius: 4px;
+    object-fit: contain;
+    display: block;
 }
 
 .nc-notification-title {
