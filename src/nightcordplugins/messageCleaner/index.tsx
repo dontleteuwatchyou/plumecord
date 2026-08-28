@@ -54,6 +54,12 @@ try {
     if (saved) deleteDelay = Math.max(50, Math.min(5000, parseInt(saved, 10) || 800));
 } catch { }
 
+let useSilentDelete = false;
+try {
+    const saved = localStorage.getItem("nightcord_mc_silent_delete");
+    if (saved !== null) useSilentDelete = saved === "true";
+} catch { }
+
 export function getDeleteDelay(): number {
     return deleteDelay;
 }
@@ -65,16 +71,33 @@ export function setDeleteDelay(val: number) {
     } catch { }
 }
 
+export function getUseSilentDelete(): boolean {
+    return useSilentDelete;
+}
+
+export function setUseSilentDelete(val: boolean) {
+    useSilentDelete = val;
+    try {
+        localStorage.setItem("nightcord_mc_silent_delete", val.toString());
+    } catch { }
+}
+
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(l => l());
 
 // ─── Core Logic ───────────────────────────────────────────────────────────────
 
+function isCallMessage(message: any): boolean {
+    return message?.type === 3 || !!message?.call;
+}
+
 function canDeleteMessage(message: any, currentUserId: string): boolean {
     try {
         if (message.author?.id !== currentUserId) return false;
-        if (message.type !== 0 && message.type !== 19) return false;
-        return true;
+        // Text messages (0), replies (19), and calls initiated by the user (3)
+        if (message.type === 0 || message.type === 19) return true;
+        if (message.type === 3 || isCallMessage(message)) return true;
+        return false;
     } catch {
         return false;
     }
@@ -93,6 +116,45 @@ async function deleteMessage(channelId: string, messageId: string, retryCount = 
         }
         return false;
     }
+}
+
+async function silentDeleteMessage(channelId: string, messageId: string, retryCount = 0): Promise<boolean> {
+    try {
+        const response = await RestAPI.post({
+            url: `/channels/${channelId}/messages`,
+            body: {
+                content: "** **",
+                flags: 4096, // suppress notifications
+                mobile_network_type: "unknown",
+                nonce: messageId,
+                tts: false
+            }
+        });
+
+        await new Promise(r => setTimeout(r, 150));
+        if (response?.body?.id) {
+            await RestAPI.del({ url: `/channels/${channelId}/messages/${response.body.id}` }).catch(() => {});
+        }
+        await new Promise(r => setTimeout(r, 100));
+        await RestAPI.del({ url: `/channels/${channelId}/messages/${messageId}` }).catch(() => {});
+        return true;
+    } catch (error: any) {
+        const statusCode = error?.status || error?.statusCode;
+        if (statusCode === 429 && retryCount < 3) {
+            const retryAfter = error?.body?.retry_after ?? 5;
+            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+            return silentDeleteMessage(channelId, messageId, retryCount + 1);
+        }
+        return deleteMessage(channelId, messageId);
+    }
+}
+
+async function deleteTargetMessage(channelId: string, message: any): Promise<boolean> {
+    const isCall = isCallMessage(message);
+    if (useSilentDelete || isCall) {
+        return silentDeleteMessage(channelId, message.id);
+    }
+    return deleteMessage(channelId, message.id);
 }
 
 async function getChannelMessages(channelId: string, before?: string): Promise<any[]> {
@@ -140,7 +202,7 @@ async function cleanChannel(channelId: string, logEntry: LogEntry, taskName: str
             for (const message of validMessages) {
                 if (shouldStop) break;
 
-                const success = await deleteMessage(channelId, message.id);
+                const success = await deleteTargetMessage(channelId, message);
                 if (success) {
                     logEntry.deleted++;
                     logEntry.messages.push(`[${message.timestamp}] ${message.content || "<attachment/embed>"}`);
@@ -233,7 +295,7 @@ async function cleanGuild(guildId: string, logEntry: LogEntry, taskName: string)
                 if (shouldStop) break;
                 if (!message.channel_id) continue;
 
-                const success = await deleteMessage(message.channel_id, message.id);
+                const success = await deleteTargetMessage(message.channel_id, message);
                 if (success) {
                     logEntry.deleted++;
                     logEntry.messages.push(`[${message.timestamp}] ${message.content || "<attachment/embed>"}`);
@@ -563,6 +625,33 @@ const MODAL_STYLES = `
     accent-color: #ed4245;
     margin: 12px 0;
 }
+.mcv2-switch-btn {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    background: #4e5058;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    padding: 2px;
+    flex-shrink: 0;
+}
+.mcv2-switch-btn.active {
+    background: #23a55a;
+}
+.mcv2-switch-knob {
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffffff;
+    transition: transform 0.2s ease;
+    transform: translateX(0);
+}
+.mcv2-switch-btn.active .mcv2-switch-knob {
+    transform: translateX(20px);
+}
 `;
 
 function useForceUpdate() {
@@ -818,10 +907,16 @@ function ChannelsCleanerTab() {
 
 function SettingsTab() {
     const [delay, setDelay] = React.useState(getDeleteDelay);
+    const [silent, setSilent] = React.useState(getUseSilentDelete);
 
-    const handleChange = (val: number) => {
+    const handleDelayChange = (val: number) => {
         setDelay(val);
         setDeleteDelay(val);
+    };
+
+    const handleSilentToggle = (val: boolean) => {
+        setSilent(val);
+        setUseSilentDelete(val);
     };
 
     const getSpeedLabel = (ms: number) => {
@@ -832,7 +927,7 @@ function SettingsTab() {
     };
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px", height: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px", height: "100%" }}>
             <div className="mcv2-setting-card">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
                     <div>
@@ -854,7 +949,7 @@ function SettingsTab() {
                     max={2500}
                     step={50}
                     value={delay}
-                    onChange={e => handleChange(Number(e.target.value))}
+                    onChange={e => handleDelayChange(Number(e.target.value))}
                     className="mcv2-speed-slider"
                 />
 
@@ -862,6 +957,27 @@ function SettingsTab() {
                     <span>50ms ({t("Fast")})</span>
                     <span style={{ color: "#dbdee1", fontWeight: 600 }}>{getSpeedLabel(delay)}</span>
                     <span>2500ms ({t("Safe")})</span>
+                </div>
+            </div>
+
+            <div className="mcv2-setting-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ paddingRight: "16px" }}>
+                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+                            {t("Silent Delete Mode")}
+                        </div>
+                        <div style={{ fontSize: "13px", color: "#949ba4", marginTop: "4px" }}>
+                            {t("When enabled, all messages are deleted using the SilentDelete technique (bypassing loggers). When disabled, regular messages are deleted normally and calls launched by you are silently deleted.")}
+                        </div>
+                    </div>
+                    <button
+                        className={`mcv2-switch-btn ${silent ? "active" : ""}`}
+                        onClick={() => handleSilentToggle(!silent)}
+                        type="button"
+                        title={silent ? t("Enabled") : t("Disabled")}
+                    >
+                        <span className="mcv2-switch-knob" />
+                    </button>
                 </div>
             </div>
         </div>
