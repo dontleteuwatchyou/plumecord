@@ -1,6 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -48,7 +48,10 @@ interface ButtonEntry {
     priority: number;
 }
 
-export const UserAreaButton = PanelButton;
+export function UserAreaButton({ className, ...props }: UserAreaButtonProps) {
+    const mergedClassName = [className, "vc-user-area-plugin-button"].filter(Boolean).join(" ");
+    return <PanelButton {...props} className={mergedClassName} />;
+}
 
 const logger = new Logger("UserArea");
 
@@ -80,10 +83,27 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
     return (
         <>
             <style>{`
-                /* Allow the username and status text to shrink and truncate when the sidebar is small, 
-                   freeing up space for the extra plugins buttons without cutting them off */
+                /* Keep Discord's native controls (Mute, Deafen, Settings gear) strictly visible while plugin buttons flex and avatar truncates */
+                .vc-user-area-plugin-button {
+                    flex: 1 1 32px !important;
+                    min-width: 0 !important;
+                    max-width: 32px !important;
+                    overflow: hidden !important;
+                }
+                div[class*="buttons_"]:has(.vc-user-area-plugin-button) {
+                    flex: 1 1 auto !important;
+                    min-width: 0 !important;
+                }
+                div[class*="buttons_"]:has(.vc-user-area-plugin-button) > :not(.vc-user-area-btns):not(style) {
+                    flex-shrink: 0 !important;
+                }
+                div[class*="avatarWrapper_"] {
+                    min-width: 0 !important;
+                    flex-shrink: 1 !important;
+                }
                 div[class*="nameTag_"] {
                     min-width: 0 !important;
+                    flex-shrink: 1 !important;
                 }
                 div[class*="nameTag_"] > * {
                     min-width: 0 !important;
