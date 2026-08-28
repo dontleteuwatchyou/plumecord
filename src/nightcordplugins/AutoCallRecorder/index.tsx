@@ -81,7 +81,6 @@ const SavePathSelector = (props: IPluginOptionComponentProps) => {
                                 props.setValue(dir);
                             }
                         } else {
-                            // Fallback si VencordNative n'est pas dispo
                             alert("VencordNative is required for folder picking.");
                         }
                     } catch (e) {
@@ -117,8 +116,7 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: t("Video Format"),
         options: [
-            { label: "MP4 (MPEG-4 AVC / Seekable)", value: "mp4", default: true },
-            { label: "WebM", value: "webm" },
+            { label: "WebM", value: "webm", default: true },
             { label: "MKV", value: "mkv" }
         ]
     },
@@ -126,8 +124,7 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: t("Audio Format"),
         options: [
-            { label: "MP4 / AAC (MPEG-4 Audio / Seekable)", value: "mp4", default: true },
-            { label: "OGG (Opus)", value: "ogg" },
+            { label: "OGG", value: "ogg", default: true },
             { label: "WebM", value: "webm" }
         ]
     },
@@ -192,10 +189,12 @@ function getConnectedVoiceChannelId(): string | null {
 }
 
 function updateUI() {
-    if (!isCurrentlyRecording()) {
-        const indicator = document.getElementById("autocall-indicator");
-        if (indicator) indicator.remove();
-        return;
+    if (isCurrentlyRecording()) {
+        const activeChannelId = getConnectedVoiceChannelId();
+        if (!activeChannelId) {
+            stopRecording();
+            lastChannelId = null;
+        }
     }
 
     if (!settings.store.showTimes) {
@@ -204,42 +203,38 @@ function updateUI() {
         return;
     }
 
-    // Try finding the best container in Discord's header bar
-    const container =
-        document.querySelector('.vc-header-bar-btns') ||
-        document.querySelector('section[class*="themed_"] [class*="toolbar_"]') ||
-        document.querySelector('[class*="toolbar_"]') ||
-        document.querySelector('div[class*="titleWrapper_"]') ||
-        document.querySelector('section[class*="title_"] [class*="children_"]') ||
-        document.querySelector('div[class*="children_"]');
+    if (isCurrentlyRecording()) {
+        const titleContainer =
+            document.querySelector('div[class*="titleWrapper_"] > h1') ||
+            document.querySelector('div[class*="children_"]') ||
+            document.querySelector('section[class*="themed_"] [class*="toolbar_"]') ||
+            document.querySelector('.vc-header-bar-btns');
 
-    let indicator = document.getElementById("autocall-indicator");
-    if (!indicator) {
-        indicator = document.createElement("div");
-        indicator.id = "autocall-indicator";
-        indicator.className = "autocall-recording-badge";
-        indicator.innerHTML = `
-            <span class="autocall-dot"></span>
-            <span class="autocall-label">REC</span>
-            <span class="autocall-time">00:00</span>
-        `;
-        if (container) {
-            container.prepend(indicator);
-        } else {
-            indicator.style.position = "fixed";
-            indicator.style.top = "12px";
-            indicator.style.right = "60px";
-            document.body.appendChild(indicator);
+        if (!titleContainer) return;
+
+        let indicator = document.getElementById("autocall-indicator");
+        if (!indicator) {
+            indicator = document.createElement("div");
+            indicator.id = "autocall-indicator";
+            titleContainer.appendChild(indicator);
+        } else if (indicator.parentElement !== titleContainer) {
+            titleContainer.appendChild(indicator);
+        }
+        
+        let timeSpan = indicator.querySelector('.autocall-time');
+        if (!timeSpan) {
+            indicator.innerHTML = `<span class="autocall-time"></span>`;
+            timeSpan = indicator.querySelector('.autocall-time');
+        }
+        
+        if (timeSpan) {
+            timeSpan.textContent = formatTime(getRecordingDurationMs());
         }
     } else {
-        if (container && indicator.parentElement !== container && !indicator.style.position) {
-            container.prepend(indicator);
+        const indicator = document.getElementById("autocall-indicator");
+        if (indicator) {
+            indicator.remove();
         }
-    }
-
-    const timeSpan = indicator.querySelector('.autocall-time');
-    if (timeSpan) {
-        timeSpan.textContent = formatTime(getRecordingDurationMs());
     }
 }
 
@@ -253,7 +248,7 @@ function isBlacklistedUserInChannel(channelId: string): boolean {
 function startUIInterval() {
     if (!domUpdateInterval) {
         updateUI();
-        domUpdateInterval = setInterval(updateUI, 500);
+        domUpdateInterval = setInterval(updateUI, 1000);
     }
 }
 
@@ -270,7 +265,6 @@ async function handleVoiceStateUpdates(e: any) {
     
     const updates = Array.isArray(e.voiceStates) ? e.voiceStates : (e.voiceState ? [e.voiceState] : []);
     for (const update of updates) {
-        // Detect if current user disconnects
         if (update.userId === UserStore?.getCurrentUser?.()?.id) {
             if (!update.channelId) {
                 await stopRecording();
@@ -291,22 +285,6 @@ async function handleVoiceStateUpdates(e: any) {
     }
 }
 
-async function triggerStart(channelId: string) {
-    if (isCurrentlyRecording()) return;
-    await startRecording({
-        mode: settings.store.mode as any,
-        videoQuality: settings.store.videoQuality as any,
-        videoFormat: settings.store.videoFormat as any,
-        audioFormat: settings.store.audioFormat as any,
-        maxStorageGB: settings.store.maxStorage,
-        shadowplayMinutes: settings.store.shadowplayMinutes,
-        autoSave: settings.store.autoSave,
-        savePath: settings.store.savePath,
-        showSaveToast: settings.store.showSaveToast
-    });
-    startUIInterval();
-}
-
 async function handleVoiceChannelSelect(e: any) {
     const newChannelId = e.channelId || getConnectedVoiceChannelId();
 
@@ -319,7 +297,18 @@ async function handleVoiceChannelSelect(e: any) {
         if (isBlacklistedUserInChannel(newChannelId)) {
             Toasts.show(Toasts.create(t("Blacklisted user in channel."), Toasts.Type.WARNING));
         } else {
-            await triggerStart(newChannelId);
+            await startRecording({
+                mode: settings.store.mode as any,
+                videoQuality: settings.store.videoQuality as any,
+                videoFormat: settings.store.videoFormat as any,
+                audioFormat: settings.store.audioFormat as any,
+                maxStorageGB: settings.store.maxStorage,
+                shadowplayMinutes: settings.store.shadowplayMinutes,
+                autoSave: settings.store.autoSave,
+                savePath: settings.store.savePath,
+                showSaveToast: settings.store.showSaveToast
+            });
+            startUIInterval();
         }
     }
 
@@ -339,7 +328,19 @@ export default definePlugin({
             if (isBlacklistedUserInChannel(lastChannelId)) {
                 Toasts.show(Toasts.create(t("Blacklisted user in channel."), Toasts.Type.WARNING));
             } else {
-                triggerStart(lastChannelId);
+                startRecording({
+                    mode: settings.store.mode as any,
+                    videoQuality: settings.store.videoQuality as any,
+                    videoFormat: settings.store.videoFormat as any,
+                    audioFormat: settings.store.audioFormat as any,
+                    maxStorageGB: settings.store.maxStorage,
+                    shadowplayMinutes: settings.store.shadowplayMinutes,
+                    autoSave: settings.store.autoSave,
+                    savePath: settings.store.savePath,
+                    showSaveToast: settings.store.showSaveToast
+                }).then(() => {
+                    startUIInterval();
+                });
             }
         }
 

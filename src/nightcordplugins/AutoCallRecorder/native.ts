@@ -5,10 +5,24 @@
  */
 
 import { app, dialog, IpcMainInvokeEvent } from "electron";
-import { constants as FsConstants, createWriteStream, WriteStream } from "node:fs";
-import { access, copyFile, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { createWriteStream, WriteStream } from "node:fs";
+import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
-import { fixMediaFileDuration } from "./mediaFixer";
+import fixWebmDuration from "fix-webm-duration";
+
+// Polyfill FileReader side-effect for Node.js main process environment
+if (typeof globalThis.FileReader === "undefined") {
+    (globalThis as any).FileReader = class {
+        onloadend: any = null;
+        result: any = null;
+        readAsArrayBuffer(blob: Blob) {
+            blob.arrayBuffer().then(buf => {
+                this.result = buf;
+                if (this.onloadend) this.onloadend();
+            }).catch(() => {});
+        }
+    };
+}
 
 let activeStream: WriteStream | null = null;
 let activeTempPath: string | null = null;
@@ -27,18 +41,6 @@ function getDefaultSaveFolder(): string {
         if (docs && docs.trim()) return docs.trim();
     } catch { }
     return process.cwd();
-}
-
-function toBuffer(data: any): Buffer {
-    if (!data) return Buffer.alloc(0);
-    if (Buffer.isBuffer(data)) return data;
-    if (data instanceof Uint8Array) {
-        return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-    }
-    if (data instanceof ArrayBuffer) {
-        return Buffer.from(data);
-    }
-    return Buffer.from(data);
 }
 
 /**
@@ -82,7 +84,8 @@ export async function initStreamRecording(_event: IpcMainInvokeEvent, filename: 
 export async function appendRecordingChunk(_event: IpcMainInvokeEvent, chunk: Uint8Array): Promise<boolean> {
     try {
         if (activeStream && !activeStream.destroyed) {
-            const buf = toBuffer(chunk);
+            const buf = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+            // Respect WriteStream backpressure: await drain if write() returns false
             const canContinue = activeStream.write(buf);
             if (!canContinue) {
                 await new Promise<void>(resolve => {
@@ -100,7 +103,7 @@ export async function appendRecordingChunk(_event: IpcMainInvokeEvent, chunk: Ui
 }
 
 /**
- * Closes stream, patches duration and seekability metadata (MP4/WebM/MKV),
+ * Closes stream, patches EBML duration metadata with fixWebmDuration so the file is seekable,
  * then moves the recording to the target destination folder.
  */
 export async function finalizeStreamRecording(
@@ -108,46 +111,30 @@ export async function finalizeStreamRecording(
     folderPath: string | null,
     filename: string,
     durationMs = 0
-): Promise<{ success: boolean; destPath?: string }> {
+): Promise<boolean> {
     try {
         if (activeStream) {
             await new Promise<void>(resolve => {
-                const stream = activeStream;
-                if (!stream || stream.destroyed || stream.closed) return resolve();
-                const timeout = setTimeout(resolve, 3000);
-                stream.end(() => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
+                if (!activeStream || activeStream.destroyed) return resolve();
+                activeStream.end(() => resolve());
             });
             activeStream = null;
         }
 
-        if (!activeTempPath) {
-            console.warn("[AutoCallRecorder] No active temp path for stream finalizing");
-            return { success: false };
-        }
+        if (!activeTempPath) return false;
         const sourcePath = activeTempPath;
         activeTempPath = null;
 
-        const fileStats = await stat(sourcePath).catch(() => null);
-        if (!fileStats || fileStats.size === 0) {
-            console.warn("[AutoCallRecorder] Temp recording file is empty or missing");
-            return { success: false };
-        }
-
-        // Patche la durée et l'index de recherche dans le fichier avant de le déplacer
-        if (durationMs > 0) {
+        // Patche la durée EBML avec fixWebmDuration AVANT de déplacer le fichier
+        if (durationMs > 0 && /\.(webm|mkv|ogg)$/i.test(filename)) {
             try {
                 const rawBuf = await readFile(sourcePath);
-                if (rawBuf && rawBuf.length > 0) {
-                    const fixedBuf = await fixMediaFileDuration(rawBuf, filename, durationMs);
-                    if (fixedBuf && fixedBuf.length > 0) {
-                        await writeFile(sourcePath, fixedBuf);
-                    }
-                }
+                const blob = new Blob([rawBuf], { type: "video/webm" });
+                const fixedBlob = await fixWebmDuration(blob, durationMs);
+                const arrayBuffer = await fixedBlob.arrayBuffer();
+                await writeFile(sourcePath, Buffer.from(arrayBuffer));
             } catch (err) {
-                console.warn("[AutoCallRecorder] Duration patch failed:", err);
+                console.warn("[AutoCallRecorder] fixWebmDuration failed:", err);
             }
         }
 
@@ -155,82 +142,63 @@ export async function finalizeStreamRecording(
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
         await mkdir(targetFolder, { recursive: true });
 
-        let destPath = path.join(targetFolder, filename);
-        const ext = path.extname(filename);
-        const nameWithoutExt = path.basename(filename, ext);
-        let counter = 1;
-        while (await access(destPath, FsConstants.F_OK).then(() => true).catch(() => false)) {
-            destPath = path.join(targetFolder, `${nameWithoutExt}_${counter}${ext}`);
-            counter++;
-        }
-
+        const destPath = path.join(targetFolder, filename);
         try {
             await rename(sourcePath, destPath);
         } catch {
             await copyFile(sourcePath, destPath);
             await unlink(sourcePath).catch(() => { });
         }
-        return { success: true, destPath };
+        return true;
     } catch (e) {
         console.error("[AutoCallRecorder] Failed to finalize stream recording:", e);
         if (activeTempPath) {
             try { await unlink(activeTempPath); } catch { }
             activeTempPath = null;
         }
-        return { success: false };
+        return false;
     }
 }
 
 /**
  * Saves the recording buffer directly to the specified folder.
  */
-export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, folderPath: string, filename: string): Promise<{ success: boolean; destPath?: string }> {
+export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, folderPath: string, filename: string): Promise<boolean> {
     try {
         const defaultFolder = getDefaultSaveFolder();
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
         await mkdir(targetFolder, { recursive: true });
-
-        let destPath = path.join(targetFolder, filename);
-        const ext = path.extname(filename);
-        const nameWithoutExt = path.basename(filename, ext);
-        let counter = 1;
-        while (await access(destPath, FsConstants.F_OK).then(() => true).catch(() => false)) {
-            destPath = path.join(targetFolder, `${nameWithoutExt}_${counter}${ext}`);
-            counter++;
-        }
-
-        const buf = toBuffer(buffer);
-        await writeFile(destPath, buf);
-        return { success: true, destPath };
+        const dest = path.join(targetFolder, filename);
+        const buf = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        await writeFile(dest, buf);
+        return true;
     } catch (e) {
-        console.error("[AutoCallRecorder] Failed to save recording natively:", e);
-        return { success: false };
+        console.error("Failed to save recording natively:", e);
+        return false;
     }
 }
 
 /**
  * Prompts the user with a Save As dialog, then saves the buffer.
  */
-export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, defaultFilename: string): Promise<{ success: boolean; destPath?: string }> {
+export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, defaultFilename: string): Promise<boolean> {
     try {
         const res = await dialog.showSaveDialog({
             title: "Save Call Recording",
             defaultPath: defaultFilename,
             filters: [
-                { name: "MP4 Video/Audio", extensions: ["mp4", "m4a"] },
-                { name: "WebM / MKV", extensions: ["webm", "mkv"] },
-                { name: "OGG Audio", extensions: ["ogg"] },
+                { name: "Video/Audio", extensions: ["webm", "mkv", "ogg"] },
                 { name: "All Files", extensions: ["*"] }
             ]
         });
 
-        if (res.canceled || !res.filePath) return { success: false };
+        if (res.canceled || !res.filePath) return false;
         
-        const buf = toBuffer(buffer);
+        const buf = Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
         await writeFile(res.filePath, buf);
-        return { success: true, destPath: res.filePath };
+        return true;
     } catch (e) {
-        console.error("[AutoCallRecorder] Failed to prompt save recording natively:", e);
-        return { success: false };
+        console.error("Failed to prompt save recording natively:", e);
+        return false;
     }
 }

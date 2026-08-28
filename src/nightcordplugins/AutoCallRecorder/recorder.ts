@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { showNotification } from "@api/Notifications";
 import { Toasts } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
-import { fixMediaFileDuration, fixMp4Duration, fixWebmBufferDuration } from "./mediaFixer";
+import fixWebmDuration from "fix-webm-duration";
 
 export interface RecordingOptions {
     mode: "voice" | "video";
@@ -48,93 +47,6 @@ export function isCurrentlyRecording(): boolean {
     return isRecording;
 }
 
-function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ext: string } {
-    if (opts.mode === "video") {
-        if (opts.videoFormat === "mkv") {
-            const mimes = [
-                "video/x-matroska;codecs=avc1,opus",
-                "video/x-matroska;codecs=avc1,aac",
-                "video/x-matroska",
-                "video/webm;codecs=vp8,opus",
-                "video/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "mkv" };
-            }
-            return { mimeType: "video/webm", ext: "mkv" };
-        } else if (opts.videoFormat === "webm") {
-            const mimes = [
-                "video/webm;codecs=vp9,opus",
-                "video/webm;codecs=vp8,opus",
-                "video/webm;codecs=h264,opus",
-                "video/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "webm" };
-            }
-            return { mimeType: "video/webm", ext: "webm" };
-        } else {
-            // Default: MP4 video
-            const mimes = [
-                "video/mp4;codecs=avc1,mp4a.40.2",
-                "video/mp4;codecs=avc1,opus",
-                "video/mp4;codecs=h264,aac",
-                "video/mp4;codecs=avc1",
-                "video/mp4;codecs=h264",
-                "video/mp4",
-                "video/webm;codecs=vp9,opus",
-                "video/webm;codecs=vp8,opus",
-                "video/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) {
-                    return { mimeType: m, ext: "mp4" };
-                }
-            }
-            return { mimeType: "video/webm", ext: "mp4" };
-        }
-    } else {
-        // Voice only: MUST use audio MIME types so MediaRecorder doesn't reject audio-only streams
-        if (opts.audioFormat === "ogg") {
-            const mimes = [
-                "audio/ogg;codecs=opus",
-                "audio/ogg",
-                "audio/webm;codecs=opus",
-                "audio/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "ogg" };
-            }
-            return { mimeType: "audio/webm", ext: "ogg" };
-        } else if (opts.audioFormat === "webm") {
-            const mimes = [
-                "audio/webm;codecs=opus",
-                "audio/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "webm" };
-            }
-            return { mimeType: "audio/webm", ext: "webm" };
-        } else {
-            // Default: MP4 audio / AAC or WebM Opus
-            const mimes = [
-                "audio/mp4;codecs=mp4a.40.2",
-                "audio/mp4;codecs=aac",
-                "audio/mp4;codecs=opus",
-                "audio/mp4",
-                "audio/webm;codecs=opus",
-                "audio/webm"
-            ];
-            for (const m of mimes) {
-                if (MediaRecorder.isTypeSupported(m)) {
-                    return { mimeType: m, ext: "mp4" };
-                }
-            }
-            return { mimeType: "audio/webm", ext: "mp4" };
-        }
-    }
-}
-
 export async function startRecording(opts: RecordingOptions): Promise<boolean> {
     if (isRecording) return false;
     activeOpts = opts;
@@ -145,7 +57,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         pendingChunkPromises = [];
         startTimeMs = Date.now();
 
-        const { mimeType, ext } = getMediaRecordingConfig(opts);
+        const ext = opts.mode === "video" ? (opts.videoFormat || "webm") : (opts.audioFormat || "ogg");
         const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
         currentFilename = `AutoCall_${dateStr}.${ext}`;
 
@@ -183,7 +95,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             const nativeCapture = (window as any).VencordNative?.desktopCapture;
             if (nativeCapture?.getSources) {
                 const sources = await nativeCapture.getSources();
-                const screenSource = sources.find((s: any) => s.id.startsWith("screen:"));
+                const screenSource = sources.find((s: any) => s.id?.startsWith("screen:"));
                 if (screenSource) desktopSourceId = screenSource.id;
             }
 
@@ -239,7 +151,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
                     systemSource.connect(recordDest);
                     capturedSystem = true;
 
-                    // Immediately stop video capture pipeline in voice-only mode to prevent GPU/CPU overhead
+                    // Stop video track in voice mode to save CPU/GPU
                     if (opts.mode === "voice") {
                         systemStream.getVideoTracks().forEach(t => t.stop());
                     }
@@ -262,7 +174,30 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         }
 
         let videoBitsPerSecond: number | undefined;
-        let recorderOptions: any = {};
+        let mimeType = "audio/webm";
+
+        if (opts.mode === "video") {
+            if (opts.videoQuality === "1080p60") videoBitsPerSecond = 8000000;
+            else if (opts.videoQuality === "720p30") videoBitsPerSecond = 3000000;
+            else if (opts.videoQuality === "480p25") videoBitsPerSecond = 1500000;
+
+            if (opts.videoFormat === "mkv") {
+                mimeType = "video/x-matroska;codecs=avc1,opus";
+                if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = "video/webm;codecs=vp8,opus";
+            } else {
+                mimeType = "video/webm;codecs=vp8,opus";
+            }
+        } else {
+            if (opts.audioFormat === "webm") {
+                mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+            } else {
+                if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) mimeType = "audio/ogg;codecs=opus";
+                else if (MediaRecorder.isTypeSupported("audio/ogg")) mimeType = "audio/ogg";
+                else mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+            }
+        }
+
+        const recorderOptions: any = {};
         if (mimeType && MediaRecorder.isTypeSupported(mimeType)) {
             recorderOptions.mimeType = mimeType;
         }
@@ -272,16 +207,12 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
 
         try {
             mediaRecorder = new MediaRecorder(finalStream, recorderOptions);
-        } catch (recorderErr) {
-            console.warn("[AutoCallRecorder] MediaRecorder init with options failed, falling back to default:", recorderErr);
+        } catch {
             mediaRecorder = new MediaRecorder(finalStream);
         }
 
         mediaRecorder.ondataavailable = e => {
             if (!e.data || e.data.size === 0) return;
-
-            // Always store in memory array as backup
-            recordedChunks.push(e.data);
 
             if (isStreamMode && native?.appendRecordingChunk) {
                 const p = (async () => {
@@ -293,14 +224,16 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
                     }
                 })();
                 pendingChunkPromises.push(p);
+            } else {
+                recordedChunks.push(e.data);
             }
         };
 
-        mediaRecorder.start(1000);
+        mediaRecorder.start(CHUNK_TIME_MS);
         isRecording = true;
 
         memoryCheckInterval = setInterval(() => {
-            if (!isRecording) return;
+            if (!isRecording || isStreamMode) return;
 
             if (opts.maxStorageGB > 0) {
                 const maxBytes = opts.maxStorageGB * 1024 * 1024 * 1024;
@@ -327,31 +260,12 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
     }
 }
 
-function notifyRecordingSaved(destPath?: string, filename?: string) {
-    if (activeOpts?.showSaveToast === false) return;
-    try {
-        showNotification({
-            id: "autocallrecorder-saved",
-            title: t("Call Recording Saved"),
-            body: destPath ? `${t("Saved to:")} ${destPath}` : `${t("Saved:")} ${filename}`,
-            icon: "nightcord",
-            type: "success",
-            duration: 6000
-        });
-    } catch { }
-    try {
-        Toasts.show(Toasts.create(t("Call Recording Saved"), Toasts.Type.SUCCESS));
-    } catch { }
-}
-
 export function stopRecording(): Promise<void> {
-    return new Promise(async resolve => {
-        // Guard against concurrent calls
+    return new Promise(resolve => {
         if (isStopping) { resolve(); return; }
 
         const opts = activeOpts;
-        const mr = mediaRecorder;
-        if (!isRecording || !mr || !opts) {
+        if (!isRecording || !mediaRecorder || !opts) {
             cleanup();
             resolve();
             return;
@@ -359,61 +273,47 @@ export function stopRecording(): Promise<void> {
 
         isStopping = true;
         const durationSecs = (Date.now() - startTimeMs) / 1000;
-        const shouldSave = durationSecs >= 0.8;
-        const mimeType = mr.mimeType || "audio/webm";
-        const durationMs = Math.max(0, Math.round(Date.now() - startTimeMs));
-        const filename = currentFilename;
-        const isStream = isStreamMode;
+        const shouldSave = durationSecs >= 1.5;
+        const mimeType = mediaRecorder.mimeType || "audio/webm";
 
-        const performSave = async () => {
-            try {
-                if (pendingChunkPromises.length > 0) {
-                    await Promise.allSettled(pendingChunkPromises);
-                    pendingChunkPromises = [];
-                }
+        mediaRecorder.onstop = async () => {
+            if (pendingChunkPromises.length > 0) {
+                await Promise.allSettled(pendingChunkPromises);
+                pendingChunkPromises = [];
+            }
 
-                if (shouldSave) {
-                    const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
-                    let saveResult: any = false;
-
-                    if (isStream && native?.finalizeStreamRecording) {
-                        try {
-                            saveResult = await native.finalizeStreamRecording(opts.savePath, filename, durationMs);
-                        } catch (e) {
-                            console.error("[AutoCallRecorder] Finalize stream failed:", e);
+            if (shouldSave) {
+                const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
+                if (isStreamMode && native?.finalizeStreamRecording) {
+                    try {
+                        const durationMs = Math.max(0, Math.round(Date.now() - startTimeMs));
+                        const ok = await native.finalizeStreamRecording(opts.savePath, currentFilename, durationMs);
+                        if (ok && opts.showSaveToast !== false) {
+                            Toasts.show(Toasts.create(t("Save record"), Toasts.Type.SUCCESS));
                         }
+                    } catch (e) {
+                        console.error("[AutoCallRecorder] Finalize stream failed:", e);
                     }
-
-                    const savedSuccess = typeof saveResult === "object" ? saveResult?.success : !!saveResult;
-                    const destPath = typeof saveResult === "object" ? saveResult?.destPath : undefined;
-
-                    if (!savedSuccess && recordedChunks.length > 0) {
-                        const blob = new Blob(recordedChunks, { type: mimeType });
-                        await saveBlobFallback(blob, opts, filename, durationMs);
-                    } else if (savedSuccess) {
-                        notifyRecordingSaved(destPath, filename);
-                    }
+                } else if (recordedChunks.length > 0) {
+                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    await saveBlobFallback(blob, opts, currentFilename);
                 }
-            } catch (err) {
-                console.error("[AutoCallRecorder] Error during performSave:", err);
-            } finally {
+            }
+            cleanup();
+            resolve();
+        };
+
+        try {
+            if (mediaRecorder.state !== "inactive") {
+                mediaRecorder.requestData();
+                mediaRecorder.stop();
+            } else {
                 cleanup();
                 resolve();
             }
-        };
-
-        if (mr.state !== "inactive") {
-            mr.onstop = () => {
-                performSave();
-            };
-            try {
-                mr.stop();
-            } catch (e) {
-                console.warn("[AutoCallRecorder] mr.stop() error:", e);
-                performSave();
-            }
-        } else {
-            performSave();
+        } catch (e) {
+            cleanup();
+            resolve();
         }
     });
 }
@@ -433,59 +333,50 @@ function cleanup() {
     activeOpts = null;
 }
 
-async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: string, durationMs = 0) {
+async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: string) {
+    const notifySuccess = () => {
+        if (opts.showSaveToast !== false) {
+            Toasts.show(Toasts.create(t("Save record"), Toasts.Type.SUCCESS));
+        }
+    };
+
+    let finalBlob = blob;
     try {
-        let arrayBuffer = await blob.arrayBuffer();
-        let uint8Array = new Uint8Array(arrayBuffer);
+        const durationMs = Date.now() - startTimeMs;
+        finalBlob = await fixWebmDuration(blob, durationMs);
+    } catch { }
 
-        if (durationMs > 0) {
-            if (/\.(mp4|m4a)$/i.test(filename)) {
-                try {
-                    uint8Array = fixMp4Duration(uint8Array, durationMs);
-                } catch { }
-            } else if (/\.(webm|mkv|ogg)$/i.test(filename)) {
-                try {
-                    uint8Array = await fixWebmBufferDuration(uint8Array, durationMs);
-                } catch { }
+    const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
+    if (native?.saveRecording) {
+        try {
+            const arrayBuffer = await finalBlob.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            if (!opts.autoSave && native?.promptSaveRecording) {
+                const success = await native.promptSaveRecording(uint8Array, filename);
+                if (success) notifySuccess();
+                return;
+            } else {
+                const success = await native.saveRecording(uint8Array, opts.savePath, filename);
+                if (success) notifySuccess();
+                return;
             }
+        } catch (e) {
+            console.error("Native fallback save failed", e);
         }
-
-        const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
-        if (native?.saveRecording) {
-            try {
-                if (!opts.autoSave && native?.promptSaveRecording) {
-                    const res = await native.promptSaveRecording(uint8Array, filename);
-                    const success = typeof res === "object" ? res?.success : !!res;
-                    const destPath = typeof res === "object" ? res?.destPath : undefined;
-                    if (success) { notifyRecordingSaved(destPath, filename); return; }
-                } else {
-                    const res = await native.saveRecording(uint8Array, opts.savePath, filename);
-                    const success = typeof res === "object" ? res?.success : !!res;
-                    const destPath = typeof res === "object" ? res?.destPath : undefined;
-                    if (success) { notifyRecordingSaved(destPath, filename); return; }
-                }
-            } catch (e) {
-                console.error("[AutoCallRecorder] Native fallback save failed:", e);
-            }
-        }
-
-        // Ultimate browser download fallback
-        const finalBlob = new Blob([uint8Array], { type: blob.type });
-        const url = URL.createObjectURL(finalBlob);
-        const a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 1000);
-
-        notifyRecordingSaved(undefined, filename);
-    } catch (err) {
-        console.error("[AutoCallRecorder] saveBlobFallback failed completely:", err);
     }
+
+    const url = URL.createObjectURL(finalBlob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 1000);
+
+    notifySuccess();
 }
