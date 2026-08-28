@@ -108,12 +108,13 @@ let spotifyPlaybackActive = false;
 let spotifyPlaybackTrackId: string | undefined;
 let spotifyTimeline = 0;
 let lastSpotifyLyricIndex: number | undefined;
-let pendingSpotifyBackwardLyricIndex: number | undefined;
-let spotifyBackwardConfirmations = 0;
 let nextSpotifyLyricsUpdateAt = 0;
 let pendingStatusUpdate: StatusUpdate | undefined;
 let statusUpdateInFlight = false;
 let lastSpotifyStatusText: string | undefined;
+let currentTrackPositionMs = 0;
+let trackPositionUpdatedAt = 0;
+let isSpotifyPlaying = false;
 const phraseIndexes = new Map<string, number>();
 const emojiIndexes = new Map<string, number>();
 
@@ -212,13 +213,21 @@ function restartSpotifyLyricsDelay() {
 }
 
 function getSpotifyPositionMs(reportedPosition?: number) {
-    if (reportedPosition !== undefined) return reportedPosition;
-    if (SpotifyPlayerStore.track?.id === spotifyPlaybackTrackId) return SpotifyPlayerStore.position;
+    if (reportedPosition !== undefined) {
+        currentTrackPositionMs = reportedPosition;
+        trackPositionUpdatedAt = Date.now();
+        return reportedPosition;
+    }
+    if (SpotifyPlayerStore?.track?.id === spotifyPlaybackTrackId && SpotifyPlayerStore.position !== undefined) {
+        return SpotifyPlayerStore.position;
+    }
+    if (isSpotifyPlaying && trackPositionUpdatedAt > 0) {
+        return currentTrackPositionMs + (Date.now() - trackPositionUpdatedAt);
+    }
     const activity = DiscordSpotifyStore?.getActivity?.();
-
     return activity && DiscordSpotifyStore?.getTrack?.()?.id === spotifyPlaybackTrackId
         ? Math.max(0, Date.now() - activity.timestamps.start)
-        : 0;
+        : currentTrackPositionMs;
 }
 
 function getSpotifyPosition(reportedPosition?: number) {
@@ -370,8 +379,10 @@ function applyNextStatus() {
 }
 
 function scheduleSpotifyLyric(reportedPosition?: number) {
-    if (lyricsTimeoutId !== undefined) clearTimeout(lyricsTimeoutId);
-    lyricsTimeoutId = undefined;
+    if (lyricsTimeoutId !== undefined) {
+        clearTimeout(lyricsTimeoutId);
+        lyricsTimeoutId = undefined;
+    }
 
     const trackId = spotifyPlaybackTrackId;
     if (!active || !settings.plain.useSpotifyLyrics || phrasesHavePriority() || !spotifyPlaybackActive || !trackId || spotifyLyricsTrackId !== trackId || !spotifyLyrics.length) return;
@@ -380,45 +391,15 @@ function scheduleSpotifyLyric(reportedPosition?: number) {
     const match = getSpotifyLyricMatch(position);
     const { currentIndex } = match;
 
-    if (lastSpotifyLyricIndex !== undefined && match.rawIndex < lastSpotifyLyricIndex) {
-        if (reportedPosition !== undefined && pendingSpotifyBackwardLyricIndex !== undefined && match.rawIndex >= pendingSpotifyBackwardLyricIndex && match.rawIndex <= pendingSpotifyBackwardLyricIndex + 1) {
-            spotifyBackwardConfirmations++;
-            pendingSpotifyBackwardLyricIndex = match.rawIndex;
-            if (spotifyBackwardConfirmations >= 3) {
-                spotifyTimeline++;
-                lastSpotifyLyricIndex = undefined;
-                lastSpotifyStatusText = undefined;
-                pendingSpotifyBackwardLyricIndex = undefined;
-                spotifyBackwardConfirmations = 0;
-                pendingStatusUpdate = undefined;
-            } else {
-                return;
-            }
-        } else {
-            if (reportedPosition !== undefined) {
-                pendingSpotifyBackwardLyricIndex = match.rawIndex;
-                spotifyBackwardConfirmations = 1;
-                return;
-            } else {
-                // We got a backward jump without a reportedPosition (e.g. from a timeout).
-                // This could be because SpotifyPlayerStore temporarily lost the track state.
-                // Try again in 1 second instead of killing the loop.
-                lyricsTimeoutId = setTimeout(scheduleSpotifyLyric, 1_000);
-                return;
-            }
-        }
-    } else {
-        pendingSpotifyBackwardLyricIndex = undefined;
-        spotifyBackwardConfirmations = 0;
+    if (match.staleIndex !== undefined) {
+        clearStaleSpotifyLyricStatus(trackId, match.staleIndex);
     }
 
-    if (match.staleIndex !== undefined) clearStaleSpotifyLyricStatus(trackId, match.staleIndex);
-
     const text = currentIndex !== undefined ? spotifyLyrics[currentIndex]?.text?.trim() : undefined;
-    if (currentIndex !== undefined && text && currentIndex !== lastSpotifyLyricIndex && CustomStatusSettings) {
+    if (currentIndex !== undefined && text && (currentIndex !== lastSpotifyLyricIndex || reportedPosition !== undefined) && CustomStatusSettings) {
         const remainingDelay = nextSpotifyLyricsUpdateAt - Date.now();
-        if (remainingDelay > 0) {
-            lyricsTimeoutId = setTimeout(scheduleSpotifyLyric, remainingDelay);
+        if (remainingDelay > 0 && reportedPosition === undefined) {
+            lyricsTimeoutId = setTimeout(() => scheduleSpotifyLyric(), remainingDelay);
             return;
         }
 
@@ -455,46 +436,55 @@ function scheduleSpotifyLyric(reportedPosition?: number) {
         currentIndex !== undefined ? spotifyLyrics[currentIndex].time + SPOTIFY_LYRIC_STALE_AFTER_SECONDS : undefined,
         match.nextIndex !== undefined ? spotifyLyrics[match.nextIndex].time : undefined
     ].filter((time): time is number => time !== undefined && time > position);
-    const nextTime = Math.min(...nextTimes);
+
+    const nextTime = nextTimes.length > 0 ? Math.min(...nextTimes) : Infinity;
 
     if (Number.isFinite(nextTime)) {
-        lyricsTimeoutId = setTimeout(scheduleSpotifyLyric, Math.max(100, (nextTime - position) * 1_000));
+        const delayMs = Math.max(150, (nextTime - position) * 1_000);
+        lyricsTimeoutId = setTimeout(() => scheduleSpotifyLyric(), delayMs);
     } else {
         lyricsTimeoutId = setTimeout(() => {
             lyricsTimeoutId = undefined;
-            spotifyLyrics = [];
-            resumePhraseRotation();
+            if (spotifyPlaybackActive && spotifyLyrics.length) {
+                clearCustomStatus();
+            }
         }, SPOTIFY_LYRICS_END_GRACE_MS);
     }
 }
 
 function resumePhraseRotation() {
-    if (lyricsTimeoutId !== undefined) clearTimeout(lyricsTimeoutId);
-    lyricsTimeoutId = undefined;
+    if (lyricsTimeoutId !== undefined) {
+        clearTimeout(lyricsTimeoutId);
+        lyricsTimeoutId = undefined;
+    }
 
     if (!spotifyOverrideActive) return;
     spotifyOverrideActive = false;
     spotifyTimeline++;
     lastSpotifyLyricIndex = undefined;
     lastSpotifyStatusText = undefined;
-    pendingSpotifyBackwardLyricIndex = undefined;
-    spotifyBackwardConfirmations = 0;
     restartRotation();
 }
 
 async function startSpotifyLyrics(track: SpotifyTrack, position?: number) {
     if (phrasesHavePriority()) return;
 
+    if (position !== undefined) {
+        currentTrackPositionMs = position;
+        trackPositionUpdatedAt = Date.now();
+    }
+    isSpotifyPlaying = true;
+
     const trackChanged = spotifyPlaybackTrackId !== track.id;
     spotifyPlaybackActive = true;
     spotifyPlaybackTrackId = track.id;
 
-    if (spotifyLyricsTrackId === track.id && !spotifyLyrics.length) return;
-
     if (!spotifyOverrideActive || trackChanged) pendingStatusUpdate = undefined;
     spotifyOverrideActive = true;
-    if (intervalId !== undefined) clearInterval(intervalId);
-    intervalId = undefined;
+    if (intervalId !== undefined) {
+        clearInterval(intervalId);
+        intervalId = undefined;
+    }
 
     if (trackChanged) {
         spotifyLyrics = [];
@@ -502,11 +492,11 @@ async function startSpotifyLyrics(track: SpotifyTrack, position?: number) {
         spotifyTimeline++;
         lastSpotifyLyricIndex = undefined;
         lastSpotifyStatusText = undefined;
-        pendingSpotifyBackwardLyricIndex = undefined;
-        spotifyBackwardConfirmations = 0;
         nextSpotifyLyricsUpdateAt = 0;
-        if (lyricsTimeoutId !== undefined) clearTimeout(lyricsTimeoutId);
-        lyricsTimeoutId = undefined;
+        if (lyricsTimeoutId !== undefined) {
+            clearTimeout(lyricsTimeoutId);
+            lyricsTimeoutId = undefined;
+        }
     }
 
     if (spotifyLyricsTrackId === track.id) {
@@ -534,13 +524,15 @@ async function startSpotifyLyrics(track: SpotifyTrack, position?: number) {
             uri: `spotify:artist:${artist.id ?? ""}`
         }))
     };
+
     const lyricsInfo = await getLyrics(lyricsTrack).catch(error => {
         logger.error("Could not load Spotify lyrics.", error);
         return null;
     });
+
     if (loadingSpotifyTrackId === track.id) loadingSpotifyTrackId = undefined;
 
-    if (!active || !settings.plain.useSpotifyLyrics || phrasesHavePriority() || !spotifyPlaybackActive || DiscordSpotifyStore?.getTrack?.()?.id !== track.id) return;
+    if (!active || !settings.plain.useSpotifyLyrics || phrasesHavePriority() || !spotifyPlaybackActive || spotifyPlaybackTrackId !== track.id) return;
 
     spotifyLyricsTrackId = track.id;
     spotifyLyrics = lyricsInfo?.lyricsVersions[lyricsInfo.useLyric]
@@ -552,7 +544,7 @@ async function startSpotifyLyrics(track: SpotifyTrack, position?: number) {
         return;
     }
 
-    scheduleSpotifyLyric();
+    scheduleSpotifyLyric(position);
 }
 
 function clearCustomStatus() {
@@ -571,7 +563,15 @@ function clearCustomStatus() {
 
 function stopSpotifyLyrics() {
     spotifyPlaybackActive = false;
+    isSpotifyPlaying = false;
     loadingSpotifyTrackId = undefined;
+    spotifyPlaybackTrackId = undefined;
+    spotifyLyricsTrackId = undefined;
+    spotifyLyrics = [];
+    if (lyricsTimeoutId !== undefined) {
+        clearTimeout(lyricsTimeoutId);
+        lyricsTimeoutId = undefined;
+    }
     clearCustomStatus();
     resumePhraseRotation();
 }
@@ -584,12 +584,21 @@ function syncSpotifyLyrics(enabled: boolean) {
         return;
     }
 
-    const track = DiscordSpotifyStore?.getTrack?.();
-    const activity = DiscordSpotifyStore?.getActivity?.();
-    if (!track || !activity) return;
+    const playerTrack = SpotifyPlayerStore?.track;
+    const playerPos = SpotifyPlayerStore?.position;
+    const playerPlaying = SpotifyPlayerStore?.isPlaying;
 
-    void startSpotifyLyrics(track, Math.max(0, Date.now() - activity.timestamps.start))
-        .catch(error => logger.error("Could not load Spotify lyrics.", error));
+    if (playerTrack && playerPlaying) {
+        void startSpotifyLyrics(playerTrack, playerPos);
+        return;
+    }
+
+    const discordTrack = DiscordSpotifyStore?.getTrack?.();
+    const activity = DiscordSpotifyStore?.getActivity?.();
+    if (discordTrack && activity) {
+        const pos = Math.max(0, Date.now() - activity.timestamps.start);
+        void startSpotifyLyrics(discordTrack, pos);
+    }
 }
 
 function restartRotation() {
@@ -854,34 +863,53 @@ const settings = definePluginSettings({
     sourceFileName?: string;
 }>();
 
+function onSpotifyStoreChange() {
+    if (!active || !settings.plain.useSpotifyLyrics || phrasesHavePriority()) return;
+    const track = SpotifyPlayerStore?.track;
+    const isPlaying = SpotifyPlayerStore?.isPlaying;
+    const position = SpotifyPlayerStore?.position;
+
+    if (!track || !isPlaying) {
+        if (spotifyPlaybackActive) stopSpotifyLyrics();
+        return;
+    }
+
+    void startSpotifyLyrics(track, position);
+}
+
 export default definePlugin({
     name: "StatusCycler",
     description: "Automatically rotates through custom status phrases and emojis at a configurable interval.",
-    authors: [{ name: "irritably",
-     id: 928787166916640838n }],
+    authors: [{ name: "irritably", id: 928787166916640838n }],
     tags: ["Activity", "Utility"],
     dependencies: ["UserSettingsAPI"],
     settings,
 
     start() {
         active = true;
+        try {
+            SpotifyPlayerStore?.addChangeListener?.(onSpotifyStoreChange);
+        } catch {}
         syncSpotifyLyrics(settings.store.useSpotifyLyrics);
         restartRotation();
     },
 
     stop() {
         active = false;
+        try {
+            SpotifyPlayerStore?.removeChangeListener?.(onSpotifyStoreChange);
+        } catch {}
         spotifyPlaybackActive = false;
+        isSpotifyPlaying = false;
         spotifyOverrideActive = false;
         loadingSpotifyTrackId = undefined;
         spotifyTimeline++;
         lastSpotifyLyricIndex = undefined;
         lastSpotifyStatusText = undefined;
-        pendingSpotifyBackwardLyricIndex = undefined;
-        spotifyBackwardConfirmations = 0;
         pendingStatusUpdate = undefined;
         spotifyLyrics = [];
         spotifyLyricsTrackId = undefined;
+        spotifyPlaybackTrackId = undefined;
         if (intervalId !== undefined) {
             clearInterval(intervalId);
             intervalId = undefined;
