@@ -1,43 +1,43 @@
 /* ── SoundCord Player — Premium Full-Featured Music Station ── */
 
-/* ── SoundCord HeaderBar Sway Animation ── */
+/* ── SoundCord HeaderBar Fast & Fluid Single-Shot Sway Animation ── */
 .nc-soundcord-icon {
-    transform-origin: center bottom;
-    transition: transform 0.25s ease;
+    transform-origin: 50% 90%;
     will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }
 
 :hover > .nc-soundcord-icon,
 [class*="iconWrapper"]:hover .nc-soundcord-icon,
 [class*="clickable"]:hover .nc-soundcord-icon,
+.nightcord-header-btn:hover .nc-soundcord-icon,
 button:hover .nc-soundcord-icon,
 .nc-soundcord-icon:hover {
-    animation: nc-soundcord-sway 1.3s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+    animation: nc-soundcord-sway 0.52s cubic-bezier(0.25, 1, 0.5, 1) 1;
 }
 
 @keyframes nc-soundcord-sway {
     0% {
-        transform: rotate(0deg) scale(1);
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
     }
-    15% {
-        transform: rotate(-14deg) scale(1.1);
+    22% {
+        transform: translate3d(0, 0, 0) rotate(-16deg) scale(1.12);
     }
-    35% {
-        transform: rotate(12deg) scale(1.1);
+    48% {
+        transform: translate3d(0, 0, 0) rotate(13deg) scale(1.1);
     }
-    55% {
-        transform: rotate(-8deg) scale(1.06);
+    72% {
+        transform: translate3d(0, 0, 0) rotate(-5deg) scale(1.03);
     }
-    75% {
-        transform: rotate(6deg) scale(1.03);
-    }
-    90% {
-        transform: rotate(-2deg) scale(1.01);
+    88% {
+        transform: translate3d(0, 0, 0) rotate(2deg) scale(1.01);
     }
     100% {
-        transform: rotate(0deg) scale(1);
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
     }
 }
+
 
 
 .sc-modal-root {

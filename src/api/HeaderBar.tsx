@@ -619,6 +619,34 @@ function HeaderBarButtons() {
 
     return (
         <div className="vc-header-bar-btns" style={{ display: "contents" }}>
+            <style>{`
+                .nightcord-header-btn svg,
+                .vc-header-bar-btns svg {
+                    transform-origin: 50% 50%;
+                    will-change: transform;
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+                .nightcord-header-btn:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="clickable"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="iconWrapper"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim) {
+                    animation: nc-header-btn-spring 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+                }
+                @keyframes nc-header-btn-spring {
+                    0% {
+                        transform: translate3d(0, 0, 0) scale(1);
+                    }
+                    35% {
+                        transform: translate3d(0, 0, 0) scale(1.18);
+                    }
+                    70% {
+                        transform: translate3d(0, 0, 0) scale(0.96);
+                    }
+                    100% {
+                        transform: translate3d(0, 0, 0) scale(1);
+                    }
+                }
+            `}</style>
             {Array.from(headerBarButtons)
                 .sort(([, a], [, b]) => a.priority - b.priority)
                 .map(([id, entry]) => {
