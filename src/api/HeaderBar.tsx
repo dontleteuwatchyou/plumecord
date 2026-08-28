@@ -627,9 +627,9 @@ function HeaderBarButtons() {
                     backface-visibility: hidden;
                     -webkit-backface-visibility: hidden;
                 }
-                .nightcord-header-btn:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim),
-                .vc-header-bar-btns [class*="clickable"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim),
-                .vc-header-bar-btns [class*="iconWrapper"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-no-anim) {
+                .nightcord-header-btn:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="clickable"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim),
+                .vc-header-bar-btns [class*="iconWrapper"]:hover svg:not(.nc-multi-instance-icon):not(.nc-soundcord-icon):not(.nc-sway-icon):not(.nc-cleaner-icon):not(.nc-no-anim) {
                     animation: nc-header-btn-spring 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
                 }
                 @keyframes nc-header-btn-spring {
@@ -644,6 +644,93 @@ function HeaderBarButtons() {
                     }
                     100% {
                         transform: translate3d(0, 0, 0) scale(1);
+                    }
+                }
+
+                /* ── Sway Animations (SoundCord, CustomProfile, VoiceSearch, MessageCleaner) ── */
+                .nc-sway-icon,
+                .nc-soundcord-icon,
+                .nc-cleaner-icon {
+                    transform-origin: 50% 90%;
+                    will-change: transform;
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+
+                :hover > .nc-sway-icon,
+                [class*="iconWrapper"]:hover .nc-sway-icon,
+                [class*="clickable"]:hover .nc-sway-icon,
+                .nightcord-header-btn:hover .nc-sway-icon,
+                button:hover .nc-sway-icon,
+                .nc-sway-icon:hover,
+                :hover > .nc-soundcord-icon,
+                [class*="iconWrapper"]:hover .nc-soundcord-icon,
+                [class*="clickable"]:hover .nc-soundcord-icon,
+                .nightcord-header-btn:hover .nc-soundcord-icon,
+                button:hover .nc-soundcord-icon,
+                .nc-soundcord-icon:hover,
+                :hover > .nc-cleaner-icon,
+                [class*="iconWrapper"]:hover .nc-cleaner-icon,
+                [class*="clickable"]:hover .nc-cleaner-icon,
+                .nightcord-header-btn:hover .nc-cleaner-icon,
+                button:hover .nc-cleaner-icon,
+                .nc-cleaner-icon:hover {
+                    animation: nc-soundcord-sway 0.52s cubic-bezier(0.25, 1, 0.5, 1) 1;
+                }
+
+                @keyframes nc-soundcord-sway {
+                    0% {
+                        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+                    }
+                    22% {
+                        transform: translate3d(0, 0, 0) rotate(-16deg) scale(1.12);
+                    }
+                    48% {
+                        transform: translate3d(0, 0, 0) rotate(13deg) scale(1.1);
+                    }
+                    72% {
+                        transform: translate3d(0, 0, 0) rotate(-5deg) scale(1.03);
+                    }
+                    88% {
+                        transform: translate3d(0, 0, 0) rotate(2deg) scale(1.01);
+                    }
+                    100% {
+                        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+                    }
+                }
+
+                /* ── MessageCleaner Jumping Trash Lid Animation ── */
+                .nc-trash-lid {
+                    transform-origin: 50% 25%;
+                    will-change: transform;
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+
+                :hover > .nc-cleaner-icon .nc-trash-lid,
+                [class*="iconWrapper"]:hover .nc-cleaner-icon .nc-trash-lid,
+                [class*="clickable"]:hover .nc-cleaner-icon .nc-trash-lid,
+                .nightcord-header-btn:hover .nc-cleaner-icon .nc-trash-lid,
+                button:hover .nc-cleaner-icon .nc-trash-lid,
+                .nc-cleaner-icon:hover .nc-trash-lid {
+                    animation: nc-trash-lid-jump 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+                }
+
+                @keyframes nc-trash-lid-jump {
+                    0% {
+                        transform: translate3d(0, 0, 0) rotate(0deg);
+                    }
+                    25% {
+                        transform: translate3d(1px, -4.5px, 0) rotate(-14deg);
+                    }
+                    55% {
+                        transform: translate3d(-0.5px, -3px, 0) rotate(8deg);
+                    }
+                    78% {
+                        transform: translate3d(0, -1px, 0) rotate(-2deg);
+                    }
+                    100% {
+                        transform: translate3d(0, 0, 0) rotate(0deg);
                     }
                 }
             `}</style>
