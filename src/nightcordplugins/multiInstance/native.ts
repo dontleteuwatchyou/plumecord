@@ -301,22 +301,28 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
 // Crée le script de préchargement qui injecte le token
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Ensemble des chemins de preloads actuellement utilisés par une fenêtre MI ouverte.
+ * Un fichier est dans cet ensemble tant que sa fenêtre est vivante.
+ * On ne supprime QUE les fichiers absents de cet ensemble (= orphelins vrais).
+ */
+const activePreloads = new Set<string>();
+
 function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}): string {
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
     // ── Nettoyage des preloads orphelins ────────────────────────────────────────
-    // Les fichiers token-preload-{timestamp}.js laissés sur disque après la
-    // fermeture d'une fenêtre MI (notamment si Discord a été tué brutalement)
-    // sont rechargés au prochain démarrage et injectent un token potentiellement
-    // expiré → Discord reçoit 401 → déconnexion. On les supprime ici.
+    // Supprime uniquement les fichiers token-preload-*.js qui ne sont PAS dans
+    // activePreloads (= fenêtre MI fermée ou crash précédent).
+    // On ne touche JAMAIS aux fichiers des fenêtres encore ouvertes, peu importe
+    // leur âge — un utilisateur peut garder une fenêtre MI ouverte des heures.
     try {
-        const now = Date.now();
-        const ONE_HOUR = 3_600_000;
         for (const f of readdirSync(dir)) {
-            const m = f.match(/^token-preload-(\d+)\.js$/);
-            if (m && now - parseInt(m[1], 10) > ONE_HOUR) {
-                try { unlinkSync(join(dir, f)); } catch {}
+            if (!/^token-preload-\d+\.js$/.test(f)) continue;
+            const fullPath = join(dir, f);
+            if (!activePreloads.has(fullPath)) {
+                try { unlinkSync(fullPath); } catch {}
             }
         }
     } catch {}
@@ -394,6 +400,8 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
 
     const filePath = join(dir, "token-preload-" + Date.now() + ".js");
     writeFileSync(filePath, script, "utf-8");
+    // Enregistre ce preload comme actif — sera retiré dans win.once("closed")
+    activePreloads.add(filePath);
     return filePath;
 }
 
@@ -564,7 +572,8 @@ export async function openInstanceWindow(
             openWindows.delete(userId);
             // Nettoie les service workers de la session pour couper définitivement les notifs
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
-            // Supprime le fichier de preload temporaire pour éviter qu'ils s'accumulent sur disque
+            // Retire le preload de l'ensemble actif puis supprime le fichier
+            activePreloads.delete(preloadPath);
             try { unlinkSync(preloadPath); } catch {}
         });
 
@@ -751,6 +760,7 @@ export async function openInstanceWindowGrouped(
             cleanupNotifIpc();
             openGroupedWindows.delete(userId);
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
+            activePreloads.delete(preloadPath);
             try { unlinkSync(preloadPath); } catch {}
         });
 
