@@ -190,7 +190,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
     const openTutorialVideo = (e: React.MouseEvent) => {
         e.stopPropagation();
         const videoName = getTutorialVideoName(plugin.name) ?? plugin.name;
-        const videoUrl = `https://git.${domain}/nightcord/nightcord-tutorials/raw/branch/main/videos/${encodeURIComponent(videoName)}.mp4`;
+        const videoUrl = `https://source.${domain}/nightcord/nightcord-tutorials/raw/branch/main/videos/${encodeURIComponent(videoName)}.mp4`;
         const hasSettings = plugin.settings && Object.keys(plugin.settings).length > 0;
 
         openModal(props => (

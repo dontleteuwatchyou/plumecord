@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { showNotification } from "@api/Notifications";
 import { Toasts } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { fixMediaFileDuration, fixMp4Duration, fixWebmBufferDuration } from "./mediaFixer";
@@ -329,13 +330,31 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
     }
 }
 
+function notifyRecordingSaved(destPath?: string, filename?: string) {
+    if (activeOpts?.showSaveToast === false) return;
+    try {
+        showNotification({
+            id: "autocallrecorder-saved",
+            title: t("Call Recording Saved"),
+            body: destPath ? `${t("Saved to:")} ${destPath}` : `${t("Saved:")} ${filename}`,
+            icon: "nightcord",
+            type: "success",
+            duration: 6000
+        });
+    } catch { }
+    try {
+        Toasts.show(Toasts.create(t("Call Recording Saved"), Toasts.Type.SUCCESS));
+    } catch { }
+}
+
 export function stopRecording(): Promise<void> {
-    return new Promise(resolve => {
+    return new Promise(async resolve => {
         // Guard against concurrent calls
         if (isStopping) { resolve(); return; }
 
         const opts = activeOpts;
-        if (!isRecording || !mediaRecorder || !opts) {
+        const mr = mediaRecorder;
+        if (!isRecording || !mr || !opts) {
             cleanup();
             resolve();
             return;
@@ -344,51 +363,60 @@ export function stopRecording(): Promise<void> {
         isStopping = true;
         const durationSecs = (Date.now() - startTimeMs) / 1000;
         const shouldSave = durationSecs >= 0.8;
-        const mimeType = mediaRecorder.mimeType || "audio/webm";
+        const mimeType = mr.mimeType || "audio/webm";
+        const durationMs = Math.max(0, Math.round(Date.now() - startTimeMs));
+        const filename = currentFilename;
+        const isStream = isStreamMode;
 
-        mediaRecorder.onstop = async () => {
-            // Wait for all pending stream chunk promises to settle
-            if (pendingChunkPromises.length > 0) {
-                await Promise.allSettled(pendingChunkPromises);
-                pendingChunkPromises = [];
-            }
+        const performSave = async () => {
+            try {
+                if (pendingChunkPromises.length > 0) {
+                    await Promise.allSettled(pendingChunkPromises);
+                    pendingChunkPromises = [];
+                }
 
-            if (shouldSave) {
-                const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
-                const durationMs = Math.max(0, Math.round(Date.now() - startTimeMs));
-                let saved = false;
+                if (shouldSave) {
+                    const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
+                    let saveResult: any = false;
 
-                if (isStreamMode && native?.finalizeStreamRecording) {
-                    try {
-                        saved = await native.finalizeStreamRecording(opts.savePath, currentFilename, durationMs);
-                    } catch (e) {
-                        console.error("[AutoCallRecorder] Finalize stream failed:", e);
+                    if (isStream && native?.finalizeStreamRecording) {
+                        try {
+                            saveResult = await native.finalizeStreamRecording(opts.savePath, filename, durationMs);
+                        } catch (e) {
+                            console.error("[AutoCallRecorder] Finalize stream failed:", e);
+                        }
+                    }
+
+                    const savedSuccess = typeof saveResult === "object" ? saveResult?.success : !!saveResult;
+                    const destPath = typeof saveResult === "object" ? saveResult?.destPath : undefined;
+
+                    if (!savedSuccess && recordedChunks.length > 0) {
+                        const blob = new Blob(recordedChunks, { type: mimeType });
+                        await saveBlobFallback(blob, opts, filename, durationMs);
+                    } else if (savedSuccess) {
+                        notifyRecordingSaved(destPath, filename);
                     }
                 }
-
-                // If streaming failed or wasn't active, fallback to direct buffer save
-                if (!saved && recordedChunks.length > 0) {
-                    const blob = new Blob(recordedChunks, { type: mimeType });
-                    await saveBlobFallback(blob, opts, currentFilename, durationMs);
-                } else if (saved && opts.showSaveToast !== false) {
-                    Toasts.show(Toasts.create(t("Save record"), Toasts.Type.SUCCESS));
-                }
-            }
-            cleanup();
-            resolve();
-        };
-
-        try {
-            if (mediaRecorder.state !== "inactive") {
-                mediaRecorder.requestData();
-                mediaRecorder.stop();
-            } else {
+            } catch (err) {
+                console.error("[AutoCallRecorder] Error during performSave:", err);
+            } finally {
                 cleanup();
                 resolve();
             }
-        } catch (e) {
-            cleanup();
-            resolve();
+        };
+
+        if (mr.state !== "inactive") {
+            mr.onstop = () => {
+                performSave();
+            };
+            try {
+                mr.stop();
+            } catch (e) {
+                console.warn("[AutoCallRecorder] mr.stop() error:", e);
+                performSave();
+            }
+        } else {
+            performSave();
         }
     });
 }
@@ -409,12 +437,6 @@ function cleanup() {
 }
 
 async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: string, durationMs = 0) {
-    const notifySuccess = () => {
-        if (opts.showSaveToast !== false) {
-            Toasts.show(Toasts.create(t("Save record"), Toasts.Type.SUCCESS));
-        }
-    };
-
     try {
         let arrayBuffer = await blob.arrayBuffer();
         let uint8Array = new Uint8Array(arrayBuffer);
@@ -435,11 +457,15 @@ async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: st
         if (native?.saveRecording) {
             try {
                 if (!opts.autoSave && native?.promptSaveRecording) {
-                    const success = await native.promptSaveRecording(uint8Array, filename);
-                    if (success) { notifySuccess(); return; }
+                    const res = await native.promptSaveRecording(uint8Array, filename);
+                    const success = typeof res === "object" ? res?.success : !!res;
+                    const destPath = typeof res === "object" ? res?.destPath : undefined;
+                    if (success) { notifyRecordingSaved(destPath, filename); return; }
                 } else {
-                    const success = await native.saveRecording(uint8Array, opts.savePath, filename);
-                    if (success) { notifySuccess(); return; }
+                    const res = await native.saveRecording(uint8Array, opts.savePath, filename);
+                    const success = typeof res === "object" ? res?.success : !!res;
+                    const destPath = typeof res === "object" ? res?.destPath : undefined;
+                    if (success) { notifyRecordingSaved(destPath, filename); return; }
                 }
             } catch (e) {
                 console.error("[AutoCallRecorder] Native fallback save failed:", e);
@@ -461,7 +487,7 @@ async function saveBlobFallback(blob: Blob, opts: RecordingOptions, filename: st
             URL.revokeObjectURL(url);
         }, 1000);
 
-        notifySuccess();
+        notifyRecordingSaved(undefined, filename);
     } catch (err) {
         console.error("[AutoCallRecorder] saveBlobFallback failed completely:", err);
     }

@@ -48,6 +48,23 @@ let isQueueRunning = false;
 let shouldStop = false;
 let currentTask: { name: string; progress: string; percentage: number } | null = null;
 
+let deleteDelay = 800;
+try {
+    const saved = localStorage.getItem("nightcord_mc_delay");
+    if (saved) deleteDelay = Math.max(50, Math.min(5000, parseInt(saved, 10) || 800));
+} catch { }
+
+export function getDeleteDelay(): number {
+    return deleteDelay;
+}
+
+export function setDeleteDelay(val: number) {
+    deleteDelay = Math.max(50, Math.min(5000, val));
+    try {
+        localStorage.setItem("nightcord_mc_delay", deleteDelay.toString());
+    } catch { }
+}
+
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(l => l());
 
@@ -140,7 +157,7 @@ async function cleanChannel(channelId: string, logEntry: LogEntry, taskName: str
                 };
                 emit();
                 
-                await new Promise(resolve => setTimeout(resolve, 800)); // Rate limit safety
+                await new Promise(resolve => setTimeout(resolve, getDeleteDelay())); // User-configured deletion speed
             }
             
             logEntry.skipped += messages.length - validMessages.length;
@@ -234,7 +251,7 @@ async function cleanGuild(guildId: string, logEntry: LogEntry, taskName: string)
                 };
                 emit();
                 
-                await new Promise(resolve => setTimeout(resolve, 800));
+                await new Promise(resolve => setTimeout(resolve, getDeleteDelay())); // User-configured deletion speed
             }
         } catch (e: any) {
             if (e?.status === 429) {
@@ -493,6 +510,59 @@ const MODAL_STYLES = `
     background: #1a1b1e;
     border-radius: 3px;
 }
+.mcv2-select-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 8px;
+    background: #2b2d31;
+    color: #949ba4;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+    user-select: none;
+    white-space: nowrap;
+}
+.mcv2-select-all-btn:hover {
+    background: #383a40;
+    color: #dbdee1;
+}
+.mcv2-select-all-btn.active {
+    background: rgba(237, 66, 69, 0.15);
+    color: #ffffff;
+    border-color: #ed4245;
+}
+.mcv2-select-all-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #80848e;
+    transition: all 0.2s;
+}
+.mcv2-select-all-btn.active .mcv2-select-all-dot {
+    background: #ed4245;
+    box-shadow: 0 0 6px rgba(237, 66, 69, 0.8);
+}
+.mcv2-setting-card {
+    background: #2b2d31;
+    border-radius: 8px;
+    padding: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.mcv2-speed-slider {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #1e1f22;
+    outline: none;
+    cursor: pointer;
+    accent-color: #ed4245;
+    margin: 12px 0;
+}
 `;
 
 function useForceUpdate() {
@@ -568,6 +638,16 @@ function MessageCleanerTab() {
         });
     }, [search]);
 
+    const allSelected = channels.length > 0 && selected.length === channels.length;
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelected([]);
+        } else {
+            setSelected(channels.map((c: any) => c.id));
+        }
+    };
+
     const toggle = (id: string) => {
         if (selected.includes(id)) setSelected(selected.filter(x => x !== id));
         else setSelected([...selected, id]);
@@ -585,12 +665,23 @@ function MessageCleanerTab() {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <div style={{ flex: "0 0 auto", marginBottom: "15px" }}>
-                <TextInput
-                    placeholder="Search DMs..."
-                    value={search}
-                    onChange={setSearch}
-                />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "0 0 auto", marginBottom: "15px" }}>
+                <div style={{ flex: 1 }}>
+                    <TextInput
+                        placeholder={t("Search DMs...")}
+                        value={search}
+                        onChange={setSearch}
+                    />
+                </div>
+                <button
+                    className={`mcv2-select-all-btn ${allSelected ? "active" : ""}`}
+                    onClick={toggleSelectAll}
+                    type="button"
+                    title={allSelected ? t("Deselect All") : t("Select All")}
+                >
+                    <span className="mcv2-select-all-dot" />
+                    {allSelected ? t("Deselect All") : t("Select All")}
+                </button>
             </div>
             <div className="mcv2-scroller" style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
                 {channels.length === 0 ? <div style={{ textAlign: "center", color: "#b5bac1", padding: "20px" }}>{t("No DMs or Friends found.")}</div> : channels.map((ch: any) => (
@@ -627,6 +718,16 @@ function ServersCleanerTab() {
         return gs.filter((g: any) => g.name.toLowerCase().includes(search.toLowerCase()));
     }, [search]);
 
+    const allSelected = guilds.length > 0 && selected.length === guilds.length;
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelected([]);
+        } else {
+            setSelected(guilds.map((g: any) => g.id));
+        }
+    };
+
     const toggle = (id: string) => {
         if (selected.includes(id)) setSelected(selected.filter(x => x !== id));
         else setSelected([...selected, id]);
@@ -644,12 +745,23 @@ function ServersCleanerTab() {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <div style={{ flex: "0 0 auto", marginBottom: "15px" }}>
-                <TextInput
-                    placeholder="Search Servers..."
-                    value={search}
-                    onChange={setSearch}
-                />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: "0 0 auto", marginBottom: "15px" }}>
+                <div style={{ flex: 1 }}>
+                    <TextInput
+                        placeholder={t("Search Servers...")}
+                        value={search}
+                        onChange={setSearch}
+                    />
+                </div>
+                <button
+                    className={`mcv2-select-all-btn ${allSelected ? "active" : ""}`}
+                    onClick={toggleSelectAll}
+                    type="button"
+                    title={allSelected ? t("Deselect All") : t("Select All")}
+                >
+                    <span className="mcv2-select-all-dot" />
+                    {allSelected ? t("Deselect All") : t("Select All")}
+                </button>
             </div>
             <div className="mcv2-scroller" style={{ flex: 1, overflowY: "auto", paddingRight: "8px" }}>
                 {guilds.map((g: any) => (
@@ -704,11 +816,63 @@ function ChannelsCleanerTab() {
     );
 }
 
+function SettingsTab() {
+    const [delay, setDelay] = React.useState(getDeleteDelay);
+
+    const handleChange = (val: number) => {
+        setDelay(val);
+        setDeleteDelay(val);
+    };
+
+    const getSpeedLabel = (ms: number) => {
+        if (ms <= 300) return `${ms}ms — ${t("Ultra Fast (Caution: high rate limits)")}`;
+        if (ms <= 600) return `${ms}ms — ${t("Fast")}`;
+        if (ms <= 1200) return `${ms}ms — ${t("Balanced / Recommended")}`;
+        return `${ms}ms — ${t("Safe / Stealth (Low rate limit risk)")}`;
+    };
+
+    return (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px", height: "100%" }}>
+            <div className="mcv2-setting-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+                    <div>
+                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
+                            {t("Deletion Speed & Delay")}
+                        </div>
+                        <div style={{ fontSize: "13px", color: "#949ba4", marginTop: "4px" }}>
+                            {t("Configure the time interval between each deleted message. Lower values delete faster.")}
+                        </div>
+                    </div>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: delay <= 400 ? "#f0b232" : "#23a55a", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "6px", whiteSpace: "nowrap" }}>
+                        {delay} ms
+                    </span>
+                </div>
+
+                <input
+                    type="range"
+                    min={50}
+                    max={2500}
+                    step={50}
+                    value={delay}
+                    onChange={e => handleChange(Number(e.target.value))}
+                    className="mcv2-speed-slider"
+                />
+
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "10px", fontSize: "12px", color: "#949ba4" }}>
+                    <span>50ms ({t("Fast")})</span>
+                    <span style={{ color: "#dbdee1", fontWeight: 600 }}>{getSpeedLabel(delay)}</span>
+                    <span>2500ms ({t("Safe")})</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function LogsTab() {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             <div className="mcv2-scroller" style={{ flex: 1, overflowY: "auto", paddingRight: "8px", marginBottom: "15px" }}>
-                {logs.length === 0 ? <div style={{ textAlign: "center", color: "#b5bac1", padding: "20px" }}>No logs yet.</div> : logs.map(l => (
+                {logs.length === 0 ? <div style={{ textAlign: "center", color: "#b5bac1", padding: "20px" }}>{t("No logs yet.")}</div> : logs.map(l => (
                     <div key={l.id} className="mcv2-log-item">
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
                             <strong style={{ color: "#dbdee1" }}>{l.type.toUpperCase()}: {l.targetName}</strong>
@@ -742,6 +906,7 @@ function CleanerModal({ rootProps }: { rootProps: any }) {
         { id: "dms", label: t("Message Cleaner") },
         { id: "servers", label: t("Servers Cleaner") },
         { id: "channels", label: t("Channels Cleaner") },
+        { id: "settings", label: t("Settings") },
         { id: "logs", label: t("Logs") }
     ];
 
@@ -778,6 +943,7 @@ function CleanerModal({ rootProps }: { rootProps: any }) {
                 {activeTab === "dms" && <MessageCleanerTab />}
                 {activeTab === "servers" && <ServersCleanerTab />}
                 {activeTab === "channels" && <ChannelsCleanerTab />}
+                {activeTab === "settings" && <SettingsTab />}
                 {activeTab === "logs" && <LogsTab />}
             </ModalContent>
         </ModalRoot>

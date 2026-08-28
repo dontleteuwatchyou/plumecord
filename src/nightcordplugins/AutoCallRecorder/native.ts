@@ -6,7 +6,7 @@
 
 import { app, dialog, IpcMainInvokeEvent } from "electron";
 import { constants as FsConstants, createWriteStream, WriteStream } from "node:fs";
-import { access, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { fixMediaFileDuration } from "./mediaFixer";
 
@@ -27,6 +27,18 @@ function getDefaultSaveFolder(): string {
         if (docs && docs.trim()) return docs.trim();
     } catch { }
     return process.cwd();
+}
+
+function toBuffer(data: any): Buffer {
+    if (!data) return Buffer.alloc(0);
+    if (Buffer.isBuffer(data)) return data;
+    if (data instanceof Uint8Array) {
+        return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+    }
+    if (data instanceof ArrayBuffer) {
+        return Buffer.from(data);
+    }
+    return Buffer.from(data);
 }
 
 /**
@@ -70,7 +82,7 @@ export async function initStreamRecording(_event: IpcMainInvokeEvent, filename: 
 export async function appendRecordingChunk(_event: IpcMainInvokeEvent, chunk: Uint8Array): Promise<boolean> {
     try {
         if (activeStream && !activeStream.destroyed) {
-            const buf = Buffer.from(chunk.buffer || chunk, chunk.byteOffset || 0, chunk.byteLength || chunk.length);
+            const buf = toBuffer(chunk);
             const canContinue = activeStream.write(buf);
             if (!canContinue) {
                 await new Promise<void>(resolve => {
@@ -96,13 +108,13 @@ export async function finalizeStreamRecording(
     folderPath: string | null,
     filename: string,
     durationMs = 0
-): Promise<boolean> {
+): Promise<{ success: boolean; destPath?: string }> {
     try {
         if (activeStream) {
             await new Promise<void>(resolve => {
                 const stream = activeStream;
                 if (!stream || stream.destroyed || stream.closed) return resolve();
-                const timeout = setTimeout(resolve, 2000);
+                const timeout = setTimeout(resolve, 3000);
                 stream.end(() => {
                     clearTimeout(timeout);
                     resolve();
@@ -113,10 +125,16 @@ export async function finalizeStreamRecording(
 
         if (!activeTempPath) {
             console.warn("[AutoCallRecorder] No active temp path for stream finalizing");
-            return false;
+            return { success: false };
         }
         const sourcePath = activeTempPath;
         activeTempPath = null;
+
+        const fileStats = await stat(sourcePath).catch(() => null);
+        if (!fileStats || fileStats.size === 0) {
+            console.warn("[AutoCallRecorder] Temp recording file is empty or missing");
+            return { success: false };
+        }
 
         // Patche la durée et l'index de recherche dans le fichier avant de le déplacer
         if (durationMs > 0) {
@@ -152,21 +170,21 @@ export async function finalizeStreamRecording(
             await copyFile(sourcePath, destPath);
             await unlink(sourcePath).catch(() => { });
         }
-        return true;
+        return { success: true, destPath };
     } catch (e) {
         console.error("[AutoCallRecorder] Failed to finalize stream recording:", e);
         if (activeTempPath) {
             try { await unlink(activeTempPath); } catch { }
             activeTempPath = null;
         }
-        return false;
+        return { success: false };
     }
 }
 
 /**
  * Saves the recording buffer directly to the specified folder.
  */
-export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, folderPath: string, filename: string): Promise<boolean> {
+export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, folderPath: string, filename: string): Promise<{ success: boolean; destPath?: string }> {
     try {
         const defaultFolder = getDefaultSaveFolder();
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
@@ -181,19 +199,19 @@ export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Arr
             counter++;
         }
 
-        const buf = Buffer.from(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength || buffer.length);
+        const buf = toBuffer(buffer);
         await writeFile(destPath, buf);
-        return true;
+        return { success: true, destPath };
     } catch (e) {
         console.error("[AutoCallRecorder] Failed to save recording natively:", e);
-        return false;
+        return { success: false };
     }
 }
 
 /**
  * Prompts the user with a Save As dialog, then saves the buffer.
  */
-export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, defaultFilename: string): Promise<boolean> {
+export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Array, defaultFilename: string): Promise<{ success: boolean; destPath?: string }> {
     try {
         const res = await dialog.showSaveDialog({
             title: "Save Call Recording",
@@ -206,13 +224,13 @@ export async function promptSaveRecording(_event: IpcMainInvokeEvent, buffer: Ui
             ]
         });
 
-        if (res.canceled || !res.filePath) return false;
+        if (res.canceled || !res.filePath) return { success: false };
         
-        const buf = Buffer.from(buffer.buffer || buffer, buffer.byteOffset || 0, buffer.byteLength || buffer.length);
+        const buf = toBuffer(buffer);
         await writeFile(res.filePath, buf);
-        return true;
+        return { success: true, destPath: res.filePath };
     } catch (e) {
         console.error("[AutoCallRecorder] Failed to prompt save recording natively:", e);
-        return false;
+        return { success: false };
     }
 }
