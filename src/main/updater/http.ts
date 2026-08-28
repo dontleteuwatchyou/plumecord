@@ -114,11 +114,12 @@ async function stageUpdate(): Promise<boolean> {
         try { rmSync(STAGING_DIR, { recursive: true, force: true }); } catch { }
         mkdirSync(STAGING_DIR, { recursive: true });
 
-        // Extract zip into STAGING_DIR (no running files touched)
-        const psExtract = `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${STAGING_DIR}' -Force`;
-
         return await new Promise<boolean>((resolve, reject) => {
-            exec(`powershell -NoProfile -NonInteractive -Command "${psExtract}"`, async err => {
+            const extractCmd = process.platform === "win32"
+                ? `powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${STAGING_DIR}' -Force"`
+                : `unzip -o -q "${zipPath}" -d "${STAGING_DIR}"`;
+
+            exec(extractCmd, async err => {
                 // Cleanup zip regardless
                 try { rmSync(zipPath, { force: true }); } catch { }
 

@@ -152,6 +152,7 @@ for /f "usebackq" %%d in (`powershell -NoProfile -Command "Get-Date -Format 'yyy
     echo   "installerUrl": "%GITEA_URL%/%GITEA_REPO%/releases/download/%TAG%/Nightcord-Installer.exe",
     echo   "distUrl": "%GITEA_URL%/%GITEA_REPO%/releases/download/%TAG%/nightcord-dist.zip",
     echo   "downloadUrl": "%GITEA_URL%/%GITEA_REPO%/releases/download/%TAG%/desktop.asar",
+    echo   "installScriptUrl": "%GITEA_URL%/%GITEA_REPO%/releases/download/%TAG%/install.sh",
     echo   "changelog": "%TAG%"
     echo }
 ) > "%VERSION_JSON%"
@@ -159,7 +160,7 @@ echo  [7/8] version.json mis a jour.
 
 REM 8. Publication Gitea via tunnel SSH
 echo.
-echo  [8/8] Publication des 6 assets de release sur Gitea...
+echo  [8/8] Publication des assets Multi-OS sur Gitea...
 
 powershell -NoProfile -Command "$test = try { (Invoke-WebRequest -Uri 'http://127.0.0.1:3000/api/v1/version' -TimeoutSec 2 -UseBasicParsing).StatusCode } catch { 0 }; if ($test -ne 200) { Write-Host '  Demarrage du tunnel SSH vers Gitea (port 3000)...' -ForegroundColor Cyan; Start-Process -WindowStyle Hidden ssh -ArgumentList '-N -L 3000:127.0.0.1:3000 nc'; Start-Sleep -Seconds 2; }"
 
@@ -176,17 +177,19 @@ echo    Nightcord %TAG% publie avec succes sur Gitea !
 echo.
 echo    URL : %GITEA_URL%/%GITEA_REPO%/releases/tag/%TAG%
 echo.
-echo    Nom de Release : %TAG%
-echo    Tag Git        : %TAG%
-echo    Description    : %TAG%
-echo.
-echo    Fichiers publies :
-echo      - Nightcord-Installer.exe    - installeur .exe avec GUI
+echo    Fichiers publies (Windows + Linux + macOS + NixOS) :
+echo      - Nightcord-Installer.exe    - installeur Windows avec GUI
+echo      - install.sh                 - installeur universel interactif Linux & macOS
 echo      - desktop.asar               - asar Discord patcher
+echo      - nightcordDesktop.asar      - bundle asar complet
 echo      - extension-chrome.zip       - extension Chrome/Chromium
 echo      - extension-firefox.zip      - extension Firefox
-echo      - nightcord-dist.zip         - JS obfusques (pour l'injection)
+echo      - nightcord-dist.zip         - JS obfusques (auto-update & injection)
 echo      - version.json               - metadonnees de version
+echo.
+echo    Commandes d'installation pour les utilisateurs :
+echo      * Linux / macOS : curl -sS %GITEA_URL%/%GITEA_REPO%/raw/branch/master/install.sh ^| bash
+echo      * NixOS Flake   : inputs.nightcord.url = "git+%GITEA_URL%/%GITEA_REPO%.git";
 echo  =======================================================================
 echo.
 pause
