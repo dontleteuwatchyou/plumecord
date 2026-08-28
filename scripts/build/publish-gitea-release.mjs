@@ -142,6 +142,8 @@ async function main() {
     const filesToUpload = [
         { name: "Nightcord-Installer.exe", path: path.join("release", "installer", "Nightcord-Installer.exe"), type: "application/octet-stream" },
         { name: "desktop.asar", path: path.join("dist", "desktop.asar"), type: "application/octet-stream" },
+        { name: "nightcordDesktop.asar", path: path.join("dist", "desktop.asar"), type: "application/octet-stream" },
+        { name: "install.sh", path: path.join("install.sh"), type: "text/x-shellscript" },
         { name: "extension-chrome.zip", path: path.join("dist", "extension-chrome.zip"), type: "application/zip" },
         { name: "extension-firefox.zip", path: path.join("dist", "extension-firefox.zip"), type: "application/zip" },
         { name: "nightcord-dist.zip", path: path.join("release", "installer", "nightcord-dist.zip"), type: "application/zip" },
