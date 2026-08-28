@@ -238,7 +238,7 @@
     line-height: 1.6;
 }
 
-/* ── MultiInstance HeaderBar Button Fast Fluid Spin Animation ── */
+/* ── MultiInstance HeaderBar Button Fast Fluid Continuous Spin ── */
 .nc-multi-instance-icon {
     transform-origin: 50% 50%;
     will-change: transform;
@@ -252,22 +252,17 @@
 .nightcord-header-btn:hover .nc-multi-instance-icon,
 button:hover .nc-multi-instance-icon,
 .nc-multi-instance-icon:hover {
-    animation: nc-multi-instance-spin 0.48s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    animation: nc-multi-instance-spin 0.42s cubic-bezier(0.25, 0.1, 0.25, 1) 1;
 }
 
 @keyframes nc-multi-instance-spin {
-    0% {
-        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    from {
+        transform: translate3d(0, 0, 0) rotate(0deg);
     }
-    50% {
-        transform: translate3d(0, 0, 0) rotate(220deg) scale(1.15);
-    }
-    80% {
-        transform: translate3d(0, 0, 0) rotate(375deg) scale(1.05);
-    }
-    100% {
-        transform: translate3d(0, 0, 0) rotate(360deg) scale(1);
+    to {
+        transform: translate3d(0, 0, 0) rotate(360deg);
     }
 }
+
 
 
