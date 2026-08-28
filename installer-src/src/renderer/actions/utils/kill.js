@@ -35,6 +35,31 @@ export async function killDiscord(resPath, log) {
 
     if (log) log(`Fermeture de ${procName}...`);
 
+    // ── Étape 1 : Fermeture gracieuse via Squirrel (Update.exe --processStop) ─────
+    // Donne à Discord le temps de flusher ses données de session (localStorage,
+    // cookies, Preferences) avant qu'on touche au dossier resources/.
+    // Sans ça, taskkill /F tue le process sans flush → token perdu → déconnexion.
+    try {
+        const appVersionDir = path.join(resPath, "..");
+        const channelDir    = path.join(appVersionDir, "..");
+        const updateExe     = path.join(channelDir, "Update.exe");
+        if (fs.existsSync(updateExe)) {
+            if (log) log(`Arrêt gracieux via Update.exe --processStop ${exeName}...`);
+            exec(`"${updateExe}" --processStop ${exeName}`);
+            // Attendre jusqu'à 4s que Discord se ferme proprement
+            const exitedGracefully = await waitForExit(exeName, 4000);
+            if (exitedGracefully) {
+                // Attendre 600ms supplémentaires pour s'assurer que le flush
+                // de la session Electron (LevelDB / Preferences) est terminé
+                await new Promise(r => setTimeout(r, 600));
+                if (log) log(`${procName} fermé proprement.`);
+                return;
+            }
+            if (log) log(`Fermeture gracieuse expirée, passage en force kill...`);
+        }
+    } catch (_) {}
+
+    // ── Étape 2 : Force kill (seulement si la fermeture gracieuse a échoué) ───────
     killByName(exeName);
 
     const helperVariants = [
@@ -54,10 +79,11 @@ export async function killDiscord(resPath, log) {
         }
     } catch (_) {}
 
-    await waitForExit(exeName, 3000);
-    await new Promise(r => setTimeout(r, 400));
+    // Attendre que le process disparaisse (max 4s) + 800ms de flush post-kill
+    await waitForExit(exeName, 4000);
+    await new Promise(r => setTimeout(r, 800));
 
-    if (log) log(`✅ ${procName} fermé.`);
+    if (log) log(`${procName} fermé.`);
 }
 
 export function startDiscord(resPath) {

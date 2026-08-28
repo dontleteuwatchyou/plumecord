@@ -5,7 +5,7 @@
  */
 
 import { app, BrowserWindow, ipcMain,screen, session } from "electron";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
 import { registerMediaPermissionsForSession } from "../../nightcord/main/mediaPermissions";
@@ -305,6 +305,22 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
+    // ── Nettoyage des preloads orphelins ────────────────────────────────────────
+    // Les fichiers token-preload-{timestamp}.js laissés sur disque après la
+    // fermeture d'une fenêtre MI (notamment si Discord a été tué brutalement)
+    // sont rechargés au prochain démarrage et injectent un token potentiellement
+    // expiré → Discord reçoit 401 → déconnexion. On les supprime ici.
+    try {
+        const now = Date.now();
+        const ONE_HOUR = 3_600_000;
+        for (const f of readdirSync(dir)) {
+            const m = f.match(/^token-preload-(\d+)\.js$/);
+            if (m && now - parseInt(m[1], 10) > ONE_HOUR) {
+                try { unlinkSync(join(dir, f)); } catch {}
+            }
+        }
+    } catch {}
+
     const cleanToken = String(token || "").trim().replace(/^"+|"+$/g, "");
 
     // Serialize values to JS string literals safe to embed via JSON.stringify
@@ -318,7 +334,9 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  var RAW_TOKEN = " + tokenLiteral + ";",
         "  var SETTINGS_JSON = " + settingsLiteral + ";",
         "  var CONFLICT = ['token','default_token','multiaccount_tokens','tokens','user_id_cache','MultiAccountStore','AuthenticationStore','login_token'];",
-        "  try { localStorage.removeItem('multiaccount_tokens'); localStorage.removeItem('user_id_cache'); } catch(e) {}",
+        // Ne JAMAIS supprimer multiaccount_tokens ou user_id_cache : ces clés gèrent
+        // la liste des comptes Discord connectés. Les supprimer force une déconnexion.
+        // La session persist:nightcord-mi-{userId} est déjà isolée et vierge.
         "  try {",
         "    var sh = JSON.parse(SETTINGS_JSON || '{}');",
         "    for (var k in sh) { if (CONFLICT.indexOf(k) >= 0) continue; if (localStorage.getItem(k) === null) localStorage.setItem(k, sh[k]); }",
@@ -568,7 +586,8 @@ export async function openInstanceWindow(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                localStorage.removeItem("multiaccount_tokens");
+                // Ne pas supprimer multiaccount_tokens : c'est la liste des comptes Discord.
+                // La session isolée persist:nightcord-mi-{userId} est déjà vierge.
                 if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
                     window.__mi_auto_redirected = true;
                     window.location.href = "https://discord.com/channels/@me";
@@ -751,7 +770,8 @@ export async function openInstanceWindowGrouped(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                localStorage.removeItem("multiaccount_tokens");
+                // Ne pas supprimer multiaccount_tokens : c'est la liste des comptes Discord.
+                // La session isolée persist:nightcord-mi-{userId} est déjà vierge.
                 if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
                     window.__mi_auto_redirected = true;
                     window.location.href = "https://discord.com/channels/@me";

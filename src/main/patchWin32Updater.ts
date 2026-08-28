@@ -5,7 +5,7 @@
  */
 
 import { app } from "electron";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "original-fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "original-fs";
 import { dirname, join } from "path";
 
 declare const __filename: string;
@@ -93,30 +93,19 @@ function patchResourcesDir(resourcesDir: string) {
     }
 }
 
-function patchAllDiscordInstallations() {
-    if (process.platform !== "win32") return;
+function patchCurrentDiscordOnly() {
+    // Patche UNIQUEMENT la version de Discord qui tourne actuellement.
+    // Ne pas toucher aux autres versions pour éviter de corrompre des sessions actives.
+    // Les autres versions seront patchées au démarrage quand elles seront la version active.
     try {
-        const localAppData = process.env.LOCALAPPDATA || "";
-        for (const channel of ["Discord", "DiscordPTB", "DiscordCanary", "DiscordDevelopment"]) {
-            const base = join(localAppData, channel);
-            if (!existsSync(base)) continue;
-
-            let versions: string[] = [];
-            try {
-                versions = readdirSync(base).filter(d => /^app-\d+\.\d+\.\d+$/.test(d));
-            } catch { continue; }
-
-            for (const ver of versions) {
-                const resDir = join(base, ver, "resources");
-                if (existsSync(resDir)) {
-                    patchResourcesDir(resDir);
-                }
-            }
+        const currentResources = process.resourcesPath;
+        if (currentResources && existsSync(currentResources)) {
+            patchResourcesDir(currentResources);
         }
     } catch (e) {
-        console.error("[Nightcord] patchAllDiscordInstallations error:", e);
+        console.error("[Nightcord] patchCurrentDiscordOnly error:", e);
     }
 }
 
-// Run on startup
-patchAllDiscordInstallations();
+// Patche uniquement la version active au démarrage
+patchCurrentDiscordOnly();
