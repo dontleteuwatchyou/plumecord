@@ -158,6 +158,40 @@ const NON_REACT_SELECTORS = [
     ".nai-nav-item",
 ];
 
+function hideSettingsSidebarElements(hide: boolean) {
+    try {
+        const sidebars = document.querySelectorAll("[class*='sidebar_'], [class*='side_'], [role='tablist']");
+        sidebars.forEach(sidebar => {
+            const items = Array.from(sidebar.querySelectorAll("[class*='item_'], [class*='header_'], [class*='separator_'], [role='tab']"));
+            let isNightcordSection = false;
+            for (const el of items) {
+                const text = el.textContent?.trim()?.toLowerCase() || "";
+                const isHeader = el.getAttribute("class")?.includes("header") || el.getAttribute("role") === "heading";
+                const isSeparator = el.getAttribute("class")?.includes("separator");
+
+                if (text.includes("nightcord settings") || text.includes("paramètres de nightcord") || text.includes("equicord settings") || text.includes("parametres de nightcord")) {
+                    isNightcordSection = true;
+                    (el as HTMLElement).style.display = hide ? "none" : "";
+                    continue;
+                }
+
+                if (isNightcordSection) {
+                    if (isHeader) {
+                        isNightcordSection = false;
+                        continue;
+                    }
+                    if (isSeparator) {
+                        (el as HTMLElement).style.display = hide ? "none" : "";
+                        isNightcordSection = false;
+                        continue;
+                    }
+                    (el as HTMLElement).style.display = hide ? "none" : "";
+                }
+            }
+        });
+    } catch { }
+}
+
 function hideNonReactElements(hide: boolean) {
     for (const sel of NON_REACT_SELECTORS) {
         try {
@@ -166,6 +200,7 @@ function hideNonReactElements(hide: boolean) {
             });
         } catch { }
     }
+    hideSettingsSidebarElements(hide);
 }
 
 export function syncStealthBodyClass() {
@@ -183,8 +218,8 @@ export function toggleStealthMode() {
             document.body?.classList.add("nightcord-stealth");
             showNotification({
                 id: "nightcord-stealth-mode",
-                title: "Stealth Mode Activated 🛡️",
-                body: "All Nightcord visual elements are hidden. Press Ctrl+Shift+H to restore Nightcord.",
+                title: "Stealth Mode Activated",
+                body: "All Nightcord visual elements and settings are hidden. Press Ctrl+Shift+H to restore Nightcord.",
                 icon: "nightcord",
                 type: "info",
                 duration: 6000
@@ -193,7 +228,7 @@ export function toggleStealthMode() {
             document.body?.classList.remove("nightcord-stealth");
             showNotification({
                 id: "nightcord-stealth-mode",
-                title: "Stealth Mode Deactivated ✅",
+                title: "Stealth Mode Deactivated",
                 body: "Nightcord visual elements and settings have been restored.",
                 icon: "nightcord",
                 type: "success",
@@ -228,7 +263,7 @@ try {
                 if (newVal) {
                     showNotification({
                         id: "nightcord-streamproof-mode",
-                        title: "StreamProof Activated 🛡️",
+                        title: "StreamProof Activated",
                         body: "Window content protection is enabled. Press Ctrl+Shift+G to disable.",
                         icon: "nightcord",
                         type: "info",
@@ -237,7 +272,7 @@ try {
                 } else {
                     showNotification({
                         id: "nightcord-streamproof-mode",
-                        title: "StreamProof Deactivated ✅",
+                        title: "StreamProof Deactivated",
                         body: "Window content protection is now disabled.",
                         icon: "nightcord",
                         type: "success",

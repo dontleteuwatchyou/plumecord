@@ -20,11 +20,18 @@ body.nightcord-stealth #nightcord-titlebar-link-style,
 body.nightcord-stealth .nai-nav-item,
 
 /* Nightcord settings in Discord settings sidebar */
-body.nightcord-stealth [data-tab-id^="equicord"],
-body.nightcord-stealth [data-tab-id^="nightcord"],
-body.nightcord-stealth [data-tab-id^="vencord"],
-body.nightcord-stealth [aria-controls*="equicord"],
-body.nightcord-stealth [aria-controls*="nightcord"],
-body.nightcord-stealth .nc-modal-root {
+body.nightcord-stealth [data-tab-id*="equicord" i],
+body.nightcord-stealth [data-tab-id*="nightcord" i],
+body.nightcord-stealth [data-tab-id*="vencord" i],
+body.nightcord-stealth [data-tab-id="ThemeLibrary"],
+body.nightcord-stealth [data-tab-id="StereoInstaller"],
+body.nightcord-stealth [aria-controls*="equicord" i],
+body.nightcord-stealth [aria-controls*="nightcord" i],
+body.nightcord-stealth [aria-controls*="vencord" i],
+body.nightcord-stealth [id*="equicord" i],
+body.nightcord-stealth [id*="nightcord" i],
+body.nightcord-stealth [id*="vencord" i],
+body.nightcord-stealth .nc-modal-root,
+body.nightcord-stealth .nc-settings-tab {
     display: none !important;
 }
