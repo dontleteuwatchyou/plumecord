@@ -344,6 +344,13 @@ function EquicordSettings() {
                 warning: { enabled: false },
             },
             {
+                key: "enableInAppNotifications",
+                title: t("Enable Nightcord In-App Notifications"),
+                description: t("Show custom toast notifications in the top-right corner for updates, shortcuts (Stealth Mode, StreamProof), and status changes. Disable to silence all Nightcord notifications."),
+                restartRequired: false,
+                warning: { enabled: false },
+            },
+            {
                 key: "hideNativeHeaderButtons",
                 title: t("Hide Native Header Buttons (Inbox)"),
                 description: t("Hides native Discord header buttons like the notification inbox. Turn OFF to show the notification inbox button again."),

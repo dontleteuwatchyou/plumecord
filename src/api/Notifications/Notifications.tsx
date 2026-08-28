@@ -103,6 +103,7 @@ export async function requestPermission() {
 }
 
 export async function showNotification(data: NotificationData) {
+    if (Settings.enableInAppNotifications === false) return;
     persistNotification(data);
 
     if (shouldBeNative() && await requestPermission()) {

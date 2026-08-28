@@ -160,18 +160,30 @@ const NON_REACT_SELECTORS = [
 
 function hideSettingsSidebarElements(hide: boolean) {
     try {
-        const sidebars = document.querySelectorAll("[class*='sidebar_'], [class*='side_'], [role='tablist']");
+        // Direct modern Discord settings sidebar targeting
+        document.querySelectorAll('li:has([data-settings-sidebar-item*="equicord"]), li:has([data-settings-sidebar-item*="nightcord"]), li:has([data-settings-sidebar-item*="illegalcord"]), li:has([data-list-item-id*="settings-sidebar___equicord"]), li:has([data-list-item-id*="settings-sidebar___nightcord"]), li:has([data-list-item-id*="settings-sidebar___illegalcord"])').forEach(el => {
+            (el as HTMLElement).style.display = hide ? "none" : "";
+        });
+
+        document.querySelectorAll('[data-settings-sidebar-item*="equicord"], [data-settings-sidebar-item*="nightcord"], [data-settings-sidebar-item*="illegalcord"], [data-list-item-id*="settings-sidebar___equicord"], [data-list-item-id*="settings-sidebar___nightcord"], [data-list-item-id*="settings-sidebar___illegalcord"]').forEach(el => {
+            (el as HTMLElement).style.display = hide ? "none" : "";
+        });
+
+        // Sidebar headers and sections fallback
+        const sidebars = document.querySelectorAll("[class*='sidebar_'], [class*='side_'], [role='tablist'], [class*='sectionList_']");
         sidebars.forEach(sidebar => {
-            const items = Array.from(sidebar.querySelectorAll("[class*='item_'], [class*='header_'], [class*='separator_'], [role='tab']"));
+            const items = Array.from(sidebar.querySelectorAll("[class*='item_'], [class*='header_'], [class*='separator_'], [class*='sectionLabel_'], [role='tab']"));
             let isNightcordSection = false;
             for (const el of items) {
                 const text = el.textContent?.trim()?.toLowerCase() || "";
-                const isHeader = el.getAttribute("class")?.includes("header") || el.getAttribute("role") === "heading";
+                const isHeader = el.getAttribute("class")?.includes("header") || el.getAttribute("class")?.includes("sectionLabel") || el.getAttribute("role") === "heading";
                 const isSeparator = el.getAttribute("class")?.includes("separator");
 
                 if (text.includes("nightcord settings") || text.includes("paramètres de nightcord") || text.includes("equicord settings") || text.includes("parametres de nightcord")) {
                     isNightcordSection = true;
                     (el as HTMLElement).style.display = hide ? "none" : "";
+                    const parentLi = el.closest("li, [class*='section_']");
+                    if (parentLi) (parentLi as HTMLElement).style.display = hide ? "none" : "";
                     continue;
                 }
 

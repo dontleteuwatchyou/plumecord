@@ -83,6 +83,7 @@ export interface Settings {
     disableMinSize: boolean;
     winNativeTitleBar: boolean;
     streamProof: boolean;
+    enableInAppNotifications: boolean;
     hideNativeHeaderButtons: boolean;
     seeAllCustomProfile: boolean;
     syncOwnCustomProfile: boolean;
@@ -147,6 +148,7 @@ const DefaultSettings: Settings = {
     disableMinSize: false,
     winNativeTitleBar: false,
     streamProof: false,
+    enableInAppNotifications: true,
     hideNativeHeaderButtons: true,
     seeAllCustomProfile: true,
     syncOwnCustomProfile: false,

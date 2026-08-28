@@ -19,7 +19,21 @@ body.nightcord-stealth #nightcord-titlebar-link-style,
 /* NightcordAI nav button */
 body.nightcord-stealth .nai-nav-item,
 
-/* Nightcord settings in Discord settings sidebar */
+/* Modern Discord settings sidebar: complete Nightcord section wrapper and items */
+body.nightcord-stealth li:has([data-settings-sidebar-item*="equicord"]),
+body.nightcord-stealth li:has([data-settings-sidebar-item*="nightcord"]),
+body.nightcord-stealth li:has([data-settings-sidebar-item*="illegalcord"]),
+body.nightcord-stealth li:has([data-list-item-id*="settings-sidebar___equicord"]),
+body.nightcord-stealth li:has([data-list-item-id*="settings-sidebar___nightcord"]),
+body.nightcord-stealth li:has([data-list-item-id*="settings-sidebar___illegalcord"]),
+body.nightcord-stealth [data-settings-sidebar-item*="equicord"],
+body.nightcord-stealth [data-settings-sidebar-item*="nightcord"],
+body.nightcord-stealth [data-settings-sidebar-item*="illegalcord"],
+body.nightcord-stealth [data-list-item-id*="settings-sidebar___equicord"],
+body.nightcord-stealth [data-list-item-id*="settings-sidebar___nightcord"],
+body.nightcord-stealth [data-list-item-id*="settings-sidebar___illegalcord"],
+
+/* Fallback tab attributes */
 body.nightcord-stealth [data-tab-id*="equicord" i],
 body.nightcord-stealth [data-tab-id*="nightcord" i],
 body.nightcord-stealth [data-tab-id*="vencord" i],
