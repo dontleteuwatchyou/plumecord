@@ -80,17 +80,34 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         let capturedMic = false;
         let capturedSystem = false;
 
+        // 1. Capture microphone
         try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                }
+            });
             if (micStream && micStream.getAudioTracks().length > 0) {
                 const micSource = recordCtx.createMediaStreamSource(micStream);
                 micSource.connect(recordDest);
                 capturedMic = true;
             }
         } catch (e) {
-            console.warn("[AutoCallRecorder] Local mic capture failed:", e);
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                if (micStream && micStream.getAudioTracks().length > 0) {
+                    const micSource = recordCtx.createMediaStreamSource(micStream);
+                    micSource.connect(recordDest);
+                    capturedMic = true;
+                }
+            } catch (err) {
+                console.warn("[AutoCallRecorder] Mic capture failed:", err);
+            }
         }
 
+        // 2. Capture desktop system audio / video loopback
         try {
             let desktopSourceId: string | null = null;
             const nativeCapture = (window as any).VencordNative?.desktopCapture;
@@ -101,15 +118,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             }
 
             if (desktopSourceId) {
-                const constraints: any = {
-                    audio: {
-                        mandatory: {
-                            chromeMediaSource: "desktop",
-                            chromeMediaSourceId: desktopSourceId
-                        }
-                    }
-                };
-
+                let videoConstraints: any;
                 if (opts.mode === "video") {
                     let minWidth = 1280;
                     let minHeight = 720;
@@ -125,7 +134,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
                         maxFrameRate = 25;
                     }
 
-                    constraints.video = {
+                    videoConstraints = {
                         mandatory: {
                             chromeMediaSource: "desktop",
                             chromeMediaSourceId: desktopSourceId,
@@ -135,14 +144,26 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
                         }
                     };
                 } else {
-                    constraints.video = {
+                    videoConstraints = {
                         mandatory: {
                             chromeMediaSource: "desktop",
                             chromeMediaSourceId: desktopSourceId,
-                            maxWidth: 1, maxHeight: 1
+                            minWidth: 640,
+                            minHeight: 360,
+                            maxFrameRate: 5
                         }
                     };
                 }
+
+                const constraints: any = {
+                    audio: {
+                        mandatory: {
+                            chromeMediaSource: "desktop",
+                            chromeMediaSourceId: desktopSourceId
+                        }
+                    },
+                    video: videoConstraints
+                };
 
                 systemStream = await navigator.mediaDevices.getUserMedia(constraints);
 
@@ -152,7 +173,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
                     systemSource.connect(recordDest);
                     capturedSystem = true;
 
-                    // Stop video track in voice mode to save CPU/GPU
+                    // In voice mode, stop video tracks immediately to free 100% GPU/CPU
                     if (opts.mode === "voice") {
                         systemStream.getVideoTracks().forEach(t => t.stop());
                     }
@@ -162,12 +183,18 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             console.warn("[AutoCallRecorder] Desktop loopback capture failed:", e);
         }
 
+        // Failsafe: if neither mic nor system audio could be captured, attach a silent oscillator so recorder runs reliably
         if (!capturedMic && !capturedSystem) {
-            throw new Error("No audio source captured.");
+            const osc = recordCtx.createOscillator();
+            const gain = recordCtx.createGain();
+            gain.gain.value = 0;
+            osc.connect(gain);
+            gain.connect(recordDest);
+            osc.start();
         }
 
         let finalStream = recordDest.stream;
-        if (opts.mode === "video" && systemStream) {
+        if (opts.mode === "video" && systemStream && systemStream.getVideoTracks().length > 0) {
             finalStream = new MediaStream([
                 ...systemStream.getVideoTracks(),
                 ...recordDest.stream.getAudioTracks()
@@ -276,7 +303,7 @@ export function stopRecording(): Promise<void> {
 
         isStopping = true;
         const durationSecs = (Date.now() - startTimeMs) / 1000;
-        const shouldSave = durationSecs >= 1.5;
+        const shouldSave = durationSecs >= 0.5;
         const mimeType = mediaRecorder.mimeType || "audio/webm";
 
         mediaRecorder.onstop = async () => {
@@ -293,9 +320,16 @@ export function stopRecording(): Promise<void> {
                         const ok = await native.finalizeStreamRecording(opts.savePath, currentFilename, durationMs);
                         if (ok && opts.showSaveToast !== false) {
                             Toasts.show(Toasts.create(t("Save record"), Toasts.Type.SUCCESS));
+                        } else if (!ok && recordedChunks.length > 0) {
+                            const blob = new Blob(recordedChunks, { type: mimeType });
+                            await saveBlobFallback(blob, opts, currentFilename);
                         }
                     } catch (e) {
                         console.error("[AutoCallRecorder] Finalize stream failed:", e);
+                        if (recordedChunks.length > 0) {
+                            const blob = new Blob(recordedChunks, { type: mimeType });
+                            await saveBlobFallback(blob, opts, currentFilename);
+                        }
                     }
                 } else if (recordedChunks.length > 0) {
                     const blob = new Blob(recordedChunks, { type: mimeType });
