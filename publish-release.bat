@@ -196,7 +196,13 @@ echo    URL : %GITEA_URL%/%GITEA_REPO%/releases/tag/%TAG%
 echo.
 echo    Fichiers publies (Windows + Linux + macOS + NixOS) :
 echo      - Nightcord-Installer.exe    - installeur Windows avec GUI
+echo      - Nightcord-Linux            - installeur Linux GUI (Both X11 & Wayland)
+echo      - Nightcord-Linux-x11        - installeur Linux GUI (X11 only)
+echo      - Nightcord-Linux-wayland    - installeur Linux GUI (Wayland only)
+echo      - Nightcord-darwin-arm64.zip - installeur macOS GUI (Apple Silicon)
+echo      - Nightcord-darwin-x64.zip   - installeur macOS GUI (Intel x64)
 echo      - install.sh                 - installeur universel interactif Linux & macOS
+echo      - install.ps1                - installeur CLI Windows
 echo      - desktop.asar               - asar Discord patcher
 echo      - nightcordDesktop.asar      - bundle asar complet
 echo      - extension-chrome.zip       - extension Chrome/Chromium
