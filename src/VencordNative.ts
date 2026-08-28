@@ -23,7 +23,7 @@ export function sendSync<T = any>(event: IpcEvents, ...args: any[]) {
     }
 }
 
-const rawPluginHelpers = {} as Record<string, Record<string, (...args: any[]) => Promise<any>>>;
+const PluginHelpers = {} as Record<string, Record<string, (...args: any[]) => Promise<any>>>;
 let pluginIpcMap: PluginIpcMappings = {} as any;
 try {
     pluginIpcMap = sendSync<PluginIpcMappings>(IpcEvents.GET_PLUGIN_IPC_METHOD_MAP) || ({} as any);
@@ -32,30 +32,12 @@ try {
 if (pluginIpcMap && typeof pluginIpcMap === "object") {
     for (const [plugin, methods] of Object.entries(pluginIpcMap)) {
         if (!methods || typeof methods !== "object") continue;
-        const map = (rawPluginHelpers[plugin] = {});
+        const map = (PluginHelpers[plugin] = {} as Record<string, (...args: any[]) => Promise<any>>);
         for (const [methodName, method] of Object.entries(methods)) {
             map[methodName] = (...args: any[]) => invoke(method as IpcEvents, ...args);
         }
     }
 }
-
-const PluginHelpers = new Proxy(rawPluginHelpers, {
-    get(target, prop: string) {
-        if (typeof prop !== "string") return undefined;
-        if (!target[prop]) {
-            target[prop] = new Proxy(
-                {},
-                {
-                    get(_, method: string) {
-                        return (...args: any[]) =>
-                            invoke(`VencordPluginNative_${prop}_${method}` as IpcEvents, ...args);
-                    }
-                }
-            );
-        }
-        return target[prop];
-    }
-});
 
 export default {
     themes: {
