@@ -178,14 +178,24 @@ function formatTime(ms: number) {
     return `${m}:${s}`;
 }
 
-function updateUI() {
-    // Failsafe: if we are recording but have no active channel, stop immediately
-    if (isCurrentlyRecording()) {
-        const activeChannelId = SelectedChannelStore?.getVoiceChannelId?.();
-        if (!activeChannelId) {
-            stopRecording();
-            lastChannelId = null;
+function getConnectedVoiceChannelId(): string | null {
+    const vcId = SelectedChannelStore?.getVoiceChannelId?.();
+    if (vcId) return vcId;
+    try {
+        const currentUserId = UserStore?.getCurrentUser?.()?.id;
+        if (currentUserId && VoiceStateStore?.getVoiceStateForUser) {
+            const state = VoiceStateStore.getVoiceStateForUser(currentUserId);
+            if (state?.channelId) return state.channelId;
         }
+    } catch { }
+    return null;
+}
+
+function updateUI() {
+    if (!isCurrentlyRecording()) {
+        const indicator = document.getElementById("autocall-indicator");
+        if (indicator) indicator.remove();
+        return;
     }
 
     if (!settings.store.showTimes) {
@@ -194,31 +204,42 @@ function updateUI() {
         return;
     }
 
-    if (isCurrentlyRecording()) {
-        const titleH1 = document.querySelector('div[class*="titleWrapper_"] > h1') || document.querySelector('div[class*="children_"]');
-        if (!titleH1) return;
+    // Try finding the best container in Discord's header bar
+    const container =
+        document.querySelector('.vc-header-bar-btns') ||
+        document.querySelector('section[class*="themed_"] [class*="toolbar_"]') ||
+        document.querySelector('[class*="toolbar_"]') ||
+        document.querySelector('div[class*="titleWrapper_"]') ||
+        document.querySelector('section[class*="title_"] [class*="children_"]') ||
+        document.querySelector('div[class*="children_"]');
 
-        let indicator = document.getElementById("autocall-indicator");
-        if (!indicator) {
-            indicator = document.createElement("div");
-            indicator.id = "autocall-indicator";
-            titleH1.appendChild(indicator);
-        }
-        
-        let timeSpan = indicator.querySelector('.autocall-time');
-        if (!timeSpan) {
-            indicator.innerHTML = `<span class="autocall-time"></span>`;
-            timeSpan = indicator.querySelector('.autocall-time');
-        }
-        
-        if (timeSpan) {
-            timeSpan.textContent = formatTime(getRecordingDurationMs());
+    let indicator = document.getElementById("autocall-indicator");
+    if (!indicator) {
+        indicator = document.createElement("div");
+        indicator.id = "autocall-indicator";
+        indicator.className = "autocall-recording-badge";
+        indicator.innerHTML = `
+            <span class="autocall-dot"></span>
+            <span class="autocall-label">REC</span>
+            <span class="autocall-time">00:00</span>
+        `;
+        if (container) {
+            container.prepend(indicator);
+        } else {
+            indicator.style.position = "fixed";
+            indicator.style.top = "12px";
+            indicator.style.right = "60px";
+            document.body.appendChild(indicator);
         }
     } else {
-        const indicator = document.getElementById("autocall-indicator");
-        if (indicator) {
-            indicator.remove();
+        if (container && indicator.parentElement !== container && !indicator.style.position) {
+            container.prepend(indicator);
         }
+    }
+
+    const timeSpan = indicator.querySelector('.autocall-time');
+    if (timeSpan) {
+        timeSpan.textContent = formatTime(getRecordingDurationMs());
     }
 }
 
@@ -232,7 +253,7 @@ function isBlacklistedUserInChannel(channelId: string): boolean {
 function startUIInterval() {
     if (!domUpdateInterval) {
         updateUI();
-        domUpdateInterval = setInterval(updateUI, 1000);
+        domUpdateInterval = setInterval(updateUI, 500);
     }
 }
 
@@ -270,8 +291,24 @@ async function handleVoiceStateUpdates(e: any) {
     }
 }
 
+async function triggerStart(channelId: string) {
+    if (isCurrentlyRecording()) return;
+    await startRecording({
+        mode: settings.store.mode as any,
+        videoQuality: settings.store.videoQuality as any,
+        videoFormat: settings.store.videoFormat as any,
+        audioFormat: settings.store.audioFormat as any,
+        maxStorageGB: settings.store.maxStorage,
+        shadowplayMinutes: settings.store.shadowplayMinutes,
+        autoSave: settings.store.autoSave,
+        savePath: settings.store.savePath,
+        showSaveToast: settings.store.showSaveToast
+    });
+    startUIInterval();
+}
+
 async function handleVoiceChannelSelect(e: any) {
-    const newChannelId = e.channelId;
+    const newChannelId = e.channelId || getConnectedVoiceChannelId();
 
     if (lastChannelId && lastChannelId !== newChannelId) {
         await stopRecording();
@@ -282,18 +319,7 @@ async function handleVoiceChannelSelect(e: any) {
         if (isBlacklistedUserInChannel(newChannelId)) {
             Toasts.show(Toasts.create(t("Blacklisted user in channel."), Toasts.Type.WARNING));
         } else {
-            await startRecording({
-                mode: settings.store.mode as any,
-                videoQuality: settings.store.videoQuality as any,
-                videoFormat: settings.store.videoFormat as any,
-                audioFormat: settings.store.audioFormat as any,
-                maxStorageGB: settings.store.maxStorage,
-                shadowplayMinutes: settings.store.shadowplayMinutes,
-                autoSave: settings.store.autoSave,
-                savePath: settings.store.savePath,
-                showSaveToast: settings.store.showSaveToast
-            });
-            startUIInterval();
+            await triggerStart(newChannelId);
         }
     }
 
@@ -308,24 +334,12 @@ export default definePlugin({
     settings,
     
     start() {
-        lastChannelId = SelectedChannelStore?.getVoiceChannelId?.();
+        lastChannelId = getConnectedVoiceChannelId();
         if (lastChannelId) {
             if (isBlacklistedUserInChannel(lastChannelId)) {
                 Toasts.show(Toasts.create(t("Blacklisted user in channel."), Toasts.Type.WARNING));
             } else {
-                startRecording({
-                    mode: settings.store.mode as any,
-                    videoQuality: settings.store.videoQuality as any,
-                    videoFormat: settings.store.videoFormat as any,
-                    audioFormat: settings.store.audioFormat as any,
-                    maxStorageGB: settings.store.maxStorage,
-                    shadowplayMinutes: settings.store.shadowplayMinutes,
-                    autoSave: settings.store.autoSave,
-                    savePath: settings.store.savePath,
-                    showSaveToast: settings.store.showSaveToast
-                }).then(() => {
-                    startUIInterval();
-                });
+                triggerStart(lastChannelId);
             }
         }
 

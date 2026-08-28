@@ -74,7 +74,7 @@ function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ex
             }
             return { mimeType: "video/webm", ext: "webm" };
         } else {
-            // Default: MP4 (H.264 / AVC + AAC / Opus in MP4)
+            // Default: MP4 video
             const mimes = [
                 "video/mp4;codecs=avc1,mp4a.40.2",
                 "video/mp4;codecs=avc1,opus",
@@ -88,14 +88,13 @@ function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ex
             ];
             for (const m of mimes) {
                 if (MediaRecorder.isTypeSupported(m)) {
-                    const ext = m.includes("mp4") ? "mp4" : "webm";
-                    return { mimeType: m, ext };
+                    return { mimeType: m, ext: "mp4" };
                 }
             }
-            return { mimeType: "video/mp4", ext: "mp4" };
+            return { mimeType: "video/webm", ext: "mp4" };
         }
     } else {
-        // Voice only
+        // Voice only: MUST use audio MIME types so MediaRecorder doesn't reject audio-only streams
         if (opts.audioFormat === "ogg") {
             const mimes = [
                 "audio/ogg;codecs=opus",
@@ -106,7 +105,7 @@ function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ex
             for (const m of mimes) {
                 if (MediaRecorder.isTypeSupported(m)) return { mimeType: m, ext: "ogg" };
             }
-            return { mimeType: "audio/ogg", ext: "ogg" };
+            return { mimeType: "audio/webm", ext: "ogg" };
         } else if (opts.audioFormat === "webm") {
             const mimes = [
                 "audio/webm;codecs=opus",
@@ -117,25 +116,21 @@ function getMediaRecordingConfig(opts: RecordingOptions): { mimeType: string; ex
             }
             return { mimeType: "audio/webm", ext: "webm" };
         } else {
-            // Default: MP4 / AAC or WebM Opus
+            // Default: MP4 audio / AAC or WebM Opus
             const mimes = [
                 "audio/mp4;codecs=mp4a.40.2",
                 "audio/mp4;codecs=aac",
                 "audio/mp4;codecs=opus",
                 "audio/mp4",
-                "video/mp4;codecs=mp4a.40.2",
-                "video/mp4;codecs=avc1,opus",
-                "video/mp4",
                 "audio/webm;codecs=opus",
                 "audio/webm"
             ];
             for (const m of mimes) {
                 if (MediaRecorder.isTypeSupported(m)) {
-                    const ext = m.includes("mp4") ? "mp4" : "webm";
-                    return { mimeType: m, ext };
+                    return { mimeType: m, ext: "mp4" };
                 }
             }
-            return { mimeType: "audio/webm", ext: "webm" };
+            return { mimeType: "audio/webm", ext: "mp4" };
         }
     }
 }
@@ -267,18 +262,20 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         }
 
         let videoBitsPerSecond: number | undefined;
-        if (opts.mode === "video") {
-            if (opts.videoQuality === "1080p60") videoBitsPerSecond = 8000000;
-            else if (opts.videoQuality === "720p30") videoBitsPerSecond = 3000000;
-            else if (opts.videoQuality === "480p25") videoBitsPerSecond = 1500000;
+        let recorderOptions: any = {};
+        if (mimeType && MediaRecorder.isTypeSupported(mimeType)) {
+            recorderOptions.mimeType = mimeType;
         }
-
-        const recorderOptions: any = { mimeType };
         if (videoBitsPerSecond) {
             recorderOptions.videoBitsPerSecond = videoBitsPerSecond;
         }
 
-        mediaRecorder = new MediaRecorder(finalStream, recorderOptions);
+        try {
+            mediaRecorder = new MediaRecorder(finalStream, recorderOptions);
+        } catch (recorderErr) {
+            console.warn("[AutoCallRecorder] MediaRecorder init with options failed, falling back to default:", recorderErr);
+            mediaRecorder = new MediaRecorder(finalStream);
+        }
 
         mediaRecorder.ondataavailable = e => {
             if (!e.data || e.data.size === 0) return;
@@ -299,7 +296,7 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             }
         };
 
-        mediaRecorder.start(CHUNK_TIME_MS);
+        mediaRecorder.start(1000);
         isRecording = true;
 
         memoryCheckInterval = setInterval(() => {
