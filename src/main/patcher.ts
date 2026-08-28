@@ -83,6 +83,12 @@ if (!IS_VANILLA) {
 
             const original = options.webPreferences.preload;
             const isMainWindow = options.title === "Discord";
+
+            if (!isMainWindow) {
+                super(options);
+                return;
+            }
+
             options.webPreferences.preload = join(__dirname, "preload.js");
             options.webPreferences.sandbox = false;
             options.webPreferences.backgroundThrottling = false;
@@ -123,6 +129,21 @@ if (!IS_VANILLA) {
             process.env.DISCORD_PRELOAD = original;
 
             super(options);
+
+            const closeSplashWindows = () => {
+                for (const win of electron.BrowserWindow.getAllWindows()) {
+                    if (win !== this && !win.isDestroyed()) {
+                        try {
+                            win.close();
+                            win.destroy();
+                        } catch {}
+                    }
+                }
+            };
+
+            this.once("show", closeSplashWindows);
+            this.webContents.on("did-finish-load", closeSplashWindows);
+            this.webContents.on("did-navigate", closeSplashWindows);
 
             if (isMainWindow) {
                 makeLinksOpenExternally(this);
