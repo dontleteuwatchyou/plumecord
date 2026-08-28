@@ -9,9 +9,12 @@ import definePlugin from "@utils/types";
 import { Avatar, Button, closeModal, Menu, openModal, React, ScrollerThin, SortedGuildStore, Text } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
+import { findByPropsLazy } from "@webpack";
 import { FolderIconEditModal, int2rgba } from "./modal";
 import { CustomFolderIconData, FolderIconsMap, ServerFolderProps } from "./types";
 import { t } from "../autoTranslateNightcord";
+
+const folderClasses = findByPropsLazy("folderPreviewWrapper", "folderPreview") as any;
 
 const folderIconsStore: FolderIconsMap = {};
 const listeners = new Set<() => void>();
@@ -70,32 +73,48 @@ function FolderIconComponent({ folderNode, data }: { folderNode: any; data: Cust
     }
 
     const radius = data.radius !== undefined ? `${data.radius}%` : "33%";
-    const size = data.size !== undefined ? `${data.size}%` : "100%";
+    const userSize = (data.size !== undefined ? Number(data.size) : 100) / 100;
+
+    const wrapperClass = folderClasses?.folderPreviewWrapper || "folderPreviewWrapper__48112";
+    const previewClass = folderClasses?.folderPreview || "folderPreview__48112";
 
     return (
         <div
+            className={wrapperClass}
             style={{
                 width: "100%",
                 height: "100%",
-                borderRadius: radius,
-                backgroundColor: bg,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                overflow: "hidden",
-                boxSizing: "border-box"
+                overflow: "hidden"
             }}
         >
-            <img
-                src={data.url}
-                alt=""
+            <div
+                className={previewClass}
                 style={{
-                    width: size,
-                    height: size,
-                    objectFit: "contain",
-                    pointerEvents: "none"
+                    borderRadius: radius,
+                    backgroundColor: bg,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    boxSizing: "border-box"
                 }}
-            />
+            >
+                <img
+                    src={data.url}
+                    alt=""
+                    style={{
+                        width: `${Math.round(userSize * 100)}%`,
+                        height: `${Math.round(userSize * 100)}%`,
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        objectFit: "contain",
+                        pointerEvents: "none"
+                    }}
+                />
+            </div>
         </div>
     );
 }
