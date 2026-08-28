@@ -1,56 +1,65 @@
 # ==============================================================================
-#  Nightcord — Désinstalleur utilisateur (PowerShell)
-#  Supprime l'injection Nightcord de Discord
-#
-#  Usage : Clic droit → "Exécuter avec PowerShell"
+#  Nightcord — Désinstalleur & Réparateur Discord (PowerShell)
+#  Supprime proprement l'injection Nightcord et restaure Discord
 # ==============================================================================
 
-$ErrorActionPreference = "Stop"
-
-$InstallDir    = Join-Path $env:LOCALAPPDATA "Nightcord-Client"
-$DistDir       = Join-Path $InstallDir "dist\desktop"
-$InstallerDir  = Join-Path $InstallDir "installer"
-$EquilotlExe   = Join-Path $InstallerDir "EquilotlCli.exe"
+$ErrorActionPreference = "SilentlyContinue"
 
 Clear-Host
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║      NIGHTCORD — Désinstalleur           ║" -ForegroundColor Cyan
-Write-Host "  ╚══════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  =======================================================" -ForegroundColor Cyan
+Write-Host "            NIGHTCORD - DESINSTALLATION & REPARATION     " -ForegroundColor White
+Write-Host "  =======================================================" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not (Test-Path $EquilotlExe)) {
-    Write-Host "  [INFO] EquilotlCli.exe introuvable." -ForegroundColor Yellow
-    Write-Host "         Téléchargement de l'outil de désinstallation..." -ForegroundColor Yellow
-    Write-Host ""
-    New-Item -ItemType Directory -Force -Path $InstallerDir | Out-Null
-    $EquilotlUrl = "https://github.com/Equicord/Equilotl/releases/latest/download/EquilotlCli.exe"
-    Invoke-WebRequest -Uri $EquilotlUrl `
-        -Headers @{ "User-Agent" = "Nightcord-Installer/2.0" } `
-        -OutFile $EquilotlExe -UseBasicParsing
+# Fermer les processus Discord en cours
+Get-Process -Name "Discord", "DiscordCanary", "DiscordPTB", "DiscordDevelopment" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 500
+
+$discordPaths = @(
+    "$env:LOCALAPPDATA\Discord",
+    "$env:LOCALAPPDATA\DiscordCanary",
+    "$env:LOCALAPPDATA\DiscordPTB",
+    "$env:LOCALAPPDATA\DiscordDevelopment"
+)
+
+$restoredCount = 0
+
+foreach ($disc in $discordPaths) {
+    if (Test-Path $disc) {
+        $appDirs = Get-ChildItem -Path $disc -Directory -Filter "app-*"
+        foreach ($appDir in $appDirs) {
+            $resourcesDir = Join-Path $appDir.FullName "resources"
+            if (Test-Path $resourcesDir) {
+                # 1. Supprimer le dossier injecté "app"
+                $appFolder = Join-Path $resourcesDir "app"
+                if (Test-Path $appFolder) {
+                    Remove-Item $appFolder -Recurse -Force
+                    Write-Host "  [✓] Dossier d'injection supprime dans $($appDir.Name)" -ForegroundColor Yellow
+                }
+
+                # 2. Restaurer app.asar depuis discord_app.asar ou _app.asar si nécessaire
+                $appAsar = Join-Path $resourcesDir "app.asar"
+                $backupPrimary = Join-Path $resourcesDir "discord_app.asar"
+                $backupSecondary = Join-Path $resourcesDir "_app.asar"
+
+                if (Test-Path $backupPrimary) {
+                    Copy-Item $backupPrimary $appAsar -Force
+                    Write-Host "  [✓] Archive originale Discord restauree dans $($appDir.Name)" -ForegroundColor Green
+                    $restoredCount++
+                } elseif (Test-Path $backupSecondary) {
+                    Copy-Item $backupSecondary $appAsar -Force
+                    Write-Host "  [✓] Archive originale Discord restauree dans $($appDir.Name)" -ForegroundColor Green
+                    $restoredCount++
+                }
+            }
+        }
+    }
 }
 
-Write-Host "  Lancement du désinstalleur graphique..." -ForegroundColor Yellow
-Write-Host "  Une fenêtre va s'ouvrir pour choisir votre Discord cible." -ForegroundColor Yellow
 Write-Host ""
-
-$env:EQUICORD_USER_DATA_DIR = $InstallDir
-$env:EQUICORD_DIRECTORY     = $DistDir
-$env:EQUICORD_DEV_INSTALL   = "1"
-
-try {
-    & $EquilotlExe "--uninstall"
-} catch {
-    Write-Host "  [ERREUR] La désinstallation a échoué : $_" -ForegroundColor Red
-    Write-Host "  Appuyez sur une touche pour quitter..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    exit 1
-}
-
-Write-Host ""
-Write-Host "  ┌──────────────────────────────────────────────────────┐" -ForegroundColor Green
-Write-Host "  │  Nightcord désinstallé avec succès !                 │" -ForegroundColor Green
-Write-Host "  │  Redémarrez Discord pour appliquer les changements.  │" -ForegroundColor Green
-Write-Host "  └──────────────────────────────────────────────────────┘" -ForegroundColor Green
+Write-Host "  =======================================================" -ForegroundColor Green
+Write-Host "    Discord a ete nettoye et restaure avec succes !      " -ForegroundColor Green
+Write-Host "  =======================================================" -ForegroundColor Green
 Write-Host ""
 Start-Sleep -Seconds 3
