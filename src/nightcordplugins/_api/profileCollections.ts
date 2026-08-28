@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -17,31 +17,9 @@ export default definePlugin({
     name: "ProfileCollectionsAPI",
     description: "API to add collections to the user profile panel like discords game collection.",
     authors: [Devs.thororen],
-    enabledByDefault: true,
+    enabledByDefault: false,
     start() {
         (Vencord.Api as any).ProfileCollections = ProfileCollections;
     },
-    patches: [
-        {
-            find: ".USER_PROFILE_ACTIVITY",
-            replacement: {
-                match: /user:(\i),widgets:.{0,100}?\}\),/,
-                replace: "Vencord.Api?.ProfileCollections?.renderProfileCollections?.({...arguments[0], original: $&}) ?? $&",
-            }
-        },
-        {
-            find: '"UserProfileAccountPopout"',
-            replacement: {
-                match: /user:(\i),widgets:.{0,100}?\}\),/,
-                replace: "Vencord.Api?.ProfileCollections?.renderProfileCollections?.({...arguments[0], original: $&}) ?? $&",
-            },
-        },
-        {
-            find: ".SIDEBAR,disableToolbar:",
-            replacement: {
-                match: /user:(\i),widgets:.{0,100}?\}\),/,
-                replace: "Vencord.Api?.ProfileCollections?.renderProfileCollections?.({...arguments[0], isSideBar:true, original: $&}) ?? $&"
-            }
-        }
-    ]
+    patches: []
 });
