@@ -120,6 +120,17 @@ const voiceStateLabels: Array<[VoiceStateFlag, string, string]> = [
 const updateTargets = (value: string): string[] => {
     targets = [...new Set(value.match(/\d+/g) ?? [])];
     targetIds = new Set(targets);
+    for (const id of targets) {
+        try {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(id);
+            if (vs?.channelId) {
+                previousVoiceStates.set(id, vs);
+            }
+        } catch { }
+    }
+    if (presenceTrackingStarted) {
+        seedPresence();
+    }
     targetListeners.forEach(listener => listener());
     return targets;
 };
@@ -296,8 +307,8 @@ const shouldTrackServer = (guildId?: string) =>
 
 const getScope = (userId: string, guildId?: string): SurveillanceScope | undefined => {
     if (shouldIgnoreUser(userId)) return;
-    if (shouldTrackServer(guildId) && !isCurrentUser(userId)) return "server";
     if (shouldTrackUser(userId)) return "person";
+    if (shouldTrackServer(guildId) && !isCurrentUser(userId)) return "server";
 };
 
 const shouldTrackEvent = (userId: string, guildId?: string) =>
@@ -402,8 +413,8 @@ const rememberServerUser = (userId: string, guildId?: string) => {
     guildIds.add(guildId);
 
     if (!lastStatuses.has(userId)) {
-        const statuses = PresenceStore.getState()?.statuses ?? {};
-        lastStatuses.set(userId, statuses[userId] ?? "offline");
+        const status = PresenceStore.getStatus?.(userId) ?? PresenceStore.getState()?.statuses?.[userId] ?? "offline";
+        lastStatuses.set(userId, status);
         if (settings.store.logActivities) lastActivities.set(userId, getActivityMap(userId));
     }
 };
@@ -437,7 +448,7 @@ const notify = (event: SurveillanceEvent) => {
         title: "Surveillance",
         body: `${event.username}: ${event.details}`,
         color: NOTIFICATION_COLOR,
-        icon: user?.getAvatarURL(),
+        icon: user?.getAvatarURL?.() ?? user?.avatar,
     });
 };
 
@@ -557,14 +568,14 @@ const getActivityMap = (userId: string) => {
 };
 
 const seedPresence = () => {
-    const statuses = PresenceStore.getState()?.statuses ?? {};
     const { logActivities } = settings.store;
 
     lastStatuses = new Map();
     lastActivities = new Map();
 
     for (const userId of getPresenceUserIds()) {
-        lastStatuses.set(userId, statuses[userId] ?? "offline");
+        const status = PresenceStore.getStatus?.(userId) ?? PresenceStore.getState()?.statuses?.[userId] ?? "offline";
+        lastStatuses.set(userId, status);
         if (logActivities) lastActivities.set(userId, getActivityMap(userId));
     }
 };
@@ -600,8 +611,6 @@ const handlePresenceChange = () => {
     const userIds = getPresenceUserIds();
     if (!userIds.size) return;
 
-    const statuses = PresenceStore.getState()?.statuses ?? {};
-
     for (const userId of userIds) {
         const guildId = getSeenServerGuildId(userId);
         const scope = getScope(userId, guildId);
@@ -610,7 +619,7 @@ const handlePresenceChange = () => {
         const guildInfo = scope === "server" ? getGuildInfo(guildId) : {};
 
         const previousStatus = lastStatuses.get(userId) ?? "offline";
-        const currentStatus = statuses[userId] ?? "offline";
+        const currentStatus = PresenceStore.getStatus?.(userId) ?? PresenceStore.getState()?.statuses?.[userId] ?? "offline";
 
         if (logStatus && previousStatus !== currentStatus) {
             addUserEvent("status", userId, `Status changed from ${previousStatus} to ${currentStatus}.`, { scope, ...guildInfo });
@@ -658,80 +667,101 @@ const getVoiceChanges = (previousState: VoiceState, currentState: VoiceState) =>
 };
 
 const handleVoiceState = (state: VoiceState) => {
-    if (!settings.store.logVoice) return;
+    if (!settings.store.logVoice || !state || !state.userId) return;
 
-    const previousState = previousVoiceStates.get(state.userId);
-    const { channelId, oldChannelId, userId } = state;
-    const guildId = state.guildId ?? getChannelInfo(channelId ?? oldChannelId).guildId;
+    const { userId } = state;
+    const previousState = previousVoiceStates.get(userId);
+
+    const prevChannelId = state.oldChannelId ?? previousState?.channelId;
+    const currentChannelId = state.channelId;
+
+    const guildId = state.guildId ?? getChannelInfo(currentChannelId ?? prevChannelId).guildId;
     if (!shouldTrackEvent(userId, guildId)) return;
 
     rememberServerUser(userId, guildId);
 
-    if (oldChannelId !== channelId) {
-        if (!oldChannelId && channelId) {
-            const channelInfo = getChannelInfo(channelId);
-            const voiceDetails = getVoiceDetails(`Joined voice channel ${channelInfo.channelName ?? "Unknown channel"}.`, channelId, userId);
+    // 1. Voice channel transition: Join, Leave, Move
+    if (prevChannelId !== currentChannelId) {
+        if (!prevChannelId && currentChannelId) {
+            const channelInfo = getChannelInfo(currentChannelId);
+            const voiceDetails = getVoiceDetails(`Joined voice channel ${channelInfo.channelName ?? "Unknown channel"}.`, currentChannelId, userId);
 
             addUserEvent("voice_join", userId, voiceDetails.details, {
                 ...channelInfo,
+                guildId: guildId ?? channelInfo.guildId,
                 voiceParticipants: voiceDetails.voiceParticipants,
             });
-        } else if (oldChannelId && !channelId) {
-            const channelInfo = getChannelInfo(oldChannelId);
-            const voiceDetails = getVoiceDetails(`Left voice channel ${channelInfo.channelName ?? "Unknown channel"}.`, oldChannelId, userId);
+        } else if (prevChannelId && !currentChannelId) {
+            const channelInfo = getChannelInfo(prevChannelId);
+            const voiceDetails = getVoiceDetails(`Left voice channel ${channelInfo.channelName ?? "Unknown channel"}.`, prevChannelId, userId);
 
             addUserEvent("voice_leave", userId, voiceDetails.details, {
                 ...channelInfo,
+                guildId: guildId ?? channelInfo.guildId,
                 voiceParticipants: voiceDetails.voiceParticipants,
             });
-        } else if (oldChannelId && channelId) {
-            const oldChannel = getChannelInfo(oldChannelId).channelName ?? "Unknown channel";
-            const channelInfo = getChannelInfo(channelId);
-            const voiceDetails = getVoiceDetails(`Moved from ${oldChannel} to ${channelInfo.channelName ?? "Unknown channel"}.`, channelId, userId);
+        } else if (prevChannelId && currentChannelId) {
+            const oldChannel = getChannelInfo(prevChannelId).channelName ?? "Unknown channel";
+            const channelInfo = getChannelInfo(currentChannelId);
+            const voiceDetails = getVoiceDetails(`Moved from ${oldChannel} to ${channelInfo.channelName ?? "Unknown channel"}.`, currentChannelId, userId);
 
             addUserEvent("voice_move", userId, voiceDetails.details, {
                 ...channelInfo,
+                guildId: guildId ?? channelInfo.guildId,
                 voiceParticipants: voiceDetails.voiceParticipants,
             });
         }
     }
 
-    if (previousState && channelId && oldChannelId === channelId) {
+    // 2. Voice state changes in the same channel (Mute, Unmute, Stream/Screenshare, Video, Deafen)
+    if (previousState && currentChannelId && prevChannelId === currentChannelId) {
         const changes = getVoiceChanges(previousState, state);
         if (changes.length) {
-            const channelInfo = getChannelInfo(channelId);
-            const voiceDetails = getVoiceDetails(`Voice state changed: ${changes.join(", ")}.`, channelId, userId);
+            const channelInfo = getChannelInfo(currentChannelId);
+            const voiceDetails = getVoiceDetails(`Voice state changed: ${changes.join(", ")}.`, currentChannelId, userId);
 
             addUserEvent("voice_update", userId, voiceDetails.details, {
                 ...channelInfo,
+                guildId: guildId ?? channelInfo.guildId,
                 voiceParticipants: voiceDetails.voiceParticipants,
             });
         }
     }
 
-    if (channelId) previousVoiceStates.set(userId, state);
-    else previousVoiceStates.delete(userId);
+    if (currentChannelId) {
+        previousVoiceStates.set(userId, {
+            ...previousState,
+            ...state,
+            channelId: currentChannelId,
+        });
+    } else {
+        previousVoiceStates.delete(userId);
+    }
 };
 
-const logMessage = (message: Message) => {
-    const { author } = message;
+const logMessage = (message: any) => {
+    if (!message) return;
+    const author = message.author;
+    if (!author?.id) return;
     if (!settings.store.logMessages && !settings.store.logMessageChanges) return;
     if (shouldIgnoreUser(author.id, author)) return;
 
-    const info = getChannelInfo(message.channel_id);
+    const channelId = message.channel_id ?? message.channelId;
+    const info = getChannelInfo(channelId);
     if (!shouldTrackEvent(author.id, info.guildId)) return;
 
     rememberServerUser(author.id, info.guildId);
 
     const captureContent = settings.store.captureMessageContent;
-    const content = captureContent ? preview(message.content) : undefined;
+    const rawContent = message.content ?? "";
+    const content = captureContent ? preview(rawContent) : undefined;
 
     rememberMessage(message.id, {
         userId: author.id,
-        username: author.username,
-        channelId: message.channel_id,
+        username: author.username ?? getUsername(author.id),
+        channelId: channelId ?? "",
         guildId: info.guildId,
-        content: captureContent ? message.content : "",
+        content: captureContent ? rawContent : "",
     });
 
     if (!settings.store.logMessages) return;
@@ -739,51 +769,60 @@ const logMessage = (message: Message) => {
     addEvent({
         type: "message",
         userId: author.id,
-        username: author.username,
+        username: author.username ?? getUsername(author.id),
         details: content ? `Sent message: ${content}` : "Sent a message.",
         scope: getScope(author.id, info.guildId),
         content,
         ...info,
         metadata: {
             messageId: message.id,
-            hasContent: message.content.length > 0,
-            attachmentCount: message.attachments.length,
+            hasContent: rawContent.length > 0,
+            attachmentCount: message.attachments?.length ?? 0,
         },
     });
 };
 
-const logMessageUpdate = (message: Message) => {
+const logMessageUpdate = (message: any) => {
+    if (!message || !message.id) return;
     if (!settings.store.logMessageChanges) return;
-    if (shouldIgnoreUser(message.author.id, message.author)) return;
 
     const previousMessage = messageCache.get(message.id);
-    const info = getChannelInfo(message.channel_id);
-    const guildId = info.guildId ?? previousMessage?.guildId;
-    if (!shouldTrackEvent(message.author.id, guildId)) return;
+    const author = message.author;
+    const authorId = author?.id ?? previousMessage?.userId;
+    if (!authorId) return;
+    if (shouldIgnoreUser(authorId, author)) return;
 
-    rememberServerUser(message.author.id, guildId);
+    const channelId = message.channel_id ?? message.channelId ?? previousMessage?.channelId;
+    const info = getChannelInfo(channelId);
+    const guildId = info.guildId ?? previousMessage?.guildId;
+    if (!shouldTrackEvent(authorId, guildId)) return;
+
+    rememberServerUser(authorId, guildId);
 
     const captureContent = settings.store.captureMessageContent;
-    const content = captureContent ? preview(message.content) : undefined;
+    const rawContent = message.content ?? "";
+    const content = captureContent && rawContent ? preview(rawContent) : undefined;
     const previousContent = previousMessage?.content;
+    const username = author?.username ?? previousMessage?.username ?? getUsername(authorId);
 
     rememberMessage(message.id, {
-        userId: message.author.id,
-        username: message.author.username,
-        channelId: message.channel_id,
-        guildId: info.guildId,
-        content: captureContent ? message.content : "",
+        userId: authorId,
+        username,
+        channelId: channelId ?? "",
+        guildId,
+        content: captureContent ? (rawContent || previousContent || "") : "",
     });
 
     addEvent({
         type: "message_edit",
-        userId: message.author.id,
-        username: message.author.username,
+        userId: authorId,
+        username,
         details: content ? `Edited message: ${content}` : "Edited a message.",
-        scope: getScope(message.author.id, guildId),
+        scope: getScope(authorId, guildId),
         before: captureContent && previousContent ? preview(previousContent) : undefined,
         after: content,
         ...info,
+        guildId,
         metadata: {
             messageId: message.id,
             hadCachedOriginal: Boolean(previousContent),
@@ -792,20 +831,22 @@ const logMessageUpdate = (message: Message) => {
 };
 
 const logMessageDelete = (messageId: string, channelId: string) => {
-    if (!settings.store.logMessageChanges) return;
+    if (!settings.store.logMessageChanges || !messageId) return;
 
     const snapshot = messageCache.get(messageId);
     const info = getChannelInfo(channelId);
 
     if (!snapshot) {
-        addServerEvent("message_delete", info.guildId, "Deleted an uncached message.", {
-            username: "Unknown user",
-            ...info,
-            metadata: {
-                messageId,
-                cached: false,
-            },
-        });
+        if (shouldTrackServer(info.guildId)) {
+            addServerEvent("message_delete", info.guildId, "Deleted an uncached message.", {
+                username: "Unknown user",
+                ...info,
+                metadata: {
+                    messageId,
+                    cached: false,
+                },
+            });
+        }
         return;
     }
 
@@ -814,7 +855,7 @@ const logMessageDelete = (messageId: string, channelId: string) => {
 
     rememberServerUser(snapshot.userId, guildId);
 
-    const content = settings.store.captureMessageContent ? preview(snapshot.content) : undefined;
+    const content = settings.store.captureMessageContent && snapshot.content ? preview(snapshot.content) : undefined;
 
     addEvent({
         type: "message_delete",
@@ -824,6 +865,7 @@ const logMessageDelete = (messageId: string, channelId: string) => {
         scope: getScope(snapshot.userId, guildId),
         content,
         ...info,
+        guildId,
         metadata: {
             messageId,
             cached: true,
@@ -1063,52 +1105,87 @@ export default definePlugin({
     },
 
     flux: {
-        MESSAGE_CREATE({ message }: { message: Message; }) {
+        MESSAGE_CREATE(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
+            const message = event?.message ?? event;
             logMessage(message);
         },
 
-        MESSAGE_UPDATE({ message }: { message: Message; }) {
+        MESSAGE_UPDATE(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
+            const message = event?.message ?? event;
             logMessageUpdate(message);
         },
 
-        MESSAGE_DELETE({ id, channelId }: { id: string; channelId: string; }) {
+        MESSAGE_DELETE(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            logMessageDelete(id, channelId);
+            const id = event?.id ?? event?.messageId;
+            const channelId = event?.channelId ?? event?.channel_id;
+            if (id && channelId) logMessageDelete(id, channelId);
         },
 
-        MESSAGE_DELETE_BULK({ ids, channelId }: { ids: string[]; channelId: string; }) {
+        MESSAGE_DELETE_BULK(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            for (const id of ids) {
-                logMessageDelete(id, channelId);
+            const ids = event?.ids;
+            const channelId = event?.channelId ?? event?.channel_id;
+            if (Array.isArray(ids) && channelId) {
+                for (const id of ids) {
+                    logMessageDelete(id, channelId);
+                }
             }
         },
 
-        MESSAGE_REACTION_ADD(event: MessageReactionFluxEvent) {
+        MESSAGE_REACTION_ADD(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            logReaction("reaction_add", event);
+            logReaction("reaction_add", {
+                channelId: event?.channelId ?? event?.channel_id,
+                messageId: event?.messageId ?? event?.message_id,
+                userId: event?.userId ?? event?.user_id,
+                emoji: event?.emoji,
+            });
         },
 
-        MESSAGE_REACTION_REMOVE(event: MessageReactionFluxEvent) {
+        MESSAGE_REACTION_REMOVE(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            logReaction("reaction_remove", event);
+            logReaction("reaction_remove", {
+                channelId: event?.channelId ?? event?.channel_id,
+                messageId: event?.messageId ?? event?.message_id,
+                userId: event?.userId ?? event?.user_id,
+                emoji: event?.emoji,
+            });
         },
 
-        MESSAGE_REACTION_REMOVE_ALL(event: { channelId: string; messageId: string; }) {
+        MESSAGE_REACTION_REMOVE_ALL(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            logReactionClear(event);
+            const channelId = event?.channelId ?? event?.channel_id;
+            const messageId = event?.messageId ?? event?.message_id;
+            if (channelId && messageId) {
+                logReactionClear({ channelId, messageId });
+            }
         },
 
-        TYPING_START({ userId, channelId }: { userId: string; channelId: string; }) {
+        TYPING_START(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            logTyping(userId, channelId);
+            const userId = event?.userId ?? event?.user_id;
+            const channelId = event?.channelId ?? event?.channel_id;
+            if (userId && channelId) logTyping(userId, channelId);
         },
 
-        VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
+        VOICE_STATE_UPDATES(event: any) {
             if (targets.length === 0 && serverTargets.length === 0) return;
-            for (const voiceState of voiceStates) {
-                handleVoiceState(voiceState);
+            const states = event?.voiceStates ?? (Array.isArray(event) ? event : [event]);
+            if (Array.isArray(states)) {
+                for (const voiceState of states) {
+                    if (voiceState) handleVoiceState(voiceState);
+                }
+            }
+        },
+
+        VOICE_STATE_UPDATE(event: any) {
+            if (targets.length === 0 && serverTargets.length === 0) return;
+            const state = event?.voiceState ?? event;
+            if (state && typeof state === "object") {
+                handleVoiceState(state);
             }
         },
 

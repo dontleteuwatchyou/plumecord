@@ -1,4 +1,3 @@
-import { t } from "../../autoTranslateNightcord";
 /*
  * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
@@ -17,7 +16,6 @@ import { classes } from "@utils/misc";
 import type { RenderModalProps } from "@vencord/discord-types";
 import { ChannelStore, GuildStore, IconUtils, Modal, openModal, React, RelationshipStore, ScrollerThin, TextInput, Toasts, useEffect, useMemo, UserProfileStore, UserStore, useState, useStateFromStores } from "@webpack/common";
 import { tPlugin as t } from "@api/pluginI18n";
-
 
 import { addServerTarget, getServerTargets, getTargets, removeServerTarget, removeTarget, setServerTargets, setTargets, settings, subscribeServerTargets, subscribeTargets } from "..";
 import { clearEvents, getEvents, loadEvents, subscribe } from "../store";
