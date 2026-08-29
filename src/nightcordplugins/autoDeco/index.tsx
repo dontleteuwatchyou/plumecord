@@ -13,6 +13,9 @@ import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
 import { t } from "../autoTranslateNightcord";
 
+import { findByPropsLazy } from "@webpack";
+const GuildVoiceActions = findByPropsLazy("setServerMute", "setChannel") ?? findByPropsLazy("setServerMute");
+
 // Key format: `${guildId}:${userId}`
 const autoDecoedUsers = new Set<string>();
 const listeners = new Set<() => void>();
@@ -47,38 +50,29 @@ async function setServerDisconnect(guildId: string, userId: string): Promise<boo
     const key = `${guildId}:${userId}`;
     const now = Date.now();
 
-    // 1. Strict status check: check if the user is in a voice channel
-    const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
-        ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
-
-    if (vs && !vs.channelId) {
-        // Already disconnected from voice (0 network calls, 0 spam)
-        return true;
-    }
-
-    // 2. Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
+    // Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
     const cooldownUntil = decoCooldowns.get(key) || 0;
     if (now < cooldownUntil) {
         return false;
     }
 
-    // 3. In-flight request lock (prevent duplicate concurrent requests)
+    // In-flight request lock
     if (pendingDecos.has(key)) {
         return false;
     }
     pendingDecos.add(key);
 
-    // 4. Instant optimistic UI and internal Discord action (0ms latency)
+    // 1. Instant native Discord voice action
     try {
-        if (typeof (VoiceActions as any)?.setChannel === "function") {
-            (VoiceActions as any).setChannel(guildId, userId, null);
+        if (typeof GuildVoiceActions?.setChannel === "function") {
+            GuildVoiceActions.setChannel(guildId, userId, null);
         }
     } catch { }
 
-    // 5. Dual-layer REST API patch with error handling
+    // 2. Dual-layer REST API patch
     try {
         await RestAPI.patch({
-            url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
+            url: `/guilds/${guildId}/members/${userId}`,
             body: { channel_id: null }
         });
         decoCooldowns.delete(key);
@@ -86,13 +80,13 @@ async function setServerDisconnect(guildId: string, userId: string): Promise<boo
     } catch (e: any) {
         const status = e?.status || e?.statusCode || e?.body?.code;
         if (status === 403 || String(e?.message).includes("403")) {
-            // Missing permission or target user has higher role hierarchy -> cooldown 20s
-            decoCooldowns.set(key, Date.now() + 20_000);
+            // Missing permission or target user has higher role hierarchy -> cooldown 10s
+            decoCooldowns.set(key, Date.now() + 10_000);
         } else if (status === 429 || String(e?.message).includes("429")) {
-            const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 5000;
-            decoCooldowns.set(key, Date.now() + Math.max(retryAfter, 5000));
+            const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 3000;
+            decoCooldowns.set(key, Date.now() + Math.max(retryAfter, 3000));
         } else {
-            decoCooldowns.set(key, Date.now() + 5000);
+            decoCooldowns.set(key, Date.now() + 3000);
         }
         return false;
     } finally {
@@ -122,12 +116,19 @@ function processVoiceState(state: any) {
     const userId = state.userId || state.user_id;
     if (!userId) return;
 
-    const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
-
-    // If target is connected to a voice channel, immediately disconnect them
     for (const key of autoDecoedUsers) {
         if (key.endsWith(`:${userId}`)) {
             const [guildId] = key.split(":");
+            const stateGuildId = state.guildId || state.guild_id;
+            if (stateGuildId && stateGuildId !== guildId) continue;
+
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
+                ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+
+            const rawChannelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+            const channelId = rawChannelId !== undefined ? rawChannelId : vs?.channelId;
+
+            // If target is connected to a voice channel, immediately disconnect them
             if (channelId) {
                 setServerDisconnect(guildId, userId).catch(() => { });
             }

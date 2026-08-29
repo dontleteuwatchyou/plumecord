@@ -13,6 +13,9 @@ import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Switch } from "@components/Switch";
 import { t } from "../autoTranslateNightcord";
 
+import { findByPropsLazy } from "@webpack";
+const GuildVoiceActions = findByPropsLazy("setServerMute", "setChannel") ?? findByPropsLazy("setServerMute");
+
 // Key format: `${guildId}:${userId}`
 const autoMutedUsers = new Set<string>();
 const listeners = new Set<() => void>();
@@ -47,45 +50,29 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     const key = `${guildId}:${userId}`;
     const now = Date.now();
 
-    // 1. Strict status check: check if the user is in voice and if they already have the desired state
-    const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
-        ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
-
-    if (mute) {
-        // If not in a voice channel, do nothing
-        if (!vs?.channelId) return true;
-        // If ALREADY server-muted, do nothing (0 network calls, 0 spam)
-        if (vs.mute) return true;
-    } else if (vs && !vs.mute) {
-        // If unmuting and already not muted, do nothing
-        return true;
-    }
-
-    // 2. Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
+    // Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
     const cooldownUntil = muteCooldowns.get(key) || 0;
     if (now < cooldownUntil) {
         return false;
     }
 
-    // 3. In-flight request lock (prevent duplicate concurrent requests)
+    // In-flight request lock
     if (pendingMutes.has(key)) {
         return false;
     }
     pendingMutes.add(key);
 
-    // 4. Instant optimistic UI and internal Discord action (0ms latency)
+    // 1. Instant native Discord voice action
     try {
-        if (typeof GuildActions?.setServerMute === "function") {
-            GuildActions.setServerMute(guildId, userId, mute);
-        } else if (typeof (VoiceActions as any)?.setServerMute === "function") {
-            (VoiceActions as any).setServerMute(guildId, userId, mute);
+        if (typeof GuildVoiceActions?.setServerMute === "function") {
+            GuildVoiceActions.setServerMute(guildId, userId, mute);
         }
     } catch { }
 
-    // 5. Dual-layer REST API patch with error handling
+    // 2. Dual-layer REST API patch
     try {
         await RestAPI.patch({
-            url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
+            url: `/guilds/${guildId}/members/${userId}`,
             body: { mute }
         });
         muteCooldowns.delete(key);
@@ -93,13 +80,13 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     } catch (e: any) {
         const status = e?.status || e?.statusCode || e?.body?.code;
         if (status === 403 || String(e?.message).includes("403")) {
-            // Missing permission or target user has higher role hierarchy -> cooldown 20s
-            muteCooldowns.set(key, Date.now() + 20_000);
+            // Missing permission or target has higher role hierarchy -> cooldown 10s
+            muteCooldowns.set(key, Date.now() + 10_000);
         } else if (status === 429 || String(e?.message).includes("429")) {
-            const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 5000;
-            muteCooldowns.set(key, Date.now() + Math.max(retryAfter, 5000));
+            const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 3000;
+            muteCooldowns.set(key, Date.now() + Math.max(retryAfter, 3000));
         } else {
-            muteCooldowns.set(key, Date.now() + 5000);
+            muteCooldowns.set(key, Date.now() + 3000);
         }
         return false;
     } finally {
@@ -129,14 +116,21 @@ function processVoiceState(state: any) {
     const userId = state.userId || state.user_id;
     if (!userId) return;
 
-    const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
-    const mute = state.mute !== undefined ? Boolean(state.mute) : false;
-
-    // If target is in voice and not muted, immediately apply mute
     for (const key of autoMutedUsers) {
         if (key.endsWith(`:${userId}`)) {
             const [guildId] = key.split(":");
-            if (channelId && !mute) {
+            const stateGuildId = state.guildId || state.guild_id;
+            if (stateGuildId && stateGuildId !== guildId) continue;
+
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
+                ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+
+            const rawChannelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+            const channelId = rawChannelId !== undefined ? rawChannelId : vs?.channelId;
+            const isMuted = state.mute !== undefined ? Boolean(state.mute) : Boolean(vs?.mute);
+
+            // If user is connected to a voice channel and not muted, immediately apply server mute
+            if (channelId && !isMuted) {
                 setServerMute(guildId, userId, true).catch(() => { });
             }
         }
