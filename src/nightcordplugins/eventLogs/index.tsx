@@ -40,8 +40,8 @@ type LogType =
     | "message_delete" | "message_edit"
     | "voice_join" | "voice_leave" | "voice_move"
     | "voice_mute" | "voice_deaf" | "voice_stream" | "voice_mute_mod"
-    | "friend_add" | "friend_remove" | "friend_request" | "friend_request_cancel"
-    | "block" | "guild_member_add" | "guild_member_remove" | "guild_ban"
+    | "friend_add" | "friend_remove" | "friend_request" | "friend_request_cancel" | "unblock"
+    | "block" | "guild_member_add" | "guild_member_remove" | "guild_ban" | "guild_unban"
     | "guild_timeout" | "guild_kick" | "user_disconnect" | "ping";
 
 interface LogAttachment {
@@ -80,8 +80,8 @@ let logs: LogEntry[] = [];
 let myVoiceChannelId: string | null = null;
 let logCount = 0;
 
-const PERSISTENT_TYPES = new Set(["ping", "message_delete", "message_edit", "friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block"]);
-const NOTIF_TYPES = new Set(["ping", "friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block"]);
+const PERSISTENT_TYPES = new Set(["ping", "message_delete", "message_edit", "friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block", "unblock"]);
+const NOTIF_TYPES = new Set(["ping", "friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block", "unblock"]);
 const unreadLogEntries = new Set<LogEntry>();
 
 export const settings = definePluginSettings({
@@ -116,7 +116,9 @@ function loadPersistLogs() {
                 id: Math.random().toString(36).slice(2),
                 timeStr: new Date(l.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
             }));
-            logs = parsed.concat(logs).sort((a, b) => b.timestamp - a.timestamp);
+            const seen = new Set(logs.map(l => `${l.timestamp}_${l.type}_${l.authorId || ""}_${l.content || ""}`));
+            const fresh = parsed.filter((l: any) => !seen.has(`${l.timestamp}_${l.type}_${l.authorId || ""}_${l.content || ""}`));
+            logs = fresh.concat(logs).sort((a, b) => b.timestamp - a.timestamp);
             logCount = Math.max(logCount, logs.length);
         }
     } catch { }
@@ -296,17 +298,19 @@ const CFG: Record<LogType, { label: string; color: string; }> = {
     friend_request: { label: "Request", color: "#5865f2" },
     friend_request_cancel: { label: "Cancelled", color: "#747f8d" },
     block: { label: "Blocked", color: "#ed4245" },
+    unblock: { label: "Unblocked", color: "#3ba55c" },
     guild_member_add: { label: "Joined", color: "#3ba55c" },
     guild_member_remove: { label: "Left", color: "#ed4245" },
     guild_ban: { label: "Banned", color: "#ed4245" },
+    guild_unban: { label: "Unbanned", color: "#3ba55c" },
     guild_timeout: { label: "Timeout", color: "#faa61a" },
     guild_kick: { label: "Kick", color: "#ed4245" },
     user_disconnect: { label: "Disconnected", color: "#747f8d" },
     ping: { label: "Ping", color: "#eb459f" },
 };
 
-const FRIENDS_SET = new Set(["friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block"]);
-const GUILD_SET = new Set(["guild_member_add", "guild_member_remove", "guild_ban", "guild_timeout", "guild_kick", "user_disconnect"]);
+const FRIENDS_SET = new Set(["friend_add", "friend_remove", "friend_request", "friend_request_cancel", "block", "unblock"]);
+const GUILD_SET = new Set(["guild_member_add", "guild_member_remove", "guild_ban", "guild_unban", "guild_timeout", "guild_kick", "user_disconnect"]);
 
 const avatarUrl = (userId: string, av?: string | null) =>
     av ? IconUtils.getUserAvatarURL({ id: userId, avatar: av } as any, false, 32) : IconUtils.getDefaultAvatarURL(userId);
@@ -1049,7 +1053,7 @@ function subscribeToEvents() {
     });
     sub("RELATIONSHIP_REMOVE", d => {
         const b = relUser(d); const t_type = relType(d);
-        const [type, content]: [LogType, string] = (t_type === 3 || t_type === 4) ? ["friend_request_cancel", t("Request cancelled")] : t_type === 2 ? ["friend_remove", t("Unblocked")] : ["friend_remove", t("Friend removed")];
+        const [type, content]: [LogType, string] = (t_type === 3 || t_type === 4) ? ["friend_request_cancel", t("Request cancelled")] : t_type === 2 ? ["unblock", t("Unblocked")] : ["friend_remove", t("Friend removed")];
         pushLog({ type, content, ...b });
     });
     sub("GUILD_MEMBER_ADD", d => { const b = uInfo(d.user?.id); const g = getGuild(d.guildId); pushLog({ type: "guild_member_add", content: t("Joined"), ...b, guildId: d.guildId, guildName: g?.name }); });
@@ -1087,8 +1091,32 @@ function subscribeToEvents() {
             }
         }
     });
-    sub("GUILD_BAN_ADD", d => { const b = uInfo(d.user?.id); const g = getGuild(d.guildId); pushLog({ type: "guild_ban", content: t("Banned"), ...b, guildId: d.guildId, guildName: g?.name }); });
-    sub("GUILD_BAN_REMOVE", d => { const b = uInfo(d.user?.id); const g = getGuild(d.guildId); pushLog({ type: "friend_remove", content: t("Débanni"), ...b, guildId: d.guildId, guildName: g?.name }); });
+    sub("GUILD_BAN_ADD", d => {
+        const userId = d.user?.id;
+        if (!userId) return;
+        const recentDupe = logs.find((l: any) =>
+            l.type === "guild_ban" &&
+            l.authorId === userId &&
+            l.guildId === d.guildId &&
+            Date.now() - l.timestamp < 3000
+        );
+        if (recentDupe) return;
+        const b = uInfo(userId); const g = getGuild(d.guildId);
+        pushLog({ type: "guild_ban", content: t("Banned"), ...b, guildId: d.guildId, guildName: g?.name });
+    });
+    sub("GUILD_BAN_REMOVE", d => {
+        const userId = d.user?.id;
+        if (!userId) return;
+        const recentDupe = logs.find((l: any) =>
+            l.type === "guild_unban" &&
+            l.authorId === userId &&
+            l.guildId === d.guildId &&
+            Date.now() - l.timestamp < 3000
+        );
+        if (recentDupe) return;
+        const b = uInfo(userId); const g = getGuild(d.guildId);
+        pushLog({ type: "guild_unban", content: t("Unbanned"), ...b, guildId: d.guildId, guildName: g?.name });
+    });
 
     sub("GUILD_MEMBER_UPDATE", d => {
         if (!d.guildId || !d.user?.id) return;

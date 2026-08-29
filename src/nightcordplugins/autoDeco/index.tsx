@@ -17,7 +17,8 @@ import { t } from "../autoTranslateNightcord";
 const autoDecoedUsers = new Set<string>();
 const listeners = new Set<() => void>();
 let radarInterval: ReturnType<typeof setInterval> | null = null;
-const inFlightDecos = new Map<string, number>();
+const pendingDecos = new Set<string>();
+const decoCooldowns = new Map<string, number>();
 
 function notifyChange() {
     listeners.forEach(l => l());
@@ -44,32 +45,58 @@ async function saveAutoDecoed() {
 
 async function setServerDisconnect(guildId: string, userId: string): Promise<boolean> {
     const key = `${guildId}:${userId}`;
+    const now = Date.now();
 
-    // 1. Instant optimistic UI and internal Discord action (0ms latency)
+    // 1. Strict status check: check if the user is in a voice channel
+    const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
+        ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+
+    if (vs && !vs.channelId) {
+        // Already disconnected from voice (0 network calls, 0 spam)
+        return true;
+    }
+
+    // 2. Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
+    const cooldownUntil = decoCooldowns.get(key) || 0;
+    if (now < cooldownUntil) {
+        return false;
+    }
+
+    // 3. In-flight request lock (prevent duplicate concurrent requests)
+    if (pendingDecos.has(key)) {
+        return false;
+    }
+    pendingDecos.add(key);
+
+    // 4. Instant optimistic UI and internal Discord action (0ms latency)
     try {
         if (typeof (VoiceActions as any)?.setChannel === "function") {
             (VoiceActions as any).setChannel(guildId, userId, null);
         }
     } catch { }
 
-    // Rate-limit network calls to avoid 429 while keeping 0ms responsiveness
-    const now = Date.now();
-    const lastSent = inFlightDecos.get(key) || 0;
-    if (now - lastSent < 350) {
-        return true;
-    }
-    inFlightDecos.set(key, now);
-
-    // 2. Dual-layer REST API patch
+    // 5. Dual-layer REST API patch with error handling
     try {
-        RestAPI.patch({
+        await RestAPI.patch({
             url: Constants.Endpoints.GUILD_MEMBER(guildId, userId),
             body: { channel_id: null }
-        }).catch(() => { });
+        });
+        decoCooldowns.delete(key);
         return true;
     } catch (e: any) {
-        console.error("[AutoDeco] Server disconnect failed:", e);
+        const status = e?.status || e?.statusCode || e?.body?.code;
+        if (status === 403 || String(e?.message).includes("403")) {
+            // Missing permission or target user has higher role hierarchy -> cooldown 20s
+            decoCooldowns.set(key, Date.now() + 20_000);
+        } else if (status === 429 || String(e?.message).includes("429")) {
+            const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 5000;
+            decoCooldowns.set(key, Date.now() + Math.max(retryAfter, 5000));
+        } else {
+            decoCooldowns.set(key, Date.now() + 5000);
+        }
         return false;
+    } finally {
+        pendingDecos.delete(key);
     }
 }
 
@@ -83,6 +110,7 @@ function radarSweepDecos() {
         const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
             ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
 
+        // ONLY trigger if user is actively connected in a voice channel
         if (vs?.channelId) {
             setServerDisconnect(guildId, userId).catch(() => { });
         }
@@ -96,17 +124,12 @@ function processVoiceState(state: any) {
 
     const channelId = state.channelId !== undefined ? state.channelId : state.channel_id;
 
-    // Detect target across all monitored guilds
+    // If target is connected to a voice channel, immediately disconnect them
     for (const key of autoDecoedUsers) {
         if (key.endsWith(`:${userId}`)) {
             const [guildId] = key.split(":");
             if (channelId) {
                 setServerDisconnect(guildId, userId).catch(() => { });
-
-                // Multi-tier fast retries to eliminate Discord gateway jitter
-                setTimeout(() => radarSweepDecos(), 60);
-                setTimeout(() => radarSweepDecos(), 180);
-                setTimeout(() => radarSweepDecos(), 400);
             }
         }
     }
@@ -363,7 +386,7 @@ export default definePlugin({
         if (!radarInterval) {
             radarInterval = setInterval(() => {
                 radarSweepDecos();
-            }, 50);
+            }, 3000);
         }
     },
 
@@ -376,7 +399,8 @@ export default definePlugin({
             VoiceStateStore?.removeChangeListener?.(radarSweepDecos);
         } catch { }
         autoDecoedUsers.clear();
-        inFlightDecos.clear();
+        pendingDecos.clear();
+        decoCooldowns.clear();
         notifyChange();
     }
 });
