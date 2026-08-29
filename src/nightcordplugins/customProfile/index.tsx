@@ -51,99 +51,116 @@ const FLAG = {
     ACTIVE_DEVELOPER: 4194304,
 };
 
+const BADGE_ASSETS_BASE = "https://cdn.jsdelivr.net/gh/mezotv/discord-badges@main/assets";
+
 const BADGES = [
-    { key: "Staff Discord", label: t("Staff Discord"), flag: FLAG.STAFF, icon: "https://cdn.discordapp.com/badge-icons/5e74e9b61934fc1f67c65515d1f7e60d.png" },
-    { key: "Partnered Server Owner", label: t("Partnered Server Owner"), flag: FLAG.PARTNER, icon: "https://cdn.discordapp.com/badge-icons/3f9748e53446a137a052f3454e2de41e.png" },
-    { key: "HypeSquad Events", label: t("HypeSquad Events"), flag: FLAG.HYPESQUAD, icon: "https://cdn.discordapp.com/badge-icons/bf01d1073931f921909045f3a39fd264.png" },
-    { key: "Bug Hunter Lvl 1", label: t("Bug Hunter Lvl 1"), flag: FLAG.BUG_HUNTER_1, icon: "https://cdn.discordapp.com/badge-icons/2717692c7dca7289b35297368a940dd0.png" },
-    { key: "HypeSquad Bravery", label: t("HypeSquad Bravery"), flag: FLAG.BRAVERY, icon: "https://cdn.discordapp.com/badge-icons/8a88d63823d8a71cd5e390baa45efa02.png" },
-    { key: "HypeSquad Brilliance", label: t("HypeSquad Brilliance"), flag: FLAG.BRILLIANCE, icon: "https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png" },
-    { key: "HypeSquad Balance", label: t("HypeSquad Balance"), flag: FLAG.BALANCE, icon: "https://cdn.discordapp.com/badge-icons/3aa41de486fa12454c3761e8e223442e.png" },
-    { key: "Early Supporter", label: t("Early Supporter"), flag: FLAG.EARLY_SUPPORTER, icon: "https://cdn.discordapp.com/badge-icons/7060786766c9c840eb3019e725d2b358.png" },
-    { key: "Former Moderator", label: t("Former Moderator"), flag: FLAG.MOD_ALUMNI, icon: "https://cdn.discordapp.com/badge-icons/fee1624003e2fee35cb398e125dc479b.png" },
-    { key: "Bug Hunter Lvl 2", label: t("Bug Hunter Lvl 2"), flag: FLAG.BUG_HUNTER_2, icon: "https://cdn.discordapp.com/badge-icons/848f79194d4be5ff5f81505cbd0ce1e6.png" },
-    { key: "Early Verified Bot Developer", label: t("Early Verified Bot Developer"), flag: FLAG.DEV_VERIFIED, icon: "https://cdn.discordapp.com/badge-icons/6df5892e0f35b051f8b61eace34f4967.png" },
-    { key: "Active Developer", label: t("Active Developer"), flag: FLAG.ACTIVE_DEVELOPER, icon: "https://cdn.discordapp.com/badge-icons/6bdc42827a38498929a4920da12695d9.png" },
+    { key: "Staff Discord", label: t("Staff Discord"), flag: FLAG.STAFF, id: "staff", icon: `${BADGE_ASSETS_BASE}/discordstaff.svg` },
+    { key: "Partnered Server Owner", label: t("Partnered Server Owner"), flag: FLAG.PARTNER, id: "partner", icon: `${BADGE_ASSETS_BASE}/discordpartner.svg` },
+    { key: "HypeSquad Events", label: t("HypeSquad Events"), flag: FLAG.HYPESQUAD, id: "hypesquad", icon: `${BADGE_ASSETS_BASE}/hypesquadevents.svg` },
+    { key: "Bug Hunter Lvl 1", label: t("Bug Hunter Lvl 1"), flag: FLAG.BUG_HUNTER_1, id: "bug_hunter_level_1", icon: `${BADGE_ASSETS_BASE}/discordbughunter1.svg` },
+    { key: "HypeSquad Bravery", label: t("HypeSquad Bravery"), flag: FLAG.BRAVERY, id: "hypesquad_house_1", icon: `${BADGE_ASSETS_BASE}/hypesquadbravery.svg` },
+    { key: "HypeSquad Brilliance", label: t("HypeSquad Brilliance"), flag: FLAG.BRILLIANCE, id: "hypesquad_house_2", icon: `${BADGE_ASSETS_BASE}/hypesquadbrilliance.svg` },
+    { key: "HypeSquad Balance", label: t("HypeSquad Balance"), flag: FLAG.BALANCE, id: "hypesquad_house_3", icon: `${BADGE_ASSETS_BASE}/hypesquadbalance.svg` },
+    { key: "Early Supporter", label: t("Early Supporter"), flag: FLAG.EARLY_SUPPORTER, id: "early_supporter", icon: `${BADGE_ASSETS_BASE}/discordearlysupporter.svg` },
+    { key: "Former Moderator", label: t("Former Moderator"), flag: FLAG.MOD_ALUMNI, id: "certified_moderator", icon: `${BADGE_ASSETS_BASE}/discordmod.svg` },
+    { key: "Bug Hunter Lvl 2", label: t("Bug Hunter Lvl 2"), flag: FLAG.BUG_HUNTER_2, id: "bug_hunter_level_2", icon: `${BADGE_ASSETS_BASE}/discordbughunter2.svg` },
+    { key: "Early Verified Bot Developer", label: t("Early Verified Bot Developer"), flag: FLAG.DEV_VERIFIED, id: "verified_developer", icon: `${BADGE_ASSETS_BASE}/discordbotdev.svg` },
+    { key: "Active Developer", label: t("Active Developer"), flag: FLAG.ACTIVE_DEVELOPER, id: "active_developer", icon: `${BADGE_ASSETS_BASE}/activedeveloper.svg` },
 ];
 
-const OLD_NAME_BADGE_ICON = "https://cdn.discordapp.com/badge-icons/6de6d34650760ba5551a79732e98ed60.png";
+const OLD_NAME_BADGE_ICON = `${BADGE_ASSETS_BASE}/username.png`;
 
 const NITRO_LEVELS = [
-    { label: t("Nitro (0 mois)"), icon: "https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png" },
-    { label: t("Bronze (1 mois)"), icon: "https://cdn.discordapp.com/badge-icons/4f33c4a9c64ce221936bd256c356f91f.png" },
-    { label: t("Argent (3 mois)"), icon: "https://cdn.discordapp.com/badge-icons/4514fab914bdbfb4ad2fa23df76121a6.png" },
-    { label: t("Or (6 mois)"), icon: "https://cdn.discordapp.com/badge-icons/2895086c18d5531d499862e41d1155a6.png" },
-    { label: t("Platine (12 mois)"), icon: "https://cdn.discordapp.com/badge-icons/0334688279c8359120922938dcb1d6f8.png" },
-    { label: t("Diamant (24 mois)"), icon: "https://cdn.discordapp.com/badge-icons/0d61871f72bb9a33a7ae568c1fb4f20a.png" },
-    { label: t("Émeraude (36 mois)"), icon: "https://cdn.discordapp.com/badge-icons/11e2d339068b55d3a506cff34d3780f3.png" },
-    { label: t("Rubis (60 mois)"), icon: "https://cdn.discordapp.com/badge-icons/cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4.png" },
-    { label: t("Opale (72 mois)"), icon: "https://cdn.discordapp.com/badge-icons/5b154df19c53dce2af92c9b61e6be5e2.png" },
+    { label: t("Bronze (1 Month)"), id: "premium_bronze", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/bronze.png` },
+    { label: t("Silver (3 Months)"), id: "premium_silver", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/silver.png` },
+    { label: t("Gold (6 Months)"), id: "premium_gold", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/gold.png` },
+    { label: t("Platinum (12 Months)"), id: "premium_platinum", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/platinum.png` },
+    { label: t("Diamond (24 Months)"), id: "premium_diamond", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/diamond.png` },
+    { label: t("Emerald (36 Months)"), id: "premium_emerald", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/emerald.png` },
+    { label: t("Ruby (60 Months)"), id: "premium_ruby", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/ruby.png` },
+    { label: t("Opal (72 Months)"), id: "premium_opal", icon: `${BADGE_ASSETS_BASE}/subscriptions/badges/opal.png` },
 ];
 
 const BOOST_LABELS_RAW = [
-    "1 Mois", "2 Mois", "3 Mois", "6 Mois",
-    "9 Mois", "12 Mois", "15 Mois", "18 Mois", "24 Mois"
+    "1 Month", "2 Months", "3 Months", "6 Months",
+    "9 Months", "12 Months", "15 Months", "18 Months", "24 Months"
 ];
 const BOOST_LABELS = BOOST_LABELS_RAW.map(l => t(l));
 const BOOST_ICONS = [
-    "https://cdn.discordapp.com/badge-icons/51040c70d4f20a921ad6674ff86fc95c.png", // 1 mois
-    "https://cdn.discordapp.com/badge-icons/0e4080d1d333bc7ad29ef6528b6f2fb7.png", // 2 mois
-    "https://cdn.discordapp.com/badge-icons/72bed924410c304dbe3d00a6e593ff59.png", // 3 mois
-    "https://cdn.discordapp.com/badge-icons/df199d2050d3ed4ebf84d64ae83989f8.png", // 6 mois
-    "https://cdn.discordapp.com/badge-icons/996b3e870e8a22ce519b3a50e6bdd52f.png", // 9 mois
-    "https://cdn.discordapp.com/badge-icons/991c9f39ee33d7537d9f408c3e53141e.png", // 12 mois
-    "https://cdn.discordapp.com/badge-icons/cb3ae83c15e970e8f3d410bc62cb8b99.png", // 15 mois
-    "https://cdn.discordapp.com/badge-icons/7142225d31238f6387d9f09efaa02759.png", // 18 mois
-    "https://cdn.discordapp.com/badge-icons/ec92202290b48d0879b7413d2dde3bab.png", // 24 mois
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-1.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-2.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-3.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-4.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-5.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-6.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-7.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-8.svg`,
+    `${BADGE_ASSETS_BASE}/boosts/discord-boost-9.svg`,
+];
+
+const SPECIAL_BADGES = [
+    { id: "quest", label: "Completed a quest", icon: `${BADGE_ASSETS_BASE}/quest.png` },
+    { id: "orbs", label: "Orbs — Apprentice", icon: `${BADGE_ASSETS_BASE}/orb.svg` },
+    { id: "oldname", label: "Old username", icon: OLD_NAME_BADGE_ICON },
+    { id: "gifting_level", label: "Level Reached", icon: "https://cdn.discordapp.com/badge-icons/ca105ad9cfc8580c765101d17bbb2323.png" },
+];
+
+const GIFTING_BADGES = [
+    { id: "gifting_icon", label: "Gifting Icon", icon: `${BADGE_ASSETS_BASE}/gifting/icon.png` },
+    { id: "gifting_patron", label: "Gifting Patron", icon: `${BADGE_ASSETS_BASE}/gifting/patron.png` },
+    { id: "gifting_champion", label: "Gifting Champion", icon: `${BADGE_ASSETS_BASE}/gifting/champion.png` },
+    { id: "gifting_luminary", label: "Gifting Luminary", icon: `${BADGE_ASSETS_BASE}/gifting/luminary.png` },
+    { id: "gifting_hero", label: "Gifting Hero", icon: `${BADGE_ASSETS_BASE}/gifting/hero.png` },
+    { id: "gifting_legend", label: "Gifting Legend", icon: `${BADGE_ASSETS_BASE}/gifting/legend.png` },
 ];
 
 const AVATAR_DECORATIONS = [
-    { id: "1144307957425778779", label: "Hearts" },
-    { id: "1144308196723408958", label: "Hearts Animated" },
-    { id: "1212569433839636530", label: "Lofi Cafe" },
-    { id: "1481387347642810480", label: "Winter" },
-    { id: "1343751617362661526", label: "Magic Orb" },
-    { id: "1373015260465987705", label: "Dragon" },
-    { id: "1333866045303423026", label: "Ghost" },
-    { id: "1144308439720394944", label: "Sakura Drift" },
-    { id: "1432550258126229565", label: "Neon" },
-    { id: "1462116613632426014", label: "Cyber City" },
-    { id: "1462116613682757888", label: "Retro" },
-    { id: "1144307629225672846", label: "Fire" },
-    { id: "1341506443718688768", label: "Void" },
-    { id: "1447654090640330763", label: "Celestial" },
-    { id: "1483857762890022923", label: "Snowy" },
-    { id: "1479561706672885811", label: "Ice" },
-    { id: "1212569856189407352", label: "Cozy" },
-    { id: "1485784028710830242", label: "New Year" },
-    { id: "1341506444150702080", label: "Abyss" },
-    { id: "1232071712695386162", label: "Spring" },
-    { id: "1220514048068812901", label: "Summer" },
-    { id: "1427463138634109026", label: "Autumn" },
-    { id: "1341506443865489408", label: "Darkness" },
-    { id: "1144003752978829455", label: "Flaming Sword" },
-    { id: "1144006094134456352", label: "Magical Potion" },
-    { id: "1144046002110738634", label: "Fairy Sprites" },
-    { id: "1144048390594908212", label: "Wizard's Staff" },
-    { id: "1144048977138946230", label: "Glowing Runes" },
-    { id: "1144049316009353338", label: "Defensive Shield" },
-    { id: "1144049603109470370", label: "Skull Medallion" },
-    { id: "1144049924397334651", label: "Treasure and Key" },
-    { id: "1207047014769234001", label: "Fire Element" },
-    { id: "1207047597294886923", label: "Water" },
-    { id: "1207047808838799410", label: "Air" },
-    { id: "1207048049571139584", label: "Earth" },
-    { id: "1207048289610899526", label: "Lightning" },
-    { id: "1207048656289534022", label: "Balance" },
-    { id: "1232070870093008937", label: "Stardust" },
-    { id: "1232071157746765906", label: "Black Hole" },
-    { id: "1232072121950146560", label: "Solar Orbit" },
-    { id: "1232072520249643028", label: "UFO" },
-    { id: "1232072859485208687", label: "Astronaut Helmet" },
-    { id: "1197344326133502032", label: "Glitch" },
-    { id: "1197344396983664670", label: "Cybernetic" },
-    { id: "1197344575832981605", label: "Digital Sunrise" },
-    { id: "1197344636558114986", label: "Implant" },
+    { id: "1144307957425778779", label: "Hearts", asset: "a_7e937d2f9ca2902be2ddba568c83e1aa" },
+    { id: "1144308196723408958", label: "Hearts Animated", asset: "a_7e937d2f9ca2902be2ddba568c83e1aa" },
+    { id: "1212569433839636530", label: "Lofi Cafe", asset: "a_182f7c00e12d46e3cb5b5fe1a8bb23ff" },
+    { id: "1481387347642810480", label: "Winter", asset: "a_4441416e788ee5c093a3832c322bfa4e" },
+    { id: "1343751617362661526", label: "Magic Orb", asset: "a_820c74f57c6b5d9285098ffb4e877e8a" },
+    { id: "1373015260465987705", label: "Dragon", asset: "a_1cf58a5f83bbd73c7e096ff8650a30b0" },
+    { id: "1333866045303423026", label: "Ghost", asset: "a_3ee402127be177b96054817a0b06bce8" },
+    { id: "1144308439720394944", label: "Sakura Drift", asset: "a_c2543ecad1ba49463972ff054ec47900" },
+    { id: "1432550258126229565", label: "Neon", asset: "a_7665fa1adca5f1cb0460f1ad922416ba" },
+    { id: "1462116613632426014", label: "Cyber City", asset: "a_8fcfeb6da9cfbc528246e4c76043bbcf" },
+    { id: "1462116613682757888", label: "Retro", asset: "a_42be7e1b5aa771bc7ea7d1a58064a067" },
+    { id: "1144307629225672846", label: "Fire", asset: "a_d900690ae9d1fa98a6311681283c713b" },
+    { id: "1341506443718688768", label: "Void", asset: "a_7f082e6c52bb3c80d46f53e34b11fdf9" },
+    { id: "1447654090640330763", label: "Celestial", asset: "a_d70d74ee5110d54020a672776c5f7823" },
+    { id: "1483857762890022923", label: "Snowy", asset: "a_6eeb0df0aa7827284f1837a71676cb40" },
+    { id: "1479561706672885811", label: "Ice", asset: "a_611c3852028682a201c13bc54199c0ec" },
+    { id: "1212569856189407352", label: "Cozy", asset: "a_e4177b94adcf4ae99c43d9bca1b44ec6" },
+    { id: "1485784028710830242", label: "New Year", asset: "a_56b26d11f51eb972f053531bcf914cce" },
+    { id: "1341506444150702080", label: "Abyss", asset: "a_bdf1b3510e1cbb3d1b6ec2f6236b2f6b" },
+    { id: "1232071712695386162", label: "Spring", asset: "a_b4b1a4cb9bf9ca688b14a27546efbc3d" },
+    { id: "1220514048068812901", label: "Summer", asset: "a_56be6db53b20e060000a68d069b12d5d" },
+    { id: "1427463138634109026", label: "Autumn", asset: "a_44498aa249ae5fce079e51ccead8346f" },
+    { id: "1341506443865489408", label: "Darkness", asset: "a_7df854e4c9b3240e8bca565780ea437d" },
+    { id: "1144003752978829455", label: "Flaming Sword", asset: "a_b287954e7f827ad4aa85ee8d98d249d3" },
+    { id: "1144006094134456352", label: "Magical Potion", asset: "a_7be96350d75c929a59fa5b4b15091724" },
+    { id: "1144046002110738634", label: "Fairy Sprites", asset: "a_04c553147814b60098dfc3d052ce28c8" },
+    { id: "1144048390594908212", label: "Wizard's Staff", asset: "a_eef28b7e2124508e6f3b069d27038e2d" },
+    { id: "1144048977138946230", label: "Glowing Runes", asset: "a_f696ce751c1103c80ffb0b021ba0959c" },
+    { id: "1144049316009353338", label: "Defensive Shield", asset: "a_6c116d8a4369a4c51c3132e0cceabf18" },
+    { id: "1144049603109470370", label: "Skull Medallion", asset: "a_c2543ecad1ba49463972ff054ec47900" },
+    { id: "1144049924397334651", label: "Treasure and Key", asset: "a_80a3c9be06ea49f96b6ad005fbc2a85d" },
+    { id: "1207047014769234001", label: "Fire Element", asset: "a_7b668d2f57a66f076c498a44840d04ea" },
+    { id: "1207047597294886923", label: "Water", asset: "a_485d43e515d9cf281a6f3b794ca730a9" },
+    { id: "1207047808838799410", label: "Air", asset: "a_a15b3cce0df39a3f2bb406cf6f3f03b6" },
+    { id: "1207048049571139584", label: "Earth", asset: "a_a1fe18c1b3f07a72d73f1d3c01bfbe77" },
+    { id: "1207048289610899526", label: "Lightning", asset: "a_72b38038287eec8da8d12e61dfbdbe22" },
+    { id: "1207048656289534022", label: "Balance", asset: "a_e8c33971e4685ffcb6b73a7c6f092cae" },
+    { id: "1232070870093008937", label: "Stardust", asset: "a_7d2f974cb30e704620a2bf4e69b03930" },
+    { id: "1232071157746765906", label: "Black Hole", asset: "a_a81a7db8e8c89ad5d9aa6428795c3780" },
+    { id: "1232072121950146560", label: "Solar Orbit", asset: "a_48d423986960cb1c0717fb0450db2d37" },
+    { id: "1232072520249643028", label: "UFO", asset: "a_ffbc45c9be64bb75b1116aa475e7a9b0" },
+    { id: "1232072859485208687", label: "Astronaut Helmet", asset: "a_611c3852028682a201c13bc54199c0ec" },
+    { id: "1197344326133502032", label: "Glitch", asset: "a_60c1d683777f9850e04770fcbc1cfab5" },
+    { id: "1197344396983664670", label: "Cybernetic", asset: "a_fa6d4ebc85fcbfa43c6ec0bb65cb4e6f" },
+    { id: "1197344575832981605", label: "Digital Sunrise", asset: "a_ca1a7b4588e404bf4a34b220d911bca0" },
+    { id: "1197344636558114986", label: "Implant", asset: "a_cecb92d3b24ae3cfd5d045d4e1fae9ef" },
 ];
 
 function getDecorationUrl(assetId: string, animated = true): string {
@@ -1345,10 +1362,117 @@ function Toggle({ label, checked, onChange, sublabel }: { label: string; checked
 function BadgeBtn({ label, icon, active, onClick }: { label: string; icon?: string; active: boolean; onClick: () => void; }) {
     return (
         <button onClick={onClick} className={`cp-badge ${active ? "cp-badge--on" : ""}`}
-            style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            {icon && <img src={icon} alt="" style={{ width: 16, height: 16, objectFit: "contain", flexShrink: 0 }} />}
+            style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {icon && <img src={icon} alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />}
             <span>{label}</span>
         </button>
+    );
+}
+
+function resolveDecorationPreviewUrl(asset: string) {
+    if (!asset) return "";
+    if (asset.startsWith("http")) return asset;
+    return `https://cdn.discordapp.com/avatar-decoration-presets/${asset}.png?size=96&passthrough=true`;
+}
+
+function ProfileHeaderPreview({
+    account,
+    data
+}: {
+    account: any;
+    data: CustomProfileData;
+}) {
+    const isFr = getDiscordLocale().toLowerCase().startsWith("fr");
+    const username = data.username?.trim() || account?.username || "username";
+    const displayName = data.globalName?.trim() || account?.globalName || account?.username || "User";
+    const avatarUrl = data.avatar || IconUtils.getUserAvatarURL(account || { id: "0" }, false, 80);
+
+    let decoAsset = "";
+    if (data.decorationAsset) {
+        const found = AVATAR_DECORATIONS.find(d => d.id === data.decorationAsset);
+        decoAsset = found?.asset || data.decorationAsset;
+    }
+    const decorationUrl = decoAsset ? resolveDecorationPreviewUrl(decoAsset) : null;
+
+    const badges: Array<{ id: string; icon: string; title: string }> = [];
+
+    // Base badges
+    const flags = data.badgeFlags ?? 0;
+    if (flags) {
+        for (const b of BADGES) {
+            if (flags & b.flag) {
+                badges.push({ id: b.id, icon: b.icon, title: getStandardBadgeDesc(b.key) });
+            }
+        }
+    }
+
+    // Nitro badge
+    const nitroLevel = data.nitroLevel ?? -1;
+    if (data.nitro && nitroLevel >= 0 && NITRO_LEVELS[nitroLevel]) {
+        badges.push({ id: NITRO_LEVELS[nitroLevel].id, icon: NITRO_LEVELS[nitroLevel].icon, title: NITRO_LEVELS[nitroLevel].label });
+    }
+
+    // Boost badge
+    const boostMonths = data.boostMonths ?? -1;
+    if (data.nitro && boostMonths >= 0 && BOOST_ICONS[boostMonths]) {
+        badges.push({ id: `boost_${boostMonths}`, icon: BOOST_ICONS[boostMonths], title: `Server Booster (${BOOST_LABELS[boostMonths]})` });
+    }
+
+    // Special badges
+    const customIds = data.customBadgeIds ?? [];
+    if (customIds.includes("quest")) {
+        badges.push({ id: "quest", icon: `${BADGE_ASSETS_BASE}/quest.png`, title: getLocalizedBadgeLabel("Completed a quest") });
+    }
+    if (customIds.includes("orbs")) {
+        badges.push({ id: "orbs", icon: `${BADGE_ASSETS_BASE}/orb.svg`, title: getLocalizedBadgeLabel("Orbs — Apprentice") });
+    }
+    if (customIds.includes("oldname")) {
+        const dText = data.oldName ? (isFr ? "Connu à l'origine sous le nom de " + data.oldName : "Originally known as " + data.oldName) : (isFr ? "Ancien nom d'utilisateur" : "Old username");
+        badges.push({ id: "oldname", icon: OLD_NAME_BADGE_ICON, title: dText });
+    }
+    if (customIds.includes("gifting_level")) {
+        const lvl = data.levelReached ?? 1;
+        badges.push({ id: "gifting_level", icon: "https://cdn.discordapp.com/badge-icons/ca105ad9cfc8580c765101d17bbb2323.png", title: getLevelBadgeDesc(lvl) });
+    }
+
+    // Gifting badges
+    for (const gb of GIFTING_BADGES) {
+        if (customIds.includes(gb.id)) {
+            badges.push({ id: gb.id, icon: gb.icon, title: getGiftingBadgeDesc(gb.id.replace("gifting_", "")) });
+        }
+    }
+
+    return (
+        <div className="cp-live-preview-card">
+            <div className="cp-live-preview-avatar-wrapper">
+                <img src={avatarUrl} alt="" className="cp-live-preview-avatar" />
+                {decorationUrl && (
+                    <img src={decorationUrl} alt="" className="cp-live-preview-decoration" />
+                )}
+            </div>
+            <div className="cp-live-preview-details">
+                <div className="cp-live-preview-names">
+                    <span className="cp-live-preview-username">@{username}</span>
+                    {displayName && displayName !== username && (
+                        <span className="cp-live-preview-globalname">{displayName}</span>
+                    )}
+                </div>
+                {badges.length > 0 && (
+                    <div className="cp-live-preview-badges">
+                        {badges.map((b, idx) => (
+                            <img
+                                key={b.id + idx}
+                                src={b.icon}
+                                alt={b.title}
+                                title={b.title}
+                                className="cp-live-preview-badge-icon"
+                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
 
@@ -1376,8 +1500,8 @@ function BadgePicker({ selected, onChange, nitroType, onNitroType, boostLevel, o
                 <BadgeBtn label={getLocalizedBadgeLabel("None")} active={nitroType === -1} onClick={() => onNitroType(-1)} />
                 {NITRO_LEVELS.map((n, i) => {
                     const nLabel = isFr
-                        ? n.label.replace("mois", "mois").replace("0 mois", "0 mois")
-                        : n.label.replace(" (0 mois)", " (0 months)").replace(" (1 mois)", " (1 month)").replace(" mois)", " months)");
+                        ? n.label.replace("Month", "mois").replace("Months", "mois").replace("1 mois", "1 mois")
+                        : n.label;
                     return (
                         <BadgeBtn key={i} label={nLabel} icon={n.icon} active={nitroType === i} onClick={() => {
                             onNitroType(i);
@@ -1387,47 +1511,15 @@ function BadgePicker({ selected, onChange, nitroType, onNitroType, boostLevel, o
             </div>
             <SectionLabel style={{ marginTop: 8 }}>{getLocalizedBadgeLabel("Special Badges")}</SectionLabel>
             <div className="cp-badges">
-                <BadgeBtn label={getLocalizedBadgeLabel("Completed a quest")}
-                    icon="https://cdn.discordapp.com/badge-icons/7d9ae358c8c5e118768335dbe68b4fb8.png"
-                    active={customIds.includes("quest")}
-                    onClick={() => onCustomIds(customIds.includes("quest") ? customIds.filter(x => x !== "quest") : [...customIds, "quest"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Orbs — Apprentice")}
-                    icon="https://cdn.discordapp.com/badge-icons/83d8a1eb09a8d64e59233eec5d4d5c2d.png"
-                    active={customIds.includes("orbs")}
-                    onClick={() => onCustomIds(customIds.includes("orbs") ? customIds.filter(x => x !== "orbs") : [...customIds, "orbs"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Old username")} icon={OLD_NAME_BADGE_ICON} active={hasOldName}
-                    onClick={() => onCustomIds(hasOldName ? customIds.filter(x => x !== "oldname") : [...customIds, "oldname"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Level Reached")}
-                    icon="https://cdn.discordapp.com/badge-icons/ca105ad9cfc8580c765101d17bbb2323.png"
-                    active={customIds.includes("gifting_level")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_level") ? customIds.filter(x => x !== "gifting_level") : [...customIds, "gifting_level"])} />
-            </div>
-            <SectionLabel style={{ marginTop: 8 }}>{getLocalizedBadgeLabel("Gifting Badges")}</SectionLabel>
-            <div className="cp-badges">
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Icon")}
-                    icon="https://cdn.discordapp.com/badge-icons/64f2413c9b9803661322aaad25826b62.png"
-                    active={customIds.includes("gifting_icon")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_icon") ? customIds.filter(x => x !== "gifting_icon") : [...customIds, "gifting_icon"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Patron")}
-                    icon="https://cdn.discordapp.com/badge-icons/ac305d1b9481f312ce4419e7f8296558.png"
-                    active={customIds.includes("gifting_patron")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_patron") ? customIds.filter(x => x !== "gifting_patron") : [...customIds, "gifting_patron"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Champion")}
-                    icon="https://cdn.discordapp.com/badge-icons/8b7792c4f65953d3ff564f23429cb79e.png"
-                    active={customIds.includes("gifting_champion")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_champion") ? customIds.filter(x => x !== "gifting_champion") : [...customIds, "gifting_champion"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Luminary")}
-                    icon="https://cdn.discordapp.com/badge-icons/3119f5504b2cd09576a323908c7c3517.png"
-                    active={customIds.includes("gifting_luminary")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_luminary") ? customIds.filter(x => x !== "gifting_luminary") : [...customIds, "gifting_luminary"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Hero")}
-                    icon="https://cdn.discordapp.com/badge-icons/77d65b1f210014a11eb1582ee06ab684.png"
-                    active={customIds.includes("gifting_hero")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_hero") ? customIds.filter(x => x !== "gifting_hero") : [...customIds, "gifting_hero"])} />
-                <BadgeBtn label={getLocalizedBadgeLabel("Gifting Legend")}
-                    icon="https://cdn.discordapp.com/badge-icons/7fe346cfc5da1340087d8759a9e7a395.png"
-                    active={customIds.includes("gifting_legend")}
-                    onClick={() => onCustomIds(customIds.includes("gifting_legend") ? customIds.filter(x => x !== "gifting_legend") : [...customIds, "gifting_legend"])} />
+                {SPECIAL_BADGES.map(sb => (
+                    <BadgeBtn
+                        key={sb.id}
+                        label={getLocalizedBadgeLabel(sb.label)}
+                        icon={sb.icon}
+                        active={customIds.includes(sb.id)}
+                        onClick={() => onCustomIds(customIds.includes(sb.id) ? customIds.filter(x => x !== sb.id) : [...customIds, sb.id])}
+                    />
+                ))}
             </div>
             {hasOldName && (
                 <div className="cp-field" style={{ marginTop: 6 }}>
@@ -1449,11 +1541,23 @@ function BadgePicker({ selected, onChange, nitroType, onNitroType, boostLevel, o
                         }} />
                 </div>
             )}
+            <SectionLabel style={{ marginTop: 8 }}>{getLocalizedBadgeLabel("Gifting Badges")}</SectionLabel>
+            <div className="cp-badges">
+                {GIFTING_BADGES.map(gb => (
+                    <BadgeBtn
+                        key={gb.id}
+                        label={getLocalizedBadgeLabel(gb.label)}
+                        icon={gb.icon}
+                        active={customIds.includes(gb.id)}
+                        onClick={() => onCustomIds(customIds.includes(gb.id) ? customIds.filter(x => x !== gb.id) : [...customIds, gb.id])}
+                    />
+                ))}
+            </div>
             <SectionLabel style={{ marginTop: 8 }}>{getLocalizedBadgeLabel("Server Boost Badges")}</SectionLabel>
             <div className="cp-badges">
                 <BadgeBtn label={getLocalizedBadgeLabel("None")} active={boostLevel === -1} onClick={() => onBoostLevel(-1)} />
                 {BOOST_LABELS.map((lbl, i) => {
-                    const bLbl = isFr ? lbl : lbl.replace("Mois", "Months").replace("1 Months", "1 Month");
+                    const bLbl = isFr ? lbl.replace("Months", "Mois").replace("Month", "Mois") : lbl;
                     return (
                         <BadgeBtn key={i} label={bLbl} icon={BOOST_ICONS[i]} active={boostLevel === i} onClick={() => onBoostLevel(i)} />
                     );
@@ -1469,8 +1573,15 @@ function ConnectionsPicker({ connections, onChange }: {
 }) {
     const [platform, setPlatform] = React.useState(FAKE_PLATFORMS[0].id);
     const [name, setName] = React.useState("");
+    const [platFilter, setPlatFilter] = React.useState("");
 
     const currentPlat = FAKE_PLATFORMS.find(p => p.id === platform) || FAKE_PLATFORMS[0];
+
+    const filteredPlatforms = React.useMemo(() => {
+        const q = platFilter.trim().toLowerCase();
+        if (!q) return FAKE_PLATFORMS;
+        return FAKE_PLATFORMS.filter(p => p.label.toLowerCase().includes(q) || p.id.toLowerCase().includes(q));
+    }, [platFilter]);
 
     function handleAdd() {
         if (!name.trim()) return;
@@ -1545,15 +1656,15 @@ function ConnectionsPicker({ connections, onChange }: {
                                 }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                                         <div style={{
-                                            width: 32,
-                                            height: 32,
-                                            borderRadius: 8,
-                                            background: "#1e1f22",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center"
+                                             width: 32,
+                                             height: 32,
+                                             borderRadius: 8,
+                                             background: "#1e1f22",
+                                             display: "flex",
+                                             alignItems: "center",
+                                             justifyContent: "center"
                                         }}>
-                                            <img src={pObj.icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />
+                                            <img src={pObj.icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                                         </div>
                                         <div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 14, color: "#fff" }}>
@@ -1584,11 +1695,28 @@ function ConnectionsPicker({ connections, onChange }: {
             <div>
                 <SectionLabel>{t("Add New Connection")}</SectionLabel>
 
-                {/* Grid selection for fast platform picking — expanded height so all options fit nicely */}
+                {/* Grid selection for fast platform picking */}
                 <div style={{ marginBottom: 16 }}>
-                    <SectionLabel style={{ marginTop: 0, fontSize: 11 }}>{t("Select Platform")}</SectionLabel>
-                    <div className="cp-custom-scroll" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(115px, 1fr))", gap: 8, paddingRight: 4 }}>
-                        {FAKE_PLATFORMS.map(p => (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <SectionLabel style={{ margin: 0, fontSize: 11 }}>{t("Select Platform")}</SectionLabel>
+                        <input
+                            value={platFilter}
+                            placeholder={t("Filter platforms...")}
+                            onChange={e => setPlatFilter(e.target.value)}
+                            style={{
+                                background: "#1e1f22",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                                borderRadius: 6,
+                                color: "#fff",
+                                fontSize: 11,
+                                padding: "3px 8px",
+                                outline: "none",
+                                width: 140
+                            }}
+                        />
+                    </div>
+                    <div className="cp-custom-scroll" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8, maxHeight: 150, overflowY: "auto", paddingRight: 4 }}>
+                        {filteredPlatforms.map(p => (
                             <div
                                 key={p.id}
                                 onClick={() => setPlatform(p.id)}
@@ -1604,7 +1732,7 @@ function ConnectionsPicker({ connections, onChange }: {
                                     transition: "all 0.15s ease"
                                 }}
                             >
-                                <img src={p.icon} alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} />
+                                <img src={p.icon} alt="" style={{ width: 18, height: 18, objectFit: "contain", flexShrink: 0 }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                                 <span style={{ fontSize: 12, fontWeight: platform === p.id ? 700 : 500, color: platform === p.id ? "#fff" : "#dbdee1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                     {p.label.split(" ")[0]}
                                 </span>
@@ -1636,7 +1764,7 @@ function ConnectionsPicker({ connections, onChange }: {
                                 justifyContent: "space-between"
                             }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                    <img src={currentPlat.icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} />
+                                    <img src={currentPlat.icon} alt="" style={{ width: 20, height: 20, objectFit: "contain" }} onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
                                     <div>
                                         <div style={{ color: "#fff", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
                                             {name}
@@ -1946,7 +2074,28 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
     }
 
     const [activeTab, setActiveTab] = React.useState("general");
+    const [decoSearch, setDecoSearch] = React.useState("");
+    const [effectSearch, setEffectSearch] = React.useState("");
     const accentHex = data.accentColor != null ? "#" + data.accentColor.toString(16).padStart(6, "0") : "";
+
+    const currentAccount = React.useMemo(() => {
+        return accounts.find((a: any) => a.id === selectedAccountId) || UserStore.getCurrentUser();
+    }, [accounts, selectedAccountId]);
+
+    const filteredDecos = React.useMemo(() => {
+        const q = decoSearch.trim().toLowerCase();
+        if (!q) return AVATAR_DECORATIONS;
+        return AVATAR_DECORATIONS.filter(d => d.label.toLowerCase().includes(q) || d.id.includes(q));
+    }, [decoSearch]);
+
+    const filteredEffects = React.useMemo(() => {
+        const q = effectSearch.trim().toLowerCase();
+        if (!q) return PROFILE_EFFECTS;
+        return PROFILE_EFFECTS.filter(e => e.label.toLowerCase().includes(q) || e.id.includes(q));
+    }, [effectSearch]);
+
+    const equippedDeco = AVATAR_DECORATIONS.find(d => d.id === data.decorationAsset);
+    const equippedEffect = PROFILE_EFFECTS.find(e => e.id === data.profileEffectId);
 
     return (
         <ModalRoot {...rootProps} className="cp-modal-root" size="large">
@@ -1992,6 +2141,12 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
             </ModalHeader>
             <ModalContent style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="cp-layout">
+                    {/* Live Profile & Badges Header Preview */}
+                    <ProfileHeaderPreview
+                        account={currentAccount}
+                        data={data}
+                    />
+
                     <div className="cp-tabs">
                         <div className={`cp-tab ${activeTab === 'general' ? 'cp-tab--active' : ''}`} onClick={() => setActiveTab('general')}>{t("General")}</div>
                         <div className={`cp-tab ${activeTab === 'aesthetics' ? 'cp-tab--active' : ''}`} onClick={() => setActiveTab('aesthetics')}>{t("Aesthetics")}</div>
@@ -2072,8 +2227,39 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
                                 />
                                 <div className="cp-divider" />
                                 <div className="cp-field">
-                                    <SectionLabel>{t("Avatar decoration")}</SectionLabel>
-                                    <div className="cp-effect-grid">
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                        <SectionLabel style={{ margin: 0 }}>{t("Avatar decoration")}</SectionLabel>
+                                        <input
+                                            value={decoSearch}
+                                            placeholder={t("Search decorations...")}
+                                            onChange={e => setDecoSearch(e.target.value)}
+                                            style={{
+                                                background: "#1e1f22",
+                                                border: "1px solid rgba(255,255,255,0.06)",
+                                                borderRadius: 6,
+                                                color: "#fff",
+                                                fontSize: 12,
+                                                padding: "4px 8px",
+                                                outline: "none",
+                                                width: 160
+                                            }}
+                                        />
+                                    </div>
+                                    {equippedDeco && (
+                                        <div className="cp-equipped-card">
+                                            <div className="cp-equipped-thumb">
+                                                <img src={getDecorationUrl(equippedDeco.id)} alt="" />
+                                            </div>
+                                            <div className="cp-equipped-info">
+                                                <div className="cp-equipped-title">{equippedDeco.label}</div>
+                                                <div className="cp-equipped-subtitle">{t("Equipped")}</div>
+                                            </div>
+                                            <button className="cp-equipped-clear" onClick={() => set("decorationAsset", undefined)} title={t("Unequip")}>
+                                                ✕
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="cp-effect-grid cp-custom-scroll" style={{ maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
                                         <button
                                             onClick={() => set("decorationAsset", undefined)}
                                             className={`cp-effect-chip ${!data.decorationAsset ? "cp-effect-chip--on" : ""}`}
@@ -2081,7 +2267,7 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
                                             <span className="cp-effect-none-icon">✕</span>
                                             {t("None")}
                                         </button>
-                                        {AVATAR_DECORATIONS.map(dec => (
+                                        {filteredDecos.map(dec => (
                                             <button key={dec.id}
                                                 onClick={() => set("decorationAsset", data.decorationAsset === dec.id ? undefined : dec.id)}
                                                 className={`cp-effect-chip ${data.decorationAsset === dec.id ? "cp-effect-chip--on" : ""}`}
@@ -2100,8 +2286,36 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
                                 </div>
                                 <div className="cp-divider" />
                                 <div className="cp-field">
-                                    <SectionLabel>{t("Profile Effect")}</SectionLabel>
-                                    <div className="cp-effect-grid">
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                        <SectionLabel style={{ margin: 0 }}>{t("Profile Effect")}</SectionLabel>
+                                        <input
+                                            value={effectSearch}
+                                            placeholder={t("Search effects...")}
+                                            onChange={e => setEffectSearch(e.target.value)}
+                                            style={{
+                                                background: "#1e1f22",
+                                                border: "1px solid rgba(255,255,255,0.06)",
+                                                borderRadius: 6,
+                                                color: "#fff",
+                                                fontSize: 12,
+                                                padding: "4px 8px",
+                                                outline: "none",
+                                                width: 160
+                                            }}
+                                        />
+                                    </div>
+                                    {equippedEffect && (
+                                        <div className="cp-equipped-card">
+                                            <div className="cp-equipped-info">
+                                                <div className="cp-equipped-title">{equippedEffect.label}</div>
+                                                <div className="cp-equipped-subtitle">{t("Equipped")}</div>
+                                            </div>
+                                            <button className="cp-equipped-clear" onClick={() => set("profileEffectId", undefined)} title={t("Unequip")}>
+                                                ✕
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div className="cp-effect-grid cp-custom-scroll" style={{ maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
                                         <button
                                             onClick={() => set("profileEffectId", undefined)}
                                             className={`cp-effect-chip ${!data.profileEffectId ? "cp-effect-chip--on" : ""}`}
@@ -2109,7 +2323,7 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
                                             <span className="cp-effect-none-icon">✕</span>
                                             {t("None")}
                                         </button>
-                                        {PROFILE_EFFECTS.map(eff => (
+                                        {filteredEffects.map(eff => (
                                             <button key={eff.id}
                                                 onClick={() => set("profileEffectId", data.profileEffectId === eff.id ? undefined : eff.id)}
                                                 className={`cp-effect-chip ${data.profileEffectId === eff.id ? "cp-effect-chip--on" : ""}`}
