@@ -36,21 +36,70 @@ function findAllDiscordResources() {
             } catch { }
         }
     } else if (platform === "darwin") {
-        candidates.push(
-            "/Applications/Discord.app/Contents/Resources",
-            "/Applications/Discord PTB.app/Contents/Resources",
-            "/Applications/Discord Canary.app/Contents/Resources"
-        );
+        const home = process.env.HOME || "";
+        const appBases = [
+            "/Applications",
+            join(home, "Applications")
+        ];
+        const appNames = [
+            "Discord.app",
+            "Discord PTB.app",
+            "Discord Canary.app",
+            "Discord Development.app"
+        ];
+
+        for (const base of appBases) {
+            for (const app of appNames) {
+                candidates.push(join(base, app, "Contents", "Resources"));
+            }
+        }
     } else if (platform === "linux") {
-        candidates.push(
-            "/usr/share/discord/resources",
-            "/usr/lib/discord/resources",
-            "/opt/discord/resources",
-            "/opt/Discord/resources"
-        );
+        const home = process.env.HOME || "";
+
+        const channels = ["discord", "discord-ptb", "discord-canary", "discord-development", "Discord", "DiscordPTB", "DiscordCanary", "DiscordDevelopment"];
+        for (const prefix of ["/usr/share", "/usr/lib", "/usr/lib64", "/opt"]) {
+            for (const ch of channels) {
+                candidates.push(join(prefix, ch, "resources"));
+            }
+        }
+
+        for (const ch of channels) {
+            candidates.push(join(home, ".local/share", ch, "resources"));
+            candidates.push(join(home, ".local/bin", ch, "resources"));
+        }
+
+        const flatpakAppIds = [
+            "com.discordapp.Discord",
+            "com.discordapp.DiscordCanary",
+            "com.discordapp.DiscordPTB",
+            "com.discordapp.DiscordDevelopment"
+        ];
+        for (const appId of flatpakAppIds) {
+            const discordFolder = appId.replace("com.discordapp.", "").toLowerCase();
+            candidates.push(join(home, ".local/share/flatpak/app", appId, "current/active/files", discordFolder, "resources"));
+            candidates.push(join("/var/lib/flatpak/app", appId, "current/active/files", discordFolder, "resources"));
+            candidates.push(join(home, ".var/app", appId, "data", discordFolder, "resources"));
+        }
+
+        for (const ch of ["discord", "discord-canary", "discord-ptb"]) {
+            candidates.push(join("/snap", ch, "current/usr/share", ch, "resources"));
+        }
+
+        for (const base of ["/opt/discord", "/opt/Discord", join(home, ".local/share/discord"), join(home, ".dvm")]) {
+            if (existsSync(base)) {
+                try {
+                    const entries = readdirSync(base);
+                    for (const entry of entries) {
+                        if (entry.startsWith("app-")) {
+                            candidates.push(join(base, entry, "resources"));
+                        }
+                    }
+                } catch { }
+            }
+        }
     }
 
-    return candidates.filter(p => {
+    return [...new Set(candidates)].filter(p => {
         if (!existsSync(p)) return false;
         return existsSync(join(p, "app")) || existsSync(join(p, "_app.asar"));
     });

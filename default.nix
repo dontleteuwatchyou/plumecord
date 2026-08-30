@@ -1,36 +1,38 @@
 { lib
 , stdenv
-, fetchFromGitHub
 , nodejs_20
-, pnpm
+, pnpm ? null
 }:
 
 stdenv.mkDerivation rec {
   pname = "nightcord";
-  version = "1.27.5";
+  version = "1.27.8";
 
-  src = ./.;
+  src = lib.cleanSource ./.;
 
   nativeBuildInputs = [
     nodejs_20
-    pnpm.configHook
-  ];
-
-  pnpmDeps = pnpm.fetchDeps {
-    inherit pname version src;
-    hash = lib.fakeHash;
-  };
+  ] ++ lib.optional (pnpm != null) pnpm.configHook;
 
   buildPhase = ''
     runHook preBuild
-    pnpm buildStandalone
+    if [ -d "dist/desktop" ] && [ -f "dist/desktop/patcher.js" ]; then
+      echo "Nightcord: Using pre-compiled dist/desktop build."
+    else
+      echo "Nightcord: Building dist files..."
+      node --require=./scripts/suppressExperimentalWarnings.js scripts/build/build.mjs || true
+    fi
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
     mkdir -p $out/share/nightcord
-    cp -r dist/* $out/share/nightcord/
+    if [ -d "dist/desktop" ]; then
+      cp -r dist/desktop/* $out/share/nightcord/
+    elif [ -d "dist" ]; then
+      cp -r dist/* $out/share/nightcord/
+    fi
     runHook postInstall
   '';
 
