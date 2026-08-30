@@ -15,27 +15,27 @@ import { t } from "../autoTranslateNightcord";
 const settings = definePluginSettings({
     replacementText: {
         type: OptionType.STRING,
-        description: t("Text to replace the message with before deletion."),
+        description: "Text to replace the message with before deletion.",
         default: "** **"
     },
     deleteDelay: {
         type: OptionType.NUMBER,
-        description: t("Delay in milliseconds before deleting the replacement message (recommended: 100-500)."),
+        description: "Delay in milliseconds before deleting the replacement message (recommended: 100-500).",
         default: 200
     },
     suppressNotifications: {
         type: OptionType.BOOLEAN,
-        description: t("Suppress notifications when replacing the message (prevents pinging mentioned users)."),
+        description: "Suppress notifications when replacing the message (prevents pinging mentioned users).",
         default: true
     },
     deleteOriginal: {
         type: OptionType.BOOLEAN,
-        description: t("Delete the original message from server. If disabled, the original message will reappear on client restart."),
+        description: "Delete the original message from server. If disabled, the original message will reappear on client restart.",
         default: true
     },
     purgeInterval: {
         type: OptionType.NUMBER,
-        description: t("Delay in milliseconds between each message deletion during /silentpurge (recommended: 500-1000 to avoid rate limits)."),
+        description: "Delay in milliseconds between each message deletion during /silentpurge (recommended: 500-1000 to avoid rate limits).",
         default: 500
     }
 });

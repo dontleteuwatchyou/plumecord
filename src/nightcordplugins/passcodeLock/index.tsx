@@ -122,42 +122,42 @@ interface PLData {
 const settings = definePluginSettings({
     codeType: {
         type: OptionType.SELECT,
-        description: t("Type of code"),
+        description: "Type of code",
         options: [
-            { label: t("4-Digit Numeric Code"), value: "4-digit", default: true },
-            { label: t("6-Digit Numeric Code"), value: "6-digit" },
-            { label: t("Custom Numeric Code"), value: "custom-numeric" },
+            { label: "4-Digit Numeric Code", value: "4-digit", default: true },
+            { label: "6-Digit Numeric Code", value: "6-digit" },
+            { label: "Custom Numeric Code", value: "custom-numeric" },
         ],
     },
     autolockSeconds: {
         type: OptionType.SELECT,
-        description: t("Auto-lock after being away for"),
+        description: "Auto-lock after being away for",
         options: [
-            { label: t("Disabled"), value: 0, default: true },
-            { label: t("1 minute"), value: 60 },
-            { label: t("5 minutes"), value: 300 },
-            { label: t("1 hour"), value: 3600 },
-            { label: t("5 hours"), value: 18000 },
+            { label: "Disabled", value: 0, default: true },
+            { label: "1 minute", value: 60 },
+            { label: "5 minutes", value: 300 },
+            { label: "1 hour", value: 3600 },
+            { label: "5 hours", value: 18000 },
         ],
     },
     lockOnStartup: {
         type: OptionType.BOOLEAN,
-        description: t("Always lock on startup"),
+        description: "Always lock on startup",
         default: true,
     },
     highlightButtons: {
         type: OptionType.BOOLEAN,
-        description: t("Highlight number buttons when typing the passcode from the keyboard"),
+        description: "Highlight number buttons when typing the passcode from the keyboard",
         default: false,
     },
     hideNotifications: {
         type: OptionType.BOOLEAN,
-        description: t("Hide notification content while locked"),
+        description: "Hide notification content while locked",
         default: true,
     },
     keybind: {
         type: OptionType.STRING,
-        description: t("Keybind to lock Discord (e.g. control+l)"),
+        description: "Keybind to lock Discord (e.g. control+l)",
         default: "control+l",
     },
 }).withPrivateSettings<PLData>();

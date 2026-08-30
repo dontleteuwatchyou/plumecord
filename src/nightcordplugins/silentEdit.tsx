@@ -17,17 +17,17 @@ const MessageActions = findByPropsLazy("deleteMessage", "startEditMessage");
 const settings = definePluginSettings({
     deleteOriginalMessage: {
         type: OptionType.BOOLEAN,
-        description: t("Delete the original server-side message after silent edit. If disabled, the original message will reappear after client reload."),
+        description: "Delete the original server-side message after silent edit. If disabled, the original message will reappear after client reload.",
         default: true
     },
     deleteDelay: {
         type: OptionType.NUMBER,
-        description: t("Delay (in milliseconds) before deleting the original message if enabled."),
+        description: "Delay (in milliseconds) before deleting the original message if enabled.",
         default: 500
     },
     suppressNotifications: {
         type: OptionType.BOOLEAN,
-        description: t("Recommended for use in DMs to prevent pinging users."),
+        description: "Recommended for use in DMs to prevent pinging users.",
         default: false
     }
 });

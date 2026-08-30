@@ -4618,24 +4618,27 @@ export function getActiveLanguage(): SupportedLang {
 
     // 3. Check global Nightcord setting
     const globalLang = Settings.language;
-    if (globalLang && globalLang !== "en") return normalizeLang(globalLang);
+    if (globalLang && globalLang !== "auto") return normalizeLang(globalLang);
 
-    // 4. Auto-detect from Discord client DOM / browser
+    // 4. Auto-detect from Discord client DOM / navigator
+    try {
+        const discordLocale = (typeof window !== "undefined" && (window as any).DiscordNative?.app?.getLocale?.());
+        if (discordLocale) return normalizeLang(discordLocale);
+    } catch {}
+
     try {
         if (typeof document !== "undefined" && document.documentElement?.lang) {
-            const htmlLang = normalizeLang(document.documentElement.lang);
-            if (htmlLang !== "en") return htmlLang;
+            return normalizeLang(document.documentElement.lang);
         }
     } catch {}
 
     try {
         if (typeof navigator !== "undefined" && navigator.language) {
-            const navLang = normalizeLang(navigator.language);
-            if (navLang !== "en") return navLang;
+            return normalizeLang(navigator.language);
         }
     } catch {}
 
-    return "fr";
+    return "en";
 }
 
 export function t(key: string): string {

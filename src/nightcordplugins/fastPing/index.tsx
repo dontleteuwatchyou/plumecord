@@ -16,7 +16,7 @@ const SNOWFLAKE_RE = /^\d{15,21}$/;
 const settings = definePluginSettings({
     trailingSpace: {
         type: OptionType.BOOLEAN,
-        description: t("Add a space after the mention once inserted"),
+        description: "Add a space after the mention once inserted",
         default: true,
     },
 });

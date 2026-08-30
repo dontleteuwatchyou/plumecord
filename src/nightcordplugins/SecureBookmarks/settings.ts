@@ -13,14 +13,14 @@ export const PASSWORD_KEYS: Array<"usePassword" | "password"> = ["usePassword", 
 export const settings = definePluginSettings({
     usePassword: {
         type: OptionType.BOOLEAN,
-        description: t("Encrypt new bookmarks and require password access for encrypted bookmarks."),
+        description: "Encrypt new bookmarks and require password access for encrypted bookmarks.",
         default: true
     },
     password: {
         type: OptionType.STRING,
-        description: t("Password used for AES-256 encrypted bookmarks."),
+        description: "Password used for AES-256 encrypted bookmarks.",
         default: "",
-        placeholder: t("Bookmark password"),
+        placeholder: "Bookmark password",
         componentProps: {
             type: "password",
             autoComplete: "new-password"

@@ -102,66 +102,66 @@ Reflect.set(globalThis, RUNTIME_KEY, runtime);
 runtime.portalListeners.forEach(listener => listener());
 const settings = definePluginSettings({
     islandColor: {
-        description: t("Choose the Dynamic Island color."),
+        description: "Choose the Dynamic Island color.",
         type: OptionType.SELECT,
         options: [
-            { label: t("Frosted Glass"), value: "blur", default: true },
-            { label: t("Transparent"), value: "transparent" },
-            { label: t("Discord theme"), value: "theme" },
-            { label: t("AMOLED"), value: "amoled" },
-            { label: t("White"), value: "white" },
-            { label: t("Light blue"), value: "blue" },
-            { label: t("Pink"), value: "pink" }
+            { label: "Frosted Glass", value: "blur", default: true },
+            { label: "Transparent", value: "transparent" },
+            { label: "Discord theme", value: "theme" },
+            { label: "AMOLED", value: "amoled" },
+            { label: "White", value: "white" },
+            { label: "Light blue", value: "blue" },
+            { label: "Pink", value: "pink" }
         ]
     },
     keepIslandVisible: {
-        description: t("Keep the Dynamic Island visible when no activity is active."),
+        description: "Keep the Dynamic Island visible when no activity is active.",
         type: OptionType.BOOLEAN,
         default: false
     },
     showSpotifyIsland: {
-        description: t("Show Spotify activity in the Dynamic Island."),
+        description: "Show Spotify activity in the Dynamic Island.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showSoundCordIsland: {
-        description: t("Show SoundCord activity in the Dynamic Island."),
+        description: "Show SoundCord activity in the Dynamic Island.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showVoiceIsland: {
-        description: t("Show Discord call controls in the Dynamic Island."),
+        description: "Show Discord call controls in the Dynamic Island.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showScreenShareIsland: {
-        description: t("Show screen sharing status, timer, and quick stop controls in the Dynamic Island."),
+        description: "Show screen sharing status, timer, and quick stop controls in the Dynamic Island.",
         type: OptionType.BOOLEAN,
         default: true
     },
     morphNotifications: {
-        description: t("Temporarily morph the Dynamic Island for direct messages and mentions."),
+        description: "Temporarily morph the Dynamic Island for direct messages and mentions.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showSpotifyPanel: {
-        description: t("Show the Spotify player in the Discord user panel."),
+        description: "Show the Spotify player in the Discord user panel.",
         type: OptionType.BOOLEAN,
         default: false,
         onChange: value => { musicControlsSettings.store.showSpotifyControls = value; }
     },
     showCallControls: {
-        description: t("Show main call controls (Mute, Deafen, Disconnect) in the call section."),
+        description: "Show main call controls (Mute, Deafen, Disconnect) in the call section.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showCallParticipants: {
-        description: t("Show the list of voice call participants."),
+        description: "Show the list of voice call participants.",
         type: OptionType.BOOLEAN,
         default: true
     },
     showParticipantButtons: {
-        description: t("Show quick action buttons (Mute, Follow, Friend, DM) next to participants."),
+        description: "Show quick action buttons (Mute, Follow, Friend, DM) next to participants.",
         type: OptionType.BOOLEAN,
         default: true
     }

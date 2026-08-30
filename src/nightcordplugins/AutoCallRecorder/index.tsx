@@ -97,15 +97,15 @@ const SavePathSelector = (props: IPluginOptionComponentProps) => {
 const settings = definePluginSettings({
     mode: {
         type: OptionType.SELECT,
-        description: t("Recording Mode"),
+        description: "Recording Mode",
         options: [
-            { label: t("Only Voice"), value: "voice", default: true },
-            { label: t("Image + Voice"), value: "video" }
+            { label: "Only Voice", value: "voice", default: true },
+            { label: "Image + Voice", value: "video" }
         ]
     },
     videoQuality: {
         type: OptionType.SELECT,
-        description: t("Video Quality"),
+        description: "Video Quality",
         options: [
             { label: "720p 30fps", value: "720p30", default: true },
             { label: "1080p 60fps", value: "1080p60" },
@@ -114,7 +114,7 @@ const settings = definePluginSettings({
     },
     videoFormat: {
         type: OptionType.SELECT,
-        description: t("Video Format"),
+        description: "Video Format",
         options: [
             { label: "WebM", value: "webm", default: true },
             { label: "MKV", value: "mkv" }
@@ -122,7 +122,7 @@ const settings = definePluginSettings({
     },
     audioFormat: {
         type: OptionType.SELECT,
-        description: t("Audio Format"),
+        description: "Audio Format",
         options: [
             { label: "OGG", value: "ogg", default: true },
             { label: "WebM", value: "webm" }
@@ -135,17 +135,17 @@ const settings = definePluginSettings({
     },
     maxStorage: {
         type: OptionType.NUMBER,
-        description: t("Max Storage (GB) - 0 for unlimited"),
+        description: "Max Storage (GB) - 0 for unlimited",
         default: 0
     },
     shadowplayMinutes: {
         type: OptionType.NUMBER,
-        description: t("Record last X minutes (0 to disable/keep all)"),
+        description: "Record last X minutes (0 to disable/keep all)",
         default: 0
     },
     autoSave: {
         type: OptionType.BOOLEAN,
-        description: t("Autosave without prompting"),
+        description: "Autosave without prompting",
         default: true
     },
     savePath: {
@@ -155,12 +155,12 @@ const settings = definePluginSettings({
     },
     showTimes: {
         type: OptionType.BOOLEAN,
-        description: t("Show Times (Visual indicator)"),
+        description: "Show Times (Visual indicator)",
         default: true
     },
     showSaveToast: {
         type: OptionType.BOOLEAN,
-        description: t("Show Save Notification"),
+        description: "Show Save Notification",
         default: true
     }
 });

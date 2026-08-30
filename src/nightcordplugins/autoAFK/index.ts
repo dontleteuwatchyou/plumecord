@@ -108,23 +108,23 @@ function onMouseMove() {
 const settings = definePluginSettings({
     afkAfterMinutes: {
         type: OptionType.NUMBER,
-        description: t("Minutes of inactivity before you're automatically set to appear offline."),
+        description: "Minutes of inactivity before you're automatically set to appear offline.",
         default: 15,
         isValid: (value: number) => value >= 1 || t("Must be at least 1 minute."),
         onChange: resetTimer
     },
     mouseMovementCountsAsActivity: {
         type: OptionType.BOOLEAN,
-        description: t("Count mouse movement as activity. Disable this if only typing, clicking, sending messages, and voice activity should count — simply moving your mouse won't prevent going AFK anymore."),
+        description: "Count mouse movement as activity. Disable this if only typing, clicking, sending messages, and voice activity should count — simply moving your mouse won't prevent going AFK anymore.",
         default: true
     },
     activeStatus: {
         type: OptionType.SELECT,
-        description: t("Status to switch back to once you're active again."),
+        description: "Status to switch back to once you're active again.",
         options: [
-            { label: t("Online"), value: "online", default: true },
-            { label: t("Idle"), value: "idle" },
-            { label: t("Do Not Disturb"), value: "dnd" }
+            { label: "Online", value: "online", default: true },
+            { label: "Idle", value: "idle" },
+            { label: "Do Not Disturb", value: "dnd" }
         ]
     }
 });
