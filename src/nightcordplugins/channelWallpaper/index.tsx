@@ -5,23 +5,41 @@
  */
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { authorizeUser, getStoredToken } from "@api/OAuth2";
+import { getPublicPluginConfig, saveOwnPluginConfig } from "@api/PluginSync";
 import { definePluginSettings } from "@api/Settings";
+import { Card } from "@components/Card";
+import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Devs } from "@utils/constants";
-import { sendMessage } from "@utils/discord";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByPropsLazy } from "@webpack";
-import { ChannelStore, Menu, React, RelationshipStore, SelectedChannelStore, showToast, Toasts, UserStore } from "@webpack/common";
+import { Button, ChannelStore, Menu, React, RelationshipStore, SelectedChannelStore, showToast, Text, Toasts, UserStore } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
-const MessageActions = findByPropsLazy("deleteMessage");
-const SYNC_PREFIX = "\u200b\u200c\u200bNC_WP:";
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface CloudWallpaperConfig {
+    dmWallpapers?: Record<string, string>; // [friendUserId]: wallpaperUrl
+    updatedAt?: number;
+    private?: boolean;
+}
+
+// ── In-Memory State & Caches ───────────────────────────────────────────────────
+
+let _cachedOpacity = 0.3;
+let _cachedBlur = 0;
+let _wpCache: Record<string, string> | null = null;
+let _wpRaw = "";
+let _activeVideo: HTMLVideoElement | null = null;
+let _syncPollInterval: ReturnType<typeof setInterval> | null = null;
+let _cachedOwnCloudDmWallpapers: Record<string, string> = {};
+const _syncedFromFriends = new Set<string>(); // channelIds synced from friend
 
 // ── Settings ───────────────────────────────────────────────────────────────────
 
 const settings = definePluginSettings({
     wallpapers: {
         type: OptionType.STRING,
-        description: "Wallpapers JSON — do not modify manually (managed by plugin)",
+        description: "Wallpapers JSON (managed automatically by plugin)",
         default: "{}",
         hidden: true,
         restartNeeded: false,
@@ -29,12 +47,12 @@ const settings = definePluginSettings({
     },
     opacity: {
         type: OptionType.SLIDER,
-        description: "Wallpaper opacity (0 = invisible, 1 = full)",
+        description: "Wallpaper opacity",
         markers: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
         default: 0.3,
         stickToMarkers: false,
         restartNeeded: false,
-        onChange(v: number) { _cachedOpacity = v; }
+        onChange(v: number) { _cachedOpacity = v; applyWallpaper(); }
     },
     blur: {
         type: OptionType.SLIDER,
@@ -43,43 +61,22 @@ const settings = definePluginSettings({
         default: 0,
         stickToMarkers: false,
         restartNeeded: false,
-        onChange(v: number) { _cachedBlur = v; }
+        onChange(v: number) { _cachedBlur = v; applyWallpaper(); }
     },
     defaultWallpaper: {
         type: OptionType.STRING,
-        description: "Default wallpaper URL (for channels without a custom one). Empty = none.",
+        description: "Default wallpaper URL (for channels without a custom one)",
         default: "",
         restartNeeded: false,
+        onChange() { applyWallpaper(); }
     },
     syncWithFriends: {
         type: OptionType.BOOLEAN,
-        description: "Sync wallpapers with Nightcord friends in DMs.",
+        description: "Sync DM wallpapers with Nightcord friends via OAuth2 API",
         default: true,
         restartNeeded: false,
     },
-    vpsUrl: {
-        type: OptionType.STRING,
-        description: "VPS URL (e.g. ws://your-vps:3000). Empty = use hidden messages.",
-        default: "",
-        restartNeeded: false,
-    },
-    vpsPassword: {
-        type: OptionType.STRING,
-        description: "Password for the sync server.",
-        default: "nightcord",
-        restartNeeded: false,
-    },
 });
-
-let _cachedOpacity = 0.3;
-let _cachedBlur = 0;
-const cacheWpSettings = () => {
-    _cachedOpacity = settings.store.opacity ?? 0.3;
-    _cachedBlur = settings.store.blur ?? 0;
-};
-
-let _wpCache: Record<string, string> | null = null;
-let _wpRaw = "";
 
 function getWallpapers(): Record<string, string> {
     const raw = settings.store.wallpapers || "{}";
@@ -89,52 +86,9 @@ function getWallpapers(): Record<string, string> {
     return _wpCache!;
 }
 
-function _invalidateWpCache() { _wpCache = null; _wpRaw = ""; }
-
-function saveWallpaper(channelId: string, url: string, skipSync = false) {
-    const wp = getWallpapers();
-    if (url) {
-        wp[channelId] = url;
-    } else {
-        delete wp[channelId];
-    }
-    settings.store.wallpapers = JSON.stringify(wp);
-    _invalidateWpCache();
-    applyWallpaper(channelId);
-
-    // Peer-to-peer sync
-    if (!skipSync) {
-        const channel = ChannelStore.getChannel(channelId);
-        if (channel?.type === 1) { // 1 = DM
-            // VPS Sync (Primary if configured)
-            if (settings.store.vpsUrl && vpsSocket?.readyState === WebSocket.OPEN) {
-                vpsSocket.send(JSON.stringify({
-                    type: "SET",
-                    channelId,
-                    url,
-                    password: settings.store.vpsPassword
-                }));
-            } else {
-                // Ghost Message Sync (Fallback)
-                const otherUserId = channel.recipients[0];
-                if (RelationshipStore.isFriend(otherUserId)) {
-                    const payload = url || "DELETE";
-                    sendMessage(channelId, { content: SYNC_PREFIX + payload });
-                }
-            }
-        }
-    }
-}
-
-function saveLocalWallpaperOnly(channelId: string, url: string) {
-    const wp = getWallpapers();
-    if (url) wp[channelId] = url;
-    else delete wp[channelId];
-    settings.store.wallpapers = JSON.stringify(wp);
-    _invalidateWpCache();
-    if (SelectedChannelStore.getChannelId() === channelId) {
-        applyWallpaper(channelId);
-    }
+function _invalidateWpCache() {
+    _wpCache = null;
+    _wpRaw = "";
 }
 
 function getWallpaper(channelId: string): string {
@@ -147,47 +101,98 @@ function hasWallpaper(channelId: string): boolean {
     return !!wp[channelId];
 }
 
-// ── File picker (browser input fallback) ───────────────────────────────────────
+function saveLocalWallpaperOnly(channelId: string, url: string) {
+    const wp = getWallpapers();
+    if (url) {
+        wp[channelId] = url;
+    } else {
+        delete wp[channelId];
+    }
+    settings.store.wallpapers = JSON.stringify(wp);
+    _invalidateWpCache();
 
-async function uploadToImgur(file: File): Promise<string | null> {
-    const formData = new FormData();
-    formData.append("image", file);
+    if (SelectedChannelStore.getChannelId() === channelId) {
+        applyWallpaper(channelId);
+    }
+}
+
+// ── Nightcord API Cloud Synchronization ────────────────────────────────────────
+
+async function syncWallpaperToCloud(recipientUserId: string, wallpaperUrl: string) {
     try {
-        const res = await fetch("https://api.imgur.com/3/image", {
-            method: "POST",
-            headers: { Authorization: "Client-ID 546c25a59c58ad7" },
-            body: formData,
-        });
-        const json = await res.json();
-        return json?.data?.link ?? null;
-    } catch { return null; }
-}
+        let token = await getStoredToken();
+        if (!token) {
+            token = await authorizeUser();
+        }
+        if (!token) {
+            showToast(t("Connect with Discord OAuth2 to sync with friends"), Toasts.Type.WARNING);
+            return;
+        }
 
-function pickFileRaw(): Promise<File | null> {
-    return new Promise(resolve => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "image/*,video/mp4,video/webm,.gif";
-        input.style.display = "none";
-        input.onchange = () => {
-            const file = input.files?.[0];
-            resolve(file || null);
-            input.remove();
+        if (wallpaperUrl) {
+            _cachedOwnCloudDmWallpapers[recipientUserId] = wallpaperUrl;
+        } else {
+            delete _cachedOwnCloudDmWallpapers[recipientUserId];
+        }
+
+        const cloudPayload: CloudWallpaperConfig = {
+            dmWallpapers: _cachedOwnCloudDmWallpapers,
+            updatedAt: Date.now(),
+            private: false
         };
-        input.oncancel = () => { resolve(null); input.remove(); };
-        document.body.appendChild(input);
-        input.click();
-    });
+
+        await saveOwnPluginConfig("channelWallpaper", token, cloudPayload as unknown as Record<string, unknown>);
+    } catch (err) {
+        console.error("[ChannelWallpaper] Cloud sync error:", err);
+    }
 }
 
-function promptUrl(): Promise<string | null> {
-    return new Promise(resolve => {
-        const url = prompt("Enter the URL for the image, gif, or video:");
-        resolve(url?.trim() || null);
-    });
+async function syncWithFriendForChannel(channelId: string) {
+    if (!settings.store.syncWithFriends) return;
+
+    const channel = ChannelStore.getChannel(channelId);
+    if (!channel || channel.type !== 1) return; // Only Direct Message channels (type 1)
+
+    const friendUserId = channel.recipients?.[0] || (channel as any).getRecipientId?.();
+    if (!friendUserId || !RelationshipStore.isFriend(friendUserId)) return;
+
+    const myUserId = UserStore.getCurrentUser()?.id;
+    if (!myUserId) return;
+
+    try {
+        const friendConfig: CloudWallpaperConfig | null = await getPublicPluginConfig("channelWallpaper", friendUserId);
+        if (!friendConfig || !friendConfig.dmWallpapers) return;
+
+        const friendSharedWp = friendConfig.dmWallpapers[myUserId] || "";
+        const currentWp = getWallpaper(channelId);
+
+        if (friendSharedWp && friendSharedWp !== currentWp) {
+            saveLocalWallpaperOnly(channelId, friendSharedWp);
+            _syncedFromFriends.add(channelId);
+            showToast(t("Applied shared wallpaper from friend!"), Toasts.Type.SUCCESS);
+        } else if (!friendSharedWp && currentWp && _syncedFromFriends.has(channelId)) {
+            saveLocalWallpaperOnly(channelId, "");
+            _syncedFromFriends.delete(channelId);
+            showToast(t("Friend removed the shared wallpaper"), Toasts.Type.MESSAGE);
+        }
+    } catch (err) {
+        console.error("[ChannelWallpaper] Failed to fetch friend wallpaper config:", err);
+    }
 }
 
-// ── CSS Injection ──────────────────────────────────────────────────────────────
+async function saveWallpaper(channelId: string, url: string) {
+    saveLocalWallpaperOnly(channelId, url);
+
+    const channel = ChannelStore.getChannel(channelId);
+    if (channel?.type === 1) {
+        const friendUserId = channel.recipients?.[0] || (channel as any).getRecipientId?.();
+        if (friendUserId && RelationshipStore.isFriend(friendUserId) && settings.store.syncWithFriends) {
+            await syncWallpaperToCloud(friendUserId, url);
+        }
+    }
+}
+
+// ── Wallpaper Application & DOM Injection ─────────────────────────────────────
 
 const STYLE_ID = "channel-wallpaper-style";
 const CONTAINER_ID = "channel-wallpaper-container";
@@ -197,17 +202,15 @@ function removeWallpaperElements() {
     document.getElementById(CONTAINER_ID)?.remove();
 }
 
-let activeVideo: HTMLVideoElement | null = null;
-
 function pauseVideo() {
-    if (activeVideo && !activeVideo.paused) {
-        activeVideo.pause();
+    if (_activeVideo && !_activeVideo.paused) {
+        _activeVideo.pause();
     }
 }
 
 function playVideo() {
-    if (activeVideo && activeVideo.paused && !document.hidden && document.hasFocus()) {
-        activeVideo.play().catch(() => {});
+    if (_activeVideo && _activeVideo.paused && !document.hidden && document.hasFocus()) {
+        _activeVideo.play().catch(() => {});
     }
 }
 
@@ -238,7 +241,6 @@ function applyWallpaper(channelId?: string) {
         const style = document.createElement("style");
         style.id = STYLE_ID;
         style.textContent = `
-/* Zone messages : rendre le fond transparent pour laisser le wallpaper apparaître */
 [class*="messagesWrapper"],
 [class*="chatContent"],
 [class*="chat-messages"],
@@ -263,7 +265,6 @@ function applyWallpaper(channelId?: string) {
     object-fit: cover;
 }
 
-/* S'assurer que le parent est relatif pour le positionnement du fond */
 [class*="messagesWrapper"],
 [class*="chatContent"] {
     position: relative !important;
@@ -282,10 +283,10 @@ function applyWallpaper(channelId?: string) {
         video.loop = true;
         video.muted = true;
         video.playsInline = true;
-        activeVideo = video;
+        _activeVideo = video;
         container.appendChild(video);
     } else {
-        activeVideo = null;
+        _activeVideo = null;
         const img = document.createElement("img");
         img.src = url;
         img.alt = "";
@@ -313,9 +314,9 @@ function applyWallpaper(channelId?: string) {
     };
 
     if (!tryInject()) {
-        let _injTick = 0;
+        let tick = 0;
         const observer = new MutationObserver((_, obs) => {
-            if (++_injTick % 3 !== 0) return;
+            if (++tick % 3 !== 0) return;
             if (tryInject()) obs.disconnect();
         });
         const root = document.querySelector('[class*="chat"]') || document.body;
@@ -324,44 +325,65 @@ function applyWallpaper(channelId?: string) {
     }
 }
 
-// ── Context menu actions ───────────────────────────────────────────────────────
+// ── File & URL Input Helpers ──────────────────────────────────────────────────
+
+function pickFileRaw(): Promise<string | null> {
+    return new Promise(resolve => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*,video/mp4,video/webm,.gif";
+        input.style.display = "none";
+        input.onchange = () => {
+            const file = input.files?.[0];
+            if (!file) {
+                resolve(null);
+                input.remove();
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                resolve(reader.result as string);
+                input.remove();
+            };
+            reader.onerror = () => {
+                resolve(null);
+                input.remove();
+            };
+            reader.readAsDataURL(file);
+        };
+        input.oncancel = () => { resolve(null); input.remove(); };
+        document.body.appendChild(input);
+        input.click();
+    });
+}
+
+function promptUrl(): Promise<string | null> {
+    return new Promise(resolve => {
+        const url = prompt(t("Enter wallpaper image or video URL:"));
+        resolve(url?.trim() || null);
+    });
+}
 
 async function setWallpaperFromFile(channelId: string) {
-    const file = await pickFileRaw();
-    if (!file) return;
-
-    showToast(t("Uploading wallpaper to Imgur for sync..."), Toasts.Type.MESSAGE);
-    const imgurUrl = await uploadToImgur(file);
-
-    if (imgurUrl) {
-        saveWallpaper(channelId, imgurUrl, false);
-        showToast(t("Wallpaper uploaded and synced!"), Toasts.Type.SUCCESS);
-    } else {
-        // Fallback local si l'upload échoue
-        const reader = new FileReader();
-        reader.onload = () => {
-            const dataUrl = reader.result as string;
-            saveWallpaper(channelId, dataUrl, true);
-            showToast(t("Imgur upload failed. Wallpaper applied locally only."), Toasts.Type.FAILURE);
-        };
-        reader.readAsDataURL(file);
-    }
+    const dataUrl = await pickFileRaw();
+    if (!dataUrl) return;
+    await saveWallpaper(channelId, dataUrl);
+    showToast(t("Wallpaper applied and synced via Nightcord API!"), Toasts.Type.SUCCESS);
 }
 
 async function setWallpaperFromUrl(channelId: string) {
     const url = await promptUrl();
-    if (url) {
-        saveWallpaper(channelId, url, false);
-        showToast(t("Wallpaper applied and synced!"), Toasts.Type.SUCCESS);
-    }
+    if (!url) return;
+    await saveWallpaper(channelId, url);
+    showToast(t("Wallpaper applied and synced via Nightcord API!"), Toasts.Type.SUCCESS);
 }
 
-function removeWallpaper(channelId: string) {
-    saveWallpaper(channelId, "");
+async function removeWallpaper(channelId: string) {
+    await saveWallpaper(channelId, "");
     showToast(t("Wallpaper deleted"), Toasts.Type.SUCCESS);
 }
 
-// ── Context Menu Patches ───────────────────────────────────────────────────────
+// ── Context Menu Components ───────────────────────────────────────────────────
 
 function WallpaperIcon() {
     return (
@@ -371,23 +393,29 @@ function WallpaperIcon() {
     );
 }
 
-const FolderIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
-    </svg>
-);
+function FolderIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" />
+        </svg>
+    );
+}
 
-const LinkIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
-    </svg>
-);
+function LinkIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+        </svg>
+    );
+}
 
-const TrashIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-    </svg>
-);
+function TrashIcon() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+        </svg>
+    );
+}
 
 function buildWallpaperMenu(channelId: string): React.ReactElement {
     const has = hasWallpaper(channelId);
@@ -432,59 +460,148 @@ function buildWallpaperMenu(channelId: string): React.ReactElement {
     );
 }
 
-// ── VPS Sync logic ─────────────────────────────────────────────────────────────
-
-let vpsSocket: WebSocket | null = null;
-function initVPSSync() {
-    if (!settings.store.vpsUrl) return;
-    try {
-        vpsSocket = new WebSocket(settings.store.vpsUrl);
-        vpsSocket.onmessage = e => {
-            try {
-                const data = JSON.parse(e.data);
-                if (data.type === "UPDATE" && data.channelId) {
-                    saveLocalWallpaperOnly(data.channelId, data.url);
-                }
-            } catch { }
-        };
-        vpsSocket.onopen = () => {
-            const channelId = SelectedChannelStore.getChannelId();
-            if (channelId) vpsSocket?.send(JSON.stringify({ type: "JOIN", channelId, password: settings.store.vpsPassword }));
-        };
-        vpsSocket.onclose = () => setTimeout(initVPSSync, 5000);
-    } catch (err) {
-        console.error("[ChannelWallpaper] VPS Connection failed:", err);
-    }
-}
-
-// Clic droit sur un user → trouve le DM channel avec cet user spécifique
 const userContextMenuPatch: NavContextMenuPatchCallback = (children, { user }: any) => {
     if (!user?.id) return;
-    // Résoudre le channel DM avec cet user (pas le channel courant !)
     const channelId = (ChannelStore as any).getDMFromUserId?.(user.id);
     if (!channelId) return;
 
-    children.push(
-        buildWallpaperMenu(channelId)
-    );
+    children.push(buildWallpaperMenu(channelId));
 };
 
-// Clic droit sur un channel
 const channelContextMenuPatch: NavContextMenuPatchCallback = (children, { channel }: any) => {
     if (!channel?.id) return;
-    children.push(
-        buildWallpaperMenu(channel.id)
-    );
+    children.push(buildWallpaperMenu(channel.id));
 };
 
-// ── Plugin ─────────────────────────────────────────────────────────────────────
+// ── Settings Panel Component ───────────────────────────────────────────────────
+
+function ChannelWallpaperSettingsComponent() {
+    const [token, setToken] = React.useState<string | null>(null);
+    const [loadingAuth, setLoadingAuth] = React.useState(false);
+    const wpMap = getWallpapers();
+    const wpEntries = Object.entries(wpMap);
+
+    React.useEffect(() => {
+        getStoredToken().then(t => setToken(t));
+    }, []);
+
+    const handleConnect = async () => {
+        setLoadingAuth(true);
+        try {
+            const res = await authorizeUser();
+            setToken(res);
+            if (res) {
+                showToast(t("Connected to Nightcord Cloud"), Toasts.Type.SUCCESS);
+            }
+        } finally {
+            setLoadingAuth(false);
+        }
+    };
+
+    return (
+        <Flex direction={FlexDirection.COLUMN} style={{ gap: 16 }}>
+            {/* OAuth2 Cloud Sync Status */}
+            <Card style={{ padding: "16px 20px", background: "var(--background-secondary)" }}>
+                <Flex align={FlexAlign.CENTER} justify={FlexJustify.BETWEEN}>
+                    <Flex direction={FlexDirection.COLUMN} style={{ gap: 4 }}>
+                        <Text variant="text-md/semibold" style={{ color: "var(--header-primary)" }}>
+                            {t("Sync DM Wallpapers with Friends")}
+                        </Text>
+                        <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                            {t("Automatically sync wallpapers in DMs with your Nightcord friends via OAuth2 API.")}
+                        </Text>
+                    </Flex>
+                    {token ? (
+                        <Text variant="text-sm/medium" style={{ color: "var(--text-positive)" }}>
+                            {t("Connected to Nightcord Cloud")}
+                        </Text>
+                    ) : (
+                        <Button
+                            size={Button.Sizes.SMALL}
+                            color={Button.Colors.BRAND}
+                            disabled={loadingAuth}
+                            onClick={handleConnect}
+                        >
+                            {loadingAuth ? t("Connecting...") : t("Connect with Discord OAuth2")}
+                        </Button>
+                    )}
+                </Flex>
+            </Card>
+
+            {/* List of Active Wallpapers */}
+            <Card style={{ padding: "16px 20px", background: "var(--background-secondary)" }}>
+                <Text variant="text-md/semibold" style={{ color: "var(--header-primary)", marginBottom: 12 }}>
+                    {t("Active Wallpapers")}
+                </Text>
+                {wpEntries.length === 0 ? (
+                    <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>
+                        {t("No custom wallpapers set yet.")}
+                    </Text>
+                ) : (
+                    <Flex direction={FlexDirection.COLUMN} style={{ gap: 8 }}>
+                        {wpEntries.map(([cid, url]) => {
+                            const ch = ChannelStore.getChannel(cid);
+                            const label = ch?.name || (ch?.type === 1 ? `DM: ${ch?.recipients?.[0] || cid}` : cid);
+
+                            return (
+                                <Flex
+                                    key={cid}
+                                    align={FlexAlign.CENTER}
+                                    justify={FlexJustify.BETWEEN}
+                                    style={{
+                                        padding: "8px 12px",
+                                        background: "var(--background-tertiary)",
+                                        borderRadius: 8
+                                    }}
+                                >
+                                    <Flex align={FlexAlign.CENTER} style={{ gap: 12, flex: 1, minWidth: 0 }}>
+                                        <div
+                                            style={{
+                                                width: 36,
+                                                height: 36,
+                                                borderRadius: 6,
+                                                backgroundImage: `url(${url})`,
+                                                backgroundSize: "cover",
+                                                backgroundPosition: "center",
+                                                backgroundColor: "var(--background-secondary)"
+                                            }}
+                                        />
+                                        <Text
+                                            variant="text-sm/medium"
+                                            style={{ color: "var(--text-normal)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                        >
+                                            {label}
+                                        </Text>
+                                    </Flex>
+                                    <Button
+                                        size={Button.Sizes.MIN}
+                                        color={Button.Colors.RED}
+                                        look={Button.Looks.OUTLINED}
+                                        onClick={() => {
+                                            saveWallpaper(cid, "");
+                                        }}
+                                    >
+                                        {t("Clear")}
+                                    </Button>
+                                </Flex>
+                            );
+                        })}
+                    </Flex>
+                )}
+            </Card>
+        </Flex>
+    );
+}
+
+// ── Plugin Definition ──────────────────────────────────────────────────────────
 
 export default definePlugin({
     name: "ChannelWallpaper",
     enabledByDefault: false,
     authors: [Devs.rushii, Devs.Nickyux],
-    description: "Allows for custom backgrounds for every individual channel.",
+    description: "Allows for custom backgrounds for every individual channel and syncs DM wallpapers with friends via Nightcord API.",
     settings,
+    settingsAboutComponent: ChannelWallpaperSettingsComponent,
 
     contextMenus: {
         "user-context": userContextMenuPatch,
@@ -495,63 +612,36 @@ export default definePlugin({
     flux: {
         CHANNEL_SELECT({ channelId }: { channelId: string; }) {
             if (channelId) {
-                setTimeout(() => applyWallpaper(channelId), 100);
-                if (vpsSocket?.readyState === WebSocket.OPEN) {
-                    vpsSocket.send(JSON.stringify({ type: "JOIN", channelId, password: settings.store.vpsPassword }));
-                }
+                setTimeout(() => {
+                    applyWallpaper(channelId);
+                    syncWithFriendForChannel(channelId);
+                }, 100);
             } else {
                 removeWallpaperElements();
-            }
-        },
-        MESSAGE_CREATE(data: { channelId: string, message: any; }) {
-            if (!settings.store.syncWithFriends) return;
-            const { message, channelId } = data;
-
-            if (message.content?.startsWith(SYNC_PREFIX)) {
-                const isFromMe = message.author.id === UserStore.getCurrentUser().id;
-                const isFromFriend = RelationshipStore.isFriend(message.author.id);
-
-                if (isFromFriend || isFromMe) {
-                    const payload = message.content.slice(SYNC_PREFIX.length);
-                    const wpUrl = payload === "DELETE" ? "" : payload;
-                    saveLocalWallpaperOnly(channelId, wpUrl);
-                    if (MessageActions?.deleteMessage) {
-                        MessageActions.deleteMessage(channelId, message.id);
-                    }
-                }
-            }
-        },
-        LOAD_MESSAGES_SUCCESS(d: any) {
-            if (!settings.store.syncWithFriends) return;
-            const msgs = d.messages || [];
-            let changed = false;
-            for (const msg of msgs) {
-                if (msg.content?.startsWith(SYNC_PREFIX)) {
-                    const isFromMe = msg.author.id === UserStore.getCurrentUser().id;
-                    const isFromFriend = RelationshipStore.isFriend(msg.author.id);
-                    if (isFromFriend || isFromMe) {
-                        const payload = msg.content.slice(SYNC_PREFIX.length);
-                        saveLocalWallpaperOnly(d.channelId, payload === "DELETE" ? "" : payload);
-                        if (MessageActions?.deleteMessage) {
-                            MessageActions.deleteMessage(d.channelId, msg.id);
-                        }
-                        changed = true;
-                    }
-                }
-            }
-            if (changed) {
-                setTimeout(() => applyWallpaper(d.channelId), 100);
             }
         }
     },
 
     start() {
-        cacheWpSettings();
-        if (settings.store.vpsUrl) initVPSSync();
+        _cachedOpacity = settings.store.opacity ?? 0.3;
+        _cachedBlur = settings.store.blur ?? 0;
+
         const cid = SelectedChannelStore.getChannelId();
         if (cid) {
-            setTimeout(() => applyWallpaper(cid), 500);
+            setTimeout(() => {
+                applyWallpaper(cid);
+                syncWithFriendForChannel(cid);
+            }, 300);
         }
+
+        // Periodic background sync for active DM channel
+        _syncPollInterval = setInterval(() => {
+            const currentChannelId = SelectedChannelStore.getChannelId();
+            if (currentChannelId) {
+                syncWithFriendForChannel(currentChannelId);
+            }
+        }, 15000);
+
         document.addEventListener("visibilitychange", handleVisChange);
         window.addEventListener("focus", handleFocusChange);
         window.addEventListener("blur", handleFocusChange);
@@ -559,14 +649,13 @@ export default definePlugin({
 
     stop() {
         removeWallpaperElements();
-        if (vpsSocket) {
-            vpsSocket.onclose = null; // prevent reconnect loop
-            vpsSocket.close();
-            vpsSocket = null;
+        if (_syncPollInterval) {
+            clearInterval(_syncPollInterval);
+            _syncPollInterval = null;
         }
         document.removeEventListener("visibilitychange", handleVisChange);
         window.removeEventListener("focus", handleFocusChange);
         window.removeEventListener("blur", handleFocusChange);
-        activeVideo = null;
+        _activeVideo = null;
     }
 });
