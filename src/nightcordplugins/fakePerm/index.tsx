@@ -384,7 +384,21 @@ export default definePlugin({
                     if (!this._origMethodsMap.has(key)) {
                         const orig = target[name].bind(target);
                         this._origMethodsMap.set(key, orig);
-                        target[name] = (...args: any[]) => isEnabled ? true : orig(...args);
+                        if (name === "getHighestRolePosition") {
+                            target[name] = (...args: any[]) => isEnabled ? 99999 : orig(...args);
+                        } else if (name === "can") {
+                            target[name] = (perm: any, context: any, ...args: any[]) => {
+                                if (!isEnabled) return orig(perm, context, ...args);
+                                if (!context) return orig(perm, context, ...args);
+                                // Do not fake VIEW_CHANNEL to avoid routing into 403 channels
+                                if (perm === PermissionsBits?.VIEW_CHANNEL || perm === 1024n || perm === 1024) {
+                                    return orig(perm, context, ...args);
+                                }
+                                return true;
+                            };
+                        } else {
+                            target[name] = (...args: any[]) => isEnabled ? true : orig(...args);
+                        }
                     }
                 }
             }
@@ -393,29 +407,36 @@ export default definePlugin({
         if (PermissionStore) {
             if (!this._origGetChannelPerms && typeof PermissionStore.getChannelPermissions === "function") {
                 this._origGetChannelPerms = PermissionStore.getChannelPermissions.bind(PermissionStore);
-                PermissionStore.getChannelPermissions = (...args: any[]) =>
-                    isEnabled ? getAllPermissions() : this._origGetChannelPerms!(...args);
+                PermissionStore.getChannelPermissions = (channel: any, ...args: any[]) => {
+                    if (!isEnabled || !channel) return this._origGetChannelPerms!(channel, ...args);
+                    return getAllPermissions();
+                };
             }
             if (!this._origGetGuildPerms && typeof PermissionStore.getGuildPermissions === "function") {
                 this._origGetGuildPerms = PermissionStore.getGuildPermissions.bind(PermissionStore);
-                PermissionStore.getGuildPermissions = (...args: any[]) =>
-                    isEnabled ? getAllPermissions() : this._origGetGuildPerms!(...args);
+                PermissionStore.getGuildPermissions = (guild: any, ...args: any[]) => {
+                    if (!isEnabled || !guild) return this._origGetGuildPerms!(guild, ...args);
+                    return getAllPermissions();
+                };
             }
             if (!this._origGetGuildPermProps && typeof PermissionStore.getGuildPermissionProps === "function") {
                 this._origGetGuildPermProps = PermissionStore.getGuildPermissionProps.bind(PermissionStore);
                 PermissionStore.getGuildPermissionProps = (guild: any) => {
-                    const real = this._origGetGuildPermProps!(guild);
-                    if (!isEnabled) return real;
+                    const real = this._origGetGuildPermProps ? this._origGetGuildPermProps(guild) : {};
+                    if (!isEnabled || !guild) return real;
 
-                    const allTrueProps: Record<string, boolean> = {};
-                    if (real && typeof real === "object") {
-                        for (const k of Object.keys(real)) {
-                            allTrueProps[k] = true;
-                        }
-                    }
+                    const allTrueProps: Record<string, boolean> = { ...(real || {}) };
                     allTrueProps.canManageRoles = true;
                     allTrueProps.canManageGuild = true;
                     allTrueProps.canAdministrator = true;
+                    allTrueProps.canManageChannels = true;
+                    allTrueProps.canKickMembers = true;
+                    allTrueProps.canBanMembers = true;
+                    allTrueProps.canManageNicknames = true;
+                    allTrueProps.canChangeNickname = true;
+                    allTrueProps.canMuteMembers = true;
+                    allTrueProps.canDeafenMembers = true;
+                    allTrueProps.canMoveMembers = true;
                     return allTrueProps;
                 };
             }
