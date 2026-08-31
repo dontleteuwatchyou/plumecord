@@ -3,14 +3,12 @@ const { useState, useRef, useEffect } = React;
 import type { UIEvent } from "react";
 
 import { t, LANGUAGES, LANGUAGE_FLAGS, Language } from "@api/i18n";
-import { useSettings, SettingsStore } from "@api/Settings";
+import { flushSettings, SettingsStore, useSettings } from "@api/Settings";
 import { plugins } from "@api/PluginManager";
 import { SafeSearchableSelect } from "@components/SafeSearchableSelect";
 import { FormSwitch } from "@components/FormSwitch";
 import { openModal, ModalRoot, ModalHeader, ModalContent, ModalFooter, ModalSize } from "@utils/modal";
 import { authorizeCloud, deauthorizeCloud } from "@api/SettingsSync/cloudSetup";
-
-// VencordNative is exposed as a global by the preload script, see globals.d.ts.
 
 import { Button } from "./Button";
 import { Flex } from "./Flex";
@@ -19,21 +17,27 @@ import { Paragraph } from "./Paragraph";
 import { Link } from "./Link";
 import { DiscordIcon } from "./Icons";
 
-
 export const MELLOWTEL_ONBOARDING_VERSION = "1";
-
 
 const FLAG_ICON_STYLE: React.CSSProperties = { width: 20, height: 15, borderRadius: 2, verticalAlign: "middle", objectFit: "cover" };
 
-
-
 export function shouldShowMellowtelOnboarding(): boolean {
-    return !SettingsStore.store.mellowtelOnboardingSeen;
+    if (SettingsStore.store.mellowtelOnboardingSeen) return false;
+    try {
+        if (localStorage.getItem("nightcord_onboarding_seen") === "true") {
+            SettingsStore.store.mellowtelOnboardingSeen = true;
+            flushSettings();
+            return false;
+        }
+    } catch {}
+    return true;
 }
 
 function persistChoice(accepted: boolean) {
     SettingsStore.store.mellowtelOnboardingSeen = true;
+    try { localStorage.setItem("nightcord_onboarding_seen", "true"); } catch {}
     SettingsStore.markAsChanged();
+    flushSettings();
     try {
         VencordNative.mellowtel?.setConsent?.(accepted, MELLOWTEL_ONBOARDING_VERSION);
     } catch (e) {
@@ -48,7 +52,6 @@ function MellowtelOnboardingContent({ onClose }: { onClose: () => void }) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const settings = useSettings(["language", "cloud", "syncOwnCustomProfile"]);
-
 
     useEffect(() => {
         // Force sync OFF by default when the modal is first opened
@@ -68,26 +71,19 @@ function MellowtelOnboardingContent({ onClose }: { onClose: () => void }) {
     };
 
     const applyDefaultPreset = async () => {
-        // Only ensure enabledByDefault / required plugins are marked enabled in settings.
-        // We deliberately do NOT call stopPlugin() on everything — that causes Discord to
-        // crash when plugins throw (e.g. RangeError in enhancedLogic, Maximum call stack).
-        // Plugins that are already running stay running. We only update the stored settings
-        // so that on next load, only the expected plugins are active.
-        for (const [key, plugin] of Object.entries(plugins)) {
-            const shouldBeEnabled = !!(plugin.enabledByDefault || plugin.required);
-            if (!SettingsStore.store.plugins) SettingsStore.store.plugins = {};
-            if (!SettingsStore.store.plugins[key]) {
+        // Only initialize defaults if plugins config is completely empty (first fresh install).
+        // NEVER overwrite or reset user's customized plugins!
+        if (!SettingsStore.store.plugins) SettingsStore.store.plugins = {};
+        const isFreshInstall = Object.keys(SettingsStore.store.plugins).length === 0;
+
+        if (isFreshInstall) {
+            for (const [key, plugin] of Object.entries(plugins)) {
+                const shouldBeEnabled = !!(plugin.enabledByDefault || plugin.required);
                 SettingsStore.store.plugins[key] = { enabled: shouldBeEnabled };
-            } else {
-                // Only set to false if not already enabled by user choice
-                if (!shouldBeEnabled && SettingsStore.store.plugins[key].enabled === undefined) {
-                    SettingsStore.store.plugins[key].enabled = false;
-                } else if (shouldBeEnabled) {
-                    SettingsStore.store.plugins[key].enabled = true;
-                }
             }
         }
         SettingsStore.markAsChanged();
+        flushSettings();
     };
 
     const renderProgressBar = () => {

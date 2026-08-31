@@ -24,8 +24,8 @@ const suffix = IS_DEV ? "dev" : "";
 
 export const DATA_DIR = process.env.NIGHTCORD_USER_DATA_DIR ?? (
     process.env.DISCORD_USER_DATA_DIR
-        ? join(process.env.DISCORD_USER_DATA_DIR, "..", "NightcordData", suffix)
-        : join(app.getPath("userData"), "..", "Nightcord", suffix)
+        ? join(process.env.DISCORD_USER_DATA_DIR, "..", "Nightcord")
+        : join(app.getPath("userData"), "..", "Nightcord")
 );
 
 export const SETTINGS_DIR = join(DATA_DIR, "settings");

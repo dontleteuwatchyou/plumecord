@@ -8,15 +8,39 @@ import type { Settings } from "@api/Settings";
 import { IpcEvents } from "@shared/IpcEvents";
 import { SettingsStore } from "@shared/SettingsStore";
 import { mergeDefaults } from "@utils/mergeDefaults";
-import { ipcMain } from "electron";
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
+import { app, ipcMain } from "electron";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 
-import { NATIVE_SETTINGS_FILE, SETTINGS_DIR, SETTINGS_FILE } from "./utils/constants";
+import { DATA_DIR, NATIVE_SETTINGS_FILE, SETTINGS_DIR, SETTINGS_FILE } from "./utils/constants";
 
 mkdirSync(SETTINGS_DIR, { recursive: true });
 
 function readSettings<T = object>(name: string, file: string): Partial<T> {
     try {
+        if (!existsSync(file)) {
+            // Auto-migrate from legacy paths if primary settings file does not exist
+            const legacyCandidates = [
+                join(DATA_DIR, "..", "NightcordData", "settings", "settings.json"),
+                join(DATA_DIR, "..", "NightcordData", "settings.json"),
+                join(DATA_DIR, "dev", "settings", "settings.json"),
+                join(DATA_DIR, "..", "Nightcord", "dev", "settings", "settings.json"),
+                join(DATA_DIR, "..", "Equicord", "settings", "settings.json"),
+                join(DATA_DIR, "..", "Vencord", "settings", "settings.json"),
+                join(DATA_DIR, "settings.json")
+            ];
+            for (const cand of legacyCandidates) {
+                if (existsSync(cand)) {
+                    try {
+                        mkdirSync(dirname(file), { recursive: true });
+                        copyFileSync(cand, file);
+                        const data = JSON.parse(readFileSync(file, "utf-8"));
+                        console.log(`[Nightcord] Successfully migrated ${name} settings from ${cand}`);
+                        return data;
+                    } catch {}
+                }
+            }
+        }
         return JSON.parse(readFileSync(file, "utf-8"));
     } catch (err: any) {
         if (err?.code !== "ENOENT")
@@ -30,15 +54,25 @@ import { debounce } from "@shared/debounce";
 
 export const RendererSettings = new SettingsStore(readSettings<Settings>("renderer", SETTINGS_FILE));
 
-const saveRendererSettings = debounce(() => {
+function writeRendererSettingsSync() {
     try {
         writeFileSync(SETTINGS_FILE, JSON.stringify(RendererSettings.plain, null, 4));
     } catch (e) {
         console.error("Failed to write renderer settings", e);
     }
-}, 500);
+}
+
+const saveRendererSettings = debounce(() => {
+    writeRendererSettingsSync();
+}, 300);
 
 RendererSettings.addGlobalChangeListener(saveRendererSettings);
+
+if (typeof app !== "undefined") {
+    app.on("before-quit", writeRendererSettingsSync);
+    app.on("will-quit", writeRendererSettingsSync);
+}
+process.on("beforeExit", writeRendererSettingsSync);
 
 ipcMain.handle(IpcEvents.GET_SETTINGS_DIR, () => SETTINGS_DIR);
 ipcMain.on(IpcEvents.GET_SETTINGS, e => e.returnValue = RendererSettings.plain);
