@@ -1,3 +1,9 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { NativeSettings } from "@main/settings";
 import { session } from "electron";
 
@@ -211,6 +217,12 @@ export function initCsp() {
             
             const featurePolicyHeader = findHeader(responseHeaders, "feature-policy");
             if (featurePolicyHeader) delete responseHeaders[featurePolicyHeader];
+
+            if (url.includes("nightcord.st") || url.includes("vencord.dev") || url.includes("equicord.org")) {
+                responseHeaders["access-control-allow-origin"] = ["*"];
+                responseHeaders["access-control-allow-methods"] = ["GET, POST, PUT, DELETE, OPTIONS"];
+                responseHeaders["access-control-allow-headers"] = ["*"];
+            }
 
         } catch (e) {
             console.error(e);

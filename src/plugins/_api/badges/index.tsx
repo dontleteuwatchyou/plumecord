@@ -1,20 +1,8 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import "./fixDiscordBadgePadding.css";
 import {domain} from "../../../../DOMAIN.json"
@@ -88,25 +76,35 @@ let NightcordBadges = {} as Record<string, Array<{ icon: string; placeholder: st
 let IllegalcordBadges = {} as Record<string, Array<Record<"tooltip" | "badge", string>>>;
 
 async function loadBadges(url: string, noCache = false) {
-    const init = {} as RequestInit;
-    if (noCache) init.cache = "no-cache";
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+        const init: RequestInit = { signal: controller.signal };
+        if (noCache) init.cache = "no-cache";
 
-    return await fetch(url, init).then(r => r.json());
+        const res = await fetch(url, init);
+        if (!res.ok) return {};
+        return await res.json();
+    } catch {
+        return {};
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 async function loadAllBadges(noCache = false) {
-    const vencordBadges = await loadBadges("https://badges.vencord.dev/badges.json", noCache).catch(() => ({}));
-    const equicordBadges = await loadBadges("https://badge.equicord.org/badges.json", noCache).catch(() => ({}));
-    let nightcordBadges = await loadBadges(`https://api.${domain}/badges`, noCache).catch(() => null);
-    if (!nightcordBadges || typeof nightcordBadges !== "object") {
-        nightcordBadges = await loadBadges("https://api.nightcord.st/badges", noCache).catch(() => ({}));
-    }
-    const illegalcordBadges = await loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache).catch(() => ({}));
+    const nightcordUrl = `https://api.${domain}/badges`;
+    const [vencord, equicord, nightcord, illegalcord] = await Promise.allSettled([
+        loadBadges("https://badges.vencord.dev/badges.json", noCache),
+        loadBadges("https://badge.equicord.org/badges.json", noCache),
+        loadBadges(nightcordUrl, noCache),
+        loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache)
+    ]);
 
-    DonorBadges = vencordBadges || {};
-    EquicordDonorBadges = equicordBadges || {};
-    NightcordBadges = nightcordBadges || {};
-    IllegalcordBadges = illegalcordBadges || {};
+    DonorBadges = (vencord.status === "fulfilled" && vencord.value) ? vencord.value : {};
+    EquicordDonorBadges = (equicord.status === "fulfilled" && equicord.value) ? equicord.value : {};
+    NightcordBadges = (nightcord.status === "fulfilled" && nightcord.value) ? nightcord.value : {};
+    IllegalcordBadges = (illegalcord.status === "fulfilled" && illegalcord.value) ? illegalcord.value : {};
 }
 
 let intervalId: any;
@@ -201,8 +199,8 @@ export default definePlugin({
 
     userProfileBadges: [ContributorBadge, EquicordContributorBadge, UserPluginContributorBadge],
 
-    async start() {
-        await loadAllBadges();
+    start() {
+        loadAllBadges().catch(() => {});
 
         clearInterval(intervalId);
         intervalId = setInterval(loadAllBadges, 1000 * 60 * 30); // 30 minutes

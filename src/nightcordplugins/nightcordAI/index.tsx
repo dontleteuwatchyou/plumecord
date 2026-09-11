@@ -843,13 +843,20 @@ export default definePlugin({
         }
 
         // Transformateur DOM direct pour transformer instantanément le bouton Shop s'il subsiste
+        let shopTransformed = false;
         const transformShop = () => {
+            if (shopTransformed) return;
             const shopLink =
                 document.querySelector<HTMLAnchorElement>('[data-list-item-id*="___shop"]') ??
                 document.querySelector<HTMLAnchorElement>('a[href="/shop"]');
             if (!shopLink) return;
 
-            if (shopLink.getAttribute("data-nightcord-ai") === "true") return;
+            if (shopLink.getAttribute("data-nightcord-ai") === "true") {
+                shopTransformed = true;
+                this._observer?.disconnect();
+                this._observer = null;
+                return;
+            }
             shopLink.setAttribute("data-nightcord-ai", "true");
 
             shopLink.href = "#";
@@ -873,9 +880,20 @@ export default definePlugin({
             };
             shopLink.onclick = clickHandler;
             shopLink.addEventListener("click", clickHandler, true);
+            shopTransformed = true;
+            this._observer?.disconnect();
+            this._observer = null;
         };
 
-        this._observer = new MutationObserver(() => transformShop());
+        let isThrottled = false;
+        this._observer = new MutationObserver(() => {
+            if (isThrottled || shopTransformed) return;
+            isThrottled = true;
+            requestAnimationFrame(() => {
+                isThrottled = false;
+                transformShop();
+            });
+        });
         this._observer.observe(document.body, { childList: true, subtree: true });
         transformShop();
     },

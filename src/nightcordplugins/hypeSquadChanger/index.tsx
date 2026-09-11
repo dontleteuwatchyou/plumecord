@@ -302,9 +302,12 @@ let isHypeSquadThrottled = false;
 function startDomObserver() {
     stopDomObserver();
     if (!isPluginStarted) return;
-    injectHypeSquadChangerIntoNativePanel();
+    if (document.querySelector("#user-profile-editing-panel, [class*='editingPanel_'], [class*='standardSidebarView_']")) {
+        injectHypeSquadChangerIntoNativePanel();
+    }
     domObserver = new MutationObserver(() => {
         if (!isPluginStarted || isHypeSquadThrottled) return;
+        if (!document.querySelector("#user-profile-editing-panel, [class*='editingPanel_'], [class*='standardSidebarView_']")) return;
         isHypeSquadThrottled = true;
         requestAnimationFrame(() => {
             isHypeSquadThrottled = false;
@@ -333,7 +336,7 @@ function stopDomObserver() {
 export default definePlugin({
     name: "HypeSquadChanger",
     description: "Allows changing your HypeSquad house (Bravery, Brilliance, Balance) or leaving HypeSquad directly from Discord user profile settings panel or plugin settings.",
-    enabledByDefault: true,
+    enabledByDefault: false,
     authors: [Devs.Ven],
     settingsAboutComponent: HypeSquadSelectComponent,
     start() {

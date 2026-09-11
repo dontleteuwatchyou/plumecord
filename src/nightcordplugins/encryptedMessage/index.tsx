@@ -398,14 +398,27 @@ function setChannelGeneratedPassword(channelId: string, password: string) {
     }
 }
 
+let cachedEnabledChannels: Set<string> | null = null;
+
+function getEnabledChannels(): Set<string> {
+    if (!cachedEnabledChannels) {
+        try {
+            const map = JSON.parse(settings.store.channelEncryptionStates || "{}");
+            cachedEnabledChannels = new Set(Object.keys(map).filter(k => !!map[k]));
+        } catch {
+            cachedEnabledChannels = new Set();
+        }
+    }
+    return cachedEnabledChannels;
+}
+
+function invalidateEnabledChannelsCache() {
+    cachedEnabledChannels = null;
+}
+
 function isEncryptionEnabledForChannel(channelId: string): boolean {
     if (!channelId) return false;
-    try {
-        const map = JSON.parse(settings.store.channelEncryptionStates || "{}");
-        return !!map[channelId];
-    } catch {
-        return false;
-    }
+    return getEnabledChannels().has(channelId);
 }
 
 function setEncryptionEnabledForChannel(channelId: string, enabled: boolean) {
@@ -418,6 +431,7 @@ function setEncryptionEnabledForChannel(channelId: string, enabled: boolean) {
             delete map[channelId];
         }
         settings.store.channelEncryptionStates = JSON.stringify(map);
+        invalidateEnabledChannelsCache();
     } catch (e) {
         console.error("[EncryptedMessage] Failed to save channel encryption state:", e);
     }
@@ -856,6 +870,7 @@ function decryptMessage(message: any, passedChannelId?: string) {
 
 function scanAndDecrypt(obj: any, parentChannelId?: string, depth = 0, visited = new WeakSet()) {
     if (!obj || typeof obj !== "object" || depth > 10) return;
+    if (getEnabledChannels().size === 0) return;
     if (visited.has(obj)) return;
     visited.add(obj);
 
@@ -1057,7 +1072,7 @@ const settings = definePluginSettings({
 
 export default definePlugin({
     name: "EncryptedMessage",
-    enabledByDefault: true,
+    enabledByDefault: false,
     description: "AES-256 end-to-end encryption for Discord. Share the same password with other users to communicate securely.",
     authors: [{ name: "Nightcord",
      id: 0n }],
@@ -1113,10 +1128,10 @@ export default definePlugin({
 
         const origDispatch = FluxDispatcher.dispatch;
         FluxDispatcher.dispatch = function (event: any) {
-            // Only scan events that can contain chat messages
-            if (event && !event._nc_skip_scan) {
+            // Only scan events that can contain chat messages if encryption is active somewhere
+            if (event && !event._nc_skip_scan && getEnabledChannels().size > 0) {
                 const type = event.type as string | undefined;
-                if (type && (MESSAGE_EVENT_TYPES.has(type) || type.includes("MESSAGE") || type.includes("SEARCH"))) {
+                if (type && MESSAGE_EVENT_TYPES.has(type)) {
                     try {
                         scanAndDecrypt(event);
                     } catch (e) {
@@ -1152,6 +1167,7 @@ export default definePlugin({
         decryptingMessageIds.clear();
         derivedKeyCache.clear();
         decryptedPlaintextCache.clear();
+        invalidateEnabledChannelsCache();
     },
 
     async onBeforeMessageSend(channelId, messageObj) {
@@ -1163,7 +1179,7 @@ export default definePlugin({
         const password = getChannelPassword(channelId);
         if (!password) {
             Toasts.show({
-                message: "❌ No encryption password set for this channel.",
+                message: "No encryption password set for this channel.",
                 type: Toasts.Type.FAILURE,
                 id: Toasts.genId()
             });
@@ -1180,7 +1196,7 @@ export default definePlugin({
         } catch (error) {
             const errorMessage = getErrorMessage(error);
             Toasts.show({
-                message: `❌ Message encryption failed: ${errorMessage}`,
+                message: `Message encryption failed: ${errorMessage}`,
                 type: Toasts.Type.FAILURE,
                 id: Toasts.genId()
             });

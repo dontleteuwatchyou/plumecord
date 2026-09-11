@@ -1,9 +1,10 @@
-import { t } from "../autoTranslateNightcord";
 /*
  * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
+
+import { t } from "../autoTranslateNightcord";
 
 import "./styles.css";
 
@@ -1217,9 +1218,16 @@ function processDomBatch() {
 function startDomObserver() {
     stopDomObserver();
     if (!isEnabled || document.visibilityState === "hidden") return;
-    scanNode(document.body);
+    if (!storedData?.username && !storedData?.globalName && !storedData?.createdAt) return;
+
+    requestAnimationFrame(() => {
+        if (!isEnabled || document.visibilityState === "hidden") return;
+        scanNode(document.body);
+    });
+
     domObserver = new MutationObserver(mutations => {
         if (!isEnabled || !mutations.length) return;
+        if (!storedData?.username && !storedData?.globalName && !storedData?.createdAt) return;
         if (document.visibilityState === "hidden") {
             _domMutations = [];
             return;
@@ -1227,7 +1235,7 @@ function startDomObserver() {
         _domMutations.push(...mutations);
         if (!_domQueued) {
             _domQueued = true;
-            setTimeout(processDomBatch, 20);
+            setTimeout(processDomBatch, 100);
         }
     });
     domObserver.observe(document.body, { childList: true, subtree: true, characterData: true });

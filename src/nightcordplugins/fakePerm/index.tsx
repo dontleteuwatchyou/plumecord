@@ -906,12 +906,19 @@ export default definePlugin({
             onChange(v: boolean) {
                 isEnabled = Boolean(v);
                 injectFakePermStyle(isEnabled);
-                if (!isEnabled) {
+                if (isEnabled) {
+                    (this as any)?._patchPermissionStore?.();
+                    (this as any)?._patchMemberStore?.();
+                    (this as any)?._patchVoiceStore?.();
+                } else {
                     fakeMutes.clear();
                     fakeDeafs.clear();
                     fakeChannelIds.clear();
                     fakeNicks.clear();
                     fakeRoles.clear();
+                    (this as any)?._unpatchPermissionStore?.();
+                    (this as any)?._unpatchMemberStore?.();
+                    (this as any)?._unpatchVoiceStore?.();
                     try { VoiceStateStore?.emitChange?.(); } catch { }
                     try { GuildMemberStore?.emitChange?.(); } catch { }
                     try { ChannelMemberStore?.emitChange?.(); } catch { }
@@ -929,9 +936,11 @@ export default definePlugin({
         }
 
         injectFakePermStyle(isEnabled);
-        this._patchPermissionStore();
-        this._patchMemberStore();
-        this._patchVoiceStore();
+        if (isEnabled) {
+            this._patchPermissionStore();
+            this._patchMemberStore();
+            this._patchVoiceStore();
+        }
     },
 
     stop() {
