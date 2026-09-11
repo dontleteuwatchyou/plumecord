@@ -16,70 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-// Global console filter to clear normal, expected but noisy startup logs & warnings
-try {
-    const skipLogs = [
-        "Sentry successfully disabled",
-        "had no effect (Module id is",
-        "errored (Module id is",
-        "found no module",
-        "Error while filtering or firing callback",
-        "Failed to render header bar button",
-        "Failed to render channel toolbar button",
-        "Starting plugin",
-        "Starting plugins",
-        "Undoing patch group",
-        "Disabling Sentry by erroring its WebpackInstance",
-        "Default overlay keybind is unsupported",
-        "Spellchecker",
-        "NowPlayingViewStore",
-        "RPCServer",
-        "libdiscore",
-        "L.createContext is not a function",
-        "webpack.find"
-    ];
-
-    const shouldSkip = (args: any[]) => {
-        try {
-            const str = args.map(a => {
-                if (a == null) return "";
-                if (a instanceof Error) return a.message + "\n" + a.stack;
-                if (typeof a === "object") {
-                    try { return JSON.stringify(a); } catch { return String(a); }
-                }
-                return String(a);
-            }).join(" ");
-            
-            return skipLogs.some(pat => str.includes(pat));
-        } catch {
-            return false;
-        }
-    };
-
-    const wrap = (level: "log" | "error" | "warn" | "info" | "debug") => {
-        const orig = console[level];
-        console[level] = function (...args: any[]) {
-            if (shouldSkip(args)) return;
-            orig.apply(console, args);
-        };
-    };
-
-    wrap("log");
-    wrap("error");
-    wrap("warn");
-    wrap("info");
-    wrap("debug");
-
-    window.addEventListener("error", (e) => {
-        if (e.error?.message?.includes("Sentry successfully disabled") || e.message?.includes("Sentry successfully disabled")) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-    }, true);
-} catch { }
-
 // DO NOT REMOVE UNLESS YOU WISH TO FACE THE WRATH OF THE CIRCULAR DEPENDENCY DEMON!!!!!!!
 import "~plugins";
+import "./fixWeirdAppRegionBug.css";
 
 export * as Api from "./api";
 export * as DataStore from "./api/DataStore";

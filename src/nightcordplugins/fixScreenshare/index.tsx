@@ -34,11 +34,7 @@ export default definePlugin({
     required: true,
 
     start() {
-        fixEngine();
-        setTimeout(fixEngine, 5000);
-        setTimeout(fixEngine, 15000);
-
-        // Listen for voice channel joins to re-apply fix
+        // Listen for voice channel joins to re-apply fix when entering voice
         FluxDispatcher.subscribe("VOICE_CHANNEL_SELECT", handleVoiceChannelSelect);
     },
 

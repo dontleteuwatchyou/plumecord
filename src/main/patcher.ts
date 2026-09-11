@@ -143,21 +143,6 @@ if (!IS_VANILLA) {
 
             super(options);
 
-            const closeSplashWindows = () => {
-                for (const win of electron.BrowserWindow.getAllWindows()) {
-                    if (win !== this && !win.isDestroyed()) {
-                        try {
-                            win.close();
-                            win.destroy();
-                        } catch {}
-                    }
-                }
-            };
-
-            this.once("show", closeSplashWindows);
-            this.webContents.on("did-finish-load", closeSplashWindows);
-            this.webContents.on("did-navigate", closeSplashWindows);
-
             if (isMainWindow) {
                 makeLinksOpenExternally(this);
             }
@@ -194,20 +179,6 @@ if (!IS_VANILLA) {
     app.whenReady().then(() => {
         registerMediaPermissionsForSession(session.defaultSession);
     });
-
-    const originalAppend = app.commandLine.appendSwitch;
-    app.commandLine.appendSwitch = function (...args) {
-        if (args[0] === "disable-features") {
-            const disabledFeatures = new Set((args[1] ?? "").split(","));
-            disabledFeatures.add("UseEcoQoSForBackgroundProcess");
-            args[1] += [...disabledFeatures].join(",");
-        }
-        return originalAppend.apply(this, args);
-    };
-
-    app.commandLine.appendSwitch("disable-renderer-backgrounding");
-    app.commandLine.appendSwitch("disable-background-timer-throttling");
-    app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 } else {
     console.log("[Nightcord] Running in vanilla mode. Not loading Nightcord");
 }
