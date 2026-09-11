@@ -71,7 +71,7 @@ function LanguageSelect({ settingsKey, includeAuto }: { settingsKey: typeof Lang
 }
 
 function AutoTranslateToggle() {
-    const { autoTranslate, autoTranslateReceived } = settings.use(["autoTranslate", "autoTranslateReceived"]);
+    const { autoTranslate, autoTranslateReceived, translateOnSpace } = settings.use(["autoTranslate", "autoTranslateReceived", "translateOnSpace"]);
 
     return (
         <>
@@ -87,6 +87,13 @@ function AutoTranslateToggle() {
                 description={t("Automatically translate incoming messages to the selected target language.")}
                 value={autoTranslateReceived}
                 onChange={v => settings.store.autoTranslateReceived = v}
+                hideBorder
+            />
+            <FormSwitch
+                title={t("Translate on Space")}
+                description={t("Translate each word automatically when pressing Space.")}
+                value={translateOnSpace}
+                onChange={v => settings.store.translateOnSpace = v}
                 hideBorder
             />
         </>

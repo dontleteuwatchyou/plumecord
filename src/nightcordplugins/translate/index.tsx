@@ -34,6 +34,7 @@ import { settings, setOnAutoTranslateReceivedToggled } from "./settings";
 import { setShouldShowTranslateEnabledTooltip, TranslateChatBarIcon, TranslateIcon } from "./TranslateIcon";
 import { handleTranslate, TranslationAccessory } from "./TranslationAccessory";
 import { translate } from "./utils";
+import { initTranslateOnSpace, stopTranslateOnSpace } from "./wordTranslate";
 import { t } from "../autoTranslateNightcord";
 
 
@@ -221,6 +222,8 @@ export default definePlugin({
     },
 
     start() {
+        initTranslateOnSpace();
+
         setOnAutoTranslateReceivedToggled((enabled) => {
             if (enabled) {
                 const channelId = SelectedChannelStore.getChannelId();
@@ -244,6 +247,7 @@ export default definePlugin({
     },
 
     stop() {
+        stopTranslateOnSpace();
         FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
         FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);
         FluxDispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);

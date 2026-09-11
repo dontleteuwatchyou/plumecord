@@ -87,6 +87,11 @@ export const settings = definePluginSettings({
             if (onAutoTranslateReceivedToggled) onAutoTranslateReceivedToggled(v);
         }
     },
+    translateOnSpace: {
+        type: OptionType.BOOLEAN,
+        description: "Translate each word automatically when pressing Space",
+        default: false
+    },
     showAutoTranslateTooltip: {
         type: OptionType.BOOLEAN,
         description: "Show a tooltip on the ChatBar button whenever a message is automatically translated",
