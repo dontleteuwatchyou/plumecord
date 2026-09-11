@@ -58,29 +58,17 @@ async function deleteShims(paths) {
             log("Closing Discord...");
             await killDiscord(resPath, log);
 
-            log("1. Removing injected folder...");
+            log("1. Removing injected loader...");
             if (await safeExists(appDir)) {
-                const pkg = path.join(appDir, "package.json");
-                if (await safeExists(pkg)) {
-                    const content = await fs.readFile(pkg, "utf-8").catch(() => "");
-                    if (content.includes('"nightcord"')) {
-                        try { await fs.rm(appDir, { recursive: true, force: true }); } catch {}
-                    }
-                }
+                try { await fs.rm(appDir, { recursive: true, force: true }); } catch {}
             }
 
-            log("2. Restoring original files...");
-            const asarStat = await safeStat(appAsar);
-            if (asarStat && asarStat.size < 1000000) {
-                await safeDelete(appAsar);
-            }
-
+            log("2. Restoring original Discord files...");
             if (await safeExists(backup)) {
-                if (!(await safeExists(appAsar))) {
-                    await safeMoveOrCopy(backup, appAsar);
-                } else {
-                    await safeDelete(backup);
+                if (await safeExists(appAsar)) {
+                    try { await safeDelete(appAsar); } catch {}
                 }
+                await safeMoveOrCopy(backup, appAsar);
             }
 
             log("3. Cleaning up assets...");

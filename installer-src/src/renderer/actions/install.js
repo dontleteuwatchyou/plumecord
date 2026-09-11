@@ -322,7 +322,7 @@ async function downloadDist() {
 
 async function writeLoader(appDir) {
     const patcher = path.join(distDir, "patcher.js").replace(/\\/g, "/");
-    await fs.writeFile(path.join(appDir, "package.json"), JSON.stringify({ name: "discord", main: "index.js" }));
+    await fs.writeFile(path.join(appDir, "package.json"), JSON.stringify({ name: "discord", main: "index.js" }, null, 2));
     const loaderCode = `// Nightcord Injector
 "use strict";
 const fs = require('fs');
@@ -348,48 +348,6 @@ async function applyDefaultPluginsSetting() {
     }
 }
 
-async function copyAssetsToDiscord(resPath) {
-    log("Copying binaries...");
-    const appBase = path.dirname(resPath);
-
-    const filesToCopy = ["ffmpeg.exe", "ffmpeg.dll", "node.exe", "yt-dlp.exe"];
-    for (const f of filesToCopy) {
-        const src = path.join(distDir, f);
-        if (await safeExists(src)) {
-            await fs.copyFile(src, path.join(appBase, f));
-        }
-    }
-
-    log("Copying directories...");
-    const dirsToCopy = ["mac", "multi-instance-icons", "modules", "ghost-server"];
-    for (const d of dirsToCopy) {
-        const src = path.join(distDir, d);
-        if (await safeExists(src)) {
-            await copyDirectory(src, path.join(appBase, d));
-        }
-    }
-
-    log("Copying assets...");
-}
-
-async function safeMoveOrCopy(src, dest) {
-    if (await safeExists(dest)) await safeDelete(dest);
-    for (let i = 0; i < 10; i++) {
-        try {
-            await fs.rename(src, dest);
-            return true;
-        } catch (err) {
-            try {
-                await fs.copyFile(src, dest);
-                await safeDelete(src);
-                return true;
-            } catch (_) {}
-            await new Promise(r => setTimeout(r, 300));
-        }
-    }
-    return false;
-}
-
 async function injectShims(paths) {
     process.noAsar = true;
     const progressPerLoop = (INJECT_SHIM_PROGRESS - progress.value) / paths.length;
@@ -403,51 +361,59 @@ async function injectShims(paths) {
             log("Closing Discord...");
             await killDiscord(resPath, log);
 
-            log("1. Removing previous mod injection (Vencord / Equicord / OpenAsar)...");
-            if (await safeExists(appDir)) {
-                try { await fs.rm(appDir, { recursive: true, force: true }); } catch {}
+            // Equicord atomic logic:
+            // Check if already patched: _app.asar exists
+            const alreadyPatched = await safeExists(backup);
+
+            if (alreadyPatched) {
+                log("Already patched install detected. Updating loader shims...");
+                await fs.mkdir(appDir, { recursive: true });
+                await writeLoader(appDir);
+                await applyDefaultPluginsSetting();
+                log("Starting Discord...");
+                startDiscord(resPath);
+                log("✅ Injection successful!");
+                progress.set(progress.value + progressPerLoop);
+                continue;
             }
 
-            const asarStat = await safeStat(appAsar);
-            if (asarStat && asarStat.size < 2000000) {
-                await safeDelete(appAsar);
-            }
-
-            const thirdPartyBackups = ["_app.asar", "original_app.asar", "app.asar.bak"];
-            for (const bkName of thirdPartyBackups) {
-                const bkPath = path.join(resPath, bkName);
-                const bkStat = await safeStat(bkPath);
-                if (bkStat && bkStat.size > 2000000) {
-                    const curStat = await safeStat(appAsar);
-                    if (!curStat || curStat.size < 2000000) {
-                        if (await safeExists(appAsar)) await safeDelete(appAsar);
-                        await fs.copyFile(bkPath, appAsar);
-                    }
-                    break;
-                }
-            }
-
-            await cleanModulePatches(resPath);
-
-            log("2. Configuring Nightcord loader...");
-            if (!(await safeExists(appAsar)) && !(await safeExists(backup))) {
+            // If not already patched, ensure app.asar exists
+            if (!(await safeExists(appAsar))) {
                 throw new Error("Critical error: no valid app.asar found. Please reinstall Discord from discord.com/download and try again.");
             }
 
-            if (await safeExists(appAsar)) {
-                const ok = await safeMoveOrCopy(appAsar, backup);
-                if (!ok) {
-                    throw new Error("Critical error: Could not process app.asar. Please close Discord manually via Task Manager and try again.");
+            const undo = [];
+            try {
+                // Step 1: rename app.asar -> _app.asar
+                await fs.rename(appAsar, backup);
+                undo.push(async () => {
+                    try { await fs.rename(backup, appAsar); } catch {}
+                });
+
+                // Step 2: create app folder
+                await fs.mkdir(appDir, { recursive: true });
+                undo.push(async () => {
+                    try {
+                        const indexPath = path.join(appDir, "index.js");
+                        const pkgPath = path.join(appDir, "package.json");
+                        await safeDelete(indexPath);
+                        await safeDelete(pkgPath);
+                        await fs.rm(appDir, { recursive: true, force: true });
+                    } catch {}
+                });
+
+                // Step 3: write loader files
+                await writeLoader(appDir);
+                await applyDefaultPluginsSetting();
+            } catch (patchErr) {
+                // Rollback in reverse order
+                for (let i = undo.length - 1; i >= 0; i--) {
+                    try { await undo[i](); } catch {}
                 }
+                throw patchErr;
             }
 
-            log("3. Creating app directory...");
-            await fs.mkdir(appDir, { recursive: true });
-            await writeLoader(appDir);
-            await applyDefaultPluginsSetting();
-            await copyAssetsToDiscord(resPath);
-
-            log("4. Starting Discord...");
+            log("Starting Discord...");
             startDiscord(resPath);
 
             log("✅ Injection successful!");

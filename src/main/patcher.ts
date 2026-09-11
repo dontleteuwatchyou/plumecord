@@ -16,9 +16,6 @@ import { patchTrayMenu } from "./trayMenu";
 import { applyPendingUpdateOnStartup } from "./updater/pendingUpdate";
 import { IS_VANILLA } from "./utils/constants";
 
-// Apply any staged updates before loading components
-applyPendingUpdateOnStartup();
-
 console.log("[Nightcord] Starting up...");
 
 // Our injector file inside app.asar / app/index.js
@@ -45,33 +42,49 @@ if (IS_VESKTOP || IS_EQUIBOP) require.main!.filename = join(dirname(injectorPath
 // @ts-expect-error Untyped method
 app.setAppPath(asarPath);
 
+// Apply any staged Nightcord updates AFTER the asar path is resolved and set,
+// so that copying new files cannot corrupt the currently-loading module chain.
+applyPendingUpdateOnStartup();
+
 if (!IS_VANILLA) {
     const settings = RendererSettings.store;
 
     patchTrayMenu();
 
-    // Repatch after host updates on Windows
-    if (process.platform === "win32") {
-        require("./patchWin32Updater");
-
-        if (settings.winCtrlQ) {
-            const originalBuild = Menu.buildFromTemplate;
-            Menu.buildFromTemplate = function (template) {
-                if (template[0]?.label === "&File") {
-                    const { submenu } = template[0];
-                    if (Array.isArray(submenu)) {
-                        submenu.push({
-                            label: "Quit (Hidden)",
-                            visible: false,
-                            acceleratorWorksWhenHidden: true,
-                            accelerator: "Control+Q",
-                            click: () => app.quit()
-                        });
-                    }
-                }
-                return originalBuild.call(this, template);
-            };
+    /*
+     * re-apply the patch when discord ships a new host version. skipped
+     * on vesktop and equibop because they manage their own updates.
+     */
+    if (!IS_VESKTOP && !IS_EQUIBOP) {
+        try {
+            require("./hostUpdateHook").installHostUpdateHook();
+        } catch (err) {
+            console.error("[Nightcord] Failed to install host update hook", err);
         }
+    }
+
+    // Repatch after host updates on Windows and Linux
+    if (process.platform === "win32" || process.platform === "linux") {
+        require("./persistAfterDiscordUpdates");
+    }
+
+    if (process.platform === "win32" && settings.winCtrlQ) {
+        const originalBuild = Menu.buildFromTemplate;
+        Menu.buildFromTemplate = function (template) {
+            if (template[0]?.label === "&File") {
+                const { submenu } = template[0];
+                if (Array.isArray(submenu)) {
+                    submenu.push({
+                        label: "Quit (Hidden)",
+                        visible: false,
+                        acceleratorWorksWhenHidden: true,
+                        accelerator: "Control+Q",
+                        click: () => app.quit()
+                    });
+                }
+            }
+            return originalBuild.call(this, template);
+        };
     }
 
     class BrowserWindow extends electron.BrowserWindow {

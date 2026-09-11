@@ -671,10 +671,21 @@ export default definePlugin({
 
     async start() {
         await loadTokenCache();
-        hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();
-        await captureAllTokens();
         addHeaderBarButton("nightcord-multi-instance", () => <MultiInstanceButton />, 9);
+
+        const initAuthHooks = async () => {
+            hookEncryptAndStoreTokens();
+            await captureAllTokens();
+        };
+
+        if (UserStore.getCurrentUser()) {
+            setTimeout(initAuthHooks, 3500);
+        } else {
+            FluxDispatcher.once("CONNECTION_OPEN", () => {
+                setTimeout(initAuthHooks, 3500);
+            });
+        }
     },
 
     stop() {
