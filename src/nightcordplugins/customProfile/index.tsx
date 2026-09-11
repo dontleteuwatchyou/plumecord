@@ -1210,7 +1210,7 @@ function processDomBatch() {
         // HypeSquad changer is handled by standalone HypeSquadChanger plugin
     } finally {
         if (isEnabled && obs) {
-            obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+            obs.observe(document.body, { childList: true, subtree: true });
         }
     }
 }
@@ -3322,6 +3322,13 @@ export default definePlugin({
         FluxDispatcher.subscribe("CURRENT_USER_UPDATE", _onCurrentUserUpdate);
         FluxDispatcher.subscribe("CONNECTION_OPEN", _onCurrentUserUpdate);
 
+        // Defer all heavy store-patching to next macrotask so Discord renders first.
+        // This eliminates the startup freeze caused by ~400 lines of synchronous
+        // findByProps + prototype-patching running on the main thread before the
+        // first paint. All the hooks below are idempotent and guarded with _cp_*_hook
+        // flags, so there is no race condition — they simply install ~0 ms later.
+        setTimeout(() => {
+
         // PERFECT AND SECURE NATIVE INTERCEPTION ON USER STORE.
         try {
             const US = (Vencord as any).Webpack?.findByProps?.("getCurrentUser", "getUser");
@@ -3715,6 +3722,7 @@ export default definePlugin({
                 (GuildMemberStore as any)._cp_orig_getMember = _origGetMember;
             }
         } catch { }
+        }, 0); // end deferred startup — all store patches run after first paint
     },
 
     userProfileBadges: [

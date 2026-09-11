@@ -1081,6 +1081,12 @@ export default definePlugin({
         }
 
 
+        // Defer all heavy store-patching (findByProps/findAll/prototype wrapping) to the
+        // next macrotask so Discord's own startup rendering completes first. The FluxDispatcher
+        // guard above stays synchronous because it must intercept CHANNEL_CREATE before
+        // Discord's stores process it. Everything else is safe to defer by ~0 ms.
+        setTimeout(() => {
+
         // Safely patch SnowflakeUtils as soon as loaded
         waitFor(["fromTimestamp", "extractTimestamp"], (m: any) => {
             if (m && typeof m.extractTimestamp === "function" && !unpatchSnowflakeUtils) {
@@ -1757,6 +1763,7 @@ function getChannelTimestamp(channelId: string): number {
             connectMastodonStreaming();
             pollInterval = setInterval(() => checkAndInjectPosts(false), 60000);
         }, 1000);
+        }, 0); // end deferred startup — all store patches run after first paint
     },
 
     stop() {
