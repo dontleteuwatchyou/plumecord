@@ -28,7 +28,7 @@ import { Paragraph } from "@components/Paragraph";
 import { classes } from "@utils/misc";
 import { openModal } from "@utils/modal";
 import { IconComponent } from "@utils/types";
-import { Alerts, Button,Tooltip, useEffect, useState } from "@webpack/common";
+import { Alerts, Button } from "@webpack/common";
 
 import { settings } from "./settings";
 import { TranslateModal } from "./TranslateModal";
@@ -52,16 +52,8 @@ export const TranslateIcon: IconComponent = ({ height = 24, width = 24, classNam
     );
 };
 
-export let setShouldShowTranslateEnabledTooltip: undefined | ((show: boolean) => void);
-
 export const TranslateChatBarIcon: ChatBarButtonFactory = ({ isMainChat }) => {
     const { autoTranslate } = settings.use(["autoTranslate"]);
-
-    const [shouldShowTranslateEnabledTooltip, setter] = useState(false);
-    useEffect(() => {
-        setShouldShowTranslateEnabledTooltip = setter;
-        return () => setShouldShowTranslateEnabledTooltip = undefined;
-    }, []);
 
     if (!isMainChat) return null;
 
@@ -89,7 +81,7 @@ export const TranslateChatBarIcon: ChatBarButtonFactory = ({ isMainChat }) => {
         ));
     };
 
-    const button = (
+    return (
         <ChatBarButton
             tooltip={autoTranslate ? "Auto-Translate: ON (Click to disable)" : "Auto-Translate: OFF (Click to enable)"}
             onClick={toggle}
@@ -101,13 +93,4 @@ export const TranslateChatBarIcon: ChatBarButtonFactory = ({ isMainChat }) => {
             <TranslateIcon className={cl({ "auto-translate": autoTranslate, "chat-button": true })} />
         </ChatBarButton>
     );
-
-    if (shouldShowTranslateEnabledTooltip && settings.store.showAutoTranslateTooltip)
-        return (
-            <Tooltip text="Auto Translate Enabled" forceOpen>
-                {() => button}
-            </Tooltip>
-        );
-
-    return button;
 };

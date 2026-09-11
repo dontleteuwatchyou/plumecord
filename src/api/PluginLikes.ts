@@ -19,11 +19,16 @@ let ratingsCache: PluginRatings | null = null;
 let cacheTime = 0;
 const CACHE_TTL = 60_000; // 1 minute
 
+// Circuit breaker: if the API is unreachable (CORS/network), skip all subsequent calls this session
+let networkBlocked = false;
+
 /**
  * Fetch all plugin like counts + whether the current user liked each one.
  * Results are cached for CACHE_TTL ms.
  */
 export async function fetchPluginRatings(forceRefresh = false): Promise<PluginRatings> {
+    if (networkBlocked) return ratingsCache ?? {};
+
     if (!forceRefresh && ratingsCache && Date.now() - cacheTime < CACHE_TTL) {
         return ratingsCache;
     }
@@ -40,8 +45,9 @@ export async function fetchPluginRatings(forceRefresh = false): Promise<PluginRa
         ratingsCache = data;
         cacheTime = Date.now();
         return data;
-    } catch (e) {
-        console.error("[PluginLikes] fetchPluginRatings failed:", e);
+    } catch {
+        // Silently block further attempts this session (CORS/network unreachable)
+        networkBlocked = true;
         return ratingsCache ?? {};
     }
 }

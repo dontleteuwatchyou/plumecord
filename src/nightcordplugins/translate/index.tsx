@@ -31,7 +31,7 @@ import { Message } from "@vencord/discord-types";
 import { ChannelStore, FluxDispatcher, Menu, MessageStore, SelectedChannelStore, UserStore } from "@webpack/common";
 
 import { settings, setOnAutoTranslateReceivedToggled } from "./settings";
-import { setShouldShowTranslateEnabledTooltip, TranslateChatBarIcon, TranslateIcon } from "./TranslateIcon";
+import { TranslateChatBarIcon, TranslateIcon } from "./TranslateIcon";
 import { handleTranslate, TranslationAccessory } from "./TranslationAccessory";
 import { translate } from "./utils";
 import { initTranslateOnSpace, stopTranslateOnSpace } from "./wordTranslate";
@@ -73,7 +73,6 @@ function getMessageContent(message: Message) {
         || message.embeds?.find(embed => embed.type === "auto_moderation_message")?.rawDescription || "";
 }
 
-let tooltipTimeout: any;
 
 // Tracks which messages have already been auto-translated
 const translatedMessageIds = new Set<string>();
@@ -284,10 +283,6 @@ export default definePlugin({
         if (!message?.content?.trim()) return;
 
         try {
-            setShouldShowTranslateEnabledTooltip?.(true);
-            clearTimeout(tooltipTimeout);
-            tooltipTimeout = setTimeout(() => setShouldShowTranslateEnabledTooltip?.(false), 2000);
-
             const trans = await translate("sent", message.content);
             if (trans?.text) {
                 message.content = trans.text;
