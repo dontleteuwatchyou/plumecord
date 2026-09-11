@@ -9,6 +9,7 @@ import BadgeAPIPlugin from "@plugins/_api/badges";
 import { ComponentType, HTMLProps } from "react";
 
 import { getHiddenBadgeSources } from "./BadgeVisibility";
+import { isStealthModeEnabled } from "./stealthState";
 
 export const enum BadgePosition {
     START,
@@ -68,10 +69,7 @@ export function removeProfileBadge(badge: ProfileBadge) {
  */
 export function _getBadges(args: any) {
     // ── Stealth Mode Bypass ──
-    try {
-        const { isStealthModeEnabled } = require("./HeaderBar");
-        if (isStealthModeEnabled()) return [];
-    } catch { }
+    if (isStealthModeEnabled()) return [];
 
     const rawUserId = args?.userId || args?.id || args?.user?.id || args?.author?.id || (typeof args?.getId === "function" ? args.getId() : "");
     const userId = rawUserId ? String(rawUserId) : "";

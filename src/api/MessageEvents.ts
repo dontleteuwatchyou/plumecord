@@ -1,31 +1,15 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import { Logger } from "@utils/Logger";
 import type { Channel, CloudUpload, CustomEmoji, Message } from "@vencord/discord-types";
-import { waitFor } from "@webpack";
 import { MessageStore } from "@webpack/common";
 import type { Promisable } from "type-fest";
 
 const MessageEventsLogger = new Logger("MessageEvents", "#e5c890");
-
-const PROCESSED_PRESEND = Symbol("PROCESSED_PRESEND");
-const PROCESSED_PREEDIT = Symbol("PROCESSED_PREEDIT");
 
 export interface MessageObject {
     content: string,
@@ -34,53 +18,64 @@ export interface MessageObject {
     tts: boolean;
 }
 
-export interface MessageReplyOptions {
-    messageReference: Message["messageReference"];
+export interface MessageContentOptions {
+    content: string;
+    channelId: string;
+    command: unknown | null;
+    isGif?: boolean;
+    stickers?: string[];
+    uploads?: CloudUpload[];
+    alsoForwardToChannelId?: string;
+
+    // If you end up using these, update their type
+    scheduledTimestamp?: unknown;
+    mediaMention?: unknown;
+}
+
+export interface SendMessageOptions extends MessageContentOptions {
+    messageReference?: Message["messageReference"];
     allowedMentions?: {
-        parse: Array<string>;
-        users?: Array<string>;
-        roles?: Array<string>;
+        parse: string[];
         repliedUser: boolean;
+    };
+    location: string;
+    stickerIds?: string[];
+    replyOptions?: {
+        messageReference?: Message["messageReference"];
+        allowedMentions?: {
+            parse: string[];
+            repliedUser: boolean;
+        };
     };
 }
 
-export interface MessageOptions {
-    stickers?: string[];
-    uploads?: CloudUpload[];
-    replyOptions: MessageReplyOptions;
+export interface SendMessageProps {
+    hasStickers: boolean;
+    hasAttachments: boolean;
     content: string;
     channel: Channel;
     type?: any;
     openWarningPopout: (props: any) => any;
 }
 
-export type MessageSendListener = (channelId: string, messageObj: MessageObject, options: MessageOptions) => Promisable<void | { cancel: boolean; }>;
+export type MessageSendListener = (channelId: string, messageObj: MessageObject, options: SendMessageOptions, props: SendMessageProps) => Promisable<void | { cancel: boolean; }>;
 export type MessageEditListener = (channelId: string, messageId: string, messageObj: MessageObject) => Promisable<void | { cancel: boolean; }>;
 
 const sendListeners = new Set<MessageSendListener>();
 const editListeners = new Set<MessageEditListener>();
 
-async function runWithTimeout<T>(fn: () => Promisable<T>, timeoutMs = 2500): Promise<T | undefined> {
-    let timer: any;
-    const timeoutPromise = new Promise<undefined>(resolve => {
-        timer = setTimeout(resolve, timeoutMs);
-    });
-    try {
-        return await Promise.race([Promise.resolve(fn()), timeoutPromise]);
-    } finally {
-        clearTimeout(timer);
+export async function _handlePreSend(channelId: string, messageObj: MessageObject, options: SendMessageOptions, props: SendMessageProps, contentOptions: MessageContentOptions) {
+    options = { ...contentOptions, ...options };
+    if (!options.replyOptions && (options.messageReference || options.allowedMentions)) {
+        options.replyOptions = {
+            messageReference: options.messageReference,
+            allowedMentions: options.allowedMentions
+        };
     }
-}
 
-export async function _handlePreSend(channelId: string, messageObj: MessageObject, options: MessageOptions, replyOptions: MessageReplyOptions) {
-    if ((messageObj as any)[PROCESSED_PRESEND]) {
-        return false;
-    }
-    (messageObj as any)[PROCESSED_PRESEND] = true;
-    options.replyOptions = replyOptions;
     for (const listener of sendListeners) {
         try {
-            const result = await runWithTimeout(() => listener(channelId, messageObj, options));
+            const result = await listener(channelId, messageObj, options, props);
             if (result?.cancel) {
                 return true;
             }
@@ -92,13 +87,9 @@ export async function _handlePreSend(channelId: string, messageObj: MessageObjec
 }
 
 export async function _handlePreEdit(channelId: string, messageId: string, messageObj: MessageObject) {
-    if ((messageObj as any)[PROCESSED_PREEDIT]) {
-        return false;
-    }
-    (messageObj as any)[PROCESSED_PREEDIT] = true;
     for (const listener of editListeners) {
         try {
-            const result = await runWithTimeout(() => listener(channelId, messageId, messageObj));
+            const result = await listener(channelId, messageId, messageObj);
             if (result?.cancel) {
                 return true;
             }
@@ -108,46 +99,6 @@ export async function _handlePreEdit(channelId: string, messageId: string, messa
     }
     return false;
 }
-
-// Runtime hook on MessageActions to ensure preSend and preEdit always run even if AST patches are bypassed
-waitFor(["sendMessage", "editMessage"], (MessageActions: any) => {
-    if (!MessageActions) return;
-
-    if (typeof MessageActions.sendMessage === "function") {
-        const origSendMessage = MessageActions.sendMessage;
-        MessageActions.sendMessage = async function(channelId: string, message: any, ...rest: any[]) {
-            if (message && typeof message === "object" && !message[PROCESSED_PRESEND]) {
-                const options = rest[1] || rest[0] || {};
-                const cancel = await _handlePreSend(channelId, message, options, options.replyOptions || {});
-                if (cancel) return;
-            }
-            return origSendMessage.call(this, channelId, message, ...rest);
-        };
-    }
-
-    if (typeof MessageActions._sendMessage === "function") {
-        const orig_sendMessage = MessageActions._sendMessage;
-        MessageActions._sendMessage = async function(channelId: string, message: any, ...rest: any[]) {
-            if (message && typeof message === "object" && !message[PROCESSED_PRESEND]) {
-                const options = rest[0] || {};
-                const cancel = await _handlePreSend(channelId, message, options, options.replyOptions || {});
-                if (cancel) return;
-            }
-            return orig_sendMessage.call(this, channelId, message, ...rest);
-        };
-    }
-
-    if (typeof MessageActions.editMessage === "function") {
-        const origEditMessage = MessageActions.editMessage;
-        MessageActions.editMessage = async function(channelId: string, messageId: string, message: any, ...rest: any[]) {
-            if (message && typeof message === "object" && !message[PROCESSED_PREEDIT]) {
-                const cancel = await _handlePreEdit(channelId, messageId, message);
-                if (cancel) return;
-            }
-            return origEditMessage.call(this, channelId, messageId, message, ...rest);
-        };
-    }
-});
 
 /**
  * Note: This event fires off before a message is sent, allowing you to edit the message.

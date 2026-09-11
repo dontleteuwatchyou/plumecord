@@ -19,6 +19,7 @@
 import { Logger } from "@utils/Logger";
 import { Menu, React } from "@webpack/common";
 import type { ReactElement } from "react";
+import { isStealthModeEnabled } from "./stealthState";
 
 /**
  * @param children The rendered context menu elements
@@ -134,10 +135,7 @@ export function _usePatchContextMenu(props: ContextMenuProps) {
     if (!Menu.MenuItem) return props; // Prevent crashes in case we fail to acquire menu items for some reason
 
     // ── Stealth Mode Bypass (Check first before any cloning) ──
-    try {
-        const { isStealthModeEnabled } = require("./HeaderBar");
-        if (isStealthModeEnabled()) return props;
-    } catch { }
+    if (isStealthModeEnabled()) return props;
 
     const contextMenuPatches = navPatches.get(props.navId);
     const hasPatches = (contextMenuPatches && contextMenuPatches.size > 0) || globalPatches.size > 0;

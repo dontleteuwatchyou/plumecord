@@ -20,6 +20,7 @@ import {domain} from "../../DOMAIN.json";
 import { registerCspIpcHandlers } from "./csp/manager";
 import { ALLOWED_PROTOCOLS, DATA_DIR, QUICK_CSS_PATH, SETTINGS_DIR, THEMES_DIR } from "./utils/constants";
 import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
+import { getThemeInfo, stripBOM } from "../utils/themes/bd";
 
 const RENDERER_CSS_PATH = join(__dirname, "renderer.css");
 const USERPLUGINS_DIR = join(DATA_DIR, "userplugins");
@@ -38,6 +39,14 @@ export function ensureSafePath(basePath: string, path: string) {
     return target.startsWith(base) ? normalizedPath : null;
 }
 
+let cachedAppPath: string | null = null;
+function getCachedAppPath() {
+    if (!cachedAppPath) {
+        cachedAppPath = normalize(app.getAppPath());
+    }
+    return cachedAppPath;
+}
+
 export function validateSender(event: any): boolean {
     if (!event || !event.sender) return false;
     const frame = event.senderFrame;
@@ -47,8 +56,7 @@ export function validateSender(event: any): boolean {
 
     if (url.startsWith("file://")) {
         const normalizedPath = normalize(url.replace("file://", ""));
-        const appPath = normalize(app.getAppPath());
-        return normalizedPath.startsWith(appPath);
+        return normalizedPath.startsWith(getCachedAppPath());
     }
 
     if (url.startsWith("data:")) return false;
@@ -86,10 +94,39 @@ function readCss() {
     return readFile(QUICK_CSS_PATH, "utf-8").catch(() => "");
 }
 
-async function listThemes(): Promise<{ fileName: string; content: string; }[]> {
+async function getThemeHeaderChunk(fileName: string): Promise<string> {
+    fileName = fileName.replace(/\?v=\d+$/, "");
+    const safePath = ensureSafePath(THEMES_DIR, fileName);
+    if (!safePath) return "";
+    try {
+        const fd = await open(safePath, "r");
+        try {
+            const buf = Buffer.alloc(32768);
+            const { bytesRead } = await fd.read(buf, 0, 32768, 0);
+            return buf.subarray(0, bytesRead).toString("utf-8");
+        } finally {
+            await fd.close();
+        }
+    } catch {
+        return "";
+    }
+}
+
+async function listThemes(): Promise<{ fileName: string; content: string; name: string; author?: string; description?: string; }[]> {
     try {
         const files = await readdir(THEMES_DIR);
-        return await Promise.all(files.map(async fileName => ({ fileName, content: await getThemeData(fileName) })));
+        const cssFiles = files.filter(f => f.endsWith(".css"));
+        return await Promise.all(cssFiles.map(async fileName => {
+            const headerChunk = await getThemeHeaderChunk(fileName);
+            const info = getThemeInfo(stripBOM(headerChunk), fileName);
+            return {
+                fileName,
+                name: info.name || fileName.replace(/\.css$/i, ""),
+                author: info.author,
+                description: info.description,
+                content: headerChunk
+            };
+        }));
     } catch {
         return [];
     }

@@ -7,7 +7,7 @@
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Logger } from "@utils/Logger";
 import { classes } from "@utils/misc";
-import { find, filters, findComponentByCodeLazy, findCssClassesLazy } from "@webpack";
+import { findComponentByCodeLazy, findCssClassesLazy } from "@webpack";
 import { Clickable, Tooltip, useEffect, useState, Popout, useRef, showToast, Toasts } from "@webpack/common";
 import type { ComponentType, JSX, MouseEventHandler, ReactNode } from "react";
 import { Settings } from "@api/Settings";
@@ -17,16 +17,7 @@ const NIGHTCORD_LOGO_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAA
 
 const logger = new Logger("HeaderBarAPI");
 
-const HeaderBarClasses = new Proxy({}, {
-    get: (_, prop: string) => {
-        try {
-            const mod = find(filters.byProps("clickable", "withHighlight"));
-            return mod ? mod[prop] : prop;
-        } catch {
-            return prop;
-        }
-    }
-}) as any;
+const HeaderBarClasses = findCssClassesLazy("clickable", "selected", "badge", "badgeContainer");
 const HeaderBarIcon = findComponentByCodeLazy(".HEADER_BAR_BADGE_TOP:", '"aria-haspopup":') as ComponentType<ChannelToolbarButtonProps>;
 
 export interface HeaderBarButtonProps {
@@ -141,12 +132,10 @@ export function removeChannelToolbarButton(id: string) {
 // STEALTH MODE
 // ══════════════════════════════════════════════════════════════════
 
-let _stealthActive = false;
-try { _stealthActive = localStorage.getItem("Nightcord_stealthMode") === "1"; } catch { }
+import { isStealthModeEnabled, setStealthActive } from "./stealthState";
+export { isStealthModeEnabled };
 
-export function isStealthModeEnabled(): boolean {
-    return _stealthActive;
-}
+let _stealthActive = isStealthModeEnabled();
 
 function persistStealth(v: boolean) {
     try { v ? localStorage.setItem("Nightcord_stealthMode", "1") : localStorage.removeItem("Nightcord_stealthMode"); } catch { }
@@ -222,6 +211,7 @@ export function syncStealthBodyClass() {
 
 export function toggleStealthMode() {
     _stealthActive = !_stealthActive;
+    setStealthActive(_stealthActive);
     persistStealth(_stealthActive);
     hideNonReactElements(_stealthActive);
     _notifyStealthChange();
@@ -298,10 +288,16 @@ try {
 
 try {
     let stealthObserver: MutationObserver | null = null;
+    let stealthRaf: number | null = null;
     const startObserver = () => {
         if (stealthObserver) return;
         stealthObserver = new MutationObserver(() => {
-            if (_stealthActive) hideNonReactElements(true);
+            if (!_stealthActive) return;
+            if (stealthRaf !== null) return;
+            stealthRaf = requestAnimationFrame(() => {
+                stealthRaf = null;
+                if (_stealthActive) hideNonReactElements(true);
+            });
         });
         const target = document.body || document.documentElement;
         if (target) {
@@ -309,6 +305,10 @@ try {
         }
     };
     const stopObserver = () => {
+        if (stealthRaf !== null) {
+            cancelAnimationFrame(stealthRaf);
+            stealthRaf = null;
+        }
         if (stealthObserver) { stealthObserver.disconnect(); stealthObserver = null; }
     };
     if (_stealthActive) {

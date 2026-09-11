@@ -23,6 +23,7 @@ import { Channel, Message } from "@vencord/discord-types";
 import type { ComponentType, MouseEventHandler } from "react";
 
 import { useSettings } from "./Settings";
+import { isStealthModeEnabled } from "./stealthState";
 
 const logger = new Logger("MessagePopover");
 
@@ -70,10 +71,7 @@ function VencordPopoverButtons(props: { Component: React.ComponentType<MessagePo
     const { messagePopoverButtons } = useSettings(["uiElements.messagePopoverButtons.*"]).uiElements;
 
     // ── Stealth Mode Bypass ──
-    try {
-        const { isStealthModeEnabled } = require("./HeaderBar");
-        if (isStealthModeEnabled()) return null;
-    } catch { }
+    if (isStealthModeEnabled()) return null;
 
     const elements = Array.from(MessagePopoverButtonMap.entries())
         .filter(([key]) => messagePopoverButtons[key]?.enabled !== false)
