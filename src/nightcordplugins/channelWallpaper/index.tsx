@@ -33,6 +33,8 @@ let _activeVideo: HTMLVideoElement | null = null;
 let _syncPollInterval: ReturnType<typeof setInterval> | null = null;
 let _cachedOwnCloudDmWallpapers: Record<string, string> = {};
 const _syncedFromFriends = new Set<string>(); // channelIds synced from friend
+const _syncLastFetched: Record<string, number> = {}; // channelId -> timestamp of last cloud sync
+const SYNC_THROTTLE_MS = 30_000; // skip repeat sync calls within 30 s
 
 // ── Settings ───────────────────────────────────────────────────────────────────
 
@@ -155,6 +157,11 @@ async function syncWithFriendForChannel(channelId: string) {
 
     const friendUserId = channel.recipients?.[0] || (channel as any).getRecipientId?.();
     if (!friendUserId || !RelationshipStore.isFriend(friendUserId)) return;
+
+    // Throttle: skip cloud API call if this channel was synced recently
+    const now = Date.now();
+    if (_syncLastFetched[channelId] && now - _syncLastFetched[channelId] < SYNC_THROTTLE_MS) return;
+    _syncLastFetched[channelId] = now;
 
     const myUserId = UserStore.getCurrentUser()?.id;
     if (!myUserId) return;

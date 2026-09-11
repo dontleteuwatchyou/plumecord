@@ -1238,7 +1238,7 @@ function startDomObserver() {
             setTimeout(processDomBatch, 100);
         }
     });
-    domObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+    domObserver.observe(document.body, { childList: true, subtree: true });
 }
 
 function stopDomObserver() {

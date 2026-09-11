@@ -225,23 +225,32 @@ export default definePlugin({
 
         setOnAutoTranslateReceivedToggled((enabled) => {
             if (enabled) {
+                // Start listening for channel navigation so we auto-translate existing messages
+                FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
+                FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
                 const channelId = SelectedChannelStore.getChannelId();
                 if (channelId) {
                     translateChannelMessages(channelId);
                 }
             } else {
+                // No longer needed — stop iterating messages on every navigation
+                FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);
+                FluxDispatcher.unsubscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
                 revertAllTranslations();
             }
         });
 
-        // Subscribe only to new incoming messages
+        // Always subscribe to incoming messages (gate is inside the handler)
         FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
-        FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
-        FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
 
-        const startChannelId = SelectedChannelStore.getChannelId();
-        if (startChannelId) {
-            translateChannelMessages(startChannelId);
+        // Only subscribe to channel navigation events if autoTranslateReceived is already on
+        if (settings.store.autoTranslateReceived) {
+            FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
+            FluxDispatcher.subscribe("LOAD_MESSAGES_SUCCESS", onLoadMessagesSuccess);
+            const startChannelId = SelectedChannelStore.getChannelId();
+            if (startChannelId) {
+                translateChannelMessages(startChannelId);
+            }
         }
     },
 
