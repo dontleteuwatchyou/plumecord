@@ -97,7 +97,14 @@ export const enum IpcEvents {
     // Redimensionne la fenÃªtre externe
     WORLD_BOMB_RESIZE_WINDOW = "WorldBombResizeWindow",
     // Modifie la protection Stream Proof globale
-    SET_CONTENT_PROTECTION = "NightcordSetContentProtection"
+    SET_CONTENT_PROTECTION = "NightcordSetContentProtection",
+
+    // Dynamic Runtime UserPlugins
+    GET_USERPLUGINS = "NightcordGetUserPlugins",
+    COMPILE_USERPLUGIN = "NightcordCompileUserPlugin",
+    COMPILE_ALL_USERPLUGINS = "NightcordCompileAllUserPlugins",
+    OPEN_USERPLUGINS_FOLDER = "NightcordOpenUserPluginsFolder",
+    USERPLUGINS_CHANGED = "NightcordUserPluginsChanged"
 }
 
 

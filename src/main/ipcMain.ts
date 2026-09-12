@@ -18,6 +18,7 @@ import { join, normalize } from "path";
 import {domain} from "../../DOMAIN.json";
 
 import { registerCspIpcHandlers } from "./csp/manager";
+import { registerUserPluginsIpcHandlers } from "./userplugins";
 import { ALLOWED_PROTOCOLS, DATA_DIR, QUICK_CSS_PATH, SETTINGS_DIR, THEMES_DIR } from "./utils/constants";
 import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
 import { getThemeInfo, stripBOM } from "../utils/themes/bd";
@@ -29,6 +30,7 @@ mkdirSync(THEMES_DIR, { recursive: true });
 mkdirSync(USERPLUGINS_DIR, { recursive: true });
 
 registerCspIpcHandlers();
+registerUserPluginsIpcHandlers();
 
 export function ensureSafePath(basePath: string, path: string) {
     const normalizedBasePath = normalize(basePath + "/");

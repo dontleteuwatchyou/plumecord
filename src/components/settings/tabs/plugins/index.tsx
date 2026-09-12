@@ -21,6 +21,7 @@ import "./styles.css";
 import * as DataStore from "@api/DataStore";
 import { isPluginEnabled, startPlugin, stopPlugin } from "@api/PluginManager";
 import { Settings, useSettings } from "@api/Settings";
+import { openUserPluginsFolder, syncAllUserPlugins } from "@api/UserPlugins";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Notice } from "@components/Notice";
@@ -38,7 +39,7 @@ import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import { relaunch, showItemInFolder } from "@utils/native";
 import { useAwaiter } from "@utils/react";
-import { Alerts, lodash, Parser, React, Select as DiscordSelect, TextInput, Toasts, Tooltip, useCallback, useMemo, useState } from "@webpack/common";
+import { Alerts, lodash, Parser, React, Select as DiscordSelect, showToast, TextInput, Toasts, Tooltip, useCallback, useMemo, useState } from "@webpack/common";
 import { SafeSearchableSelect } from "@components/SafeSearchableSelect";
 import { JSX } from "react";
 import { t } from "@api/i18n";
@@ -780,18 +781,9 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                             style={searchValue.status === SearchStatus.USER_PLUGINS ? { cursor: "pointer", transition: "0.2s" } : {}}
                             onClick={() => {
                                 if (searchValue.status !== SearchStatus.USER_PLUGINS) return;
-                                const native = (window as any).DiscordNative || (window as any).VesktopNative;
-                                if (native?.process?.env) {
-                                    const home = native.process.env.USERPROFILE || native.process.env.HOME;
-                                    if (home) {
-                                        const isWindows = !!native.process.env.USERPROFILE;
-                                        const folderPath = isWindows ? `${home}\\Documents\\Nightcord\\userplugins` : `${home}/Documents/Nightcord/userplugins`;
-                                        // Open the directory itself (will open its parent and highlight it)
-                                        showItemInFolder(folderPath);
-                                    }
-                                }
+                                openUserPluginsFolder();
                             }}
-                            title={searchValue.status === SearchStatus.USER_PLUGINS ? "Click to open folder" : ""}
+                            title={searchValue.status === SearchStatus.USER_PLUGINS ? t("Click to open folder") : ""}
                         >
                             <div className={cl("stat-title")}>
                                 {searchValue.status === SearchStatus.USER_PLUGINS ? t("USER PLUGINS") : 
@@ -866,27 +858,50 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
                     {searchValue.status === SearchStatus.USER_PLUGINS && (
                         <>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "8px 0" }}>
-                                <UserPluginsTabIcon />
-                                <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 14 }}>
-                                    {t("User Plugins — from your local folder")}
-                                </span>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, padding: "8px 0" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    <UserPluginsTabIcon />
+                                    <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 15 }}>
+                                        {t("User Plugins — Local Folder")}
+                                    </span>
+                                </div>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                    <Button
+                                        size={Button.Sizes.SMALL}
+                                        color={Button.Colors.PRIMARY}
+                                        onClick={() => openUserPluginsFolder()}
+                                    >
+                                        {t("Open Folder")}
+                                    </Button>
+                                    <Button
+                                        size={Button.Sizes.SMALL}
+                                        color={Button.Colors.BRAND}
+                                        onClick={async () => {
+                                            await syncAllUserPlugins();
+                                            showToast(t("User plugins reloaded"), Toasts.Type.SUCCESS);
+                                        }}
+                                    >
+                                        {t("Reload Plugins")}
+                                    </Button>
+                                </div>
                             </div>
                             <div style={{
                                 background: "rgba(88, 101, 242, 0.08)",
                                 border: "1px solid rgba(88, 101, 242, 0.25)",
                                 borderRadius: 8,
-                                padding: "10px 14px",
+                                padding: "12px 16px",
                                 marginBottom: 16,
                                 fontSize: 13,
                                 color: "var(--text-normal)",
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 10
+                                gap: 12
                             }}>
-                                <span style={{ fontSize: 18 }}>ℹ️</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: "var(--brand-500)" }}>
+                                    <path fill="currentColor" fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm0 5a1.25 1.25 0 1 0 0 2.5A1.25 1.25 0 0 0 12 7Zm1 10h-2v-6h2v6Z" clipRule="evenodd" />
+                                </svg>
                                 <div>
-                                    {t("Note: User plugins require installing the client via a local build, not from the website installer.")}
+                                    {t("Dynamic UserPlugin Engine: Drop any .tsx, .ts, or .js plugin into your local folder. Nightcord compiles and loads them automatically in real-time without client rebuilds.")}
                                 </div>
                             </div>
                             {nightcordPlugins.length > 0 || othersVisible.length > 0 ? (
@@ -895,9 +910,22 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                                 </div>
                             ) : (
                                 <div style={{ textAlign: "center", padding: "48px 16px", color: "var(--text-muted)" }}>
-                                    <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
-                                    <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("No user plugins found")}</div>
-                                    <div style={{ fontSize: 13 }}>{t("Add .tsx files to your")} <code>Documents/Nightcord/userplugins/</code> {t("folder and rebuild with a local build.")}</div>
+                                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" style={{ color: "var(--interactive-normal)" }}>
+                                            <path fill="currentColor" d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                                        </svg>
+                                    </div>
+                                    <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, color: "var(--header-primary)" }}>{t("No user plugins found")}</div>
+                                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
+                                        {t("Add .tsx, .ts, or .js files to your")} <code style={{ background: "var(--background-secondary)", padding: "2px 6px", borderRadius: 4, color: "var(--header-secondary)" }}>Documents/Nightcord/userplugins/</code> {t("folder. They will be compiled and loaded automatically.")}
+                                    </div>
+                                    <Button
+                                        size={Button.Sizes.MEDIUM}
+                                        color={Button.Colors.BRAND}
+                                        onClick={() => openUserPluginsFolder()}
+                                    >
+                                        {t("Open Folder")}
+                                    </Button>
                                 </div>
                             )}
                         </>

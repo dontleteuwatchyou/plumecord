@@ -152,4 +152,17 @@ export default {
     },
     setContentProtection: (enabled: boolean) =>
         invoke<boolean>(IpcEvents.SET_CONTENT_PROTECTION, enabled),
+
+    userplugins: {
+        list: () => invoke<any[]>(IpcEvents.GET_USERPLUGINS),
+        compile: (name: string) => invoke<any>(IpcEvents.COMPILE_USERPLUGIN, name),
+        compileAll: () => invoke<any[]>(IpcEvents.COMPILE_ALL_USERPLUGINS),
+        openFolder: () => invoke<boolean>(IpcEvents.OPEN_USERPLUGINS_FOLDER),
+        addChangeListener: (cb: () => void) => {
+            ipcRenderer.on(IpcEvents.USERPLUGINS_CHANGED, () => cb());
+        },
+        removeChangeListener: () => {
+            ipcRenderer.removeAllListeners(IpcEvents.USERPLUGINS_CHANGED);
+        }
+    },
 };

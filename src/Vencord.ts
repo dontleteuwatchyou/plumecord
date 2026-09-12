@@ -43,6 +43,7 @@ import { get as dsGet } from "./api/DataStore";
 import { popNotice, showNotice } from "./api/Notices";
 import { showNotification } from "./api/Notifications";
 import { initPluginManager, PMLogger, startAllPlugins } from "./api/PluginManager";
+import { initUserPluginsEngine } from "./api/UserPlugins";
 import { PlainSettings, Settings, SettingsStore } from "./api/Settings";
 import { getCloudSettings, putCloudSettings, shouldCloudSync } from "./api/SettingsSync/cloudSync";
 import { localStorage } from "./utils/localStorage";
@@ -219,6 +220,7 @@ async function init() {
     await onceReady;
 
     startAllPlugins(StartAt.WebpackReady);
+    initUserPluginsEngine();
 
     syncSettings();
     initTrayIpc();

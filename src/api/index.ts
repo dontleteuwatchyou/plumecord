@@ -39,6 +39,9 @@ import * as $Settings from "./Settings";
 import * as $Styles from "./Styles";
 import * as $Themes from "./Themes";
 import * as $UserSettings from "./UserSettings";
+import * as $UserPlugins from "./UserPlugins";
+
+export const UserPlugins = $UserPlugins;
 
 /**
  * An API allowing you to add sections near the 'Member Since' area of user profile panels.
