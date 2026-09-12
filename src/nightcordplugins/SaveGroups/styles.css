@@ -15,23 +15,6 @@
     filter: grayscale(30%) !important;
 }
 
-.vc-savegroups-badge {
-    display: inline-flex;
-    align-items: center;
-    margin-left: 6px;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    background: rgba(237, 66, 69, 0.15);
-    color: #ed4245;
-    border: 1px solid rgba(237, 66, 69, 0.3);
-    line-height: 14px;
-    vertical-align: middle;
-}
-
 .vc-savegroups-banner {
     display: flex;
     align-items: center;

@@ -153,10 +153,12 @@ function hookEncryptAndStoreTokens(): void {
         const orig = tokenMod.encryptAndStoreTokens.bind(tokenMod);
         tokenMod.encryptAndStoreTokens = async function (tokens: Record<string, string>) {
             // Capture tous les tokens au passage
-            for (const [id, token] of Object.entries(tokens)) {
-                if (id && token) cacheToken(id, token);
+            if (tokens && typeof tokens === "object") {
+                for (const [id, token] of Object.entries(tokens)) {
+                    if (id && token) cacheToken(id, token);
+                }
+                saveTokenCache();
             }
-            saveTokenCache();
             return orig(tokens);
         };
         encryptHooked = true;

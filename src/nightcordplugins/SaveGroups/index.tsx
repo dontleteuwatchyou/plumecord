@@ -212,6 +212,10 @@ function getChannelMessagesSnapshot(channelId: string): any[] {
                 } : undefined,
                 timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
                 edited_timestamp: msg.editedTimestamp ? new Date(msg.editedTimestamp).toISOString() : null,
+                tts: Boolean(msg.tts),
+                mention_everyone: Boolean(msg.mentionEveryone || msg.mention_everyone),
+                mentions: Array.isArray(msg.mentions) ? msg.mentions : [],
+                mention_roles: Array.isArray(msg.mentionRoles || msg.mention_roles) ? (msg.mentionRoles || msg.mention_roles) : [],
                 attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => ({
                     id: a.id,
                     filename: a.filename,
@@ -224,12 +228,28 @@ function getChannelMessagesSnapshot(channelId: string): any[] {
                 })) : [],
                 embeds: Array.isArray(msg.embeds) ? msg.embeds : [],
                 reactions: Array.isArray(msg.reactions) ? msg.reactions : [],
-                type: msg.type ?? 0
+                pinned: Boolean(msg.pinned),
+                type: msg.type ?? 0,
+                flags: msg.flags ?? 0
             };
         }).filter(Boolean);
     } catch {
         return [];
     }
+}
+
+function getDescendingMessages(messages: any[]): any[] {
+    if (!Array.isArray(messages)) return [];
+    return [...messages].sort((a, b) => {
+        try {
+            if (a.id && b.id && a.id !== b.id) {
+                return BigInt(b.id) > BigInt(a.id) ? 1 : -1;
+            }
+        } catch {}
+        const tA = new Date(a.timestamp || 0).getTime();
+        const tB = new Date(b.timestamp || 0).getTime();
+        return tB - tA;
+    });
 }
 
 function extractGroupSnapshot(ch: any): SavedGroupData {
@@ -288,6 +308,13 @@ function updateKnownActiveGroups() {
                     if (ch.icon && ch.icon !== existing.icon) {
                         existing.icon = ch.icon;
                         changed = true;
+                    }
+                    if (settings.store.saveMessages) {
+                        const currentMsgs = getChannelMessagesSnapshot(ch.id);
+                        if (currentMsgs.length > (existing.savedMessages?.length || 0)) {
+                            existing.savedMessages = currentMsgs;
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -406,15 +433,13 @@ function updateStyles() {
     const hoverOpacity = Math.min(1, opacity + 0.3);
 
     const selectors = Array.from(savedGroups.keys()).map(id => `
-        a[href*="/channels/@me/${id}"],
-        div[data-list-item-id*="${id}"],
-        li:has(a[href*="/channels/@me/${id}"])
+        nav a[href*="/channels/@me/${id}"],
+        [class*="privateChannels"] a[href*="/channels/@me/${id}"]
     `).join(",\n");
 
     const hoverSelectors = Array.from(savedGroups.keys()).map(id => `
-        a[href*="/channels/@me/${id}"]:hover,
-        div[data-list-item-id*="${id}"]:hover,
-        li:has(a[href*="/channels/@me/${id}"]):hover
+        nav a[href*="/channels/@me/${id}"]:hover,
+        [class*="privateChannels"] a[href*="/channels/@me/${id}"]:hover
     `).join(",\n");
 
     styleEl.textContent = `
@@ -431,30 +456,19 @@ function updateStyles() {
 }
 
 function scanAndTagSidebarElements() {
+    // Purge any lingering red badges from earlier plugin runs
+    document.querySelectorAll(".vc-savegroups-badge").forEach(el => el.remove());
+
     if (savedGroups.size === 0) return;
 
     for (const [id] of savedGroups) {
         const elements = document.querySelectorAll(
-            `a[href*="/channels/@me/${id}"], div[data-list-item-id*="${id}"]`
+            `nav a[href*="/channels/@me/${id}"], [class*="privateChannels"] a[href*="/channels/@me/${id}"]`
         );
 
         for (const el of Array.from(elements)) {
             if (!el.classList.contains("vc-savegroups-kicked")) {
                 el.classList.add("vc-savegroups-kicked");
-            }
-
-            if (!el.querySelector(".vc-savegroups-badge")) {
-                const nameContainer = el.querySelector('[class*="name_"], [class*="channelName_"], [class*="nameAndDecorators_"]') ||
-                    el.querySelector('[class*="children_"]') ||
-                    el.querySelector('div[class*="content_"]') ||
-                    el;
-
-                if (nameContainer) {
-                    const badge = document.createElement("span");
-                    badge.className = "vc-savegroups-badge";
-                    badge.textContent = t("Archived");
-                    nameContainer.appendChild(badge);
-                }
             }
         }
     }
@@ -482,10 +496,12 @@ function startSidebarObserver() {
 
 function restoreSavedMessages(channelId: string) {
     const saved = savedGroups.get(channelId);
-    if (!saved?.savedMessages || saved.savedMessages.length === 0) return;
+    if (!saved) return;
 
     try {
-        const messageRecords = saved.savedMessages.map((msg: any) => {
+        const rawMsgs = saved.savedMessages || [];
+        const descMsgs = getDescendingMessages(rawMsgs);
+        const messageRecords = descMsgs.map((msg: any) => {
             if (typeof createMessageRecord === "function") {
                 try {
                     return createMessageRecord(msg);
@@ -507,7 +523,7 @@ function restoreSavedMessages(channelId: string) {
                     limit: 100,
                 });
             } catch {}
-        }, 60);
+        }, 0);
     } catch {}
 }
 
@@ -700,7 +716,7 @@ function patchFluxDispatcher() {
                 if (isGroup) {
                     archiveGroup(channelId, action.channel);
                     // Swallowing CHANNEL_DELETE keeps the group DM right in the user's DMs!
-                    return;
+                    return Promise.resolve();
                 }
             }
         }
@@ -712,7 +728,7 @@ function patchFluxDispatcher() {
             if (currentUserId && removedUserId === currentUserId && channelId) {
                 if (!manuallyLeftGroupIds.has(channelId) && !manuallyDeletedGroupIds.has(channelId)) {
                     archiveGroup(channelId, action.channel);
-                    return;
+                    return Promise.resolve();
                 }
             }
         }
@@ -903,7 +919,8 @@ function patchNetworkLayer() {
                 MessageActions.fetchMessages = function(opts: any) {
                     const channelId = opts?.channelId;
                     if (channelId && savedGroups.has(channelId)) {
-                        return Promise.resolve();
+                        restoreSavedMessages(channelId);
+                        return Promise.resolve({ ok: true });
                     }
                     return origFetch.apply(this, arguments as any);
                 };
@@ -929,13 +946,36 @@ function patchNetworkLayer() {
             HTTP.get = function(opts: any) {
                 const url = typeof opts === "string" ? opts : opts?.url;
                 if (url && typeof url === "string") {
-                    for (const [id] of savedGroups) {
-                        if (url.includes(`/channels/${id}`)) {
+                    for (const [id, savedGroup] of savedGroups) {
+                        if (url.includes(`/channels/${id}/messages`)) {
+                            const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
                             return Promise.resolve({
                                 ok: true,
                                 status: 200,
-                                body: [],
-                                text: "[]",
+                                body: descMsgs,
+                                text: JSON.stringify(descMsgs),
+                                headers: {}
+                            });
+                        }
+                        if (url.includes(`/channels/${id}`)) {
+                            const groupObj = {
+                                id: savedGroup.id,
+                                type: 3,
+                                name: savedGroup.name || "Group DM",
+                                icon: savedGroup.icon || null,
+                                owner_id: savedGroup.ownerId,
+                                ownerId: savedGroup.ownerId,
+                                topic: savedGroup.topic || "",
+                                recipients: savedGroup.recipients || [],
+                                rawRecipients: savedGroup.rawRecipients || [],
+                                last_message_id: savedGroup.lastMessageId || null,
+                                lastMessageId: savedGroup.lastMessageId || null,
+                            };
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: groupObj,
+                                text: JSON.stringify(groupObj),
                                 headers: {}
                             });
                         }
