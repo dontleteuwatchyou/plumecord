@@ -12,18 +12,26 @@ import * as DataStore from "./DataStore";
 
 export const OAUTH_TOKEN_KEY = "nightcord_oauth_token";
 
+/** Route a GET request through Electron main process to bypass CORS. */
+async function netGet(url: string): Promise<any> {
+    const nf = (window as any).VencordNative?.nightcord?.netFetch;
+    if (typeof nf === "function") {
+        const res = await nf(url);
+        if (!res?.ok) throw new Error(`HTTP ${res?.status ?? "error"}`);
+        return res.data;
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
 export async function beginDiscordOAuth(state?: string) {
     const url = new URL(`${API_BASE}/api/oauth2/signing`);
     if (state) {
         url.searchParams.set("state", state);
     }
 
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-        throw new Error("Failed to create OAuth URL");
-    }
-
-    return response.json() as Promise<{
+    return netGet(url.toString()) as Promise<{
         url: string;
         redirectUri: string;
         scopes: string[];
@@ -32,11 +40,7 @@ export async function beginDiscordOAuth(state?: string) {
 
 export async function checkOAuthToken(token: string) {
     try {
-        const response = await fetch(`${API_BASE}/api/oauth2/check?token=${encodeURIComponent(token)}`);
-        if (!response.ok) {
-            return null;
-        }
-        return await response.json();
+        return await netGet(`${API_BASE}/api/oauth2/check?token=${encodeURIComponent(token)}`);
     } catch (e) {
         console.error("Failed to check OAuth token:", e);
         return null;

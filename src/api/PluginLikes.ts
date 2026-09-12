@@ -22,6 +22,16 @@ const CACHE_TTL = 60_000; // 1 minute
 // Circuit breaker: if the API is unreachable (CORS/network), skip all subsequent calls this session
 let networkBlocked = false;
 
+/** Route a request through Electron main process to bypass CORS. */
+async function netFetch(url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string; }) {
+    const nf = (window as any).VencordNative?.nightcord?.netFetch;
+    if (typeof nf === "function") {
+        return nf(url, { method: opts?.method, headers: opts?.headers, body: opts?.body });
+    }
+    const res = await fetch(url, { method: opts?.method ?? "GET", headers: opts?.headers, body: opts?.body });
+    return res.ok ? { ok: true, status: res.status, data: await res.json() } : { ok: false, status: res.status, data: null };
+}
+
 /**
  * Fetch all plugin like counts + whether the current user liked each one.
  * Results are cached for CACHE_TTL ms.
@@ -38,13 +48,12 @@ export async function fetchPluginRatings(forceRefresh = false): Promise<PluginRa
         const url = new URL(`${API_BASE}/api/plugins/ratings`);
         if (token) url.searchParams.set("token", token);
 
-        const res = await fetch(url.toString());
-        if (!res.ok) return ratingsCache ?? {};
+        const res = await netFetch(url.toString());
+        if (!res?.ok || !res.data) return ratingsCache ?? {};
 
-        const data = await res.json();
-        ratingsCache = data;
+        ratingsCache = res.data as PluginRatings;
         cacheTime = Date.now();
-        return data;
+        return ratingsCache;
     } catch {
         // Silently block further attempts this session (CORS/network unreachable)
         networkBlocked = true;
@@ -61,15 +70,15 @@ export async function togglePluginLike(pluginName: string): Promise<PluginLikeDa
     if (!token) return null;
 
     try {
-        const res = await fetch(`${API_BASE}/api/plugins/${encodeURIComponent(pluginName)}/like`, {
+        const res = await netFetch(`${API_BASE}/api/plugins/${encodeURIComponent(pluginName)}/like`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ token }),
         });
 
-        if (!res.ok) return null;
+        if (!res?.ok || !res.data) return null;
 
-        const data: PluginLikeData = await res.json();
+        const data = res.data as PluginLikeData;
 
         // Update cache immediately so UI feels instant
         if (ratingsCache) {

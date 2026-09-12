@@ -99,8 +99,9 @@ async function loadNightcordBadges(noCache = false): Promise<Record<string, any>
         return loadBadges(`https://api.${domain}/badges`, noCache);
     }
     try {
-        const data = await VencordNative.nightcord.netFetch(`https://api.${domain}/badges`, noCache);
-        return (data && typeof data === "object") ? data as Record<string, any> : {};
+        const res = await VencordNative.nightcord.netFetch(`https://api.${domain}/badges`, { noCache });
+        if (!res?.ok || !res.data || typeof res.data !== "object") return {};
+        return res.data as Record<string, any>;
     } catch {
         return {};
     }

@@ -1424,16 +1424,29 @@ if (IS_DISCORD_DESKTOP) {
 }
 
 // Net fetch via main process — bypasses renderer CORS restrictions
+interface NetFetchOptions {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+    noCache?: boolean;
+}
 try { ipcMain.removeHandler(IpcEvents.NIGHTCORD_NET_FETCH); } catch {}
-ipcMain.handle(IpcEvents.NIGHTCORD_NET_FETCH, async (event, url: string, noCache?: boolean) => {
+ipcMain.handle(IpcEvents.NIGHTCORD_NET_FETCH, async (event, url: string, opts?: NetFetchOptions | boolean) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
     const { net } = await import("electron");
-    const headers: Record<string, string> = {};
-    if (noCache) headers["Cache-Control"] = "no-cache";
+    // Support legacy boolean noCache arg as well as new options object
+    const options: NetFetchOptions = typeof opts === "boolean" ? { noCache: opts } : (opts ?? {});
+    const reqHeaders: Record<string, string> = { ...(options.headers ?? {}) };
+    if (options.noCache) reqHeaders["Cache-Control"] = "no-cache";
     try {
-        const res = await net.fetch(url, { headers });
-        if (!res.ok) return null;
-        return await res.json();
+        const res = await net.fetch(url, {
+            method: options.method ?? "GET",
+            headers: reqHeaders,
+            body: options.body ?? undefined
+        });
+        if (!res.ok) return { ok: false, status: res.status, data: null };
+        const data = await res.json();
+        return { ok: true, status: res.status, data };
     } catch {
         return null;
     }

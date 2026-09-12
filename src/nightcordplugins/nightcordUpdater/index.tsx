@@ -48,22 +48,19 @@ async function checkForUpdates() {
     if (Settings.disableAutoUpdate) return;
     try {
         const localVersion = getLocalVersion();
-        const data = await new Promise<any>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error("timeout")), 8000);
-            const xhr = new XMLHttpRequest();
-            xhr.open("GET", REMOTE_VERSION_URL, true);
-            xhr.onload = () => {
-                clearTimeout(timeout);
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    try { resolve(JSON.parse(xhr.responseText)); }
-                    catch { reject(new Error("parse error")); }
-                } else {
-                    reject(new Error(`HTTP ${xhr.status}`));
-                }
-            };
-            xhr.onerror = () => { clearTimeout(timeout); reject(new Error("network error")); };
-            xhr.send();
-        });
+        let data: any = null;
+
+        // Use main-process fetch to bypass CORS on source.nightcord.st
+        const nf = (window as any).VencordNative?.nightcord?.netFetch;
+        if (typeof nf === "function") {
+            const res = await nf(REMOTE_VERSION_URL);
+            if (res?.ok && res.data) data = res.data;
+        } else {
+            // Web fallback
+            const res = await fetch(REMOTE_VERSION_URL);
+            if (res.ok) data = await res.json();
+        }
+
         if (!data?.tag_name) return;
 
         const remoteVersion: string = data.tag_name;
@@ -76,6 +73,7 @@ async function checkForUpdates() {
         console.debug("[NightcordUpdater] Check skipped:", e?.message || e);
     }
 }
+
 
 function UpdateBanner() {
     const [info, setInfo] = useState<UpdateInfo | null>(pendingUpdate);
