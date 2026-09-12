@@ -11,7 +11,7 @@ import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
 import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { findByProps } from "@webpack";
+import { findByProps, waitFor } from "@webpack";
 import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, React, ReactDOM, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
@@ -94,8 +94,13 @@ async function loadTokenCache(): Promise<void> {
     }
 }
 
-async function saveTokenCache(): Promise<void> {
-    await DataStore.set(MI_TOKEN_CACHE_KEY, tokenCache);
+let _saveTokenTimer: ReturnType<typeof setTimeout> | undefined;
+function saveTokenCache(): void {
+    if (_saveTokenTimer !== undefined) clearTimeout(_saveTokenTimer);
+    _saveTokenTimer = setTimeout(() => {
+        _saveTokenTimer = undefined;
+        DataStore.set(MI_TOKEN_CACHE_KEY, tokenCache).catch(() => {});
+    }, 1000);
 }
 
 function decodeBase64Safe(str: string): string | null {
@@ -123,15 +128,17 @@ function getUserIdFromToken(token: string): string | null {
     return null;
 }
 
-function cacheToken(userId: string, token: string): void {
-    if (!userId || !token || typeof token !== "string") return;
+function cacheToken(userId: string, token: string): boolean {
+    if (!userId || !token || typeof token !== "string") return false;
     const cleanTok = token.trim().replace(/^"+|"+$/g, "");
     const tokenOwner = getUserIdFromToken(cleanTok);
     if (tokenOwner && tokenOwner !== userId) {
         console.warn(`[MultiInstance] Token owner mismatch: belongs to ${tokenOwner}, expected ${userId}. Cache rejected.`);
-        return;
+        return false;
     }
+    if (tokenCache[userId] === cleanTok) return false;
     tokenCache[userId] = cleanTok;
+    return true;
 }
 
 function captureCurrentToken(): void {
@@ -140,8 +147,8 @@ function captureCurrentToken(): void {
         const token = tokenMod?.getToken?.();
         const user = UserStore.getCurrentUser();
         if (token && user?.id && typeof token === "string") {
-            cacheToken(user.id, token);
-            saveTokenCache();
+            const changed = cacheToken(user.id, token);
+            if (changed) saveTokenCache();
         }
     } catch { }
 }
@@ -154,10 +161,13 @@ function hookEncryptAndStoreTokens(): void {
         const orig = tokenMod.encryptAndStoreTokens.bind(tokenMod);
         tokenMod.encryptAndStoreTokens = async function (tokens: Record<string, string>) {
             if (tokens && typeof tokens === "object") {
+                let changed = false;
                 for (const [id, token] of Object.entries(tokens)) {
-                    if (id && token) cacheToken(id, token);
+                    if (id && token) {
+                        if (cacheToken(id, token)) changed = true;
+                    }
                 }
-                saveTokenCache();
+                if (changed) saveTokenCache();
             }
             return orig(tokens);
         };
@@ -170,8 +180,8 @@ function hookFluxDispatcher(): (() => void) | null {
         if (!FluxDispatcher?.subscribe) return null;
         const handler = (event: any) => {
             if (event?.token && event?.userId) {
-                cacheToken(event.userId, event.token);
-                saveTokenCache();
+                const changed = cacheToken(event.userId, event.token);
+                if (changed) saveTokenCache();
             }
         };
         FluxDispatcher.subscribe("MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS", handler);
@@ -721,7 +731,6 @@ function MultiInstanceButton() {
 }
 
 async function initInstanceWindowAuth(): Promise<void> {
-    console.log("[NightcordMI] initInstanceWindowAuth started");
     let auth: { token: string; userId: string; username: string; } | null = null;
     try {
         if (typeof Native?.getInstanceAuth === "function") {
@@ -732,7 +741,7 @@ async function initInstanceWindowAuth(): Promise<void> {
     }
 
     const miToken = auth?.token || (window as any).__nightcord_token;
-    const miUserId = auth?.userId || (window as any).__nightcord_user_id;
+    const miUserId = auth?.userId || (window as any).__nightcord_user_id || getUserIdFromToken(miToken || "");
     if (!miToken || typeof miToken !== "string") {
         return;
     }
@@ -750,6 +759,19 @@ async function initInstanceWindowAuth(): Promise<void> {
 
     console.log("[NightcordMI] Instance token acquired for userId:", miUserId);
 
+    let encryptedTok = "";
+    try {
+        if (typeof (Native as any)?.encryptToken === "function") {
+            encryptedTok = await (Native as any).encryptToken(cleanTok);
+        }
+    } catch { }
+
+    const tokensMap: Record<string, string> = {};
+    if (miUserId && encryptedTok) {
+        tokensMap[miUserId] = encryptedTok;
+    }
+    const tokensJson = Object.keys(tokensMap).length > 0 ? JSON.stringify(tokensMap) : "";
+
     // 1. Synchronously sync localStorage in current window and hidden iframe
     const syncStorage = () => {
         try {
@@ -759,6 +781,10 @@ async function initInstanceWindowAuth(): Promise<void> {
             if (miUserId) {
                 window.localStorage.setItem("user_id_cache", JSON.stringify(miUserId));
             }
+            if (tokensJson) {
+                window.localStorage.setItem("tokens", tokensJson);
+                window.localStorage.setItem("multiaccount_tokens", tokensJson);
+            }
             const iframe = document.createElement("iframe");
             iframe.style.display = "none";
             document.body.appendChild(iframe);
@@ -767,6 +793,10 @@ async function initInstanceWindowAuth(): Promise<void> {
                 ifLs.token = q;
                 ifLs.default_token = q;
                 if (miUserId) ifLs.user_id_cache = JSON.stringify(miUserId);
+                if (tokensJson) {
+                    ifLs.tokens = tokensJson;
+                    ifLs.multiaccount_tokens = tokensJson;
+                }
             }
             document.body.removeChild(iframe);
         } catch (e) {
@@ -775,94 +805,85 @@ async function initInstanceWindowAuth(): Promise<void> {
     };
     syncStorage();
 
-    // 2. Poll Discord Webpack modules and perform native loginToken + routing
-    let authDone = false;
-    let attempts = 0;
-
-    const performLogin = () => {
-        if (authDone) return;
-        attempts++;
-
-        try {
-            syncStorage();
-
-            const authStore = findByProps("getToken", "getId");
-            const curToken = authStore?.getToken?.();
-
-            // Already authenticated with target account
-            if (curToken === cleanTok && authStore?.getId?.()) {
-                console.log("[NightcordMI] User authenticated successfully!");
-                authDone = true;
-                const router = findByProps("transitionTo", "replaceWith");
-                if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
-                    router.transitionTo("/channels/@me");
-                }
-                return;
-            }
-
-            // Persist to Discord native multi-account storage
-            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
-            if (tokenMod?.encryptAndStoreTokens && miUserId) {
-                try {
-                    tokenMod.encryptAndStoreTokens({ [miUserId]: cleanTok });
-                } catch { }
-            }
-
-            // Official Discord login action
-            const loginMod = findByProps("loginToken") || findByProps("login", "logout") || findByProps("switchAccount", "loginToken");
-            if (typeof loginMod?.loginToken === "function") {
-                console.log("[NightcordMI] Calling loginMod.loginToken()...");
-                try {
-                    loginMod.loginToken(cleanTok);
-                } catch (e) {
-                    console.warn("[NightcordMI] loginToken error:", e);
-                }
-            }
-
-            // Dispatch Flux authentication events
-            const dispatcher = findByProps("dispatch", "subscribe") || FluxDispatcher;
-            if (dispatcher?.dispatch) {
-                try {
-                    dispatcher.dispatch({ type: "LOGIN", token: cleanTok });
-                    dispatcher.dispatch({ type: "LOGIN_SUCCESS", token: cleanTok });
-                    if (miUserId) {
-                        dispatcher.dispatch({
-                            type: "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
-                            token: cleanTok,
-                            userId: miUserId
-                        });
-                    }
-                } catch { }
-            }
-
-            // Route away from /login
+    // 2. Check if already authenticated with target account
+    const checkAuthAndRoute = () => {
+        const authStore = findByProps("getToken", "getId");
+        if (authStore?.getToken?.() === cleanTok && authStore?.getId?.()) {
+            console.log("[NightcordMI] User authenticated successfully!");
             const router = findByProps("transitionTo", "replaceWith");
             if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
-                console.log("[NightcordMI] Routing to /channels/@me...");
                 router.transitionTo("/channels/@me");
             }
-        } catch (e) {
-            console.warn("[NightcordMI] performLogin error:", e);
+            return true;
         }
+        return false;
+    };
 
-        if (attempts >= 100) {
-            console.warn("[NightcordMI] Auth polling reached max attempts (10s)");
-            authDone = true;
+    if (checkAuthAndRoute()) return;
+
+    // 3. Trigger official Discord login action ONCE
+    let loginTriggered = false;
+    const triggerLogin = (loginMod: any) => {
+        if (loginTriggered || !loginMod?.loginToken) return;
+        loginTriggered = true;
+        console.log("[NightcordMI] Triggering loginMod.loginToken()...");
+        try {
+            loginMod.loginToken(cleanTok);
+        } catch (e) {
+            console.warn("[NightcordMI] loginToken error:", e);
+        }
+        const dispatcher = findByProps("dispatch", "subscribe") || FluxDispatcher;
+        if (dispatcher?.dispatch) {
+            try {
+                dispatcher.dispatch({ type: "LOGIN", token: cleanTok });
+                dispatcher.dispatch({ type: "LOGIN_SUCCESS", token: cleanTok });
+                if (miUserId) {
+                    dispatcher.dispatch({
+                        type: "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
+                        token: cleanTok,
+                        userId: miUserId
+                    });
+                }
+            } catch { }
         }
     };
 
-    performLogin();
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", performLogin, { once: true });
+    const immediateLoginMod = findByProps("loginToken") || findByProps("switchAccount", "loginToken");
+    if (immediateLoginMod) {
+        triggerLogin(immediateLoginMod);
+    } else {
+        waitFor(["loginToken"], mod => triggerLogin(mod));
     }
 
-    const intervalId = setInterval(() => {
-        if (authDone) {
-            clearInterval(intervalId);
-            return;
+    // 4. Transition to /channels/@me once gateway connects
+    const routeToMe = () => {
+        console.log("[NightcordMI] Transitioning to /channels/@me...");
+        const router = findByProps("transitionTo", "replaceWith");
+        if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
+            router.transitionTo("/channels/@me");
         }
-        performLogin();
-    }, 100);
+    };
+
+    waitFor(["dispatch", "subscribe"], (dispatcher: any) => {
+        const unConn = dispatcher.subscribe("CONNECTION_OPEN", () => {
+            try { unConn(); } catch { }
+            routeToMe();
+        });
+        const unLogin = dispatcher.subscribe("LOGIN_SUCCESS", () => {
+            setTimeout(checkAuthAndRoute, 500);
+        });
+    });
+
+    // 5. Gentle fallback checks (at 1s, 2.5s, 5s)
+    [1000, 2500, 5000].forEach(delay => {
+        setTimeout(() => {
+            syncStorage();
+            if (!checkAuthAndRoute() && !loginTriggered) {
+                const mod = findByProps("loginToken") || findByProps("switchAccount", "loginToken");
+                if (mod) triggerLogin(mod);
+            }
+        }, delay);
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

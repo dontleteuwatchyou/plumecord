@@ -12,6 +12,35 @@ export async function decryptToken(_: any, encryptedToken: string): Promise<stri
     return decryptTokenSync(encryptedToken);
 }
 
+export async function encryptToken(_: any, token: string): Promise<string> {
+    return encryptTokenSync(token);
+}
+
+function encryptTokenSync(token: string): string {
+    const clean = (token || "").trim().replace(/^"+|"+$/g, "");
+    if (!clean) return "";
+    if (clean.startsWith("dQw4w9WgXcQ:")) return clean;
+    try {
+        if (safeStorage.isEncryptionAvailable()) {
+            const buf = safeStorage.encryptString(clean);
+            return "dQw4w9WgXcQ:" + buf.toString("base64");
+        }
+    } catch (e) {
+        console.warn("[NightcordMI] encryptTokenSync failed:", e);
+    }
+    return clean;
+}
+
+function getUserIdFromToken(token: string): string {
+    try {
+        const part = token.split(".")[0];
+        if (!part) return "";
+        const decoded = Buffer.from(part, "base64").toString("utf-8");
+        if (/^\d{17,20}$/.test(decoded)) return decoded;
+    } catch {}
+    return "";
+}
+
 function decryptTokenSync(token: string): string {
     if (!token || typeof token !== "string") return "";
     let clean = token.trim().replace(/^"+|"+$/g, "");
@@ -364,11 +393,19 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
     } catch {}
 
     const cleanToken = decryptTokenSync(token);
+    const encryptedToken = encryptTokenSync(cleanToken);
+    const effectiveUid = targetUserId || getUserIdFromToken(cleanToken);
+
+    const tokensMap: Record<string, string> = {};
+    if (effectiveUid && encryptedToken) {
+        tokensMap[effectiveUid] = encryptedToken;
+    }
 
     // Serialize values to JS string literals safe to embed via JSON.stringify
     const tokenLiteral = JSON.stringify(cleanToken);
     const settingsLiteral = JSON.stringify(JSON.stringify(sharedSettings ?? {}));
-    const targetUserIdLiteral = JSON.stringify(targetUserId ?? "");
+    const targetUserIdLiteral = JSON.stringify(effectiveUid ?? "");
+    const tokensMapLiteral = JSON.stringify(JSON.stringify(tokensMap));
 
     // Inner script: runs in main world via webFrame.executeJavaScript.
     // Must be plain JavaScript — no TypeScript syntax, no template literals.
@@ -377,6 +414,7 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  var RAW_TOKEN = " + tokenLiteral + ";",
         "  var SETTINGS_JSON = " + settingsLiteral + ";",
         "  var TARGET_UID = " + targetUserIdLiteral + ";",
+        "  var TOKENS_JSON = " + tokensMapLiteral + ";",
         "  var CONFLICT = ['token','default_token','multiaccount_tokens','tokens','user_id_cache','MultiAccountStore','AuthenticationStore','login_token'];",
         "  try {",
         "    var sh = JSON.parse(SETTINGS_JSON || '{}');",
@@ -388,6 +426,10 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "    try { localStorage.setItem('default_token', qt); } catch(e) {}",
         "    if (TARGET_UID) {",
         "      try { localStorage.setItem('user_id_cache', JSON.stringify(TARGET_UID)); } catch(e) {}",
+        "    }",
+        "    if (TOKENS_JSON && TOKENS_JSON !== '{}') {",
+        "      try { localStorage.setItem('tokens', TOKENS_JSON); } catch(e) {}",
+        "      try { localStorage.setItem('multiaccount_tokens', TOKENS_JSON); } catch(e) {}",
         "    }",
         "    try {",
         "      var uid = localStorage.getItem('user_id_cache');",
@@ -427,6 +469,21 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "// Nightcord MultiInstance — token preload",
         "(function() {",
         "  try {",
+        "    var rawToken = " + tokenLiteral + ";",
+        "    var targetUid = " + targetUserIdLiteral + ";",
+        "    var tokensJson = " + tokensMapLiteral + ";",
+        "    if (rawToken && rawToken !== 'undefined' && typeof window !== 'undefined' && window.localStorage) {",
+        "      try {",
+        "        var qt = JSON.stringify(rawToken);",
+        "        window.localStorage.setItem('token', qt);",
+        "        window.localStorage.setItem('default_token', qt);",
+        "        if (targetUid) { window.localStorage.setItem('user_id_cache', JSON.stringify(targetUid)); }",
+        "        if (tokensJson && tokensJson !== '{}') {",
+        "          window.localStorage.setItem('tokens', tokensJson);",
+        "          window.localStorage.setItem('multiaccount_tokens', tokensJson);",
+        "        }",
+        "      } catch(e) {}",
+        "    }",
         "    var wf = null;",
         "    try { wf = require('electron').webFrame; } catch(e) {}",
         "    if (!wf) { try { wf = require('electron/renderer').webFrame; } catch(e) {} }",
@@ -574,19 +631,22 @@ export async function openInstanceWindow(
             }
         }
 
+        const wc = win.webContents;
+        const wcId = wc.id;
         openWindows.set(userId, win);
-        pendingInstanceAuth.set(win.webContents.id, { token: cleanTok, userId, username });
+        pendingInstanceAuth.set(wcId, { token: cleanTok, userId, username });
 
         win.on("enter-html-full-screen", () => {
-            win.setFullScreen(true);
+            if (!win.isDestroyed()) win.setFullScreen(true);
         });
         win.on("leave-html-full-screen", () => {
-            win.setFullScreen(false);
+            if (!win.isDestroyed()) win.setFullScreen(false);
         });
 
         // Avant fermeture : désinscrit les service workers et coupe le gateway
         // pour stopper toutes les notifications push
         win.on("close", () => {
+            if (win.isDestroyed() || wc.isDestroyed()) return;
             wc.executeJavaScript(`
                 (async () => {
                     try {
@@ -604,7 +664,6 @@ export async function openInstanceWindow(
 
         // Enregistre les handlers IPC de contrôle de fenêtre (DISCORD_WINDOW_*) sur ce webContents
         // Doit être fait AVANT que Discord charge son JS (dom-ready)
-        const wc = win.webContents;
         const cleanupIpc = registerWindowControlIpc(win);
         // Redirige les IPC de badge/notification vers CETTE fenêtre (pas la fenêtre principale)
         const cleanupNotifIpc = registerNotificationIpc(win);
@@ -613,7 +672,7 @@ export async function openInstanceWindow(
             cleanupIpc();
             cleanupNotifIpc();
             openWindows.delete(userId);
-            pendingInstanceAuth.delete(win.webContents.id);
+            pendingInstanceAuth.delete(wcId);
             // Nettoie les service workers de la session pour couper définitivement les notifs
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
             // Retire le preload de l'ensemble actif puis supprime le fichier
@@ -623,6 +682,7 @@ export async function openInstanceWindow(
 
         // Flash quand il y a des notifs
         wc.on("page-title-updated", (e, title) => {
+            if (win.isDestroyed()) return;
             if (process.platform === "win32") {
                 if (/^\(\d+\)/.test(title)) win.flashFrame(true);
                 else win.flashFrame(false);
@@ -630,8 +690,13 @@ export async function openInstanceWindow(
         });
 
         // Injection du token
+        const effectiveUid = userId || getUserIdFromToken(cleanTok);
+        const encryptedTok = encryptTokenSync(cleanTok);
+        const tokensMap: Record<string, string> = {};
+        if (effectiveUid && encryptedTok) tokensMap[effectiveUid] = encryptedTok;
         const safeTokenStr = JSON.stringify(cleanTok);
-        const safeTargetId = JSON.stringify(userId || "");
+        const safeTargetId = JSON.stringify(effectiveUid || "");
+        const safeTokensMapStr = JSON.stringify(JSON.stringify(tokensMap));
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -642,6 +707,11 @@ export async function openInstanceWindow(
                 const target = ${safeTargetId};
                 if (target) {
                     localStorage.setItem("user_id_cache", JSON.stringify(target));
+                }
+                const tokensJson = ${safeTokensMapStr};
+                if (tokensJson && tokensJson !== "{}") {
+                    localStorage.setItem("tokens", tokensJson);
+                    localStorage.setItem("multiaccount_tokens", tokensJson);
                 }
                 const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
@@ -655,6 +725,10 @@ export async function openInstanceWindow(
                     iframe.contentWindow.localStorage.token = q;
                     iframe.contentWindow.localStorage.default_token = q;
                     if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
+                    if (tokensJson && tokensJson !== "{}") {
+                        iframe.contentWindow.localStorage.tokens = tokensJson;
+                        iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
+                    }
                 } catch(e) {}
                 document.body.removeChild(iframe);
             } catch(e) {}
@@ -782,18 +856,21 @@ export async function openInstanceWindowGrouped(
             },
         });
 
+        const wc = win.webContents;
+        const wcId = wc.id;
         openGroupedWindows.set(userId, win);
-        pendingInstanceAuth.set(win.webContents.id, { token: cleanTok, userId, username });
+        pendingInstanceAuth.set(wcId, { token: cleanTok, userId, username });
 
         win.on("enter-html-full-screen", () => {
-            win.setFullScreen(true);
+            if (!win.isDestroyed()) win.setFullScreen(true);
         });
         win.on("leave-html-full-screen", () => {
-            win.setFullScreen(false);
+            if (!win.isDestroyed()) win.setFullScreen(false);
         });
 
         // Avant fermeture : désinscrit les service workers et coupe le gateway
         win.on("close", () => {
+            if (win.isDestroyed() || wc.isDestroyed()) return;
             wc.executeJavaScript(`
                 (async () => {
                     try {
@@ -810,7 +887,6 @@ export async function openInstanceWindowGrouped(
         });
 
         // Enregistre les handlers IPC de contrôle de fenêtre pour cette instance groupée
-        const wc = win.webContents;
         const cleanupIpc = registerWindowControlIpc(win);
         // Redirige les IPC de badge/notification vers CETTE fenêtre (pas la fenêtre principale)
         const cleanupNotifIpc = registerNotificationIpc(win);
@@ -819,21 +895,27 @@ export async function openInstanceWindowGrouped(
             cleanupIpc();
             cleanupNotifIpc();
             openGroupedWindows.delete(userId);
-            pendingInstanceAuth.delete(win.webContents.id);
+            pendingInstanceAuth.delete(wcId);
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
             activePreloads.delete(preloadPath);
             try { unlinkSync(preloadPath); } catch {}
         });
 
         wc.on("page-title-updated", (e, title) => {
+            if (win.isDestroyed()) return;
             if (process.platform === "win32") {
                 if (/^\(\d+\)/.test(title)) win.flashFrame(true);
                 else win.flashFrame(false);
             }
         });
 
+        const effectiveUid = userId || getUserIdFromToken(cleanTok);
+        const encryptedTok = encryptTokenSync(cleanTok);
+        const tokensMap: Record<string, string> = {};
+        if (effectiveUid && encryptedTok) tokensMap[effectiveUid] = encryptedTok;
         const safeTokenStr = JSON.stringify(cleanTok);
-        const safeTargetId = JSON.stringify(userId || "");
+        const safeTargetId = JSON.stringify(effectiveUid || "");
+        const safeTokensMapStr = JSON.stringify(JSON.stringify(tokensMap));
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -844,6 +926,11 @@ export async function openInstanceWindowGrouped(
                 const target = ${safeTargetId};
                 if (target) {
                     localStorage.setItem("user_id_cache", JSON.stringify(target));
+                }
+                const tokensJson = ${safeTokensMapStr};
+                if (tokensJson && tokensJson !== "{}") {
+                    localStorage.setItem("tokens", tokensJson);
+                    localStorage.setItem("multiaccount_tokens", tokensJson);
                 }
                 const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
@@ -857,6 +944,10 @@ export async function openInstanceWindowGrouped(
                     iframe.contentWindow.localStorage.token = q;
                     iframe.contentWindow.localStorage.default_token = q;
                     if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
+                    if (tokensJson && tokensJson !== "{}") {
+                        iframe.contentWindow.localStorage.tokens = tokensJson;
+                        iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
+                    }
                 } catch(e) {}
                 document.body.removeChild(iframe);
             } catch(e) {}
