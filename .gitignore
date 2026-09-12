@@ -67,3 +67,7 @@ Desktop.ini
 # Ignored local scripts
 publish-release.bat
 buildextension.bat
+
+# ghost-server — distributed via GhostClient installer, not bundled in repo
+# Contains heavy binaries (ffmpeg.exe, node.exe, yt-dlp.exe) — optional feature
+ghost-server/
