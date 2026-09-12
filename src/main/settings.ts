@@ -53,9 +53,15 @@ function readSettings<T = object>(name: string, file: string): Partial<T> {
 import { debounce } from "@shared/debounce";
 
 export const RendererSettings = new SettingsStore(readSettings<Settings>("renderer", SETTINGS_FILE));
+if ((RendererSettings.plain?.plugins as any)?.EventLogs?.persistentLogs) {
+    delete (RendererSettings.plain.plugins as any).EventLogs.persistentLogs;
+}
 
 function writeRendererSettingsSync() {
     try {
+        if ((RendererSettings.plain?.plugins as any)?.EventLogs?.persistentLogs) {
+            delete (RendererSettings.plain.plugins as any).EventLogs.persistentLogs;
+        }
         writeFileSync(SETTINGS_FILE, JSON.stringify(RendererSettings.plain, null, 4));
     } catch (e) {
         console.error("Failed to write renderer settings", e);
@@ -78,6 +84,9 @@ ipcMain.handle(IpcEvents.GET_SETTINGS_DIR, () => SETTINGS_DIR);
 ipcMain.on(IpcEvents.GET_SETTINGS, e => e.returnValue = RendererSettings.plain);
 
 ipcMain.handle(IpcEvents.SET_SETTINGS, (_, data: Settings, pathToNotify?: string) => {
+    if ((data?.plugins as any)?.EventLogs?.persistentLogs) {
+        delete (data.plugins as any).EventLogs.persistentLogs;
+    }
     RendererSettings.setData(data, pathToNotify);
 });
 

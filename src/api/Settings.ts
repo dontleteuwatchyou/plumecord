@@ -180,6 +180,9 @@ const DefaultSettings: Settings = {
 
 const settings = !IS_REPORTER ? VencordNative.settings.get() : {} as Settings;
 mergeDefaults(settings, DefaultSettings);
+if ((settings.plugins as any)?.EventLogs?.persistentLogs) {
+    delete (settings.plugins as any).EventLogs.persistentLogs;
+}
 
 // Force migrate cloud URL to Nightcord if it's still Equicord
 if (settings.cloud && settings.cloud.url && settings.cloud.url.includes("equicord.org")) {
@@ -282,6 +285,9 @@ export function flushSettings(path?: string[]) {
     if (_saveSettingsTimer !== undefined) {
         clearTimeout(_saveSettingsTimer);
         _saveSettingsTimer = undefined;
+    }
+    if ((SettingsStore.plain?.plugins as any)?.EventLogs?.persistentLogs) {
+        delete (SettingsStore.plain.plugins as any).EventLogs.persistentLogs;
     }
     try {
         if (typeof VencordNative !== "undefined" && VencordNative?.settings?.set) {
