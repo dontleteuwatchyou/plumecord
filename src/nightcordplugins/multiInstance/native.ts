@@ -4,11 +4,23 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { app, BrowserWindow, ipcMain,screen, session } from "electron";
+import { app, BrowserWindow, ipcMain, screen, session, type Session } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
 const openWindows = new Map<string, BrowserWindow>();
+
+function grantSessionMediaPermissions(ses: Session) {
+    try {
+        ses.setPermissionRequestHandler((_webContents, _permission, callback) => {
+            callback(true);
+        });
+        ses.setPermissionCheckHandler(() => true);
+        if ("setDevicePermissionHandler" in ses) {
+            (ses as any).setDevicePermissionHandler(() => true);
+        }
+    } catch { }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Réglages partagés (thème, audio, zoom, etc.) entre toutes les instances
@@ -480,7 +492,7 @@ export async function openInstanceWindow(
             callback({ responseHeaders: headers });
         });
 
-        registerMediaPermissionsForSession(ses);
+        grantSessionMediaPermissions(ses);
 
         const sharedSettings = await captureAndMergeSharedSettings(_);
         const preloadPath = createTokenPreload(token, sharedSettings);
@@ -688,7 +700,7 @@ export async function openInstanceWindowGrouped(
             callback({ responseHeaders: headers });
         });
 
-        registerMediaPermissionsForSession(ses);
+        grantSessionMediaPermissions(ses);
 
         const sharedSettings = await captureAndMergeSharedSettings(_);
         const preloadPath = createTokenPreload(token, sharedSettings);
