@@ -169,20 +169,12 @@ async function ghostDeactivate(userId: string) {
 
 async function ghostDeactivateAll() {
     const ids = Array.from(ghostStates.keys());
-    // On vide l'état local IMMÉDIATEMENT pour que l'UI soit propre
     ghostStates.clear();
     notify();
-
-    // Déconnexion propre par vagues pour ne pas surcharger le ghost-server
-    (async () => {
-        for (let i = 0; i < ids.length; i++) {
-            Native.leaveVoice(ids[i]).catch(() => { });
-            // Délai progressif : plus il y a de comptes, plus on espace pour laisser respirer le serveur
-            if (i % 3 === 0) await new Promise(r => setTimeout(r, 150));
-        }
-        // Appel final de sécurité pour s'assurer que TOUT est coupé côté serveur
-        Native.leaveVoiceAll(ids).catch(() => { });
-    })();
+    if (ids.length === 0) return;
+    try {
+        await Native.leaveVoiceAll(ids);
+    } catch { }
 }
 
 let voiceUnsub: (() => void) | null = null;
@@ -958,22 +950,23 @@ const GhostUserAreaButton: UserAreaButtonFactory = ({ iconForeground, hideToolti
                 Toasts.show({ message: t("Join a voice channel first"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                 return;
             }
-            for (const acc of targets) {
-                ghostStates.set(acc.userId, { active: false, connecting: true, error: null });
-            }
-            notify();
-            // Parallel connection
-            await Promise.all(targets.map(async (acc) => {
+            for (let i = 0; i < targets.length; i++) {
+                const acc = targets[i];
                 ghostStates.set(acc.userId, { active: false, connecting: true, error: null });
                 notify();
-                try {
-                    const result = await Native.connectGhost(acc.userId, acc.token, vs.guildId, vs.channelId, ghostMicLabel);
-                    ghostStates.set(acc.userId, { active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
-                } catch (e: any) {
-                    ghostStates.set(acc.userId, { active: false, connecting: false, error: String(e) });
+                Native.connectGhost(acc.userId, acc.token, vs.guildId, vs.channelId, ghostMicLabel)
+                    .then(result => {
+                        ghostStates.set(acc.userId, { active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
+                        notify();
+                    })
+                    .catch(e => {
+                        ghostStates.set(acc.userId, { active: false, connecting: false, error: String(e) });
+                        notify();
+                    });
+                if (i < targets.length - 1) {
+                    await new Promise(r => setTimeout(r, 200));
                 }
-                notify();
-            }));
+            }
         }
     }
 

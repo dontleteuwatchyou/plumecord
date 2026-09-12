@@ -348,6 +348,9 @@ function setupSpeakingHeartbeat(session, udpConn) {
 
 async function doJoinVoice(session, guildId, channelId) {
     stopStream(session);
+    session._lastGuildId = guildId;
+    session._lastChannelId = channelId;
+    session._isLeaving = false;
 
     // Tentative de récupération des noms pour les logs (optionnel)
     const guild = session.client.guilds.cache.get(guildId);
@@ -363,9 +366,12 @@ async function doJoinVoice(session, guildId, channelId) {
         await new Promise(r => setTimeout(r, 150));
     }
 
+    if (session._isLeaving) return;
+
     let udpConn = null;
     let attempts = 0;
     while (attempts < 2) {
+        if (session._isLeaving) return;
         attempts++;
         try {
             udpConn = await Promise.race([
@@ -375,11 +381,17 @@ async function doJoinVoice(session, guildId, channelId) {
             break; // Succès
         } catch (e) {
             console.error(`[GhostServer] ❌ joinVoice tentative ${attempts} a echoue:`, e.message);
-            if (attempts >= 2) throw e;
+            if (attempts >= 2 || session._isLeaving) throw e;
             // Clean up et pause avant retry
             try { session.streamer.leaveVoice(); } catch { }
             await new Promise(r => setTimeout(r, 1000));
         }
+    }
+
+    if (session._isLeaving) {
+        try { udpConn?.mediaConnection?.setSpeaking?.(false); } catch { }
+        try { session.streamer?.leaveVoice?.(); } catch { }
+        return;
     }
 
     session.udpConn = udpConn;
@@ -388,9 +400,8 @@ async function doJoinVoice(session, guildId, channelId) {
     unmuteAndUndeafen(session, guildId, channelId);
 
     // Activer l'audio ET setSpeaking seulement quand WebRTC est vraiment "connected"
-    // sendAudioFrame retourne silencieusement si udpConn.ready === false
-    // Sur les PCs lents/connexions lentes, WebRTC peut prendre 2-10s a devenir "connected"
     function activateAudio() {
+        if (session._isLeaving) return;
         console.log("[GhostServer] ✅ WebRTC connected — audio + speaking actifs pour " + session.userId);
         try {
             if (!udpConn._audioPacketizer) {
@@ -405,7 +416,6 @@ async function doJoinVoice(session, guildId, channelId) {
     }
 
     if (udpConn.ready) {
-        // Ghost-server chaud ou reconnexion rapide — immediat
         activateAudio();
     } else {
         try {
@@ -414,18 +424,20 @@ async function doJoinVoice(session, guildId, channelId) {
                 let activated = false;
                 webRtcConn.onStateChange(async (state) => {
                     console.log("[GhostServer] WebRTC State:", state);
+                    if (session._isLeaving) return;
                     if (state === "connected" && !activated) {
                         activated = true;
                         console.log("[GhostServer] ✅ WebRTC state=connected");
                         activateAudio();
                     } else if (state === "failed" || state === "closed") {
-                        if (!activated) {
+                        if (!activated && !session._isLeaving) {
                             console.error("[GhostServer] ❌ WebRTC Failed -> tentative de reconnexion");
-                            // Si ça failed avant même d'être connecté (micro restera gris), on retry
                             try {
-                                await new Promise(r => setTimeout(r, 500)); // Laisse un peu de temps
-                                console.log("[GhostServer] 🔄 Reconnexion automatique relancée...");
-                                await doJoinVoice(session, guildId, channelId); // Relance la fonction
+                                await new Promise(r => setTimeout(r, 500));
+                                if (!session._isLeaving) {
+                                    console.log("[GhostServer] 🔄 Reconnexion automatique relancée...");
+                                    await doJoinVoice(session, guildId, channelId);
+                                }
                             } catch (e) { console.error("[GhostServer] Echec du restart", e); }
                         }
                     }
@@ -452,10 +464,14 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
     const s = sessions.get(userId);
     if (!s) return { ok: false, error: "Session introuvable" };
     if (micLabel || micDevice) s.micLabel = micLabel || micDevice;
+    s._lastGuildId = guildId;
+    s._lastChannelId = channelId;
+    s._isLeaving = false;
 
     let guild = s.client.guilds.cache.get(guildId);
     if (!guild) {
         for (let i = 0; i < 50; i++) {
+            if (s._isLeaving) return { ok: false, error: "Annulé" };
             await new Promise(r => setTimeout(r, 200));
             guild = s.client.guilds.cache.get(guildId);
             if (guild) break;
@@ -472,6 +488,7 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
         let udpConn = null;
         let attempts = 0;
         while (attempts < 2) {
+            if (s._isLeaving) return { ok: false, error: "Annulé" };
             attempts++;
             try {
                 udpConn = await Promise.race([
@@ -480,10 +497,16 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
                 ]);
                 break;
             } catch (e) {
-                if (attempts >= 2) throw e;
+                if (attempts >= 2 || s._isLeaving) throw e;
                 try { s.streamer.leaveVoice(); } catch { }
                 await new Promise(r => setTimeout(r, 1000));
             }
+        }
+
+        if (s._isLeaving) {
+            try { udpConn?.mediaConnection?.setSpeaking?.(false); } catch { }
+            try { s.streamer?.leaveVoice?.(); } catch { }
+            return { ok: false, error: "Annulé" };
         }
 
         s.udpConn = udpConn;
@@ -491,6 +514,7 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
         unmuteAndUndeafen(s, guildId, channelId);
 
         function activateAudio() {
+            if (s._isLeaving) return;
             try {
                 if (!udpConn._audioPacketizer) {
                     if (typeof udpConn.ensureAudioPacketizer === "function") udpConn.ensureAudioPacketizer();
@@ -511,18 +535,20 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
                 if (webRtcConn) {
                     let activated = false;
                     webRtcConn.onStateChange(async (state) => {
+                        if (s._isLeaving) return;
                         if (state === "connected" && !activated) {
                             activated = true;
                             activateAudio();
-                        } else if ((state === "failed" || state === "closed") && !activated) {
-                            // Retry silently
+                        } else if ((state === "failed" || state === "closed") && !activated && !s._isLeaving) {
                             try {
                                 await new Promise(r => setTimeout(r, 500));
-                                await joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice);
+                                if (!s._isLeaving) {
+                                    await joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice);
+                                }
                             } catch { }
                         }
                     });
-                    setTimeout(() => { if (!activated) { activated = true; activateAudio(); } }, 5000);
+                    setTimeout(() => { if (!activated && !s._isLeaving) { activated = true; activateAudio(); } }, 5000);
                 } else activateAudio();
             } catch { activateAudio(); }
         }
@@ -536,22 +562,34 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
 async function leaveVoice(userId) {
     const s = sessions.get(userId);
     if (!s) return;
-    if (s._speakingHeartbeat) { clearInterval(s._speakingHeartbeat); s._speakingHeartbeat = null; }
+    s._isLeaving = true;
 
-    // On coupe l'audio AVANT de quitter WebRTC pour éviter des frames corrompues
+    if (s._speakingHeartbeat) {
+        clearInterval(s._speakingHeartbeat);
+        s._speakingHeartbeat = null;
+    }
+
+    // Envoi explicite de l'Opcode Gateway 4 avec guild_id et channel_id: null
+    // Discord EXIGE le guild_id pour déconnecter immédiatement un compte d'un salon vocal de serveur
+    const gId = s.streamer.voiceConnection?.guildId || s._lastGuildId || null;
+    try {
+        s.streamer.sendOpcode(4, {
+            guild_id: gId,
+            channel_id: null,
+            self_mute: false,
+            self_deaf: false,
+            self_video: false,
+        });
+    } catch { }
+
     stopMic(s);
     stopStream(s);
 
-    if (s.udpConn) {
-        try { s.udpConn.mediaConnection?.setSpeaking(false); } catch { }
-        try { s.streamer.leaveVoice(); } catch { }
-        s.udpConn = null;
-    }
+    try { s.udpConn?.mediaConnection?.setSpeaking?.(false); } catch { }
+    try { s.streamer?.leaveVoice?.(); } catch { }
+    s.udpConn = null;
 
-    // Petit délai de sécurité pour que le matériel audio soit relâché proprement par ffmpeg
-    await new Promise(r => setTimeout(r, 200));
-
-    console.log("[GhostServer] " + userId + " quitté le salon");
+    console.log(`[GhostServer] ${userId} quitté le salon (guild: ${gId}) ✓`);
 }
 
 async function destroyGhost(userId) {
@@ -604,101 +642,135 @@ function startPermanentAudio(session, initialUdpConn) {
     // Gestion du Pipeline Partagé par micro
     if (sharedAudios.has(device)) {
         const shared = sharedAudios.get(device);
-        shared.users.set(session.userId, initialUdpConn);
-        console.log(`[GhostServer] Micro ${device} déjà actif, ajout de l'utilisateur ${session.userId} au flux partagé`);
+        if (shared.idleTimer) {
+            clearTimeout(shared.idleTimer);
+            shared.idleTimer = null;
+        }
+        if (initialUdpConn) {
+            shared.users.set(session.userId, initialUdpConn);
+        } else if (!shared.users.has(session.userId)) {
+            shared.users.set(session.userId, null);
+        }
+        console.log(`[GhostServer] Micro ${device} déjà actif, rattaché ${session.userId} (${shared.users.size} auditeurs)`);
         return;
     }
 
-    console.log("[GhostServer] Nouveau flux ffmpeg pour micro: " + device);
+    console.log("[GhostServer] Démarrage flux ffmpeg pour micro: " + device);
 
-    const proc = spawn(ffmpeg, [
-        "-fflags", "nobuffer+fastseek", "-flags", "low_delay", "-probesize", "32", "-analyzeduration", "0",
-        "-thread_queue_size", "1024", "-f", "dshow", "-audio_buffer_size", "100", "-i", "audio=" + device,
-        "-vn", "-ar", String(SAMPLE_RATE), "-ac", String(CHANNELS), "-f", "s16le", "-loglevel", "error", "pipe:1",
-    ], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
-
-    const encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP);
     const usersMap = new Map();
     if (initialUdpConn) usersMap.set(session.userId, initialUdpConn);
+    else usersMap.set(session.userId, null);
 
-    const shared = { proc, encoder, users: usersMap };
+    const shared = { proc: null, encoder: null, users: usersMap, idleTimer: null };
     sharedAudios.set(device, shared);
 
-    proc.stderr.on("data", d => {
-        const msg = d.toString().trim();
-        if (msg && !msg.includes("Guessed Channel Layout") && !msg.includes("size=")) console.warn("[ffmpeg] " + msg);
-    });
+    function spawnFfmpeg(retryCount = 0) {
+        try {
+            const proc = spawn(ffmpeg, [
+                "-fflags", "nobuffer+fastseek", "-flags", "low_delay", "-probesize", "32", "-analyzeduration", "0",
+                "-thread_queue_size", "1024", "-f", "dshow", "-audio_buffer_size", "100", "-i", "audio=" + device,
+                "-vn", "-ar", String(SAMPLE_RATE), "-ac", String(CHANNELS), "-f", "s16le", "-loglevel", "error", "pipe:1",
+            ], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
 
-    proc.on("error", err => {
-        console.error(`[GhostServer] Erreur process ffmpeg pour ${device}:`, err.message);
-        sharedAudios.delete(device);
-        try { encoder.delete(); } catch { }
-    });
+            const encoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.VOIP);
+            shared.proc = proc;
+            shared.encoder = encoder;
 
-    proc.on("exit", code => {
-        sharedAudios.delete(device);
-        // Reset l'encodeur Opus pour libérer la mémoire native
-        try { encoder.delete(); } catch { }
-        if (code !== 0 && code !== null) console.log("[GhostServer] ffmpeg micro " + device + " exit: " + code);
-    });
+            proc.stderr.on("data", d => {
+                const msg = d.toString().trim();
+                if (msg && !msg.includes("Guessed Channel Layout") && !msg.includes("size=")) console.warn("[ffmpeg] " + msg);
+            });
 
-    const ring = Buffer.allocUnsafe(RING_SIZE);
-    let writePos = 0, dataLen = 0;
+            proc.on("error", err => {
+                console.error(`[GhostServer] Erreur process ffmpeg pour ${device}:`, err.message);
+                try { encoder.delete(); } catch { }
+                if (sharedAudios.get(device) === shared) {
+                    sharedAudios.delete(device);
+                }
+                if (shared.users.size > 0 && retryCount < 3) {
+                    console.log(`[GhostServer] Retry spawn ffmpeg dans 600ms (tentative ${retryCount + 1})...`);
+                    setTimeout(() => {
+                        if (!sharedAudios.has(device)) {
+                            sharedAudios.set(device, shared);
+                            spawnFfmpeg(retryCount + 1);
+                        }
+                    }, 600);
+                }
+            });
 
-    proc.stdout.on("data", chunk => {
-        if (shared.users.size === 0) { writePos = 0; dataLen = 0; return; }
-
-        let srcPos = 0;
-        while (srcPos < chunk.length) {
-            const space = RING_SIZE - writePos;
-            const toCopy = Math.min(chunk.length - srcPos, space);
-            chunk.copy(ring, writePos, srcPos, srcPos + toCopy);
-            srcPos += toCopy;
-            writePos = (writePos + toCopy) % RING_SIZE;
-            dataLen = Math.min(dataLen + toCopy, RING_SIZE);
-        }
-
-        const readStart = (writePos - dataLen + RING_SIZE) % RING_SIZE;
-        let readPos = readStart;
-        while (dataLen >= PCM_BYTES) {
-            let frame;
-            if (readPos + PCM_BYTES <= RING_SIZE) {
-                frame = ring.slice(readPos, readPos + PCM_BYTES);
-            } else {
-                frame = Buffer.allocUnsafe(PCM_BYTES);
-                const firstPart = RING_SIZE - readPos;
-                ring.copy(frame, 0, readPos, RING_SIZE);
-                ring.copy(frame, firstPart, 0, PCM_BYTES - firstPart);
-            }
-            readPos = (readPos + PCM_BYTES) % RING_SIZE;
-            dataLen -= PCM_BYTES;
-
-            const opusFrame = encoder.encode(frame, FRAME_SIZE);
-            // Broadcast aux utilisateurs actifs
-            for (const [uid, target] of shared.users) {
-                if (target?.ready) {
-                    if (!target._audioPacketizer) {
-                        try { target.setPacketizer?.("H264"); } catch { }
-                    }
-                    try { target.sendAudioFrame(opusFrame, FRAME_DUR); } catch { }
-                } else {
-                    // Update target si joinVoice a fini entre temps
-                    const pipe = audioPipelines.get(uid);
-                    if (pipe?.udpTarget) {
-                        shared.users.set(uid, pipe.udpTarget);
-                        if (pipe.udpTarget.ready) {
-                            if (!pipe.udpTarget._audioPacketizer) {
-                                try { pipe.udpTarget.setPacketizer?.("H264"); } catch { }
+            proc.on("exit", code => {
+                try { encoder.delete(); } catch { }
+                if (sharedAudios.get(device) === shared) {
+                    sharedAudios.delete(device);
+                }
+                if (code !== 0 && code !== null) {
+                    console.log(`[GhostServer] ffmpeg micro ${device} exit: ${code}`);
+                    if (shared.users.size > 0 && retryCount < 3) {
+                        console.log(`[GhostServer] Redémarrage automatique ffmpeg dans 600ms (tentative ${retryCount + 1})...`);
+                        setTimeout(() => {
+                            if (!sharedAudios.has(device)) {
+                                sharedAudios.set(device, shared);
+                                spawnFfmpeg(retryCount + 1);
                             }
-                            try { pipe.udpTarget.sendAudioFrame(opusFrame, FRAME_DUR); } catch { }
+                        }, 600);
+                    }
+                }
+            });
+
+            const ring = Buffer.allocUnsafe(RING_SIZE);
+            let writePos = 0, dataLen = 0;
+
+            proc.stdout.on("data", chunk => {
+                if (shared.users.size === 0) { writePos = 0; dataLen = 0; return; }
+
+                let srcPos = 0;
+                while (srcPos < chunk.length) {
+                    const space = RING_SIZE - writePos;
+                    const toCopy = Math.min(chunk.length - srcPos, space);
+                    chunk.copy(ring, writePos, srcPos, srcPos + toCopy);
+                    srcPos += toCopy;
+                    writePos = (writePos + toCopy) % RING_SIZE;
+                    dataLen = Math.min(dataLen + toCopy, RING_SIZE);
+                }
+
+                const readStart = (writePos - dataLen + RING_SIZE) % RING_SIZE;
+                let readPos = readStart;
+                while (dataLen >= PCM_BYTES) {
+                    let frame;
+                    if (readPos + PCM_BYTES <= RING_SIZE) {
+                        frame = ring.slice(readPos, readPos + PCM_BYTES);
+                    } else {
+                        frame = Buffer.allocUnsafe(PCM_BYTES);
+                        const firstPart = RING_SIZE - readPos;
+                        ring.copy(frame, 0, readPos, RING_SIZE);
+                        ring.copy(frame, firstPart, 0, PCM_BYTES - firstPart);
+                    }
+                    readPos = (readPos + PCM_BYTES) % RING_SIZE;
+                    dataLen -= PCM_BYTES;
+
+                    const opusFrame = encoder.encode(frame, FRAME_SIZE);
+                    // Broadcast aux utilisateurs actifs
+                    for (const [uid, target] of shared.users) {
+                        const currentTarget = (target?.ready) ? target : audioPipelines.get(uid)?.udpTarget;
+                        if (currentTarget?.ready) {
+                            if (target !== currentTarget) shared.users.set(uid, currentTarget);
+                            if (!currentTarget._audioPacketizer) {
+                                try { currentTarget.setPacketizer?.("H264"); } catch { }
+                            }
+                            try { currentTarget.sendAudioFrame(opusFrame, FRAME_DUR); } catch { }
                         }
                     }
                 }
-            }
-        }
-    });
+            });
 
-    console.log("[GhostServer] Pipeline audio partagé actif ✓");
+            console.log("[GhostServer] Pipeline audio partagé actif ✓");
+        } catch (err) {
+            console.error("[GhostServer] Exception spawn ffmpeg:", err.message);
+            if (sharedAudios.get(device) === shared) sharedAudios.delete(device);
+        }
+    }
+
+    spawnFfmpeg();
 }
 
 function stopMic(session) {
@@ -707,12 +779,17 @@ function stopMic(session) {
     for (const [device, shared] of sharedAudios) {
         if (shared.users.has(session.userId)) {
             shared.users.delete(session.userId);
-            console.log(`[GhostServer] Retrait de ${session.userId} du micro ${device}`);
-            // Si plus personne n'écoute ce micro, on coupe ffmpeg
+            console.log(`[GhostServer] Retrait de ${session.userId} du micro ${device} (${shared.users.size} restant(s))`);
+            // Grace period: Ne pas tuer ffmpeg immédiatement pour éviter les conflits DirectShow
             if (shared.users.size === 0) {
-                try { shared.proc.kill("SIGKILL"); } catch { }
-                sharedAudios.delete(device);
-                console.log(`[GhostServer] Plus d'auditeurs pour ${device}, arrêt du flux`);
+                if (shared.idleTimer) clearTimeout(shared.idleTimer);
+                shared.idleTimer = setTimeout(() => {
+                    if (shared.users.size === 0) {
+                        try { shared.proc?.kill("SIGKILL"); } catch { }
+                        sharedAudios.delete(device);
+                        console.log(`[GhostServer] Plus d'auditeurs pour ${device} (après délai de grâce), arrêt ffmpeg`);
+                    }
+                }, 8000);
             }
             break;
         }
