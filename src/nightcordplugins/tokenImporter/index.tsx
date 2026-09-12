@@ -12,7 +12,7 @@ import { DataStore } from "@api/index";
 import { ModalCloseButton,ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import { PluginNative } from "@utils/types";
 import definePlugin, { OptionType } from "@utils/types";
-import { find, findAll, findByProps } from "@webpack";
+import { find, findAll, findByProps, findStore } from "@webpack";
 import { React, useCallback, useEffect, useMemo,useRef, useState, IconUtils } from "@webpack/common";
 import { Forms } from "@webpack/common";
 
@@ -86,8 +86,8 @@ async function saveAccounts(accounts: SavedAccount[]): Promise<void> {
 
 function autoCaptureActiveAccount() {
     try {
-        const UserStore = findByProps("getCurrentUser", "getUser");
-        const tokenMod = findByProps("getToken", "getTokens");
+        const UserStore = (findStore("UserStore") || findByProps("getCurrentUser", "getUser")) as any;
+        const tokenMod = (findStore("AuthenticationStore") || findByProps("getToken")) as any;
         const me = UserStore?.getCurrentUser?.();
         const token = tokenMod?.getToken?.();
         if (me?.id && token) {

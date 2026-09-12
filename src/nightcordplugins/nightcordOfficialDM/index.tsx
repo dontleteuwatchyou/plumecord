@@ -644,16 +644,17 @@ function disconnectMastodonStreaming() {
 }
 
 async function fetchMastodonFeed(): Promise<any[]> {
+    const netFetch = (window as any).VencordNative?.nightcord?.netFetch;
     for (const url of API_URLS) {
         try {
-            if (typeof VencordNative !== "undefined" && (VencordNative as any)?.http?.fetch) {
-                const res = await (VencordNative as any).http.fetch(url);
-                if (res?.ok) {
-                    const data = await res.json();
-                    if (Array.isArray(data) && data.length > 0) return data;
-                }
+            if (typeof netFetch === "function") {
+                const res = await netFetch(url, { timeout: 3000 });
+                if (res?.ok && Array.isArray(res.data) && res.data.length > 0) return res.data;
             } else {
-                const res = await fetch(url).catch(() => null);
+                const controller = new AbortController();
+                const to = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch(url, { signal: controller.signal }).catch(() => null);
+                clearTimeout(to);
                 if (res && res.ok) {
                     const data = await res.json().catch(() => null);
                     if (Array.isArray(data) && data.length > 0) return data;
@@ -1621,41 +1622,7 @@ export default definePlugin({
             };
         }
 
-function getChannelTimestamp(channelId: string): number {
-    if (!channelId) return 0;
-    try {
-        // 1. Check ReadStateStore (always cached for all DMs in Discord)
-        const ReadStateStore = (findStore("ReadStateStore") || (findByPropsLazy("lastMessageId", "hasUnread") as any)) as any;
-        const lastMsgId = ReadStateStore?.lastMessageId?.(channelId);
-        if (lastMsgId) {
-            const ts = SnowflakeUtils.extractTimestamp(lastMsgId);
-            if (ts > 0) return ts;
-        }
-
-        // 2. Check ChannelStore
-        const ChannelStore = findStore("ChannelStore") as any;
-        const ch = ChannelStore?.getChannel?.(channelId);
-        if (ch?.lastMessageId) {
-            const ts = SnowflakeUtils.extractTimestamp(ch.lastMessageId);
-            if (ts > 0) return ts;
-        }
-        if (ch?.lastPinTimestamp) {
-            const pinTs = new Date(ch.lastPinTimestamp).getTime();
-            if (pinTs > 0) return pinTs;
-        }
-
-        // 3. Check MessageStore
-        const MessageStore = findStore("MessageStore") as any;
-        const lastMsg = MessageStore?.getLastMessage?.(channelId) || MessageStore?.getMessages?.(channelId)?.last?.();
-        if (lastMsg?.timestamp) {
-            const msgTs = new Date(lastMsg.timestamp).getTime();
-            if (msgTs > 0) return msgTs;
-        }
-    } catch {}
-    return 0;
-}
-
-        // Robust patch for PrivateChannelSortStore
+        // Instantaneous patch for PrivateChannelSortStore (0ms overhead)
         const patchPrivateChannelSortStore = (SortStore: any) => {
             if (!SortStore || (SortStore as any).__nightcordPatched) return;
             (SortStore as any).__nightcordPatched = true;
@@ -1667,49 +1634,16 @@ function getChannelTimestamp(channelId: string): number {
                     const entryToInsert = isObjectArray ? NIGHTCORD_CHANNEL : NIGHTCORD_CHANNEL_ID;
 
                     SortStore[fnName] = function(...args: any[]) {
-                        let list: any = orig.apply(this, args) || [];
-                        // Always filter our fake channel first
-                        if (Array.isArray(list)) {
-                            list = list.filter((item: any) => {
-                                const id = typeof item === "string" ? item : (item?.id || item?.channelId);
-                                return id !== NIGHTCORD_CHANNEL_ID;
-                            });
-                        }
-                        // If DM is closed, return without adding it back
-                        if (settings.store.isDmClosed) return list;
+                        const list: any = orig.apply(this, args);
+                        if (!list || !Array.isArray(list) || settings.store.isDmClosed) return list;
 
-                        try {
-                            let nightcordTs = lastPostTimestamp;
-                            const ChannelStore = findStore("ChannelStore") as any;
-                            const ncCh = ChannelStore?.getChannel?.(NIGHTCORD_CHANNEL_ID);
-                            if (ncCh?.lastMessageId) {
-                                const ncExtracted = SnowflakeUtils.extractTimestamp(ncCh.lastMessageId);
-                                if (ncExtracted > nightcordTs) nightcordTs = ncExtracted;
-                            }
+                        const filtered = list.filter((item: any) => {
+                            const id = typeof item === "string" ? item : (item?.id || item?.channelId);
+                            return id !== NIGHTCORD_CHANNEL_ID;
+                        });
 
-                            if (nightcordTs > 0) {
-                                let inserted = false;
-                                for (let i = 0; i < list.length; i++) {
-                                    const item = list[i];
-                                    const itemId = typeof item === "string" ? item : (item?.id || item?.channelId);
-                                    const chTs = getChannelTimestamp(itemId);
-                                    if (chTs > 0 && nightcordTs >= chTs) {
-                                        list.splice(i, 0, entryToInsert);
-                                        inserted = true;
-                                        break;
-                                    }
-                                }
-                                if (!inserted) {
-                                    list.push(entryToInsert);
-                                }
-                            } else {
-                                list.push(entryToInsert);
-                            }
-                        } catch {
-                            list.push(entryToInsert);
-                        }
-
-                        return list;
+                        filtered.unshift(entryToInsert);
+                        return filtered;
                     };
                     sortUnpatches.push(() => {
                         SortStore[fnName] = orig;
@@ -1729,28 +1663,6 @@ function getChannelTimestamp(channelId: string): number {
         waitFor(["getPrivateChannelIds"], (store: any) => {
             patchPrivateChannelSortStore(store);
         });
-
-
-        // Patch MessageRequestStore to explicitly exclude NIGHTCORD_CHANNEL_ID from spam / message requests
-        try {
-            const MsgReqStore = findByPropsLazy("getMessageRequestsCount", "isSpam", "isMessageRequest") as any;
-            if (MsgReqStore) {
-                if (typeof MsgReqStore.isSpam === "function") {
-                    const origIsSpam = MsgReqStore.isSpam;
-                    MsgReqStore.isSpam = function(channelId: string) {
-                        if (channelId === NIGHTCORD_CHANNEL_ID) return false;
-                        return origIsSpam.apply(this, arguments);
-                    };
-                }
-                if (typeof MsgReqStore.isMessageRequest === "function") {
-                    const origIsMsgReq = MsgReqStore.isMessageRequest;
-                    MsgReqStore.isMessageRequest = function(channelId: string) {
-                        if (channelId === NIGHTCORD_CHANNEL_ID) return false;
-                        return origIsMsgReq.apply(this, arguments);
-                    };
-                }
-            }
-        } catch {}
 
         FluxDispatcher.subscribe("CHANNEL_DELETE", handleChannelClose);
         FluxDispatcher.subscribe("CHANNEL_CLOSE", handleChannelClose);

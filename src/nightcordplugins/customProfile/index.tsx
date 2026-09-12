@@ -3448,13 +3448,10 @@ export default definePlugin({
 
                             UserClass.prototype._cp_premium_hook = true;
 
-                            // Clean up existing own properties in UserStore to force prototype usage
-                            const allUsers = US.getUsers ? US.getUsers() : [];
-                            for (const u of Object.values(allUsers)) {
-                                if (u && typeof u === "object" && Object.prototype.hasOwnProperty.call(u, "premiumType")) {
-                                    (u as any)._realPremiumType = (u as any).premiumType;
-                                    delete (u as any).premiumType;
-                                }
+                            // Clean up existing own property on current user to force prototype usage
+                            if (realUser && typeof realUser === "object" && Object.prototype.hasOwnProperty.call(realUser, "premiumType")) {
+                                (realUser as any)._realPremiumType = (realUser as any).premiumType;
+                                delete (realUser as any).premiumType;
                             }
                         } catch (e) {
                             console.error("[CustomProfile] Failed to patch User prototype", e);
