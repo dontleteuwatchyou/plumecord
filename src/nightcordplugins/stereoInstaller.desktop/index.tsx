@@ -6,7 +6,6 @@
 
 import "./style.css";
 
-import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Heading } from "@components/Heading";
@@ -58,26 +57,14 @@ const METHOD_2_QUALITY_OPTIONS = [
     { label: "512", value: "512" }
 ] satisfies Array<{ label: string; value: StereoMethod2Quality; }>;
 
-let lastRepatchNotificationKey = "";
 let nextLogId = 0;
 
 function appendLogs(existingLogs: LogEntry[], newLogs: string[] | undefined): LogEntry[] {
     return [...existingLogs, ...(newLogs ?? []).map(line => ({ id: nextLogId++, line }))];
 }
 
-function notifyRepatchIfNeeded(info: InstallInfo): void {
-    if (!info.repatchWarning) return;
-
-    const key = `${info.discordRoot}:${info.clientLabel}:${info.repatchWarning}`;
-    if (lastRepatchNotificationKey === key) return;
-
-    lastRepatchNotificationKey = key;
-    showNotification({
-        title: t("StereoInstaller"),
-        body: info.repatchWarning,
-        permanent: true,
-        onClick: () => SettingsRouter.openUserSettings(`${SETTINGS_ENTRY_KEY}_panel`)
-    });
+function notifyRepatchIfNeeded(_info: InstallInfo): void {
+    // Disabled: notifications suppressed per user request
 }
 
 function StereoWarning() {
