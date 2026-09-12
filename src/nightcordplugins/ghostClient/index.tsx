@@ -180,6 +180,7 @@ async function ghostDeactivateAll() {
 let voiceUnsub: (() => void) | null = null;
 let globalAutoFollow = false;
 let myLastChannelId: string | null = null;
+let _followDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function startFollowing() {
     if (voiceUnsub) return;
@@ -187,7 +188,7 @@ function startFollowing() {
     myLastChannelId = getMyVoiceState()?.channelId ?? null;
     console.log("[GhostClient] Suivi vocal active, salon actuel:", myLastChannelId);
 
-    const handler = async (data: any) => {
+    const handler = (data: any) => {
         if (!data) return;
         const myId = getMyId();
         let statesList: any[] = [];
@@ -199,13 +200,17 @@ function startFollowing() {
             }
         } catch { statesList = []; }
 
-        for (const s of statesList) {
-            if (s.userId !== myId) continue;
-            // Toujours vérifier l'état réel actuel via getMyVoiceState()
-            // pour éviter qu'une mise à jour partielle (mute, deaf, etc.) avec channelId absent ne déclenche une fausse déconnexion
+        const myState = statesList.find((s: any) => s.userId === myId);
+        if (!myState) return;
+
+        // Debounce: Discord fires several Flux events in rapid succession during a VC switch.
+        // We only act on the last event after a 400ms quiet window to avoid concurrent joinVoiceAll races.
+        if (_followDebounceTimer !== null) clearTimeout(_followDebounceTimer);
+        _followDebounceTimer = setTimeout(async () => {
+            _followDebounceTimer = null;
             const curVoice = getMyVoiceState();
             const newCh: string | null = curVoice?.channelId ?? null;
-            if (newCh === myLastChannelId) continue;
+            if (newCh === myLastChannelId) return;
             myLastChannelId = newCh;
             const guild: string = curVoice?.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
             const accounts: GhostAccount[] = savedAccounts.length > 0
@@ -217,13 +222,13 @@ function startFollowing() {
                 return st?.active === true;
             });
             console.log(`[GhostClient] Suivi vocal: newCh=${newCh} guild=${guild} actives=${activeAccs.length}`);
-            if (activeAccs.length === 0) continue;
+            if (activeAccs.length === 0) return;
             if (newCh) {
                 Native.joinVoiceAll(activeAccs.map(a => a.userId), guild, newCh, ghostMicLabel).catch(() => { });
             } else {
                 Native.leaveVoiceAll(activeAccs.map(a => a.userId)).catch(() => { });
             }
-        }
+        }, 400);
     };
 
     FluxDispatcher?.subscribe?.("VOICE_STATE_UPDATES", handler);
@@ -231,6 +236,7 @@ function startFollowing() {
     voiceUnsub = () => {
         FluxDispatcher?.unsubscribe?.("VOICE_STATE_UPDATES", handler);
         FluxDispatcher?.unsubscribe?.("VOICE_STATE_UPDATE", handler);
+        if (_followDebounceTimer !== null) { clearTimeout(_followDebounceTimer); _followDebounceTimer = null; }
         myLastChannelId = null;
     };
 }
