@@ -124,6 +124,8 @@ async function getAllSavedAccounts(): Promise<GhostAccount[]> {
     const combined = new Map<string, GhostAccount>();
     tiAccs.forEach(a => combined.set(a.userId, a));
     ghostAccs.forEach(a => combined.set(a.userId, a));
+    const myId = getMyId();
+    if (myId) combined.delete(myId);
 
     return Array.from(combined.values());
 }

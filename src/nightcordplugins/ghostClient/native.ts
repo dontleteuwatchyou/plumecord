@@ -76,43 +76,43 @@ function ping(): Promise<boolean> {
 }
 
 async function killZombieServer(): Promise<void> {
-    // Si un ghost-server zombie tourne depuis un crash précédent, le tuer proprement
     try {
-        const res = await Promise.race([
-            ping(),
-            new Promise<boolean>(r => setTimeout(() => r(false), 500))
-        ]);
-        if (res) {
-            // Un serveur répond — vérifier si c'est le nôtre ou un zombie
-            if (!serverProc) {
-                // Pas notre process — c'est un zombie du crash précédent
-                // On essaie de l'arrêter via l'API HTTP
+        if (await ping()) {
+            // Demander l'arrêt propre
+            try {
+                await new Promise<void>((resolve) => {
+                    const req = http.request({ hostname: "127.0.0.1", port: PORT, path: "/shutdown", method: "POST" }, () => resolve());
+                    req.setTimeout(800, () => { req.destroy(); resolve(); });
+                    req.on("error", () => resolve());
+                    req.end();
+                });
+            } catch { }
+            await new Promise(r => setTimeout(r, 400));
+            // Si toujours en vie sur Windows, trouver le PID sur le port 47821 et le tuer
+            if (process.platform === "win32" && await ping()) {
                 try {
-                    await new Promise<void>((resolve) => {
-                        const req = http.request({ hostname: '127.0.0.1', port: PORT, path: '/shutdown', method: 'POST' }, () => resolve());
-                        req.setTimeout(1000, () => { req.destroy(); resolve(); });
-                        req.on('error', () => resolve());
-                        req.end();
-                    });
+                    const out = childProcess.execSync(`netstat -ano | findstr :${PORT}`, { encoding: "utf-8" });
+                    for (const line of out.split("\n")) {
+                        const parts = line.trim().split(/\s+/);
+                        const pid = parts[parts.length - 1];
+                        if (pid && !isNaN(Number(pid)) && Number(pid) > 0 && Number(pid) !== process.pid) {
+                            childProcess.execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
+                        }
+                    }
                 } catch { }
-                // Fallback : taskkill
-                try {
-                    childProcess.execSync('taskkill /F /IM node.exe /FI "WINDOWTITLE eq ghost-server"', { stdio: 'ignore' });
-                } catch { }
-                await new Promise(r => setTimeout(r, 500));
+                await new Promise(r => setTimeout(r, 400));
             }
         }
     } catch { }
 }
 
 async function ensureServer(): Promise<boolean> {
-    if (serverReady && await ping()) return true;
+    if (serverReady && serverProc && await ping()) return true;
     if (startPromise) return startPromise;
 
     startPromise = (async () => {
         // Tuer les zombies avant de démarrer
         await killZombieServer();
-        if (await ping()) { serverReady = true; return true; }
 
         const script = findServerScript();
         if (!script) {
