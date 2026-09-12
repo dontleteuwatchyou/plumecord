@@ -865,13 +865,37 @@ http.createServer(async (req, res) => {
         if (req.url === "/set-mic") {
             const newDevice = body.micDevice;
             console.log("[GhostServer] Changement de micro demandé:", newDevice);
-            for (const [userId, session] of sessions) {
-                session.micLabel = newDevice;
-                if (session.udpConn) {
-                    stopMic(session);
-                    startPermanentAudio(session, session.udpConn);
+
+            // 1. Retirer TOUS les utilisateurs de TOUS les anciens pipelines sharedAudios
+            //    On ne conserve que les entrées qui correspondent déjà au nouveau périphérique.
+            for (const [device, shared] of sharedAudios) {
+                if (device === newDevice) continue; // garder le pipeline du nouveau périph s'il existe déjà
+                for (const [userId] of sessions) {
+                    if (shared.users.has(userId)) {
+                        shared.users.delete(userId);
+                        console.log(`[GhostServer] set-mic: retrait de ${userId} du périph ${device}`);
+                    }
+                }
+                // Tuer le proc ffmpeg si plus personne dessus
+                if (shared.users.size === 0) {
+                    try { shared.proc.kill("SIGKILL"); } catch { }
+                    sharedAudios.delete(device);
+                    console.log(`[GhostServer] set-mic: arrêt ffmpeg pour périph ${device}`);
                 }
             }
+
+            // 2. Mettre à jour micLabel + vider audioPipelines pour tous les comptes
+            for (const [userId, session] of sessions) {
+                session.micLabel = newDevice;
+                audioPipelines.delete(userId);
+            }
+
+            // 3. Démarrer le nouveau pipeline pour tous les comptes
+            //    (udpConn est null pour les comptes pas encore en vocal → startPermanentAudio gère ce cas)
+            for (const [userId, session] of sessions) {
+                startPermanentAudio(session, session.udpConn ?? null);
+            }
+
             send(res, 200, { ok: true });
             return;
         }
