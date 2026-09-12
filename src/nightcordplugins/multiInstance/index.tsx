@@ -721,18 +721,21 @@ function MultiInstanceButton() {
 }
 
 async function initInstanceWindowAuth(): Promise<void> {
+    console.log("[NightcordMI] initInstanceWindowAuth started");
     let auth: { token: string; userId: string; username: string; } | null = null;
     try {
         if (typeof Native?.getInstanceAuth === "function") {
             auth = await Native.getInstanceAuth();
         }
     } catch (e) {
-        console.warn("[MultiInstance] getInstanceAuth IPC failed:", e);
+        console.warn("[NightcordMI] getInstanceAuth IPC error:", e);
     }
 
     const miToken = auth?.token || (window as any).__nightcord_token;
     const miUserId = auth?.userId || (window as any).__nightcord_user_id;
-    if (!miToken || typeof miToken !== "string") return;
+    if (!miToken || typeof miToken !== "string") {
+        return;
+    }
 
     let cleanTok = miToken.trim().replace(/^"+|"+$/g, "");
     if (!cleanTok || cleanTok === "undefined") return;
@@ -745,62 +748,85 @@ async function initInstanceWindowAuth(): Promise<void> {
     }
     if (cleanTok.startsWith("dQw4w9WgXcQ:")) return;
 
-    // Synchronously sync localStorage in current window
-    try {
-        const q = JSON.stringify(cleanTok);
-        window.localStorage.setItem("token", q);
-        window.localStorage.setItem("default_token", q);
-        if (miUserId) {
-            window.localStorage.setItem("user_id_cache", JSON.stringify(miUserId));
-        }
-    } catch { }
+    console.log("[NightcordMI] Instance token acquired for userId:", miUserId);
 
-    // Sync via hidden iframe for storage partitioning resilience
-    try {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        document.body.appendChild(iframe);
-        const ifLs = (iframe as any).contentWindow?.localStorage;
-        if (ifLs) {
-            ifLs.token = JSON.stringify(cleanTok);
-            ifLs.default_token = JSON.stringify(cleanTok);
-            if (miUserId) ifLs.user_id_cache = JSON.stringify(miUserId);
-        }
-        document.body.removeChild(iframe);
-    } catch { }
-
-    let authDone = false;
-    const applyAuth = () => {
+    // 1. Synchronously sync localStorage in current window and hidden iframe
+    const syncStorage = () => {
         try {
-            // Check if already authenticated with target token
-            const curToken = AuthenticationStore?.getToken?.();
-            if (curToken === cleanTok && AuthenticationStore?.getId?.()) {
+            const q = JSON.stringify(cleanTok);
+            window.localStorage.setItem("token", q);
+            window.localStorage.setItem("default_token", q);
+            if (miUserId) {
+                window.localStorage.setItem("user_id_cache", JSON.stringify(miUserId));
+            }
+            const iframe = document.createElement("iframe");
+            iframe.style.display = "none";
+            document.body.appendChild(iframe);
+            const ifLs = (iframe as any).contentWindow?.localStorage;
+            if (ifLs) {
+                ifLs.token = q;
+                ifLs.default_token = q;
+                if (miUserId) ifLs.user_id_cache = JSON.stringify(miUserId);
+            }
+            document.body.removeChild(iframe);
+        } catch (e) {
+            console.warn("[NightcordMI] syncStorage error:", e);
+        }
+    };
+    syncStorage();
+
+    // 2. Poll Discord Webpack modules and perform native loginToken + routing
+    let authDone = false;
+    let attempts = 0;
+
+    const performLogin = () => {
+        if (authDone) return;
+        attempts++;
+
+        try {
+            syncStorage();
+
+            const authStore = findByProps("getToken", "getId");
+            const curToken = authStore?.getToken?.();
+
+            // Already authenticated with target account
+            if (curToken === cleanTok && authStore?.getId?.()) {
+                console.log("[NightcordMI] User authenticated successfully!");
                 authDone = true;
+                const router = findByProps("transitionTo", "replaceWith");
+                if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
+                    router.transitionTo("/channels/@me");
+                }
+                return;
             }
 
             // Persist to Discord native multi-account storage
-            try {
-                const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
-                if (tokenMod?.encryptAndStoreTokens && miUserId) {
-                    tokenMod.encryptAndStoreTokens({ [miUserId]: cleanTok });
-                }
-            } catch { }
-
-            // Native login action
-            try {
-                const loginMod = findByProps("loginToken") || findByProps("login", "logout");
-                if (typeof loginMod?.loginToken === "function" && (!curToken || curToken !== cleanTok)) {
-                    loginMod.loginToken(cleanTok);
-                }
-            } catch { }
-
-            // Dispatch auth flux events
-            if (FluxDispatcher?.dispatch) {
+            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+            if (tokenMod?.encryptAndStoreTokens && miUserId) {
                 try {
-                    FluxDispatcher.dispatch({ type: "LOGIN", token: cleanTok });
-                    FluxDispatcher.dispatch({ type: "LOGIN_SUCCESS", token: cleanTok });
+                    tokenMod.encryptAndStoreTokens({ [miUserId]: cleanTok });
+                } catch { }
+            }
+
+            // Official Discord login action
+            const loginMod = findByProps("loginToken") || findByProps("login", "logout") || findByProps("switchAccount", "loginToken");
+            if (typeof loginMod?.loginToken === "function") {
+                console.log("[NightcordMI] Calling loginMod.loginToken()...");
+                try {
+                    loginMod.loginToken(cleanTok);
+                } catch (e) {
+                    console.warn("[NightcordMI] loginToken error:", e);
+                }
+            }
+
+            // Dispatch Flux authentication events
+            const dispatcher = findByProps("dispatch", "subscribe") || FluxDispatcher;
+            if (dispatcher?.dispatch) {
+                try {
+                    dispatcher.dispatch({ type: "LOGIN", token: cleanTok });
+                    dispatcher.dispatch({ type: "LOGIN_SUCCESS", token: cleanTok });
                     if (miUserId) {
-                        FluxDispatcher.dispatch({
+                        dispatcher.dispatch({
                             type: "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
                             token: cleanTok,
                             userId: miUserId
@@ -809,29 +835,34 @@ async function initInstanceWindowAuth(): Promise<void> {
                 } catch { }
             }
 
-            // Transition to /channels/@me via Discord router (NEVER window.location.href)
-            if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !(window as any).__mi_routed) {
-                const router = findByProps("transitionTo", "replaceWith");
-                if (typeof router?.transitionTo === "function") {
-                    (window as any).__mi_routed = true;
-                    router.transitionTo("/channels/@me");
-                }
+            // Route away from /login
+            const router = findByProps("transitionTo", "replaceWith");
+            if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
+                console.log("[NightcordMI] Routing to /channels/@me...");
+                router.transitionTo("/channels/@me");
             }
         } catch (e) {
-            console.warn("[MultiInstance] applyAuth error:", e);
+            console.warn("[NightcordMI] performLogin error:", e);
+        }
+
+        if (attempts >= 100) {
+            console.warn("[NightcordMI] Auth polling reached max attempts (10s)");
+            authDone = true;
         }
     };
 
-    applyAuth();
+    performLogin();
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", applyAuth, { once: true });
+        document.addEventListener("DOMContentLoaded", performLogin, { once: true });
     }
-    const intervals = [300, 800, 1500, 3000, 5000];
-    for (const delay of intervals) {
-        setTimeout(() => {
-            if (!authDone) applyAuth();
-        }, delay);
-    }
+
+    const intervalId = setInterval(() => {
+        if (authDone) {
+            clearInterval(intervalId);
+            return;
+        }
+        performLogin();
+    }, 100);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -869,3 +900,6 @@ export default definePlugin({
         if (root) root.remove();
     },
 });
+
+// Execute immediately on renderer startup — independent of any plugin lifecycle
+initInstanceWindowAuth().catch(err => console.warn("[NightcordMI] initInstanceWindowAuth error:", err));
