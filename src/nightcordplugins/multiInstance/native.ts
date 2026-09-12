@@ -4,9 +4,29 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { app, BrowserWindow, ipcMain, screen, session, type Session } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, screen, session, type Session } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
+
+export async function decryptToken(_: any, encryptedToken: string): Promise<string | null> {
+    return decryptTokenSync(encryptedToken);
+}
+
+function decryptTokenSync(token: string): string {
+    if (!token || typeof token !== "string") return "";
+    let clean = token.trim().replace(/^"+|"+$/g, "");
+    if (clean.startsWith("dQw4w9WgXcQ:")) {
+        try {
+            if (safeStorage.isEncryptionAvailable()) {
+                const raw = Buffer.from(clean.slice("dQw4w9WgXcQ:".length), "base64");
+                clean = safeStorage.decryptString(raw);
+            }
+        } catch (e) {
+            console.warn("[NightcordMI] decryptTokenSync failed:", e);
+        }
+    }
+    return clean;
+}
 
 const openWindows = new Map<string, BrowserWindow>();
 
@@ -334,7 +354,7 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         }
     } catch {}
 
-    const cleanToken = String(token || "").trim().replace(/^"+|"+$/g, "");
+    const cleanToken = decryptTokenSync(token);
 
     // Serialize values to JS string literals safe to embed via JSON.stringify
     const tokenLiteral = JSON.stringify(cleanToken);
@@ -357,10 +377,12 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "    var qt = JSON.stringify(RAW_TOKEN);",
         "    try { localStorage.setItem('token', qt); } catch(e) {}",
         "    try { localStorage.setItem('default_token', qt); } catch(e) {}",
+        "    if (TARGET_UID) {",
+        "      try { localStorage.setItem('user_id_cache', JSON.stringify(TARGET_UID)); } catch(e) {}",
+        "    }",
         "    try {",
         "      var uid = localStorage.getItem('user_id_cache');",
         "      if (uid && TARGET_UID && uid.replace(/\"/g, '') !== TARGET_UID) {",
-        "        localStorage.removeItem('user_id_cache');",
         "        localStorage.removeItem('AuthenticationStore');",
         "        localStorage.removeItem('MultiAccountStore');",
         "      }",
@@ -373,6 +395,7 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "    } catch(e) {}",
         "  }",
         "  try { Object.defineProperty(window, '__nightcord_token', { value: RAW_TOKEN, writable: false, configurable: true }); } catch(e) {}",
+        "  try { Object.defineProperty(window, '__nightcord_user_id', { value: TARGET_UID, writable: false, configurable: true }); } catch(e) {}",
         "  (function() {",
         "    var lastUI = 0;",
         "    window.addEventListener('pointerdown', function(e) { if (e.isTrusted) lastUI = Date.now(); }, true);",
@@ -450,6 +473,7 @@ export async function openInstanceWindow(
     performanceMode = false
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
+        token = decryptTokenSync(token);
         // Fenetre deja ouverte -> focus
         const existing = openWindows.get(userId);
         if (existing && !existing.isDestroyed()) {
@@ -600,7 +624,7 @@ export async function openInstanceWindow(
         });
 
         // Injection du token
-        const cleanTok = String(token || "").trim().replace(/^"+|"+$/g, "");
+        const cleanTok = decryptTokenSync(token);
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
@@ -610,10 +634,12 @@ export async function openInstanceWindow(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                const uid = localStorage.getItem("user_id_cache");
                 const target = ${safeTargetId};
+                if (target) {
+                    localStorage.setItem("user_id_cache", JSON.stringify(target));
+                }
+                const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
-                    localStorage.removeItem("user_id_cache");
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }
@@ -675,6 +701,7 @@ export async function openInstanceWindowGrouped(
     performanceMode = false
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
+        token = decryptTokenSync(token);
         // Focus si deja ouverte
         const existing = openGroupedWindows.get(userId);
         if (existing && !existing.isDestroyed()) {
@@ -791,7 +818,7 @@ export async function openInstanceWindowGrouped(
             }
         });
 
-        const cleanTok = String(token || "").trim().replace(/^"+|"+$/g, "");
+        const cleanTok = decryptTokenSync(token);
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
@@ -801,10 +828,12 @@ export async function openInstanceWindowGrouped(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                const uid = localStorage.getItem("user_id_cache");
                 const target = ${safeTargetId};
+                if (target) {
+                    localStorage.setItem("user_id_cache", JSON.stringify(target));
+                }
+                const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
-                    localStorage.removeItem("user_id_cache");
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }

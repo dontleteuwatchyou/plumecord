@@ -204,15 +204,26 @@ function getNativeAccounts(): SavedAccount[] {
 }
 
 /** Quick switch — token direct */
-function switchToQuick(token: string) {
+function switchToQuick(token: string, userId?: string) {
+    const cleanTok = token.trim().replace(/^"+|"+$/g, "");
     try {
-        window.localStorage.setItem("token", `"${token}"`);
+        window.localStorage.setItem("token", `"${cleanTok}"`);
+        window.localStorage.setItem("default_token", `"${cleanTok}"`);
+        if (userId) {
+            window.localStorage.setItem("user_id_cache", `"${userId}"`);
+        }
         location.reload();
     } catch {
         const iframe = document.createElement("iframe");
         iframe.style.display = "none";
         document.body.appendChild(iframe);
-        try { (iframe as any).contentWindow.localStorage.token = `"${token}"`; } catch { }
+        try {
+            (iframe as any).contentWindow.localStorage.token = `"${cleanTok}"`;
+            (iframe as any).contentWindow.localStorage.default_token = `"${cleanTok}"`;
+            if (userId) {
+                (iframe as any).contentWindow.localStorage.user_id_cache = `"${userId}"`;
+            }
+        } catch { }
         document.body.removeChild(iframe);
         location.reload();
     }
@@ -356,7 +367,23 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     React.useEffect(() => {
         captureCurrentToken();
-        DataStore.get<SavedAccount[]>(STORE_KEY).then(v => setSavedAccounts(v ?? []));
+        DataStore.get<SavedAccount[]>(STORE_KEY).then(async v => {
+            const raw = v ?? [];
+            const decrypted: SavedAccount[] = [];
+            for (const acc of raw) {
+                let tok = acc.token;
+                if (tok && tok.startsWith("dQw4w9WgXcQ:")) {
+                    try {
+                        const dec = await Native.decryptToken(tok);
+                        if (dec) tok = dec;
+                    } catch (e) {
+                        console.warn("[MultiInstance] Decryption failed for", acc.username, e);
+                    }
+                }
+                decrypted.push({ ...acc, token: tok });
+            }
+            setSavedAccounts(decrypted);
+        });
         setNativeAccounts(getNativeAccounts());
         Native.getOpenInstances().then(ids => setOpenInstances(ids ?? [])).catch(() => { });
     }, []);
@@ -578,7 +605,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                         onNewWindow={() => handleNewWindow(acc)}
                         onNewDetached={() => handleNewDetached(acc)}
                         onNewGrouped={() => handleNewGrouped(acc)}
-                        onSwitch={() => acc.token ? switchToQuick(acc.token) : switchNativeAccount(acc.id)}
+                        onSwitch={() => acc.token ? switchToQuick(acc.token, acc.id) : switchNativeAccount(acc.id)}
                     />
                 );
             })()}
@@ -682,6 +709,74 @@ function MultiInstanceButton() {
     );
 }
 
+function initInstanceWindowAuth(): void {
+    const miToken = (window as any).__nightcord_token;
+    const miUserId = (window as any).__nightcord_user_id;
+    if (!miToken || typeof miToken !== "string") return;
+
+    const cleanTok = miToken.trim().replace(/^"+|"+$/g, "");
+    if (!cleanTok || cleanTok === "undefined" || cleanTok.startsWith("dQw4w9WgXcQ:")) return;
+
+    // Synchronously sync localStorage in current window
+    try {
+        const q = JSON.stringify(cleanTok);
+        window.localStorage.setItem("token", q);
+        window.localStorage.setItem("default_token", q);
+        if (miUserId) {
+            window.localStorage.setItem("user_id_cache", JSON.stringify(miUserId));
+        }
+    } catch { }
+
+    // Sync via hidden iframe for storage partitioning resilience
+    try {
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        document.body.appendChild(iframe);
+        const ifLs = (iframe as any).contentWindow?.localStorage;
+        if (ifLs) {
+            ifLs.token = JSON.stringify(cleanTok);
+            ifLs.default_token = JSON.stringify(cleanTok);
+            if (miUserId) ifLs.user_id_cache = JSON.stringify(miUserId);
+        }
+        document.body.removeChild(iframe);
+    } catch { }
+
+    const applyAuth = () => {
+        try {
+            const TokenStore = findByProps("getToken", "setToken");
+            if (TokenStore && typeof (TokenStore as any).setToken === "function") {
+                if ((TokenStore as any).getToken?.() !== cleanTok) {
+                    (TokenStore as any).setToken(cleanTok);
+                }
+            }
+
+            const AuthenticationStore = findByProps("getToken", "isAuthenticated", "getId");
+            if (AuthenticationStore && !AuthenticationStore.isAuthenticated?.()) {
+                const FluxDispatcher = findByProps("dispatch", "subscribe");
+                if (FluxDispatcher?.dispatch) {
+                    FluxDispatcher.dispatch({
+                        type: "LOGIN_SUCCESS",
+                        token: cleanTok
+                    });
+                }
+            }
+
+            if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !(window as any).__mi_routed) {
+                (window as any).__mi_routed = true;
+                window.location.href = "https://discord.com/channels/@me";
+            }
+        } catch { }
+    };
+
+    applyAuth();
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", applyAuth, { once: true });
+    }
+    setTimeout(applyAuth, 300);
+    setTimeout(applyAuth, 1000);
+    setTimeout(applyAuth, 2500);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Plugin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -702,6 +797,7 @@ export default definePlugin({
     _fluxUnsub: null as (() => void) | null,
 
     async start() {
+        initInstanceWindowAuth();
         await loadTokenCache();
         hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();
