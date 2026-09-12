@@ -224,7 +224,7 @@ async function init() {
     initTrayIpc();
 
     if (!IS_WEB && !IS_UPDATER_DISABLED) {
-        runUpdateCheck();
+        setTimeout(runUpdateCheck, 8000);
         setInterval(runUpdateCheck, 1000 * 60 * 30); // 30 minutes
     }
 
