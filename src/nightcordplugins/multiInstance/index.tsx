@@ -12,7 +12,7 @@ import { definePluginSettings } from "@api/Settings";
 import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps } from "@webpack";
-import { FluxDispatcher, Forms, IconUtils, React, ReactDOM, UserStore } from "@webpack/common";
+import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, React, ReactDOM, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 
@@ -67,12 +67,23 @@ async function loadTokenCache(): Promise<void> {
             dirty = true;
             continue;
         }
-        if (curUser?.id && curTok && id !== curUser.id && tok === curTok) {
+        let realTok = tok;
+        if (tok.startsWith("dQw4w9WgXcQ:")) {
+            try {
+                const dec = await Native.decryptToken(tok);
+                if (dec && !dec.startsWith("dQw4w9WgXcQ:")) {
+                    tokenCache[id] = dec;
+                    realTok = dec;
+                    dirty = true;
+                }
+            } catch { }
+        }
+        if (curUser?.id && curTok && id !== curUser.id && realTok === curTok) {
             delete tokenCache[id];
             dirty = true;
             continue;
         }
-        const owner = getUserIdFromToken(tok);
+        const owner = getUserIdFromToken(realTok);
         if (owner && owner !== id) {
             delete tokenCache[id];
             dirty = true;
@@ -709,13 +720,30 @@ function MultiInstanceButton() {
     );
 }
 
-function initInstanceWindowAuth(): void {
-    const miToken = (window as any).__nightcord_token;
-    const miUserId = (window as any).__nightcord_user_id;
+async function initInstanceWindowAuth(): Promise<void> {
+    let auth: { token: string; userId: string; username: string; } | null = null;
+    try {
+        if (typeof Native?.getInstanceAuth === "function") {
+            auth = await Native.getInstanceAuth();
+        }
+    } catch (e) {
+        console.warn("[MultiInstance] getInstanceAuth IPC failed:", e);
+    }
+
+    const miToken = auth?.token || (window as any).__nightcord_token;
+    const miUserId = auth?.userId || (window as any).__nightcord_user_id;
     if (!miToken || typeof miToken !== "string") return;
 
-    const cleanTok = miToken.trim().replace(/^"+|"+$/g, "");
-    if (!cleanTok || cleanTok === "undefined" || cleanTok.startsWith("dQw4w9WgXcQ:")) return;
+    let cleanTok = miToken.trim().replace(/^"+|"+$/g, "");
+    if (!cleanTok || cleanTok === "undefined") return;
+
+    if (cleanTok.startsWith("dQw4w9WgXcQ:")) {
+        try {
+            const dec = await Native.decryptToken(cleanTok);
+            if (dec) cleanTok = dec;
+        } catch { }
+    }
+    if (cleanTok.startsWith("dQw4w9WgXcQ:")) return;
 
     // Synchronously sync localStorage in current window
     try {
@@ -741,40 +769,69 @@ function initInstanceWindowAuth(): void {
         document.body.removeChild(iframe);
     } catch { }
 
+    let authDone = false;
     const applyAuth = () => {
         try {
-            const TokenStore = findByProps("getToken", "setToken");
-            if (TokenStore && typeof (TokenStore as any).setToken === "function") {
-                if ((TokenStore as any).getToken?.() !== cleanTok) {
-                    (TokenStore as any).setToken(cleanTok);
-                }
+            // Check if already authenticated with target token
+            const curToken = AuthenticationStore?.getToken?.();
+            if (curToken === cleanTok && AuthenticationStore?.getId?.()) {
+                authDone = true;
             }
 
-            const AuthenticationStore = findByProps("getToken", "isAuthenticated", "getId");
-            if (AuthenticationStore && !AuthenticationStore.isAuthenticated?.()) {
-                const FluxDispatcher = findByProps("dispatch", "subscribe");
-                if (FluxDispatcher?.dispatch) {
-                    FluxDispatcher.dispatch({
-                        type: "LOGIN_SUCCESS",
-                        token: cleanTok
-                    });
+            // Persist to Discord native multi-account storage
+            try {
+                const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+                if (tokenMod?.encryptAndStoreTokens && miUserId) {
+                    tokenMod.encryptAndStoreTokens({ [miUserId]: cleanTok });
                 }
+            } catch { }
+
+            // Native login action
+            try {
+                const loginMod = findByProps("loginToken") || findByProps("login", "logout");
+                if (typeof loginMod?.loginToken === "function" && (!curToken || curToken !== cleanTok)) {
+                    loginMod.loginToken(cleanTok);
+                }
+            } catch { }
+
+            // Dispatch auth flux events
+            if (FluxDispatcher?.dispatch) {
+                try {
+                    FluxDispatcher.dispatch({ type: "LOGIN", token: cleanTok });
+                    FluxDispatcher.dispatch({ type: "LOGIN_SUCCESS", token: cleanTok });
+                    if (miUserId) {
+                        FluxDispatcher.dispatch({
+                            type: "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
+                            token: cleanTok,
+                            userId: miUserId
+                        });
+                    }
+                } catch { }
             }
 
+            // Transition to /channels/@me via Discord router (NEVER window.location.href)
             if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !(window as any).__mi_routed) {
-                (window as any).__mi_routed = true;
-                window.location.href = "https://discord.com/channels/@me";
+                const router = findByProps("transitionTo", "replaceWith");
+                if (typeof router?.transitionTo === "function") {
+                    (window as any).__mi_routed = true;
+                    router.transitionTo("/channels/@me");
+                }
             }
-        } catch { }
+        } catch (e) {
+            console.warn("[MultiInstance] applyAuth error:", e);
+        }
     };
 
     applyAuth();
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", applyAuth, { once: true });
     }
-    setTimeout(applyAuth, 300);
-    setTimeout(applyAuth, 1000);
-    setTimeout(applyAuth, 2500);
+    const intervals = [300, 800, 1500, 3000, 5000];
+    for (const delay of intervals) {
+        setTimeout(() => {
+            if (!authDone) applyAuth();
+        }, delay);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -797,7 +854,7 @@ export default definePlugin({
     _fluxUnsub: null as (() => void) | null,
 
     async start() {
-        initInstanceWindowAuth();
+        await initInstanceWindowAuth();
         await loadTokenCache();
         hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();

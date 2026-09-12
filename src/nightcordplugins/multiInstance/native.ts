@@ -29,6 +29,15 @@ function decryptTokenSync(token: string): string {
 }
 
 const openWindows = new Map<string, BrowserWindow>();
+const pendingInstanceAuth = new Map<number, { token: string; userId: string; username: string; }>();
+
+export async function getInstanceAuth(_: any): Promise<{ token: string; userId: string; username: string; } | null> {
+    const senderId = _?.sender?.id;
+    if (typeof senderId === "number") {
+        return pendingInstanceAuth.get(senderId) ?? null;
+    }
+    return null;
+}
 
 function grantSessionMediaPermissions(ses: Session) {
     try {
@@ -571,6 +580,7 @@ export async function openInstanceWindow(
         }
 
         openWindows.set(userId, win);
+        pendingInstanceAuth.set(win.webContents.id, { token: cleanToken, userId, username });
 
         win.on("enter-html-full-screen", () => {
             win.setFullScreen(true);
@@ -608,6 +618,7 @@ export async function openInstanceWindow(
             cleanupIpc();
             cleanupNotifIpc();
             openWindows.delete(userId);
+            pendingInstanceAuth.delete(win.webContents.id);
             // Nettoie les service workers de la session pour couper définitivement les notifs
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
             // Retire le preload de l'ensemble actif puis supprime le fichier
@@ -643,10 +654,15 @@ export async function openInstanceWindow(
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }
-                if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
-                    window.__mi_auto_redirected = true;
-                    window.location.href = "https://discord.com/channels/@me";
-                }
+                const iframe = document.createElement("iframe");
+                iframe.style.display = "none";
+                document.body.appendChild(iframe);
+                try {
+                    iframe.contentWindow.localStorage.token = q;
+                    iframe.contentWindow.localStorage.default_token = q;
+                    if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
+                } catch(e) {}
+                document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
         wc.on("dom-ready", () => wc.executeJavaScript(injectJs).catch(() => { }));
@@ -772,6 +788,7 @@ export async function openInstanceWindowGrouped(
         });
 
         openGroupedWindows.set(userId, win);
+        pendingInstanceAuth.set(win.webContents.id, { token: cleanTok, userId, username });
 
         win.on("enter-html-full-screen", () => {
             win.setFullScreen(true);
@@ -789,6 +806,7 @@ export async function openInstanceWindowGrouped(
                         for (const r of regs) await r.unregister();
                     } catch(e) {}
                     try {
+                        // Coupe la connexion gateway Discord
                         const ws = window.__NIGHTCORD_GW_WS__;
                         if (ws && ws.readyState <= 1) ws.close(4000, 'window_close');
                     } catch(e) {}
@@ -806,6 +824,7 @@ export async function openInstanceWindowGrouped(
             cleanupIpc();
             cleanupNotifIpc();
             openGroupedWindows.delete(userId);
+            pendingInstanceAuth.delete(win.webContents.id);
             ses.clearStorageData({ storages: ["serviceworkers"] }).catch(() => {});
             activePreloads.delete(preloadPath);
             try { unlinkSync(preloadPath); } catch {}
@@ -818,7 +837,6 @@ export async function openInstanceWindowGrouped(
             }
         });
 
-        const cleanTok = decryptTokenSync(token);
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
@@ -837,10 +855,15 @@ export async function openInstanceWindowGrouped(
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }
-                if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
-                    window.__mi_auto_redirected = true;
-                    window.location.href = "https://discord.com/channels/@me";
-                }
+                const iframe = document.createElement("iframe");
+                iframe.style.display = "none";
+                document.body.appendChild(iframe);
+                try {
+                    iframe.contentWindow.localStorage.token = q;
+                    iframe.contentWindow.localStorage.default_token = q;
+                    if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
+                } catch(e) {}
+                document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
         wc.on("dom-ready", () => wc.executeJavaScript(injectJs).catch(() => {}));
