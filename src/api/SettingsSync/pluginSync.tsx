@@ -1,6 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -28,63 +28,75 @@ export async function clearPluginSyncToken() {
     await DataStore.set(PLUGIN_TOKEN_KEY, undefined);
 }
 
+// ─── CORS-safe fetch helper ───────────────────────────────────────────────────
+// Routes through Electron main-process net.fetch to bypass CORS on api.nightcord.st.
+// Falls back to renderer fetch when running in web/browser context.
+async function netFetch(url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string; noCache?: boolean; }): Promise<{ ok: boolean; status: number; data: unknown; } | null> {
+    const nf = (window as any).VencordNative?.nightcord?.netFetch;
+    if (typeof nf === "function") {
+        return nf(url, opts ?? {}) as Promise<{ ok: boolean; status: number; data: unknown; } | null>;
+    }
+    // Web fallback
+    try {
+        const res = await fetch(url, {
+            method: opts?.method ?? "GET",
+            headers: opts?.headers,
+            body: opts?.body
+        });
+        let data: unknown;
+        try { data = await res.json(); } catch { data = null; }
+        return { ok: res.ok, status: res.status, data };
+    } catch {
+        return null;
+    }
+}
+
 export async function beginDiscordOAuth(state?: string) {
     const url = new URL("/api/oauth2/signing", getCloudUrl());
     if (state) {
         url.searchParams.set("state", state);
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
+    const res = await netFetch(url.toString());
+    if (!res?.ok) {
         throw new Error("Failed to create OAuth URL");
     }
 
-    return response.json() as Promise<{
-        url: string;
-        redirectUri: string;
-        scopes: string[];
-    }>;
+    return res.data as { url: string; redirectUri: string; scopes: string[]; };
 }
 
 export async function checkOAuthToken(token: string) {
-    const response = await fetch(new URL(`/api/oauth2/check?token=${encodeURIComponent(token)}`, getCloudUrl()));
-    if (!response.ok) {
-        return null;
-    }
-    return response.json();
+    const res = await netFetch(new URL(`/api/oauth2/check?token=${encodeURIComponent(token)}`, getCloudUrl()).toString());
+    if (!res?.ok) return null;
+    return res.data;
 }
 
 export async function getOwnPluginConfig(pluginName: string, token: string) {
-    const response = await fetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}?token=${encodeURIComponent(token)}`, getCloudUrl()));
-    if (!response.ok) {
+    const res = await netFetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}?token=${encodeURIComponent(token)}`, getCloudUrl()).toString());
+    if (!res?.ok) {
         throw new Error("Failed to load plugin config");
     }
-    return response.json();
+    return res.data;
 }
 
 export async function saveOwnPluginConfig(pluginName: string, token: string, settings: Record<string, unknown>) {
-    const response = await fetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}`, getCloudUrl()), {
+    const res = await netFetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}`, getCloudUrl()).toString(), {
         method: "PUT",
-        headers: {
-            "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, settings })
     });
-
-    if (!response.ok) {
+    if (!res?.ok) {
         throw new Error("Failed to save plugin config");
     }
-
-    return response.json();
+    return res.data;
 }
 
 export async function getPublicPluginConfig(pluginName: string, userId: string) {
-    const response = await fetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}/public?userId=${encodeURIComponent(userId)}`, getCloudUrl()));
-    if (!response.ok) {
-        return null;
-    }
-    return response.json();
+    const res = await netFetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}/public?userId=${encodeURIComponent(userId)}`, getCloudUrl()).toString());
+    if (!res?.ok) return null;
+    return res.data;
 }
+
 
 export async function authorizePluginSync(): Promise<boolean> {
     if (await getPluginSyncToken()) {

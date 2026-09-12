@@ -1,7 +1,6 @@
 /*
- * Nightcord 2FA Authenticator — Cloud Synchronization Manager
- * Secure zero-knowledge cloud backup via cloud.nightcord.st
- * Copyright (c) 2026 Nightcord Team
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -59,6 +58,26 @@ import { putCloudSettings } from "@api/SettingsSync/cloudSync";
 const API_BASES = ["https://api.nightcord.st", "https://cloud.nightcord.st"];
 const PLUGIN_KEYS = ["totp-manager", "totpManager", "totp_manager"];
 
+// ─── CORS-safe fetch helper ───────────────────────────────────────────────────
+// Routes all api.nightcord.st / cloud.nightcord.st calls through Electron's
+// main-process net.fetch to bypass CORS restrictions. Falls back to renderer
+// fetch on web (non-Electron) contexts.
+async function netFetch(url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string; }): Promise<{ ok: boolean; status: number; data: unknown; } | null> {
+    const nf = (window as any).VencordNative?.nightcord?.netFetch;
+    if (typeof nf === "function") {
+        return nf(url, opts ?? {}) as Promise<{ ok: boolean; status: number; data: unknown; } | null>;
+    }
+    try {
+        const res = await fetch(url, { method: opts?.method ?? "GET", headers: opts?.headers, body: opts?.body });
+        let data: unknown;
+        try { data = await res.json(); } catch { data = null; }
+        return { ok: res.ok, status: res.status, data };
+    } catch {
+        return null;
+    }
+}
+
+
 /**
  * Retrieves a valid OAuth2 session token for Nightcord Cloud.
  */
@@ -110,18 +129,16 @@ export async function pushEncryptedVaultToCloud(envelope: EncryptedVaultEnvelope
 
     let uploaded = false;
 
-    // 1. Direct PluginSync API
+    // 1. Direct PluginSync API (CORS-safe via netFetch)
     try {
         const token = await getValidCloudToken(false);
         if (token) {
             for (const base of API_BASES) {
                 for (const key of PLUGIN_KEYS) {
                     try {
-                        const res = await fetch(`${base}/api/sync/${encodeURIComponent(key)}`, {
+                        const res = await netFetch(`${base}/api/sync/${encodeURIComponent(key)}`, {
                             method: "PUT",
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
+                            headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 token,
                                 private: true,
@@ -132,7 +149,7 @@ export async function pushEncryptedVaultToCloud(envelope: EncryptedVaultEnvelope
                                 }
                             })
                         });
-                        if (res.ok) {
+                        if (res?.ok) {
                             uploaded = true;
                             break;
                         }
@@ -150,7 +167,7 @@ export async function pushEncryptedVaultToCloud(envelope: EncryptedVaultEnvelope
         try {
             const auth = await getCloudAuth();
             const cloudUrl = getCloudUrl();
-            const res = await fetch(new URL("/v2/totp/vault", cloudUrl), {
+            const res = await netFetch(new URL("/v2/totp/vault", cloudUrl).toString(), {
                 method: "PUT",
                 headers: {
                     Authorization: auth,
@@ -158,7 +175,7 @@ export async function pushEncryptedVaultToCloud(envelope: EncryptedVaultEnvelope
                 },
                 body: JSON.stringify(envelope)
             });
-            if (res.ok) uploaded = true;
+            if (res?.ok) uploaded = true;
         } catch {}
 
         // 3. Trigger global SettingsSync v2 upload
@@ -170,16 +187,16 @@ export async function pushEncryptedVaultToCloud(envelope: EncryptedVaultEnvelope
 }
 
 export async function pullEncryptedVaultFromCloud(): Promise<EncryptedVaultEnvelope | null> {
-    // 1. Try Direct PluginSync API (api.nightcord.st / cloud.nightcord.st)
+    // 1. Try Direct PluginSync API (api.nightcord.st / cloud.nightcord.st) — CORS-safe via netFetch
     try {
         const token = await getValidCloudToken(false);
         if (token) {
             for (const base of API_BASES) {
                 for (const key of PLUGIN_KEYS) {
                     try {
-                        const res = await fetch(`${base}/api/sync/${encodeURIComponent(key)}?token=${encodeURIComponent(token)}`);
-                        if (res.ok) {
-                            const data = await res.json();
+                        const res = await netFetch(`${base}/api/sync/${encodeURIComponent(key)}?token=${encodeURIComponent(token)}`);
+                        if (res?.ok) {
+                            const data = res.data as any;
                             const settingsObj = data?.config?.settings || data?.config || data?.settings || data;
                             if (settingsObj && settingsObj.ciphertext) {
                                 const envelope: EncryptedVaultEnvelope = {
@@ -208,14 +225,12 @@ export async function pullEncryptedVaultFromCloud(): Promise<EncryptedVaultEnvel
         try {
             const auth = await getCloudAuth();
             const cloudUrl = getCloudUrl();
-            const res = await fetch(new URL("/v2/totp/vault", cloudUrl), {
+            const res = await netFetch(new URL("/v2/totp/vault", cloudUrl).toString(), {
                 method: "GET",
-                headers: {
-                    Authorization: auth
-                }
+                headers: { Authorization: auth }
             });
-            if (res.ok) {
-                const envelope: EncryptedVaultEnvelope = await res.json();
+            if (res?.ok) {
+                const envelope = res.data as EncryptedVaultEnvelope;
                 if (envelope?.ciphertext) {
                     await saveLocalVaultEnvelope(envelope);
                     return envelope;

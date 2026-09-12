@@ -1150,6 +1150,8 @@ function updateCachedRealData() {
 
 let _domQueued = false;
 let _domMutations: MutationRecord[] = [];
+/** Tracks every text node we have modified with __cp_orig so stopDomObserver can restore them in O(modified) instead of O(all-DOM). */
+const _modifiedNodes = new Set<Text>();
 
 function scanTextNode(node: Text) {
     if (!isEnabled || !node.nodeValue) return;
@@ -1170,7 +1172,7 @@ function scanTextNode(node: Text) {
     }
     if (_realUsername && storedData.username && result.includes(_realUsername)) { result = result.split(_realUsername).join(storedData.username); replaced = true; }
     if (_realGlobalName && storedData.globalName && result.includes(_realGlobalName)) { result = result.split(_realGlobalName).join(storedData.globalName); replaced = true; }
-    if (replaced && result !== node.nodeValue) { if ((node as any).__cp_orig === undefined) (node as any).__cp_orig = val; node.nodeValue = result; }
+    if (replaced && result !== node.nodeValue) { if ((node as any).__cp_orig === undefined) { (node as any).__cp_orig = val; _modifiedNodes.add(node); } node.nodeValue = result; }
 }
 
 function scanNode(node: Node) {
@@ -1243,9 +1245,16 @@ function startDomObserver() {
 
 function stopDomObserver() {
     domObserver?.disconnect(); domObserver = null;
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let n: Node | null;
-    while ((n = walker.nextNode())) { if ((n as any).__cp_orig !== undefined) { n.nodeValue = (n as any).__cp_orig; delete (n as any).__cp_orig; } }
+    // Restore only the text nodes we actually modified — O(modified) not O(all-DOM).
+    // Previously this used a full synchronous TreeWalker over document.body which froze
+    // Discord for hundreds of ms on every CONNECTION_OPEN at startup.
+    for (const node of _modifiedNodes) {
+        if ((node as any).__cp_orig !== undefined) {
+            node.nodeValue = (node as any).__cp_orig;
+            delete (node as any).__cp_orig;
+        }
+    }
+    _modifiedNodes.clear();
 }
 
 function handleVisibilityChange() {
