@@ -106,6 +106,38 @@ async function killZombieServer(): Promise<void> {
     } catch { }
 }
 
+function syncServerScriptIfOutdated(): void {
+    try {
+        let userData = "";
+        try { userData = app.getPath("userData"); } catch {}
+        if (!userData) return;
+        const targetPath = path.join(userData, "ghost-server", "server.js");
+
+        const execDir = path.dirname(process.execPath);
+        const resPath = process.resourcesPath;
+        const sources = [
+            path.join(__dirname, "..", "..", "..", "ghost-server", "server.js"),
+            path.join(__dirname, "..", "..", "..", "..", "ghost-server", "server.js"),
+            path.join(__dirname, "..", "..", "ghost-server", "server.js"),
+            path.join(resPath, "ghost-server", "server.js"),
+            path.join(execDir, "resources", "ghost-server", "server.js"),
+        ];
+        for (const src of sources) {
+            if (fs.existsSync(src) && src !== targetPath) {
+                const srcBuf = fs.readFileSync(src);
+                const targetBuf = fs.existsSync(targetPath) ? fs.readFileSync(targetPath) : null;
+                if (!targetBuf || !srcBuf.equals(targetBuf)) {
+                    fs.writeFileSync(targetPath, srcBuf);
+                    console.log(`[GhostNative] Synced updated server.js to ${targetPath}`);
+                }
+                break;
+            }
+        }
+    } catch (e) {
+        console.warn("[GhostNative] syncServerScript error:", e);
+    }
+}
+
 async function ensureServer(): Promise<boolean> {
     if (serverReady && serverProc && await ping()) return true;
     if (startPromise) return startPromise;
@@ -113,6 +145,9 @@ async function ensureServer(): Promise<boolean> {
     startPromise = (async () => {
         // Tuer les zombies avant de démarrer
         await killZombieServer();
+
+        // Mettre à jour automatiquement server.js s'il y a une version plus récente
+        syncServerScriptIfOutdated();
 
         const script = findServerScript();
         if (!script) {

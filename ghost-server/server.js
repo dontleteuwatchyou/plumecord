@@ -334,10 +334,13 @@ function setupSpeakingHeartbeat(session, udpConn) {
     const sendSpeaking = () => {
         try {
             setSpeakingHelper(udpConn, session, true);
+            unmuteAndUndeafen(session);
         } catch { }
     };
     sendSpeaking();
-    session._speakingHeartbeat = setInterval(sendSpeaking, 5000);
+    setTimeout(sendSpeaking, 500);
+    setTimeout(sendSpeaking, 1500);
+    session._speakingHeartbeat = setInterval(sendSpeaking, 3000);
 }
 
 async function doJoinVoice(session, guildId, channelId) {
@@ -671,11 +674,22 @@ function startPermanentAudio(session, initialUdpConn) {
             // Broadcast aux utilisateurs actifs
             for (const [uid, target] of shared.users) {
                 if (target?.ready) {
+                    if (!target._audioPacketizer) {
+                        try { target.setPacketizer?.("H264"); } catch { }
+                    }
                     try { target.sendAudioFrame(opusFrame, FRAME_DUR); } catch { }
                 } else {
                     // Update target si joinVoice a fini entre temps
                     const pipe = audioPipelines.get(uid);
-                    if (pipe?.udpTarget) shared.users.set(uid, pipe.udpTarget);
+                    if (pipe?.udpTarget) {
+                        shared.users.set(uid, pipe.udpTarget);
+                        if (pipe.udpTarget.ready) {
+                            if (!pipe.udpTarget._audioPacketizer) {
+                                try { pipe.udpTarget.setPacketizer?.("H264"); } catch { }
+                            }
+                            try { pipe.udpTarget.sendAudioFrame(opusFrame, FRAME_DUR); } catch { }
+                        }
+                    }
                 }
             }
         }
