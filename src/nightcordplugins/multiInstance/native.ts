@@ -315,7 +315,7 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
  */
 const activePreloads = new Set<string>();
 
-function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}): string {
+function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}, targetUserId = ""): string {
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
@@ -339,6 +339,7 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
     // Serialize values to JS string literals safe to embed via JSON.stringify
     const tokenLiteral = JSON.stringify(cleanToken);
     const settingsLiteral = JSON.stringify(JSON.stringify(sharedSettings ?? {}));
+    const targetUserIdLiteral = JSON.stringify(targetUserId ?? "");
 
     // Inner script: runs in main world via webFrame.executeJavaScript.
     // Must be plain JavaScript — no TypeScript syntax, no template literals.
@@ -346,10 +347,8 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "(function() {",
         "  var RAW_TOKEN = " + tokenLiteral + ";",
         "  var SETTINGS_JSON = " + settingsLiteral + ";",
+        "  var TARGET_UID = " + targetUserIdLiteral + ";",
         "  var CONFLICT = ['token','default_token','multiaccount_tokens','tokens','user_id_cache','MultiAccountStore','AuthenticationStore','login_token'];",
-        // Ne JAMAIS supprimer multiaccount_tokens ou user_id_cache : ces clés gèrent
-        // la liste des comptes Discord connectés. Les supprimer force une déconnexion.
-        // La session persist:nightcord-mi-{userId} est déjà isolée et vierge.
         "  try {",
         "    var sh = JSON.parse(SETTINGS_JSON || '{}');",
         "    for (var k in sh) { if (CONFLICT.indexOf(k) >= 0) continue; if (localStorage.getItem(k) === null) localStorage.setItem(k, sh[k]); }",
@@ -358,6 +357,14 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "    var qt = JSON.stringify(RAW_TOKEN);",
         "    try { localStorage.setItem('token', qt); } catch(e) {}",
         "    try { localStorage.setItem('default_token', qt); } catch(e) {}",
+        "    try {",
+        "      var uid = localStorage.getItem('user_id_cache');",
+        "      if (uid && TARGET_UID && uid.replace(/\"/g, '') !== TARGET_UID) {",
+        "        localStorage.removeItem('user_id_cache');",
+        "        localStorage.removeItem('AuthenticationStore');",
+        "        localStorage.removeItem('MultiAccountStore');",
+        "      }",
+        "    } catch(e) {}",
         "    try {",
         "      if ((location.pathname.indexOf('/login') >= 0 || location.pathname === '/') && !window.__mi_redirected) {",
         "        window.__mi_redirected = true;",
@@ -495,7 +502,7 @@ export async function openInstanceWindow(
         grantSessionMediaPermissions(ses);
 
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -595,6 +602,7 @@ export async function openInstanceWindow(
         // Injection du token
         const cleanTok = String(token || "").trim().replace(/^"+|"+$/g, "");
         const safeTokenStr = JSON.stringify(cleanTok);
+        const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -602,8 +610,13 @@ export async function openInstanceWindow(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                // Ne pas supprimer multiaccount_tokens : c'est la liste des comptes Discord.
-                // La session isolée persist:nightcord-mi-{userId} est déjà vierge.
+                const uid = localStorage.getItem("user_id_cache");
+                const target = ${safeTargetId};
+                if (uid && target && uid.replace(/"/g, "") !== target) {
+                    localStorage.removeItem("user_id_cache");
+                    localStorage.removeItem("AuthenticationStore");
+                    localStorage.removeItem("MultiAccountStore");
+                }
                 if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
                     window.__mi_auto_redirected = true;
                     window.location.href = "https://discord.com/channels/@me";
@@ -703,7 +716,7 @@ export async function openInstanceWindowGrouped(
         grantSessionMediaPermissions(ses);
 
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -780,6 +793,7 @@ export async function openInstanceWindowGrouped(
 
         const cleanTok = String(token || "").trim().replace(/^"+|"+$/g, "");
         const safeTokenStr = JSON.stringify(cleanTok);
+        const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -787,8 +801,13 @@ export async function openInstanceWindowGrouped(
                 const q = JSON.stringify(raw);
                 localStorage.setItem("token", q);
                 localStorage.setItem("default_token", q);
-                // Ne pas supprimer multiaccount_tokens : c'est la liste des comptes Discord.
-                // La session isolée persist:nightcord-mi-{userId} est déjà vierge.
+                const uid = localStorage.getItem("user_id_cache");
+                const target = ${safeTargetId};
+                if (uid && target && uid.replace(/"/g, "") !== target) {
+                    localStorage.removeItem("user_id_cache");
+                    localStorage.removeItem("AuthenticationStore");
+                    localStorage.removeItem("MultiAccountStore");
+                }
                 if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && !window.__mi_auto_redirected) {
                     window.__mi_auto_redirected = true;
                     window.location.href = "https://discord.com/channels/@me";

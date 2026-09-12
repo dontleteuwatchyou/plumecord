@@ -54,6 +54,33 @@ async function loadTokenCache(): Promise<void> {
     if (tokenCacheLoaded) return;
     tokenCache = (await DataStore.get<Record<string, string>>(MI_TOKEN_CACHE_KEY)) ?? {};
     tokenCacheLoaded = true;
+
+    // Purge any corrupted or cross-account tokens
+    const curUser = UserStore.getCurrentUser();
+    const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+    const curTok = tokenMod?.getToken?.();
+
+    let dirty = false;
+    for (const [id, tok] of Object.entries(tokenCache)) {
+        if (!tok || typeof tok !== "string") {
+            delete tokenCache[id];
+            dirty = true;
+            continue;
+        }
+        if (curUser?.id && curTok && id !== curUser.id && tok === curTok) {
+            delete tokenCache[id];
+            dirty = true;
+            continue;
+        }
+        const owner = getUserIdFromToken(tok);
+        if (owner && owner !== id) {
+            delete tokenCache[id];
+            dirty = true;
+        }
+    }
+    if (dirty) {
+        await saveTokenCache();
+    }
 }
 
 async function saveTokenCache(): Promise<void> {
@@ -96,79 +123,16 @@ function cacheToken(userId: string, token: string): void {
     tokenCache[userId] = cleanTok;
 }
 
-async function captureAllTokens(): Promise<void> {
-    try {
-        await loadTokenCache();
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
-        const curUser = UserStore.getCurrentUser();
-        const curTok = tokenMod?.getToken?.();
-
-        // 1. Current user token & cache sanitization
-        if (curUser?.id && curTok && typeof curTok === "string") {
-            const cleanCurTok = curTok.trim().replace(/^"+|"+$/g, "");
-            tokenCache[curUser.id] = cleanCurTok;
-
-            // Purge any poisoned cache entries where another account holds the current user's token
-            for (const [id, tok] of Object.entries(tokenCache)) {
-                if (id !== curUser.id && tok === cleanCurTok) {
-                    delete tokenCache[id];
-                }
-            }
-        }
-
-        // 2. Check getTokens() function if provided
-        if (typeof tokenMod?.getTokens === "function") {
-            try {
-                const allTokens = tokenMod.getTokens();
-                if (allTokens && typeof allTokens === "object") {
-                    for (const [id, tok] of Object.entries(allTokens)) {
-                        if (id && typeof tok === "string" && tok) {
-                            cacheToken(id, tok);
-                        }
-                    }
-                }
-            } catch {}
-        }
-
-        // 3. Check tokens or _tokens object if available
-        const tokObj = tokenMod?.tokens || tokenMod?._tokens;
-        if (tokObj && typeof tokObj === "object") {
-            for (const [id, tok] of Object.entries(tokObj)) {
-                if (id && typeof tok === "string" && tok) {
-                    cacheToken(id, tok);
-                }
-            }
-        }
-
-        // 4. Fallback check TokenImporter_accounts
-        try {
-            const imported = await DataStore.get<SavedAccount[]>("TokenImporter_accounts");
-            if (Array.isArray(imported)) {
-                const TokenImporterNative = (VencordNative.pluginHelpers as any)?.TokenImporter;
-                for (const acc of imported) {
-                    if (!acc?.id || !acc?.token) continue;
-                    let tok = acc.token;
-                    if (tok.startsWith("dQw4w9WgXcQ:") && TokenImporterNative?.decryptTokenNative) {
-                        try {
-                            const decrypted = await TokenImporterNative.decryptTokenNative(tok);
-                            if (decrypted) tok = decrypted;
-                        } catch {}
-                    }
-                    if (tok && !tok.startsWith("dQw4w9WgXcQ:")) {
-                        cacheToken(acc.id, tok);
-                    }
-                }
-            }
-        } catch {}
-
-        await saveTokenCache();
-    } catch (e) {
-        console.warn("[MultiInstance] captureAllTokens failed:", e);
-    }
-}
-
 function captureCurrentToken(): void {
-    captureAllTokens();
+    try {
+        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const token = tokenMod?.getToken?.();
+        const user = UserStore.getCurrentUser();
+        if (token && user?.id && typeof token === "string") {
+            cacheToken(user.id, token);
+            saveTokenCache();
+        }
+    } catch { }
 }
 
 function hookEncryptAndStoreTokens(): void {
@@ -178,7 +142,6 @@ function hookEncryptAndStoreTokens(): void {
         if (!tokenMod?.encryptAndStoreTokens) return;
         const orig = tokenMod.encryptAndStoreTokens.bind(tokenMod);
         tokenMod.encryptAndStoreTokens = async function (tokens: Record<string, string>) {
-            // Capture tous les tokens au passage
             if (tokens && typeof tokens === "object") {
                 for (const [id, token] of Object.entries(tokens)) {
                     if (id && token) cacheToken(id, token);
@@ -194,30 +157,14 @@ function hookEncryptAndStoreTokens(): void {
 function hookFluxDispatcher(): (() => void) | null {
     try {
         if (!FluxDispatcher?.subscribe) return null;
-        let _captureTimer: any = null;
         const handler = (event: any) => {
             if (event?.token && event?.userId) {
                 cacheToken(event.userId, event.token);
                 saveTokenCache();
             }
-            if (_captureTimer) clearTimeout(_captureTimer);
-            _captureTimer = setTimeout(() => {
-                _captureTimer = null;
-                captureAllTokens();
-            }, 300);
         };
-        const events = [
-            "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
-            "MULTI_ACCOUNT_SWITCH_SUCCESS",
-            "MULTI_ACCOUNT_LOGIN_SUCCESS",
-            "LOGIN_SUCCESS",
-            "CONNECTION_OPEN"
-        ];
-        events.forEach(ev => FluxDispatcher.subscribe(ev, handler));
-        return () => {
-            if (_captureTimer) clearTimeout(_captureTimer);
-            events.forEach(ev => FluxDispatcher.unsubscribe(ev, handler));
-        };
+        FluxDispatcher.subscribe("MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS", handler);
+        return () => FluxDispatcher.unsubscribe("MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS", handler);
     } catch { return null; }
 }
 
@@ -408,10 +355,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     const [status, setStatus] = React.useState<string | null>(null);
 
     React.useEffect(() => {
-        captureAllTokens().then(() => {
-            setNativeAccounts(getNativeAccounts());
-        });
+        captureCurrentToken();
         DataStore.get<SavedAccount[]>(STORE_KEY).then(v => setSavedAccounts(v ?? []));
+        setNativeAccounts(getNativeAccounts());
         Native.getOpenInstances().then(ids => setOpenInstances(ids ?? [])).catch(() => { });
     }, []);
 
@@ -757,21 +703,10 @@ export default definePlugin({
 
     async start() {
         await loadTokenCache();
+        hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();
+        captureCurrentToken();
         addHeaderBarButton("nightcord-multi-instance", () => <MultiInstanceButton />, 9);
-
-        const initAuthHooks = async () => {
-            hookEncryptAndStoreTokens();
-            await captureAllTokens();
-        };
-
-        if (UserStore.getCurrentUser()) {
-            setTimeout(initAuthHooks, 3500);
-        } else {
-            FluxDispatcher.once("CONNECTION_OPEN", () => {
-                setTimeout(initAuthHooks, 3500);
-            });
-        }
     },
 
     stop() {
