@@ -59,7 +59,6 @@ export interface Settings {
     enableOnlineThemes: boolean;
     pinnedThemes: string[];
     themeNames: Record<string, string>;
-    mellowtelOnboardingSeen: boolean;
     enableReactDevtools: boolean;
     themeLinks: string[];
     mainWindowFrameless: boolean;

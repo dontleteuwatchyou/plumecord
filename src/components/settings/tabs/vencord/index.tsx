@@ -31,7 +31,6 @@ import { openModal } from "@utils/modal";
 import { relaunch } from "@utils/native";
 import { Avatar, OAuth2AuthorizeModal, React, Select, UserStore, showToast, Toasts } from "@webpack/common";
 
-import { MELLOWTEL_ONBOARDING_VERSION } from "@components/MellowtelConsentModal";
 
 import { ContributeModal } from "../../../../nightcord/renderer/components/ContributeModal";
 import { copyToClipboard } from "@utils/clipboard";
@@ -216,35 +215,6 @@ function StealthModeButton() {
         </Button>
     );
 }
-
-
-
-function MellowtelSupportSwitch() {
-    const [consent, setConsentState] = React.useState<{ consent: "accepted" | "declined"; version: string; } | null>(
-        () => (IS_WEB || typeof VencordNative === "undefined" || !VencordNative?.mellowtel) ? null : VencordNative.mellowtel.getConsent()
-    );
-
-    if (IS_WEB || typeof VencordNative === "undefined" || !VencordNative?.mellowtel) return null;
-
-    return (
-        <FormSwitch
-            value={consent?.consent === "accepted"}
-            onChange={accepted => {
-                const version = consent?.version ?? MELLOWTEL_ONBOARDING_VERSION;
-                VencordNative.mellowtel?.setConsent?.(accepted, version);
-                setConsentState({ consent: accepted ? "accepted" : "declined", version });
-            }}
-            title={t("Share bandwidth to support Nightcord (Mellowtel)")}
-            description={
-                consent
-                    ? undefined
-                    : t("You haven't been asked yet - this will opt you in immediately if enabled here.")
-            }
-            hideBorder
-        />
-    );
-}
-
 function EquicordSettings() {
     const settings = useSettings();
     const stealthActive = useStealthActive();
@@ -423,8 +393,6 @@ function EquicordSettings() {
                         />
                     ),
                 )}
-
-                <MellowtelSupportSwitch />
 
                 {needsVibrancySettings && (
                     <>

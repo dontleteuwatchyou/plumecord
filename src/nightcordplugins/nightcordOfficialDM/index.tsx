@@ -1763,7 +1763,7 @@ function getChannelTimestamp(channelId: string): number {
             connectMastodonStreaming();
             pollInterval = setInterval(() => checkAndInjectPosts(false), 60000);
         }, 1000);
-        }, 0); // end deferred startup — all store patches run after first paint
+        }, 500); // end deferred startup — all store patches run after first paint + CONNECTION_OPEN
     },
 
     stop() {

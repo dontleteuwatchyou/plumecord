@@ -1423,6 +1423,22 @@ if (IS_DISCORD_DESKTOP) {
     });
 }
 
+// Net fetch via main process — bypasses renderer CORS restrictions
+try { ipcMain.removeHandler(IpcEvents.NIGHTCORD_NET_FETCH); } catch {}
+ipcMain.handle(IpcEvents.NIGHTCORD_NET_FETCH, async (event, url: string, noCache?: boolean) => {
+    if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");
+    const { net } = await import("electron");
+    const headers: Record<string, string> = {};
+    if (noCache) headers["Cache-Control"] = "no-cache";
+    try {
+        const res = await net.fetch(url, { headers });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+});
+
 try { ipcMain.removeHandler(IpcEvents.RELAUNCH_APP); } catch {}
 ipcMain.handle(IpcEvents.RELAUNCH_APP, async (event) => {
     if (!validateSender(event)) throw new Error("Unauthorized IPC invocation");

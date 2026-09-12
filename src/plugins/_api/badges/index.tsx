@@ -92,12 +92,25 @@ async function loadBadges(url: string, noCache = false) {
     }
 }
 
+async function loadNightcordBadges(noCache = false): Promise<Record<string, any>> {
+    // Use main-process net.fetch to bypass CORS restrictions on the Nightcord API.
+    // Only available in desktop (Electron) context.
+    if (IS_WEB || typeof VencordNative?.nightcord?.netFetch !== "function") {
+        return loadBadges(`https://api.${domain}/badges`, noCache);
+    }
+    try {
+        const data = await VencordNative.nightcord.netFetch(`https://api.${domain}/badges`, noCache);
+        return (data && typeof data === "object") ? data as Record<string, any> : {};
+    } catch {
+        return {};
+    }
+}
+
 async function loadAllBadges(noCache = false) {
-    const nightcordUrl = `https://api.${domain}/badges`;
     const [vencord, equicord, nightcord, illegalcord] = await Promise.allSettled([
         loadBadges("https://badges.vencord.dev/badges.json", noCache),
         loadBadges("https://badge.equicord.org/badges.json", noCache),
-        loadBadges(nightcordUrl, noCache),
+        loadNightcordBadges(noCache),
         loadBadges("https://raw.githubusercontent.com/ImHisako/ImHisako/refs/heads/main/Images/badges.json", noCache)
     ]);
 

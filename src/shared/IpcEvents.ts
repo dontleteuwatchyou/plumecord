@@ -73,12 +73,11 @@ export const enum IpcEvents {
     CHECK_VB_CABLE = "NightcordCheckVBCable",
     INSTALL_VB_CABLE = "NightcordInstallVBCable",
 
+    // Net fetch via main process to bypass renderer CORS restrictions
+    NIGHTCORD_NET_FETCH = "NightcordNetFetch",
+
     // Relaunch de l'app Electron
     RELAUNCH_APP = "NightcordRelaunchApp",
-
-    // Mellowtel bandwidth-sharing SDK consent (user-facing, opt-in onboarding)
-    MELLOWTEL_SET_CONSENT = "NightcordMellowtelSetConsent",
-    MELLOWTEL_GET_CONSENT = "NightcordMellowtelGetConsent",
 
     // WorldBomb â€” Simulation Clavier/Souris Native
     WORLD_BOMB_TYPE = "WorldBombType",

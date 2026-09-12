@@ -59,6 +59,8 @@ export const VesktopNative = {
     },
     nightcord: {
         relaunch: () => invoke<void>(IpcEvents.RELAUNCH_APP),
+        /** Fetch a URL via main process Electron net.fetch to bypass renderer CORS restrictions. Returns parsed JSON or null. */
+        netFetch: (url: string, noCache?: boolean) => invoke<unknown | null>(IpcEvents.NIGHTCORD_NET_FETCH, url, noCache),
     },
     autostart: {
         isEnabled: () => sendSync<boolean>(IpcEvents.AUTOSTART_ENABLED),

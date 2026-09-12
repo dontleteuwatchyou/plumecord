@@ -32,7 +32,6 @@ export { PlainSettings, Settings };
 
 import { coreStyleRootNode, initStyles } from "@api/Styles";
 import { openSettingsTabModal, UpdaterTab } from "@components/settings";
-import { openMellowtelOnboardingModal, shouldShowMellowtelOnboarding } from "@components/MellowtelConsentModal";
 import { addHeaderBarButton, HeaderBarButton } from "@api/HeaderBar";
 import { debounce } from "@shared/debounce";
 import { IS_WINDOWS } from "@utils/constants";
@@ -223,13 +222,6 @@ async function init() {
 
     syncSettings();
     initTrayIpc();
-
-    // Mandatory, one-time (per onboarding version) consent screen for the Mellowtel
-    // bandwidth-sharing SDK. It re-appears after major updates by bumping
-    // MELLOWTEL_ONBOARDING_VERSION.
-    if (shouldShowMellowtelOnboarding()) {
-        setTimeout(() => openMellowtelOnboardingModal(), 1500);
-    }
 
     if (!IS_WEB && !IS_UPDATER_DISABLED) {
         runUpdateCheck();

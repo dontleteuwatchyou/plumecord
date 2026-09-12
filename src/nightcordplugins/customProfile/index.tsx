@@ -3722,7 +3722,7 @@ export default definePlugin({
                 (GuildMemberStore as any)._cp_orig_getMember = _origGetMember;
             }
         } catch { }
-        }, 0); // end deferred startup — all store patches run after first paint
+        }, 500); // end deferred startup — all store patches run after first paint + CONNECTION_OPEN
     },
 
     userProfileBadges: [
