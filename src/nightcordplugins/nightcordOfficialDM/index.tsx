@@ -175,23 +175,24 @@ function scanAndFixNightcordDmElements() {
     }
 }
 
-let dmObserverPending = false;
+let dmDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 function startDomObserver() {
     if (domObserver) return;
     scanAndFixNightcordDmElements();
     domObserver = new MutationObserver(() => {
-        if (dmObserverPending) return;
-        dmObserverPending = true;
-        requestAnimationFrame(() => {
-            dmObserverPending = false;
+        if (dmDebounceTimer) return;
+        dmDebounceTimer = setTimeout(() => {
+            dmDebounceTimer = undefined;
             scanAndFixNightcordDmElements();
-        });
+        }, 300);
     });
-    domObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+    const target =
+        document.querySelector<Element>("[class*=\"privateChannels\"]") ??
+        document.querySelector<Element>("nav[aria-label]") ??
+        document.querySelector<Element>("[class*=\"sidebar\"]") ??
+        document.body;
+    domObserver.observe(target, { childList: true, subtree: true });
 }
 
 function stopDomObserver() {
@@ -199,7 +200,10 @@ function stopDomObserver() {
         domObserver.disconnect();
         domObserver = null;
     }
-    dmObserverPending = false;
+    if (dmDebounceTimer) {
+        clearTimeout(dmDebounceTimer);
+        dmDebounceTimer = undefined;
+    }
 }
 
 function handleGlobalClick(e: MouseEvent) {
@@ -829,18 +833,20 @@ async function checkAndInjectPosts(isInitialLoad = false) {
         }
 
         setTimeout(() => {
-            try {
-                FluxDispatcher.dispatch({
-                    type: "LOAD_MESSAGES_SUCCESS",
-                    channelId: NIGHTCORD_CHANNEL_ID,
-                    messages: messageRecords,
-                    isBefore: false,
-                    isAfter: false,
-                    hasMoreBefore: false,
-                    hasMoreAfter: false,
-                    limit: 50,
-                });
-            } catch {}
+            if (isInitialLoad || newPostCount > 0) {
+                try {
+                    FluxDispatcher.dispatch({
+                        type: "LOAD_MESSAGES_SUCCESS",
+                        channelId: NIGHTCORD_CHANNEL_ID,
+                        messages: messageRecords,
+                        isBefore: false,
+                        isAfter: false,
+                        hasMoreBefore: false,
+                        hasMoreAfter: false,
+                        limit: 50,
+                    });
+                } catch {}
+            }
 
             if (newPostCount > 0) {
                 if (!settings.store.isDmClosed && SelectedChannelStore.getChannelId() !== NIGHTCORD_CHANNEL_ID) {
@@ -1673,7 +1679,7 @@ export default definePlugin({
             isAppLoaded = true;
             checkAndInjectPosts(true);
             connectMastodonStreaming();
-            pollInterval = setInterval(() => checkAndInjectPosts(false), 60000);
+            pollInterval = setInterval(() => checkAndInjectPosts(false), 300000);
         }, 1000);
         }, 500); // end deferred startup — all store patches run after first paint + CONNECTION_OPEN
     },

@@ -519,7 +519,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <span className="gc-popover-title">{t("Ghost Accounts")}</span>
                 <button
                     className="gc-header-action"
-                    title={t("Open GhostClientInstaller")}
+                    title={t("Open GhostInstaller")}
                     onClick={() => {
                         onClose();
                         SettingsRouter.openUserSettings("nightcord_ghost_client_installer_panel");
@@ -725,7 +725,7 @@ const GhostUserAreaButton: UserAreaButtonFactory = ({ iconForeground, hideToolti
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
             Toasts.show({
-                message: t("GhostClient companion server is not installed. Open GhostClientInstaller to install it."),
+                message: t("GhostClient companion server is not installed. Open GhostInstaller to install it."),
                 type: Toasts.Type.FAILURE,
                 id: Toasts.genId()
             });

@@ -5,7 +5,7 @@
  */
 
 import { app, dialog, IpcMainInvokeEvent } from "electron";
-import { createWriteStream, WriteStream } from "node:fs";
+import { createWriteStream, existsSync, WriteStream } from "node:fs";
 import { copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import fixWebmDuration from "fix-webm-duration";
@@ -148,7 +148,16 @@ export async function finalizeStreamRecording(
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
         await mkdir(targetFolder, { recursive: true });
 
-        const destPath = path.join(targetFolder, filename);
+        let finalFilename = filename;
+        const fileExt = path.extname(filename);
+        const fileBase = path.basename(filename, fileExt);
+        let counter = 1;
+        while (existsSync(path.join(targetFolder, finalFilename))) {
+            counter++;
+            finalFilename = `${fileBase} (${counter})${fileExt}`;
+        }
+
+        const destPath = path.join(targetFolder, finalFilename);
         try {
             await rename(sourcePath, destPath);
         } catch {
@@ -174,7 +183,17 @@ export async function saveRecording(_event: IpcMainInvokeEvent, buffer: Uint8Arr
         const defaultFolder = getDefaultSaveFolder();
         const targetFolder = folderPath && folderPath.trim() ? path.resolve(folderPath.trim()) : defaultFolder;
         await mkdir(targetFolder, { recursive: true });
-        const dest = path.join(targetFolder, filename);
+
+        let finalFilename = filename;
+        const fileExt = path.extname(filename);
+        const fileBase = path.basename(filename, fileExt);
+        let counter = 1;
+        while (existsSync(path.join(targetFolder, finalFilename))) {
+            counter++;
+            finalFilename = `${fileBase} (${counter})${fileExt}`;
+        }
+
+        const dest = path.join(targetFolder, finalFilename);
         const seekable = patchWebmSeekable(buffer, 0);
         const buf = Buffer.from(seekable.buffer, seekable.byteOffset, seekable.byteLength);
         await writeFile(dest, buf);

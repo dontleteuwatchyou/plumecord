@@ -217,6 +217,11 @@ export const settings = definePluginSettings({
         default: "",
         onChange: updateServerTargets,
     },
+    showInSettingsSidebar: {
+        type: OptionType.BOOLEAN,
+        default: false,
+        description: "Show Surveillance tab in settings sidebar.",
+    },
     addContextMenu: {
         type: OptionType.BOOLEAN,
         default: true,
@@ -1215,7 +1220,7 @@ export default definePlugin({
         hydrationInterval = setInterval(hydrateTargetPresences, 60_000);
         profileSyncInterval = setInterval(() => void syncTargetProfiles(), 120_000);
 
-        if (!SettingsPlugin.customEntries.some(entry => entry.key === SETTINGS_ENTRY_KEY)) {
+        if (settings.store.showInSettingsSidebar && !SettingsPlugin.customEntries.some(entry => entry.key === SETTINGS_ENTRY_KEY)) {
             const diagIndex = SettingsPlugin.customEntries.findIndex(entry => entry.key === "vc-client-diagnostics");
             const entry = {
                 key: SETTINGS_ENTRY_KEY,

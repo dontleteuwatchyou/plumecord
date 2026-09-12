@@ -132,6 +132,16 @@ const settings = definePluginSettings({
             { label: "Below Activity Settings", value: "belowActivity" },
             { label: "At the very bottom", value: "bottom" },
         ] as { label: string; value: SettingsLocation; default?: boolean; }[]
+    },
+    showStatus: {
+        type: OptionType.BOOLEAN,
+        description: "Show Status in the settings sidebar",
+        default: false,
+    },
+    showCreateTheme: {
+        type: OptionType.BOOLEAN,
+        description: "Show Create Theme in the settings sidebar",
+        default: false,
     }
 });
 
@@ -264,14 +274,14 @@ export default definePlugin({
                 Component: ThemesTab,
                 Icon: PaintbrushIcon
             }),
-            buildEntry({
+            settings.store.showStatus && buildEntry({
                 key: "nightcord_status",
                 title: "Status",
                 panelTitle: "Nightcord Status",
                 Component: StatusTab,
                 Icon: StatusPulseIcon
             }),
-            buildEntry({
+            settings.store.showCreateTheme && buildEntry({
                 key: "equicord_create_theme",
                 title: "Create Theme",
                 panelTitle: "Theme Creator",

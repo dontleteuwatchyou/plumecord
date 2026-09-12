@@ -119,4 +119,8 @@ ButtonCompat.Sizes = {
     MIN: "min"
 } as const;
 
+(Button as any).Sizes = ButtonCompat.Sizes;
+(Button as any).Colors = ButtonCompat.Colors;
+(Button as any).Looks = ButtonCompat.Looks;
+
 // #endregion

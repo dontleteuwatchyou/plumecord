@@ -6,7 +6,7 @@
 
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType, IPluginOptionComponentProps } from "@utils/types";
-import { FluxDispatcher, SelectedChannelStore, React, Avatar, IconUtils, UserStore, RelationshipStore, Toasts } from "@webpack/common";
+import { ChannelStore, FluxDispatcher, SelectedChannelStore, React, Avatar, IconUtils, UserStore, RelationshipStore, Toasts } from "@webpack/common";
 import { Button, TextInput } from "@webpack/common/components";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
 import { SafeSearchableSelect } from "@components/SafeSearchableSelect";
@@ -285,6 +285,24 @@ async function handleVoiceStateUpdates(e: any) {
     }
 }
 
+function getVoiceChannelName(channelId: string | null): string {
+    if (!channelId) return "Vocal";
+    try {
+        const channel = ChannelStore.getChannel(channelId);
+        if (!channel) return "Vocal";
+        if (channel.name) return channel.name;
+        if (channel.isGroupDM?.() && channel.rawRecipients?.length) {
+            return channel.rawRecipients.map((u: any) => u.globalName || u.username).join(", ");
+        }
+        if (channel.isDM?.()) {
+            const recipientId = channel.getRecipientId?.();
+            const user = recipientId ? UserStore.getUser(recipientId) : null;
+            if (user) return user.globalName || user.username;
+        }
+    } catch {}
+    return "Vocal";
+}
+
 async function handleVoiceChannelSelect(e: any) {
     const newChannelId = e.channelId || getConnectedVoiceChannelId();
 
@@ -306,7 +324,8 @@ async function handleVoiceChannelSelect(e: any) {
                 shadowplayMinutes: settings.store.shadowplayMinutes,
                 autoSave: settings.store.autoSave,
                 savePath: settings.store.savePath,
-                showSaveToast: settings.store.showSaveToast
+                showSaveToast: settings.store.showSaveToast,
+                channelName: getVoiceChannelName(newChannelId)
             });
             startUIInterval();
         }
@@ -337,7 +356,8 @@ export default definePlugin({
                     shadowplayMinutes: settings.store.shadowplayMinutes,
                     autoSave: settings.store.autoSave,
                     savePath: settings.store.savePath,
-                    showSaveToast: settings.store.showSaveToast
+                    showSaveToast: settings.store.showSaveToast,
+                    channelName: getVoiceChannelName(lastChannelId)
                 }).then(() => {
                     startUIInterval();
                 });

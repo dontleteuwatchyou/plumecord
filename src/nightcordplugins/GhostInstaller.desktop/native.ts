@@ -14,7 +14,7 @@ import * as os from "os";
 import * as path from "path";
 
 const PORT = 47821;
-export const DEFAULT_RELEASE_URL = "https://source.nightcord.st/nightcord/ghostclient/releases";
+const DEFAULT_RELEASE_URL = "https://source.nightcord.st/nightcord/ghostclient/releases";
 const DEFAULT_GITHUB_URL = DEFAULT_RELEASE_URL;
 
 export interface InstallInfo {

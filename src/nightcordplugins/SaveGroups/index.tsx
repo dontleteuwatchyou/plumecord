@@ -398,9 +398,49 @@ async function archiveGroup(channelId: string, channelHint?: any) {
     }
 }
 
+async function unarchiveGroup(channelId: string, realChannel?: any) {
+    if (!savedGroups.has(channelId)) return;
+
+    savedGroups.delete(channelId);
+    hydratedChannels.delete(channelId);
+    manuallyDeletedGroupIds.delete(channelId);
+    manuallyLeftGroupIds.delete(channelId);
+
+    const liveCh = realChannel || (ChannelStore as any)?._origGetChannel?.(channelId) || ChannelStore.getChannel(channelId);
+    if (liveCh && !liveCh.isArchivedGroup) {
+        knownActiveGroups.set(channelId, extractGroupSnapshot(liveCh));
+    }
+
+    await persistSavedGroups();
+    debouncedPersistKnownGroups();
+
+    updateStyles();
+    removeArchivedNoticeBanner();
+
+    document.querySelectorAll(
+        `nav a[href*="/channels/@me/${channelId}"], [class*="privateChannels"] a[href*="/channels/@me/${channelId}"]`
+    ).forEach(el => {
+        el.classList.remove("vc-savegroups-kicked");
+    });
+    document.querySelectorAll(".vc-savegroups-badge").forEach(el => el.remove());
+
+    try { (ChannelStore as any)?.emitChange?.(); } catch {}
+    try { (PrivateChannelSortStore as any)?.emitChange?.(); } catch {}
+
+    try {
+        if (liveCh) {
+            FluxDispatcher.dispatch({
+                type: "CHANNEL_UPDATES",
+                channels: [liveCh]
+            });
+        }
+    } catch {}
+
+    showToast(t("Re-added to group DM!"), Toasts.Type.SUCCESS);
+}
+
 function checkOfflineKicks() {
     try {
-        if (knownActiveGroups.size === 0) return;
         const currentPrivate = (ChannelStore as any)?.getMutablePrivateChannels?.() || {};
         const currentSorted = (ChannelStore as any)?.getSortedPrivateChannels?.() || [];
         const currentIds = new Set([
@@ -408,6 +448,17 @@ function checkOfflineKicks() {
             ...((Array.isArray(currentSorted) ? currentSorted : []).map((c: any) => c?.id).filter(Boolean))
         ]);
 
+        // Restore any group DMs user was re-added to while offline
+        for (const [id] of Array.from(savedGroups.entries())) {
+            if (currentIds.has(id)) {
+                const realCh = currentPrivate[id] || (ChannelStore as any)?._origGetChannel?.(id);
+                if (realCh && !realCh.isArchivedGroup) {
+                    unarchiveGroup(id, realCh);
+                }
+            }
+        }
+
+        if (knownActiveGroups.size === 0) return;
         for (const [id, knownData] of Array.from(knownActiveGroups.entries())) {
             if (!currentIds.has(id) && !savedGroups.has(id) && !manuallyDeletedGroupIds.has(id) && !manuallyLeftGroupIds.has(id)) {
                 archiveGroup(id, knownData);
@@ -695,6 +746,62 @@ function patchFluxDispatcher() {
 
         const type = action.type;
 
+        if (type === "CHANNEL_CREATE") {
+            const ch = action.channel;
+            const channelId = ch?.id || action.channelId;
+            if (channelId && savedGroups.has(channelId)) {
+                const currentUserId = UserStore.getCurrentUser()?.id;
+                const isRecipient = !currentUserId || ch?.recipients?.some((r: any) => (typeof r === "string" ? r : r?.id) === currentUserId);
+                if (isRecipient || ch?.type === 3) {
+                    unarchiveGroup(channelId, ch);
+                }
+            }
+        }
+
+        if (type === "CHANNEL_RECIPIENT_ADD") {
+            const channelId = action.channelId || action.channel?.id;
+            const currentUserId = UserStore.getCurrentUser()?.id;
+            const addedUserId = action.user?.id || action.userId;
+            if (channelId && savedGroups.has(channelId)) {
+                if (!currentUserId || addedUserId === currentUserId) {
+                    unarchiveGroup(channelId, action.channel);
+                }
+            }
+        }
+
+        if (type === "CHANNEL_UPDATES") {
+            const channels = action.channels;
+            if (Array.isArray(channels)) {
+                const currentUserId = UserStore.getCurrentUser()?.id;
+                for (const ch of channels) {
+                    if (ch?.id && savedGroups.has(ch.id)) {
+                        const isRecipient = !currentUserId || ch?.recipients?.some((r: any) => (typeof r === "string" ? r : r?.id) === currentUserId);
+                        if (isRecipient) {
+                            unarchiveGroup(ch.id, ch);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (type === "CONNECTION_OPEN") {
+            const privateChannels = action.privateChannels || action.initialGuildChannels || [];
+            if (Array.isArray(privateChannels)) {
+                for (const pc of privateChannels) {
+                    if (pc?.id && savedGroups.has(pc.id)) {
+                        unarchiveGroup(pc.id, pc);
+                    }
+                }
+            }
+        }
+
+        if (type === "MESSAGE_CREATE") {
+            const channelId = action.channelId || action.message?.channel_id;
+            if (channelId && savedGroups.has(channelId) && !action.optimistic) {
+                unarchiveGroup(channelId);
+            }
+        }
+
         if (type === "CHANNEL_DELETE") {
             const channelId = action.channel?.id || action.channelId || action.id;
             if (channelId) {
@@ -777,13 +884,26 @@ function patchChannelStore() {
     if (!channelStoreAny) return;
 
     const origGetChannel = ChannelStore.getChannel;
+    channelStoreAny._origGetChannel = origGetChannel;
     ChannelStore.getChannel = function(id: string) {
         if (id && savedGroups.has(id)) {
+            const realCh = origGetChannel.apply(this, arguments as any);
+            if (realCh && !realCh.isArchivedGroup) {
+                const currentUserId = UserStore.getCurrentUser()?.id;
+                const isRecipient = !currentUserId || realCh.recipients?.some((r: any) => (typeof r === "string" ? r : r?.id) === currentUserId);
+                if (isRecipient) {
+                    unarchiveGroup(id, realCh);
+                    return realCh;
+                }
+            }
             return hydratedChannels.get(id);
         }
         return origGetChannel.apply(this, arguments as any);
     };
-    unpatchChannelStore = () => { ChannelStore.getChannel = origGetChannel; };
+    unpatchChannelStore = () => {
+        ChannelStore.getChannel = origGetChannel;
+        delete channelStoreAny._origGetChannel;
+    };
 
     if (typeof channelStoreAny.hasChannel === "function") {
         const origHas = channelStoreAny.hasChannel;
@@ -1035,13 +1155,33 @@ export default definePlugin({
     },
 
     flux: {
-        CHANNEL_CREATE() {
+        CHANNEL_CREATE(action: any) {
+            const channelId = action?.channel?.id || action?.channelId;
+            if (channelId && savedGroups.has(channelId)) {
+                unarchiveGroup(channelId, action?.channel);
+            }
             updateKnownActiveGroups();
         },
-        CHANNEL_UPDATES() {
+        CHANNEL_UPDATES(action: any) {
+            const channels = action?.channels;
+            if (Array.isArray(channels)) {
+                for (const ch of channels) {
+                    if (ch?.id && savedGroups.has(ch.id)) {
+                        unarchiveGroup(ch.id, ch);
+                    }
+                }
+            }
             updateKnownActiveGroups();
         },
-        CONNECTION_OPEN() {
+        CONNECTION_OPEN(action: any) {
+            const privateChannels = action?.privateChannels || action?.initialGuildChannels || [];
+            if (Array.isArray(privateChannels)) {
+                for (const pc of privateChannels) {
+                    if (pc?.id && savedGroups.has(pc.id)) {
+                        unarchiveGroup(pc.id, pc);
+                    }
+                }
+            }
             updateKnownActiveGroups();
             checkOfflineKicks();
         },
@@ -1051,6 +1191,10 @@ export default definePlugin({
         MESSAGE_CREATE(event: { channelId: string; message: any; }) {
             const channelId = event?.channelId;
             if (!channelId) return;
+
+            if (savedGroups.has(channelId)) {
+                unarchiveGroup(channelId);
+            }
 
             if (knownActiveGroups.has(channelId)) {
                 const group = knownActiveGroups.get(channelId)!;

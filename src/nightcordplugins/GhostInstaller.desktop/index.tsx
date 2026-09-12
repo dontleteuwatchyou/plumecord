@@ -10,7 +10,7 @@ import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Heading } from "@components/Heading";
-import { DeleteIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
+import { DeleteIcon, GhostIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
 import { Paragraph } from "@components/Paragraph";
 import SettingsPlugin from "@plugins/_core/settings";
 import { classes, removeFromArray } from "@utils/misc";
@@ -20,7 +20,7 @@ import { t } from "../autoTranslateNightcord";
 
 import type { ActionInfo, InstallInfo, NativeResult } from "./native";
 
-const Native = VencordNative.pluginHelpers.GhostClientInstaller as PluginNative<typeof import("./native")>;
+const Native = ((VencordNative.pluginHelpers as any).GhostInstaller || (VencordNative.pluginHelpers as any).GhostClientInstaller) as PluginNative<typeof import("./native")>;
 const SETTINGS_ENTRY_KEY = "nightcord_ghost_client_installer";
 
 type LogLevel = "error" | "info" | "success" | "warning";
@@ -45,25 +45,17 @@ function notifyRepatchIfNeeded(info: InstallInfo): void {
 
     lastRepatchNotificationKey = key;
     showNotification({
-        title: t("GhostClientInstaller"),
+        title: t("GhostInstaller"),
         body: info.repatchWarning,
         permanent: true,
         onClick: () => SettingsRouter.openUserSettings(`${SETTINGS_ENTRY_KEY}_panel`)
     });
 }
 
-function GhostIcon({ width = 24, height = 24, className }: { width?: number; height?: number; className?: string; }) {
-    return (
-        <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width={width} height={height} className={className} fill="none" viewBox="0 0 24 24">
-            <path fill="currentColor" d="M12 2a9 9 0 0 0-9 9v7.5a3.5 3.5 0 0 0 5.6 2.8l2.4-1.8 2.4 1.8a3.5 3.5 0 0 0 4.2 0l2.4-1.8 2.4 1.8a3.5 3.5 0 0 0 5.6-2.8V11a9 9 0 0 0-9-9Zm-3 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm6 0a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z" />
-        </svg>
-    );
-}
-
 function GhostWarning() {
     return (
         <div className="vc-ghost-installer-warning">
-            <Heading tag="h3">{t("GhostClient Installer Warning")}</Heading>
+            <Heading tag="h3">{t("GhostInstaller Warning")}</Heading>
             <Paragraph>
                 {t("This installer downloads and injects GhostClient and its companion ghost-server into Nightcord. It enables multi-account voice join, screen streaming, and custom audio input.")}
             </Paragraph>
@@ -356,14 +348,14 @@ function GhostClientInstallerPanel() {
                 <div className="vc-ghost-installer-log" role="log" aria-live="polite">
                     {logs.length
                         ? logs.slice(-200).map(entry => <LogLine key={entry.id} entry={entry} />)
-                        : <div className="vc-ghost-installer-log-empty">{t("GhostClientInstaller activity will appear here.")}</div>}
+                        : <div className="vc-ghost-installer-log-empty">{t("GhostInstaller activity will appear here.")}</div>}
                 </div>
             </div>
         </div>
     );
 }
 
-function GhostClientInstallerPage() {
+function GhostInstallerPage() {
     return (
         <>
             <GhostWarning />
@@ -380,24 +372,24 @@ const settings = definePluginSettings({
 });
 
 export default definePlugin({
-    name: "GhostClientInstaller",
+    name: "GhostInstaller",
     description: "Downloads, patches, and manages GhostClient and its background companion server from GitHub.",
     tags: ["Utility"],
     authors: [{ name: "Nightcord", id: 0n }],
-    enabledByDefault: false,
+    enabledByDefault: true,
     reporterTestable: ReporterTestable.None,
     settings,
     settingsAboutComponent: ErrorBoundary.wrap(GhostWarning, { noop: true }),
     toolboxActions: {
-        [t("Open GhostClientInstaller")]: () => SettingsRouter.openUserSettings(`${SETTINGS_ENTRY_KEY}_panel`),
+        [t("Open GhostInstaller")]: () => SettingsRouter.openUserSettings(`${SETTINGS_ENTRY_KEY}_panel`),
     },
 
     start() {
         if (!SettingsPlugin.customEntries.some(entry => entry.key === SETTINGS_ENTRY_KEY)) {
             SettingsPlugin.customEntries.push({
                 key: SETTINGS_ENTRY_KEY,
-                title: t("GhostClientInstaller"),
-                Component: ErrorBoundary.wrap(GhostClientInstallerPage, { noop: true }),
+                title: t("GhostInstaller"),
+                Component: ErrorBoundary.wrap(GhostInstallerPage, { noop: true }),
                 Icon: GhostIcon,
             });
         }

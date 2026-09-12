@@ -19,6 +19,7 @@ const PLUGIN_ICON_NAMES: Record<string, string[]> = {
     CustomProfile: ["PaintbrushIcon", "UserIcon", "EditIcon", "UserEditIcon"],
     FakeDM: ["ChatPlusIcon", "ChatIcon", "MessageIcon", "ChatSparkleIcon"],
     FakeVoice: ["GhostIcon", "VoiceIcon", "DeafenedIcon", "MicrophoneIcon"],
+    GhostInstaller: ["GhostIcon", "DownloadIcon", "WrenchIcon"],
     GhostClientInstaller: ["GhostIcon", "DownloadIcon", "WrenchIcon"],
     MessageLogger: ["EyeIcon", "HistoryIcon", "ChatIcon", "ClockIcon"],
     ShowHiddenChannels: ["ChannelLockIcon", "EyeSlashIcon", "LockIcon", "ChatLockIcon"],

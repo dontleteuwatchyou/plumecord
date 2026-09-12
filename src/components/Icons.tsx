@@ -914,6 +914,22 @@ export function HeadphonesIcon(props: IconProps) {
     );
 }
 
+export function GhostIcon(props: IconProps) {
+    return (
+        <Icon
+            {...props}
+            viewBox="0 0 24 24"
+        >
+            <path
+                fill={props.fill || "currentColor"}
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M12 2a8 8 0 0 0-8 8v11l3-2.5 2.5 2.5L12 18.5l2.5 2.5 2.5-2.5 3 2.5V10a8 8 0 0 0-8-8Zm-3 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Zm6 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"
+            />
+        </Icon>
+    );
+}
+
 export function ShieldIcon(props: IconProps) {
     return (
         <Icon

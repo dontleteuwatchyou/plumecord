@@ -34,6 +34,7 @@ const FORCE_DISABLED_DEFAULT_PLUGIN_KEYS = new Set([
     "fakeperm",
     "translucence",
     "rolecoloreverywhere",
+    "surveillance",
     "voicechatutilities"
 ]);
 

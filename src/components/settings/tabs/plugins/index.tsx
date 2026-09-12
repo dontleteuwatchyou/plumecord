@@ -867,15 +867,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                                 </div>
                                 <div style={{ display: "flex", gap: 8 }}>
                                     <Button
-                                        size={Button.Sizes.SMALL}
-                                        color={Button.Colors.PRIMARY}
+                                        size="small"
+                                        variant="secondary"
                                         onClick={() => openUserPluginsFolder()}
                                     >
                                         {t("Open Folder")}
                                     </Button>
                                     <Button
-                                        size={Button.Sizes.SMALL}
-                                        color={Button.Colors.BRAND}
+                                        size="small"
+                                        variant="primary"
                                         onClick={async () => {
                                             await syncAllUserPlugins();
                                             showToast(t("User plugins reloaded"), Toasts.Type.SUCCESS);

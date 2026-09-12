@@ -19,6 +19,7 @@ export interface RecordingOptions {
     autoSave: boolean;
     savePath: string;
     showSaveToast?: boolean;
+    channelName?: string;
 }
 
 let activeOpts: RecordingOptions | null = null;
@@ -59,8 +60,14 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
         startTimeMs = Date.now();
 
         const ext = opts.mode === "video" ? (opts.videoFormat || "webm") : (opts.audioFormat || "ogg");
-        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        currentFilename = `AutoCall_${dateStr}.${ext}`;
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        const cleanName = (opts.channelName || "Vocal")
+            .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+            .trim()
+            .slice(0, 60) || "Vocal";
+        currentFilename = `${dateStr}_${cleanName}.${ext}`;
 
         const native = (window as any).VencordNative?.pluginHelpers?.AutoCallRecorder;
         if (native?.initStreamRecording && native?.appendRecordingChunk && native?.finalizeStreamRecording) {
