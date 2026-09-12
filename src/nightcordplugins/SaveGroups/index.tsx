@@ -18,15 +18,18 @@ import {
     FluxDispatcher,
     Menu,
     MessageStore,
+    PrivateChannelSortStore,
     React,
     SelectedChannelStore,
     showToast,
-    Toasts
+    Toasts,
+    UserStore
 } from "@webpack/common";
 import { NavigationRouter } from "@webpack/common/utils";
 import { t } from "../autoTranslateNightcord";
 
-const DATA_STORE_KEY = "Nightcord_SaveGroups_Entries";
+const DATA_STORE_SAVED_KEY = "Nightcord_SaveGroups_SavedEntries";
+const DATA_STORE_KNOWN_KEY = "Nightcord_SaveGroups_KnownActiveEntries";
 
 const createChannelRecordFromServer = findByCodeLazy(".GUILD_TEXT]", "fromServer)");
 const createMessageRecord = findByCodeLazy(".createFromServer(", ".isBlockedForMessage", "messageReference:");
@@ -67,19 +70,29 @@ const settings = definePluginSettings({
 
 const savedGroups = new Map<string, SavedGroupData>();
 const hydratedChannels = new Map<string, any>();
-const activeGroupsCache = new Map<string, any>();
+const knownActiveGroups = new Map<string, SavedGroupData>();
 const manuallyDeletedGroupIds = new Set<string>();
+const manuallyLeftGroupIds = new Set<string>();
 
+let unpatchFluxDispatch: (() => void) | null = null;
 let unpatchChannelStore: (() => void) | null = null;
+let unpatchChannelStoreHasChannel: (() => void) | null = null;
+let unpatchChannelStoreHasPrivate: (() => void) | null = null;
+let unpatchChannelStoreIsPrivate: (() => void) | null = null;
+let unpatchChannelStoreGetSorted: (() => void) | null = null;
 let unpatchChannelStoreGetPrivate: (() => void) | null = null;
 let unpatchChannelStoreGetMutablePrivate: (() => void) | null = null;
 let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
 let unpatchSendMessage: (() => void) | null = null;
+let unpatchHTTPGet: (() => void) | null = null;
+let unpatchCloseMethods: (() => void)[] = [];
 
+let channelStoreListener: (() => void) | null = null;
 let sidebarObserver: MutationObserver | null = null;
 let _domUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 let _bannerTimers: ReturnType<typeof setTimeout>[] = [];
+let _persistKnownTimer: ReturnType<typeof setTimeout> | undefined;
 
 function escapeHtml(text: string): string {
     const div = document.createElement("div");
@@ -88,72 +101,88 @@ function escapeHtml(text: string): string {
 }
 
 function hydrateChannelRecord(data: SavedGroupData): any {
+    let baseRecord: any = null;
+
     try {
         if (typeof createChannelRecordFromServer === "function") {
-            const ch = createChannelRecordFromServer({
+            const rawRecipients = Array.isArray(data.rawRecipients) && data.rawRecipients.length > 0
+                ? data.rawRecipients
+                : Array.isArray(data.recipients)
+                    ? data.recipients.map(r => typeof r === "object" ? r : { id: String(r), username: "User", discriminator: "0000" })
+                    : [];
+
+            baseRecord = createChannelRecordFromServer({
                 id: data.id,
                 type: 3,
                 name: data.name || "Group DM",
                 icon: data.icon || null,
+                owner_id: data.ownerId,
                 ownerId: data.ownerId,
                 topic: data.topic || "",
-                recipients: data.recipients || [],
-                rawRecipients: data.rawRecipients || data.recipients || [],
+                recipients: rawRecipients,
+                rawRecipients: rawRecipients,
                 last_message_id: data.lastMessageId || null,
+                lastMessageId: data.lastMessageId || null,
                 is_spam: false,
                 is_message_request: false,
+                flags: 0,
             });
-            if (ch) {
-                ch.isArchivedGroup = true;
-                return ch;
-            }
         }
     } catch {}
 
-    return {
-        id: data.id,
-        type: 3,
-        name: data.name || "Group DM",
-        icon: data.icon || null,
-        ownerId: data.ownerId,
-        topic: data.topic || "",
-        recipients: data.recipients || [],
-        rawRecipients: data.rawRecipients || data.recipients || [],
-        lastMessageId: data.lastMessageId || null,
-        isArchivedGroup: true,
-        isDM: () => false,
-        isGroupDM: () => true,
-        isMultiUserDM: () => true,
-        isPrivate: () => true,
-        isSystemDM: () => false,
-        getRecipientId: () => data.recipients?.[0]?.id || data.recipients?.[0] || "",
-        getApplicationId: () => null,
-        isManaged: () => false,
-        isThread: () => false,
-        isGuildVocal: () => false,
-        isGuildStageVoice: () => false,
-        isCategory: () => false,
-        isAudioChannel: () => false,
-        isVideoChannel: () => false,
-        isVocal: () => false,
-    };
-}
+    if (!baseRecord) {
+        baseRecord = {
+            id: data.id,
+            type: 3,
+            name: data.name || "Group DM",
+            icon: data.icon || null,
+            ownerId: data.ownerId,
+            topic: data.topic || "",
+            recipients: data.recipients || [],
+            rawRecipients: data.rawRecipients || [],
+            lastMessageId: data.lastMessageId || null,
+            flags: 0,
+        };
+    }
 
-function cacheActiveGroup(channel: any) {
-    if (!channel || channel.type !== 3) return;
-    activeGroupsCache.set(channel.id, channel);
-}
+    baseRecord.isArchivedGroup = true;
 
-function refreshActiveGroupsCache() {
-    try {
-        const privateChannels = (ChannelStore as any)?.getMutablePrivateChannels?.() || (ChannelStore as any)?.getPrivateChannels?.() || {};
-        for (const id of Object.keys(privateChannels)) {
-            const ch = privateChannels[id];
-            if (ch && ch.type === 3 && !savedGroups.has(id)) {
-                activeGroupsCache.set(id, ch);
+    // Wrap in a defensive Proxy so that any unknown Discord Channel method returns safe defaults without throwing
+    return new Proxy(baseRecord, {
+        get(target, prop, receiver) {
+            if (prop in target) {
+                const val = Reflect.get(target, prop, receiver);
+                return typeof val === "function" ? val.bind(target) : val;
             }
+            if (prop === "getIconURL") {
+                return (size?: number) => {
+                    if (target.icon) {
+                        return `https://cdn.discordapp.com/channel-icons/${target.id}/${target.icon}.png?size=${size || 128}`;
+                    }
+                    return null;
+                };
+            }
+            if (prop === "isGroupDM" || prop === "isMultiUserDM" || prop === "isPrivate") {
+                return () => true;
+            }
+            if (prop === "isDM" || prop === "isSystemDM" || prop === "isThread" || prop === "isBroadcast" || prop === "isManaged") {
+                return () => false;
+            }
+            if (prop === "getRecipientId") {
+                return () => target.recipients?.[0]?.id || target.recipients?.[0] || "";
+            }
+            if (prop === "isOwner") {
+                return (userId: string) => userId === target.ownerId;
+            }
+            if (typeof prop === "string" && prop.startsWith("is")) {
+                return () => false;
+            }
+            if (typeof prop === "string" && prop.startsWith("has")) {
+                return () => false;
+            }
+            return undefined;
         }
-    } catch {}
+    });
 }
 
 function getChannelMessagesSnapshot(channelId: string): any[] {
@@ -203,12 +232,161 @@ function getChannelMessagesSnapshot(channelId: string): any[] {
     }
 }
 
+function extractGroupSnapshot(ch: any): SavedGroupData {
+    const messages = settings.store.saveMessages ? getChannelMessagesSnapshot(ch.id) : [];
+    return {
+        id: ch.id,
+        name: ch.name || "Group DM",
+        icon: ch.icon || null,
+        ownerId: ch.ownerId,
+        topic: ch.topic || "",
+        type: 3,
+        recipients: ch.recipients || [],
+        rawRecipients: ch.rawRecipients || [],
+        lastMessageId: ch.lastMessageId || ch.last_message_id || null,
+        kickedAt: 0,
+        savedMessages: messages
+    };
+}
+
+function debouncedPersistKnownGroups() {
+    if (_persistKnownTimer) return;
+    _persistKnownTimer = setTimeout(async () => {
+        _persistKnownTimer = undefined;
+        try {
+            await DataStore.set(DATA_STORE_KNOWN_KEY, Array.from(knownActiveGroups.values()));
+        } catch {}
+    }, 2000);
+}
+
+function updateKnownActiveGroups() {
+    try {
+        const privateChannels = (ChannelStore as any)?.getMutablePrivateChannels?.() || {};
+        const sortedList = (ChannelStore as any)?.getSortedPrivateChannels?.() || [];
+
+        const allCandidates = [
+            ...Object.values(privateChannels),
+            ...(Array.isArray(sortedList) ? sortedList : [])
+        ];
+
+        let changed = false;
+        for (const ch of allCandidates) {
+            if (ch && (ch.type === 3 || ch.isGroupDM?.()) && !savedGroups.has(ch.id)) {
+                if (!knownActiveGroups.has(ch.id)) {
+                    knownActiveGroups.set(ch.id, extractGroupSnapshot(ch));
+                    changed = true;
+                } else {
+                    const existing = knownActiveGroups.get(ch.id)!;
+                    if (ch.name && ch.name !== existing.name) {
+                        existing.name = ch.name;
+                        changed = true;
+                    }
+                    if (ch.lastMessageId && ch.lastMessageId !== existing.lastMessageId) {
+                        existing.lastMessageId = ch.lastMessageId;
+                        changed = true;
+                    }
+                    if (ch.icon && ch.icon !== existing.icon) {
+                        existing.icon = ch.icon;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed) {
+            debouncedPersistKnownGroups();
+        }
+    } catch {}
+}
+
 async function persistSavedGroups() {
     try {
-        await DataStore.set(DATA_STORE_KEY, Array.from(savedGroups.values()));
+        await DataStore.set(DATA_STORE_SAVED_KEY, Array.from(savedGroups.values()));
     } catch (e) {
         console.error("[SaveGroups] Failed to save groups to DataStore:", e);
     }
+}
+
+async function archiveGroup(channelId: string, channelHint?: any) {
+    if (manuallyDeletedGroupIds.has(channelId)) return;
+    if (savedGroups.has(channelId)) return;
+
+    let snapshot = knownActiveGroups.get(channelId);
+    const existing = ChannelStore.getChannel(channelId) || channelHint;
+
+    if (!snapshot && existing) {
+        snapshot = extractGroupSnapshot(existing);
+    }
+
+    if (!snapshot) {
+        snapshot = {
+            id: channelId,
+            name: existing?.name || channelHint?.name || "Group DM",
+            icon: existing?.icon || channelHint?.icon || null,
+            ownerId: existing?.ownerId || channelHint?.ownerId,
+            topic: existing?.topic || channelHint?.topic || "",
+            type: 3,
+            recipients: existing?.recipients || channelHint?.recipients || [],
+            rawRecipients: existing?.rawRecipients || channelHint?.rawRecipients || [],
+            lastMessageId: existing?.lastMessageId || channelHint?.lastMessageId || null,
+            kickedAt: Date.now(),
+            savedMessages: settings.store.saveMessages ? getChannelMessagesSnapshot(channelId) : []
+        };
+    } else {
+        snapshot.kickedAt = Date.now();
+        if (settings.store.saveMessages) {
+            const currentMsgs = getChannelMessagesSnapshot(channelId);
+            if (currentMsgs.length > 0) {
+                snapshot.savedMessages = currentMsgs;
+            }
+        }
+    }
+
+    knownActiveGroups.delete(channelId);
+    savedGroups.set(channelId, snapshot);
+    hydratedChannels.set(channelId, hydrateChannelRecord(snapshot));
+
+    await persistSavedGroups();
+    debouncedPersistKnownGroups();
+
+    updateStyles();
+    scanAndTagSidebarElements();
+
+    try { (ChannelStore as any)?.emitChange?.(); } catch {}
+    try { (PrivateChannelSortStore as any)?.emitChange?.(); } catch {}
+
+    if (settings.store.notifyOnSave) {
+        showNotification({
+            title: t("Kicked from group"),
+            body: `${snapshot.name} - ${t("Saved group to your DMs.")}`,
+            icon: snapshot.icon ? `https://cdn.discordapp.com/channel-icons/${channelId}/${snapshot.icon}.png` : undefined
+        });
+    }
+    showToast(t("Saved group to your DMs."), Toasts.Type.INFO);
+
+    const currentSelected = SelectedChannelStore?.getChannelId?.();
+    if (currentSelected === channelId) {
+        renderArchivedNoticeBanner(channelId);
+        restoreSavedMessages(channelId);
+    }
+}
+
+function checkOfflineKicks() {
+    try {
+        if (knownActiveGroups.size === 0) return;
+        const currentPrivate = (ChannelStore as any)?.getMutablePrivateChannels?.() || {};
+        const currentSorted = (ChannelStore as any)?.getSortedPrivateChannels?.() || [];
+        const currentIds = new Set([
+            ...Object.keys(currentPrivate),
+            ...((Array.isArray(currentSorted) ? currentSorted : []).map((c: any) => c?.id).filter(Boolean))
+        ]);
+
+        for (const [id, knownData] of Array.from(knownActiveGroups.entries())) {
+            if (!currentIds.has(id) && !savedGroups.has(id) && !manuallyDeletedGroupIds.has(id) && !manuallyLeftGroupIds.has(id)) {
+                archiveGroup(id, knownData);
+            }
+        }
+    } catch {}
 }
 
 function updateStyles() {
@@ -422,7 +600,11 @@ async function deleteSavedGroup(channelId: string) {
     manuallyDeletedGroupIds.add(channelId);
     savedGroups.delete(channelId);
     hydratedChannels.delete(channelId);
+    knownActiveGroups.delete(channelId);
+
     await persistSavedGroups();
+    debouncedPersistKnownGroups();
+
     updateStyles();
     removeArchivedNoticeBanner();
 
@@ -431,8 +613,15 @@ async function deleteSavedGroup(channelId: string) {
     }
 
     try { (ChannelStore as any)?.emitChange?.(); } catch {}
-    const sortStore = (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
-    try { sortStore?.emitChange?.(); } catch {}
+    try { (PrivateChannelSortStore as any)?.emitChange?.(); } catch {}
+
+    // Dispatch a native CHANNEL_DELETE so Discord stores clean up their state cleanly
+    try {
+        FluxDispatcher.dispatch({
+            type: "CHANNEL_DELETE",
+            channel: { id: channelId, type: 3 }
+        });
+    } catch {}
 
     showToast(t("Saved group removed"), Toasts.Type.SUCCESS);
 }
@@ -461,61 +650,9 @@ async function backupGroupNow(channel: any) {
     scanAndTagSidebarElements();
 
     try { (ChannelStore as any)?.emitChange?.(); } catch {}
-    const sortStore = (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
-    try { sortStore?.emitChange?.(); } catch {}
+    try { (PrivateChannelSortStore as any)?.emitChange?.(); } catch {}
 
     showToast(t("Group backed up successfully"), Toasts.Type.SUCCESS);
-}
-
-async function handleChannelDelete(event: { channel: any; }) {
-    const channelId = event?.channel?.id;
-    if (!channelId) return;
-
-    if (manuallyDeletedGroupIds.has(channelId)) {
-        manuallyDeletedGroupIds.delete(channelId);
-        return;
-    }
-
-    const cached = activeGroupsCache.get(channelId);
-    const existing = ChannelStore.getChannel(channelId);
-    const channel = cached || existing || event.channel;
-
-    if (!channel || (channel.type !== 3 && event.channel?.type !== 3)) return;
-
-    const messages = settings.store.saveMessages ? getChannelMessagesSnapshot(channelId) : [];
-
-    const groupData: SavedGroupData = {
-        id: channelId,
-        name: channel.name || "Group DM",
-        icon: channel.icon,
-        ownerId: channel.ownerId,
-        topic: channel.topic,
-        type: 3,
-        recipients: channel.recipients,
-        rawRecipients: channel.rawRecipients,
-        lastMessageId: channel.lastMessageId || channel.last_message_id,
-        kickedAt: Date.now(),
-        savedMessages: messages
-    };
-
-    savedGroups.set(channelId, groupData);
-    hydratedChannels.set(channelId, hydrateChannelRecord(groupData));
-    await persistSavedGroups();
-    updateStyles();
-    scanAndTagSidebarElements();
-
-    try { (ChannelStore as any)?.emitChange?.(); } catch {}
-    const sortStore = (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
-    try { sortStore?.emitChange?.(); } catch {}
-
-    if (settings.store.notifyOnSave) {
-        showNotification({
-            title: t("Kicked from group"),
-            body: `${groupData.name} - ${t("Saved group to your DMs.")}`,
-            icon: undefined
-        });
-    }
-    showToast(t("Saved group to your DMs."), Toasts.Type.INFO);
 }
 
 function handleChannelSelect(channelId: string) {
@@ -532,6 +669,93 @@ function handleChannelSelect(channelId: string) {
     }
 }
 
+function patchFluxDispatcher() {
+    if (!FluxDispatcher || (FluxDispatcher as any).__nightcordSaveGroupsPatched) return;
+    (FluxDispatcher as any).__nightcordSaveGroupsPatched = true;
+
+    const origDispatch = FluxDispatcher.dispatch;
+    FluxDispatcher.dispatch = function(action: any) {
+        if (!action) return origDispatch.apply(this, arguments as any);
+
+        const type = action.type;
+
+        if (type === "CHANNEL_DELETE") {
+            const channelId = action.channel?.id || action.channelId || action.id;
+            if (channelId) {
+                if (manuallyDeletedGroupIds.has(channelId)) {
+                    manuallyDeletedGroupIds.delete(channelId);
+                    return origDispatch.apply(this, arguments as any);
+                }
+
+                if (manuallyLeftGroupIds.has(channelId)) {
+                    manuallyLeftGroupIds.delete(channelId);
+                    knownActiveGroups.delete(channelId);
+                    return origDispatch.apply(this, arguments as any);
+                }
+
+                const isKnown = knownActiveGroups.has(channelId);
+                const ch = ChannelStore.getChannel(channelId);
+                const isGroup = isKnown || ch?.type === 3 || ch?.isGroupDM?.() || action.channel?.type === 3 || savedGroups.has(channelId);
+
+                if (isGroup) {
+                    archiveGroup(channelId, action.channel);
+                    // Swallowing CHANNEL_DELETE keeps the group DM right in the user's DMs!
+                    return;
+                }
+            }
+        }
+
+        if (type === "CHANNEL_RECIPIENT_REMOVE") {
+            const currentUserId = UserStore.getCurrentUser()?.id;
+            const removedUserId = action.user?.id || action.userId;
+            const channelId = action.channelId || action.channel?.id;
+            if (currentUserId && removedUserId === currentUserId && channelId) {
+                if (!manuallyLeftGroupIds.has(channelId) && !manuallyDeletedGroupIds.has(channelId)) {
+                    archiveGroup(channelId, action.channel);
+                    return;
+                }
+            }
+        }
+
+        return origDispatch.apply(this, arguments as any);
+    };
+
+    unpatchFluxDispatch = () => {
+        FluxDispatcher.dispatch = origDispatch;
+        delete (FluxDispatcher as any).__nightcordSaveGroupsPatched;
+    };
+}
+
+function patchManualLeaveTracking() {
+    try {
+        const actionMods = [
+            findByProps("closePrivateChannel"),
+            findByProps("openPrivateChannel")
+        ].filter(Boolean) as any[];
+
+        const closeMethods = ["closePrivateChannel", "closeChannel", "deletePrivateChannel", "closeDM"];
+
+        for (const mod of actionMods) {
+            for (const method of closeMethods) {
+                if (typeof mod[method] === "function" && !mod[method].__nightcordSaveGroupsTracked) {
+                    const origFn = mod[method];
+                    mod[method] = function(channelId: string, ...args: any[]) {
+                        if (channelId) {
+                            manuallyLeftGroupIds.add(channelId);
+                        }
+                        return origFn.apply(this, [channelId, ...args]);
+                    };
+                    mod[method].__nightcordSaveGroupsTracked = true;
+                    unpatchCloseMethods.push(() => {
+                        mod[method] = origFn;
+                        delete mod[method].__nightcordSaveGroupsTracked;
+                    });
+                }
+            }
+        }
+    } catch {}
+}
+
 function patchChannelStore() {
     const channelStoreAny = ChannelStore as any;
     if (!channelStoreAny) return;
@@ -545,46 +769,83 @@ function patchChannelStore() {
     };
     unpatchChannelStore = () => { ChannelStore.getChannel = origGetChannel; };
 
-    if (channelStoreAny.getMutablePrivateChannels) {
+    if (typeof channelStoreAny.hasChannel === "function") {
+        const origHas = channelStoreAny.hasChannel;
+        channelStoreAny.hasChannel = function(id: string) {
+            if (id && savedGroups.has(id)) return true;
+            return origHas.apply(this, arguments as any);
+        };
+        unpatchChannelStoreHasChannel = () => { channelStoreAny.hasChannel = origHas; };
+    }
+
+    if (typeof channelStoreAny.hasPrivateChannel === "function") {
+        const origHasPriv = channelStoreAny.hasPrivateChannel;
+        channelStoreAny.hasPrivateChannel = function(id: string) {
+            if (id && savedGroups.has(id)) return true;
+            return origHasPriv.apply(this, arguments as any);
+        };
+        unpatchChannelStoreHasPrivate = () => { channelStoreAny.hasPrivateChannel = origHasPriv; };
+    }
+
+    if (typeof channelStoreAny.isPrivate === "function") {
+        const origIsPriv = channelStoreAny.isPrivate;
+        channelStoreAny.isPrivate = function(id: string) {
+            if (id && savedGroups.has(id)) return true;
+            return origIsPriv.apply(this, arguments as any);
+        };
+        unpatchChannelStoreIsPrivate = () => { channelStoreAny.isPrivate = origIsPriv; };
+    }
+
+    if (typeof channelStoreAny.getMutablePrivateChannels === "function") {
         const origGetMut = channelStoreAny.getMutablePrivateChannels;
         channelStoreAny.getMutablePrivateChannels = function() {
             const chs = origGetMut.apply(this, arguments as any) || {};
             if (savedGroups.size === 0) return chs;
-            let modified = false;
             const res = { ...chs };
             for (const [id] of savedGroups) {
                 if (!res[id]) {
                     const hydrated = hydratedChannels.get(id);
-                    if (hydrated) {
-                        res[id] = hydrated;
-                        modified = true;
-                    }
+                    if (hydrated) res[id] = hydrated;
                 }
             }
-            return modified ? res : chs;
+            return res;
         };
         unpatchChannelStoreGetMutablePrivate = () => { channelStoreAny.getMutablePrivateChannels = origGetMut; };
     }
 
-    if (channelStoreAny.getPrivateChannels) {
+    if (typeof channelStoreAny.getPrivateChannels === "function") {
         const origGetPriv = channelStoreAny.getPrivateChannels;
         channelStoreAny.getPrivateChannels = function() {
             const chs = origGetPriv.apply(this, arguments as any) || {};
             if (savedGroups.size === 0) return chs;
-            let modified = false;
             const res = { ...chs };
             for (const [id] of savedGroups) {
                 if (!res[id]) {
                     const hydrated = hydratedChannels.get(id);
-                    if (hydrated) {
-                        res[id] = hydrated;
-                        modified = true;
-                    }
+                    if (hydrated) res[id] = hydrated;
                 }
             }
-            return modified ? res : chs;
+            return res;
         };
         unpatchChannelStoreGetPrivate = () => { channelStoreAny.getPrivateChannels = origGetPriv; };
+    }
+
+    if (typeof channelStoreAny.getSortedPrivateChannels === "function") {
+        const origGetSorted = channelStoreAny.getSortedPrivateChannels;
+        channelStoreAny.getSortedPrivateChannels = function() {
+            const list = origGetSorted.apply(this, arguments as any);
+            if (!list || !Array.isArray(list) || savedGroups.size === 0) return list;
+            const result = [...list];
+            const existingIds = new Set(result.map((c: any) => c?.id).filter(Boolean));
+            for (const [id] of savedGroups) {
+                if (!existingIds.has(id)) {
+                    const hydrated = hydratedChannels.get(id);
+                    if (hydrated) result.push(hydrated);
+                }
+            }
+            return result;
+        };
+        unpatchChannelStoreGetSorted = () => { channelStoreAny.getSortedPrivateChannels = origGetSorted; };
     }
 }
 
@@ -633,7 +894,7 @@ function patchPrivateChannelSortStore(sortStore: any) {
     };
 }
 
-function patchMessageActions() {
+function patchNetworkLayer() {
     try {
         const MessageActions = (findByProps("fetchMessages", "sendMessage") || findByProps("sendMessage")) as any;
         if (MessageActions) {
@@ -661,9 +922,30 @@ function patchMessageActions() {
                 unpatchSendMessage = () => { MessageActions.sendMessage = origSend; };
             }
         }
-    } catch (e) {
-        console.error("[SaveGroups] Failed to patch MessageActions:", e);
-    }
+
+        const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
+        if (HTTP?.get) {
+            const origGet = HTTP.get;
+            HTTP.get = function(opts: any) {
+                const url = typeof opts === "string" ? opts : opts?.url;
+                if (url && typeof url === "string") {
+                    for (const [id] of savedGroups) {
+                        if (url.includes(`/channels/${id}`)) {
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: [],
+                                text: "[]",
+                                headers: {}
+                            });
+                        }
+                    }
+                }
+                return origGet.apply(this, arguments as any);
+            };
+            unpatchHTTPGet = () => { HTTP.get = origGet; };
+        }
+    } catch {}
 }
 
 const ContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { channel?: any; } = {}) => {
@@ -684,7 +966,7 @@ const ContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { channel?
                 <Menu.MenuSeparator key="separator-savegroups" />
             </Menu.MenuGroup>
         );
-    } else if (channel.type === 3) {
+    } else if (channel.type === 3 || channel.isGroupDM?.()) {
         children.unshift(
             <Menu.MenuGroup key="vc-savegroups-backup">
                 <Menu.MenuItem
@@ -713,28 +995,35 @@ export default definePlugin({
     },
 
     flux: {
-        CHANNEL_CREATE(event: { channel: any; }) {
-            cacheActiveGroup(event?.channel);
+        CHANNEL_CREATE() {
+            updateKnownActiveGroups();
         },
-        CHANNEL_UPDATES(event: { channels: any[]; }) {
-            if (Array.isArray(event?.channels)) {
-                event.channels.forEach(cacheActiveGroup);
-            }
+        CHANNEL_UPDATES() {
+            updateKnownActiveGroups();
         },
         CONNECTION_OPEN() {
-            refreshActiveGroupsCache();
-        },
-        CHANNEL_DELETE(event: { channel: any; }) {
-            handleChannelDelete(event);
+            updateKnownActiveGroups();
+            checkOfflineKicks();
         },
         CHANNEL_SELECT(event: { channelId: string; }) {
             handleChannelSelect(event?.channelId);
+        },
+        MESSAGE_CREATE(event: { channelId: string; message: any; }) {
+            const channelId = event?.channelId;
+            if (!channelId) return;
+
+            if (knownActiveGroups.has(channelId)) {
+                const group = knownActiveGroups.get(channelId)!;
+                if (event.message?.id) {
+                    group.lastMessageId = event.message.id;
+                }
+            }
         }
     },
 
     async start() {
         try {
-            const entries = await DataStore.get<SavedGroupData[]>(DATA_STORE_KEY);
+            const entries = await DataStore.get<SavedGroupData[]>(DATA_STORE_SAVED_KEY);
             if (Array.isArray(entries)) {
                 for (const data of entries) {
                     if (data?.id) {
@@ -747,10 +1036,22 @@ export default definePlugin({
             console.error("[SaveGroups] Failed to load saved groups from DataStore:", e);
         }
 
-        refreshActiveGroupsCache();
+        try {
+            const known = await DataStore.get<SavedGroupData[]>(DATA_STORE_KNOWN_KEY);
+            if (Array.isArray(known)) {
+                for (const data of known) {
+                    if (data?.id && !savedGroups.has(data.id)) {
+                        knownActiveGroups.set(data.id, data);
+                    }
+                }
+            }
+        } catch {}
+
+        patchFluxDispatcher();
+        patchManualLeaveTracking();
         patchChannelStore();
 
-        const existingSortStore = (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
+        const existingSortStore = PrivateChannelSortStore || (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
         if (existingSortStore) {
             patchPrivateChannelSortStore(existingSortStore);
         }
@@ -758,9 +1059,20 @@ export default definePlugin({
             patchPrivateChannelSortStore(store);
         });
 
-        patchMessageActions();
+        patchNetworkLayer();
         updateStyles();
         startSidebarObserver();
+
+        try {
+            channelStoreListener = () => {
+                updateKnownActiveGroups();
+                scanAndTagSidebarElements();
+            };
+            (ChannelStore as any)?.addChangeListener?.(channelStoreListener);
+        } catch {}
+
+        updateKnownActiveGroups();
+        checkOfflineKicks();
 
         const currentChannelId = SelectedChannelStore?.getChannelId?.();
         if (currentChannelId && savedGroups.has(currentChannelId)) {
@@ -773,9 +1085,38 @@ export default definePlugin({
     },
 
     stop() {
+        if (unpatchFluxDispatch) {
+            unpatchFluxDispatch();
+            unpatchFluxDispatch = null;
+        }
+
+        unpatchCloseMethods.forEach(fn => fn());
+        unpatchCloseMethods.length = 0;
+
+        if (channelStoreListener) {
+            try { (ChannelStore as any)?.removeChangeListener?.(channelStoreListener); } catch {}
+            channelStoreListener = null;
+        }
+
         if (unpatchChannelStore) {
             unpatchChannelStore();
             unpatchChannelStore = null;
+        }
+        if (unpatchChannelStoreHasChannel) {
+            unpatchChannelStoreHasChannel();
+            unpatchChannelStoreHasChannel = null;
+        }
+        if (unpatchChannelStoreHasPrivate) {
+            unpatchChannelStoreHasPrivate();
+            unpatchChannelStoreHasPrivate = null;
+        }
+        if (unpatchChannelStoreIsPrivate) {
+            unpatchChannelStoreIsPrivate();
+            unpatchChannelStoreIsPrivate = null;
+        }
+        if (unpatchChannelStoreGetSorted) {
+            unpatchChannelStoreGetSorted();
+            unpatchChannelStoreGetSorted = null;
         }
         if (unpatchChannelStoreGetMutablePrivate) {
             unpatchChannelStoreGetMutablePrivate();
@@ -785,10 +1126,12 @@ export default definePlugin({
             unpatchChannelStoreGetPrivate();
             unpatchChannelStoreGetPrivate = null;
         }
+
         if (unpatchPrivateChannelSortStore) {
             unpatchPrivateChannelSortStore();
             unpatchPrivateChannelSortStore = null;
         }
+
         if (unpatchFetchMessages) {
             unpatchFetchMessages();
             unpatchFetchMessages = null;
@@ -796,6 +1139,10 @@ export default definePlugin({
         if (unpatchSendMessage) {
             unpatchSendMessage();
             unpatchSendMessage = null;
+        }
+        if (unpatchHTTPGet) {
+            unpatchHTTPGet();
+            unpatchHTTPGet = null;
         }
 
         if (sidebarObserver) {
@@ -805,6 +1152,10 @@ export default definePlugin({
         if (_domUpdateTimer) {
             clearTimeout(_domUpdateTimer);
             _domUpdateTimer = undefined;
+        }
+        if (_persistKnownTimer) {
+            clearTimeout(_persistKnownTimer);
+            _persistKnownTimer = undefined;
         }
 
         document.querySelectorAll(".vc-savegroups-kicked").forEach(el => {
@@ -819,8 +1170,9 @@ export default definePlugin({
         const styleEl = document.getElementById("vc-savegroups-dynamic-styles");
         if (styleEl) styleEl.remove();
 
-        const sortStore = (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
+        const sortStore = PrivateChannelSortStore || (findStore("PrivateChannelSortStore") || findByProps("getPrivateChannelIds")) as any;
         try { (ChannelStore as any)?.emitChange?.(); } catch {}
         try { sortStore?.emitChange?.(); } catch {}
     }
 });
+
