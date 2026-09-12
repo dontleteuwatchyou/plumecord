@@ -389,7 +389,7 @@ async function archiveGroup(channelId: string, channelHint?: any) {
             icon: snapshot.icon ? `https://cdn.discordapp.com/channel-icons/${channelId}/${snapshot.icon}.png` : undefined
         });
     }
-    showToast(t("Saved group to your DMs."), Toasts.Type.INFO);
+
 
     const currentSelected = SelectedChannelStore?.getChannelId?.();
     if (currentSelected === channelId) {

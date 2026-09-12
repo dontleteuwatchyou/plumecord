@@ -7,7 +7,7 @@
 import "./style.css";
 
 import { showNotification } from "@api/Notifications";
-import { definePluginSettings } from "@api/Settings";
+import { definePluginSettings, Settings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Heading } from "@components/Heading";
 import { DeleteIcon, GhostIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
@@ -211,6 +211,8 @@ function GhostClientInstallerPanel() {
 
         if (!result) return;
         setInfo(result);
+        // Auto-enable the ghostClient plugin so it activates immediately after patching
+        try { (Settings.plugins["ghostClient"] ??= {} as any).enabled = true; } catch {}
         setStatus(t("GhostClient installed successfully."));
         showToast(t("GhostClient installed successfully."), Toasts.Type.SUCCESS);
     }

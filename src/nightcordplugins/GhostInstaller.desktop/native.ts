@@ -652,22 +652,25 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
                 try { await fsp.copyFile(bundledNode, path.join(persistentServerDest, "node.exe")); } catch {}
             }
 
-            // Rebuild & reinject Nightcord in developer mode
+            // Rebuild & reinject Nightcord in developer mode — async to avoid freezing Discord
+            const runAsync = (cmd: string, args: string[], cwd: string, label: string): Promise<void> =>
+                new Promise(resolve => {
+                    const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: process.platform === "win32" });
+                    child.stdout?.on("data", (d: Buffer) => { for (const line of d.toString().split("\n")) { if (line.trim()) log(`INFO: [${label}] ${line.trim()}`); } });
+                    child.stderr?.on("data", (d: Buffer) => { for (const line of d.toString().split("\n")) { if (line.trim()) log(`WARN: [${label}] ${line.trim()}`); } });
+                    child.on("close", code => {
+                        if (code === 0) log(`OK: ${label} completed successfully.`);
+                        else log(`WARN: ${label} exited with code ${code}.`);
+                        resolve();
+                    });
+                    child.on("error", (e: Error) => { log(`WARN: ${label} spawn error: ${e.message}`); resolve(); });
+                });
+
             log("INFO: Rebuilding Nightcord bundle (pnpm build)...");
-            try {
-                execSync("pnpm build", { cwd: nightcordRoot, stdio: "ignore" });
-                log("OK: Nightcord compilation successful.");
-            } catch (e: any) {
-                log(`WARN: pnpm build encountered an issue: ${e.message}. Retrying injection directly.`);
-            }
+            await runAsync("pnpm", ["build"], nightcordRoot, "pnpm build");
 
             log("INFO: Injecting into Discord installations (node scripts/inject.mjs)...");
-            try {
-                execSync("node scripts/inject.mjs", { cwd: nightcordRoot, stdio: "ignore" });
-                log("OK: Nightcord successfully injected into Discord.");
-            } catch (e: any) {
-                log(`WARN: Injection command error: ${e.message}`);
-            }
+            await runAsync("node", ["scripts/inject.mjs"], nightcordRoot, "inject");
         } else {
             log("INFO: Standalone Nightcord installation detected. GhostClient plugin is built into core.");
         }
