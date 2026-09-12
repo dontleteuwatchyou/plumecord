@@ -1,14 +1,18 @@
-/*
+﻿/*
  * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
-import definePlugin from "@utils/types";
+import definePlugin, { PluginNative } from "@utils/types";
 import { FluxDispatcher, MediaEngineStore, Menu, React, RunningGameStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
+
+const Native = (VencordNative?.pluginHelpers as any)?.EnhancedScreenshare as
+    | PluginNative<typeof import("./native")>
+    | undefined;
 
 export interface StreamAudioState {
     selectedAppPids: number[];
@@ -17,6 +21,17 @@ export interface StreamAudioState {
 export const streamAudioState: StreamAudioState = {
     selectedAppPids: []
 };
+
+export interface AudioAppItem {
+    name: string;
+    pid: number;
+    allPids: number[];
+    isActiveSound: boolean;
+}
+
+let _cachedAudioApps: AudioAppItem[] = [];
+let _isFetchingAudioApps = false;
+let _pollInterval: ReturnType<typeof setInterval> | undefined;
 
 function StreamAudioIcon(props: any) {
     return (
@@ -29,35 +44,41 @@ function StreamAudioIcon(props: any) {
     );
 }
 
-export function formatCleanAppName(rawName: string): string {
-    if (!rawName) return "Application";
+function RefreshIcon(props: any) {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" {...props}>
+            <path
+                d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+                fill="currentColor"
+            />
+        </svg>
+    );
+}
 
-    // Strip path if raw path like C:\Windows\System32\cmd.exe
-    let clean = rawName.split(/[\\/]/).pop() ?? rawName;
+export function formatCleanAppName(rawName: string, title?: string): string {
+    const candidate = title && title.trim() ? title.trim() : rawName;
+    if (!candidate) return "Application";
 
     // Detect common browsers and applications
-    const lower = clean.toLowerCase();
-    if (lower === "cmd.exe" || lower === "cmd") return "Command Prompt";
-    if (lower === "powershell.exe" || lower === "powershell") return "PowerShell";
-    if (lower === "spotify.exe" || lower === "spotify") return "Spotify";
+    const lower = candidate.toLowerCase();
+    if (lower.includes("youtube")) return "YouTube";
+    if (lower.includes("spotify")) return "Spotify";
     if (lower.includes("chrome") || lower.includes("google chrome")) return "Google Chrome";
     if (lower.includes("brave")) return "Brave Browser";
     if (lower.includes("msedge") || lower.includes("edge")) return "Microsoft Edge";
     if (lower.includes("firefox")) return "Mozilla Firefox";
-    if (lower.includes("discord") || lower.includes("nightcord")) return "Discord";
     if (lower.includes("vlc")) return "VLC Media Player";
     if (lower.includes("roblox")) return "Roblox";
     if (lower.includes("steam")) return "Steam";
-    if (lower.includes("youtube")) return "YouTube";
 
-    // Clean browser window titles like "Song - YouTube - Google Chrome"
-    if (clean.includes(" - Google Chrome")) return "Google Chrome";
-    if (clean.includes(" - Brave")) return "Brave Browser";
-    if (clean.includes(" - Microsoft Edge") || clean.includes(" - Edge")) return "Microsoft Edge";
-    if (clean.includes(" - Mozilla Firefox")) return "Mozilla Firefox";
-    if (clean.includes(" - Discord")) return "Discord";
+    let clean = candidate.split(/[\\/]/).pop() ?? candidate;
 
-    // Remove window subtitles after dashes if long
+    // Clean browser window subtitles
+    if (clean.includes(" - Google Chrome")) clean = clean.replace(" - Google Chrome", "");
+    if (clean.includes(" - Brave")) clean = clean.replace(" - Brave", "");
+    if (clean.includes(" - Microsoft Edge")) clean = clean.replace(" - Microsoft Edge", "");
+    if (clean.includes(" - Mozilla Firefox")) clean = clean.replace(" - Mozilla Firefox", "");
+
     if (clean.includes(" — ")) {
         clean = clean.split(" — ")[0];
     } else if (clean.includes(" - ")) {
@@ -73,7 +94,81 @@ export function formatCleanAppName(rawName: string): string {
         clean = clean.slice(0, 27) + "...";
     }
 
-    return clean;
+    return clean || "Application";
+}
+
+export async function fetchAudioApps(): Promise<AudioAppItem[]> {
+    if (_isFetchingAudioApps) return _cachedAudioApps;
+    _isFetchingAudioApps = true;
+
+    try {
+        if (Native?.getAudioProcesses) {
+            const raw = await Native.getAudioProcesses();
+            if (Array.isArray(raw)) {
+                const grouped = new Map<string, AudioAppItem>();
+
+                for (const p of raw) {
+                    if (!p || !p.pid) continue;
+                    const cleanName = formatCleanAppName(p.name, p.title);
+                    const isActive = p.state === 1 || (typeof p.peak === "number" && p.peak > 0.001);
+
+                    const existing = grouped.get(cleanName);
+                    if (existing) {
+                        // Merge PIDs
+                        const set = new Set([...existing.allPids, ...(p.allPids || [p.pid])]);
+                        existing.allPids = Array.from(set);
+                        if (isActive) existing.isActiveSound = true;
+                    } else {
+                        grouped.set(cleanName, {
+                            name: cleanName,
+                            pid: p.pid,
+                            allPids: p.allPids && p.allPids.length ? p.allPids : [p.pid],
+                            isActiveSound: isActive
+                        });
+                    }
+                }
+
+                // Sort: applications with active sound first, then alphabetically
+                const list = Array.from(grouped.values()).sort((a, b) => {
+                    if (a.isActiveSound && !b.isActiveSound) return -1;
+                    if (!a.isActiveSound && b.isActiveSound) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+
+                _cachedAudioApps = list;
+                return list;
+            }
+        }
+
+        // Non-Windows or Native fallback: filter RunningGameStore strictly
+        const runningGames = (RunningGameStore as any)?.getRunningGames?.() ?? [];
+        const visibleGames = (RunningGameStore as any)?.getVisibleRunningGames?.() ?? [];
+        const fallbackMap = new Map<number, AudioAppItem>();
+
+        const IGNORED_NAMES = new Set(["notepad", "bloc-notes", "cmd", "powershell", "calc", "regedit"]);
+
+        for (const g of [...runningGames, ...visibleGames]) {
+            if (g && typeof g.pid === "number" && g.pid > 0 && g.name) {
+                const lower = g.name.toLowerCase();
+                if (IGNORED_NAMES.has(lower)) continue;
+                const clean = formatCleanAppName(g.name);
+                fallbackMap.set(g.pid, {
+                    name: clean,
+                    pid: g.pid,
+                    allPids: [g.pid],
+                    isActiveSound: false
+                });
+            }
+        }
+
+        _cachedAudioApps = Array.from(fallbackMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        return _cachedAudioApps;
+    } catch (err) {
+        console.error("[EnhancedScreenshare] Failed to fetch audio apps:", err);
+        return _cachedAudioApps;
+    } finally {
+        _isFetchingAudioApps = false;
+    }
 }
 
 export function applyStreamAudio(pids?: number[]) {
@@ -112,11 +207,10 @@ export function applyStreamAudio(pids?: number[]) {
             if (typeof engine.setSoundshareSource === "function") {
                 try {
                     engine.setSoundshareSource(0, false);
-                } catch {
-                    try {
-                        engine.setSoundshareSource(null, false);
-                    } catch { }
-                }
+                } catch { }
+                try {
+                    engine.setSoundshareSource(null, false);
+                } catch { }
             }
             if (engine.connections) {
                 for (const conn of engine.connections) {
@@ -134,35 +228,21 @@ export function applyStreamAudio(pids?: number[]) {
 }
 
 export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (children) => {
-    const runningGames = (RunningGameStore as any)?.getRunningGames?.() ?? [];
-    const visibleGames = (RunningGameStore as any)?.getVisibleRunningGames?.() ?? [];
-    const candidateGames = (RunningGameStore as any)?.getCandidateGames?.() ?? [];
-    const gamesSeen = ((RunningGameStore as any)?.getGamesSeen?.(true) ?? []).filter((g: any) => g?.pid);
+    // Trigger fresh async fetch on menu open so next ticks or subsequent opens have latest apps
+    fetchAudioApps().catch(() => { });
 
-    const appsMap = new Map<number, { name: string; pid: number }>();
-    for (const g of [...runningGames, ...visibleGames, ...candidateGames, ...gamesSeen]) {
-        if (g && typeof g.pid === "number" && g.pid > 0 && g.name) {
-            const cleanName = formatCleanAppName(g.name);
-            appsMap.set(g.pid, { name: cleanName, pid: g.pid });
-        }
-    }
-
-    const appsList = Array.from(appsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-
-    // Distinguish duplicate names with PID
-    const countByName = new Map<string, number>();
-    for (const app of appsList) {
-        countByName.set(app.name, (countByName.get(app.name) ?? 0) + 1);
-    }
-
+    const appsList = _cachedAudioApps;
     const isEntireSystem = streamAudioState.selectedAppPids.length === 0;
 
-    const toggleAppPid = (pid: number) => {
-        const index = streamAudioState.selectedAppPids.indexOf(pid);
-        if (index > -1) {
-            streamAudioState.selectedAppPids = streamAudioState.selectedAppPids.filter(p => p !== pid);
+    const toggleApp = (app: AudioAppItem) => {
+        const isSelected = app.allPids.some(p => streamAudioState.selectedAppPids.includes(p));
+        if (isSelected) {
+            streamAudioState.selectedAppPids = streamAudioState.selectedAppPids.filter(
+                p => !app.allPids.includes(p)
+            );
         } else {
-            streamAudioState.selectedAppPids = [...streamAudioState.selectedAppPids, pid];
+            const set = new Set([...streamAudioState.selectedAppPids, ...app.allPids]);
+            streamAudioState.selectedAppPids = Array.from(set);
         }
         applyStreamAudio(streamAudioState.selectedAppPids);
     };
@@ -183,24 +263,36 @@ export const streamAudioContextMenuPatch: NavContextMenuPatchCallback = (childre
                 }}
             />
             <Menu.MenuSeparator />
+            <Menu.MenuItem
+                id="enhanced-screenshare-refresh-apps"
+                label={t("Refresh Applications")}
+                icon={RefreshIcon}
+                action={() => {
+                    fetchAudioApps().catch(() => { });
+                }}
+            />
+            <Menu.MenuSeparator />
             {appsList.length > 0 ? (
                 appsList.map(app => {
-                    const hasDuplicates = (countByName.get(app.name) ?? 0) > 1;
-                    const displayLabel = hasDuplicates ? `${app.name} (${app.pid})` : app.name;
+                    const isChecked = app.allPids.some(p => streamAudioState.selectedAppPids.includes(p));
+                    const displayLabel = app.isActiveSound
+                        ? `${app.name} (${t("Sound active")})`
+                        : app.name;
+
                     return (
                         <Menu.MenuCheckboxItem
-                            key={app.pid}
+                            key={`app-${app.name}-${app.pid}`}
                             id={`enhanced-screenshare-app-chk-${app.pid}`}
                             label={displayLabel}
-                            checked={streamAudioState.selectedAppPids.includes(app.pid)}
-                            action={() => toggleAppPid(app.pid)}
+                            checked={isChecked}
+                            action={() => toggleApp(app)}
                         />
                     );
                 })
             ) : (
                 <Menu.MenuItem
                     id="enhanced-screenshare-app-empty"
-                    label={t("No running applications detected")}
+                    label={t("No audio-producing applications detected")}
                     disabled={true}
                 />
             )}
@@ -242,18 +334,36 @@ export default definePlugin({
     },
 
     start() {
+        // Initial fetch of audio applications
+        fetchAudioApps().catch(() => { });
+
+        // Background polling every 2.5s to keep the audio process list always fresh
+        if (!_pollInterval) {
+            _pollInterval = setInterval(() => {
+                fetchAudioApps().catch(() => { });
+            }, 2500);
+        }
+
         FluxDispatcher.subscribe("MEDIA_ENGINE_SET_GO_LIVE_SOURCE", onStreamStart);
         FluxDispatcher.subscribe("STREAM_START", onStreamStart);
     },
 
     stop() {
+        if (_pollInterval !== undefined) {
+            clearInterval(_pollInterval);
+            _pollInterval = undefined;
+        }
+
         if (_streamStartTimer !== undefined) {
             clearTimeout(_streamStartTimer);
             _streamStartTimer = undefined;
         }
+
         FluxDispatcher.unsubscribe("MEDIA_ENGINE_SET_GO_LIVE_SOURCE", onStreamStart);
         FluxDispatcher.unsubscribe("STREAM_START", onStreamStart);
+
         streamAudioState.selectedAppPids = [];
         applyStreamAudio([]);
+        _cachedAudioApps = [];
     }
 });
