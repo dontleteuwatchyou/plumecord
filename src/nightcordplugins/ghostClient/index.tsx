@@ -610,9 +610,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                             title={isFakeMuted ? t("Unmute (Fake)") : t("Fake mute")}
                             onClick={async () => {
-                                const targets = resolveTargets();
+                                const targets = resolveTargets().filter(id => states.get(id)?.active);
                                 if (targets.length === 0) {
-                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                     return;
                                 }
                                 const next = !isFakeMuted;
@@ -639,9 +639,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                             title={isFakeDeafened ? t("Undeafen (Fake)") : t("Fake deafen")}
                             onClick={async () => {
-                                const targets = resolveTargets();
+                                const targets = resolveTargets().filter(id => states.get(id)?.active);
                                 if (targets.length === 0) {
-                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                     return;
                                 }
                                 const next = !isFakeDeafened;
@@ -668,9 +668,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                             title={isFakeStreaming ? t("Stop fake stream") : t("Fake stream")}
                             onClick={async () => {
-                                const targets = resolveTargets();
+                                const targets = resolveTargets().filter(id => states.get(id)?.active);
                                 if (targets.length === 0) {
-                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                     return;
                                 }
                                 const next = !isFakeStreaming;
@@ -697,9 +697,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                             title={isFakeCam ? t("Stop fake cam") : t("Fake cam")}
                             onClick={async () => {
-                                const targets = resolveTargets();
+                                const targets = resolveTargets().filter(id => states.get(id)?.active);
                                 if (targets.length === 0) {
-                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                     return;
                                 }
                                 const next = !isFakeCam;
@@ -719,12 +719,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             onChange={e => setQuickStreamUrl(e.target.value)}
                             onKeyDown={e => {
                                 if (e.key === "Enter" && quickStreamUrl.trim()) {
-                                    const targets = resolveTargets();
-                                    if (targets.length === 0) {
-                                        Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    const activeTargets = resolveTargets().filter(id => states.get(id)?.active);
+                                    if (activeTargets.length === 0) {
+                                        Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                         return;
                                     }
-                                    const targetId = targets[0];
+                                    const targetId = activeTargets[0];
                                     setStreamingUserId(targetId);
                                     startStream(quickStreamUrl, targetId);
                                 }
@@ -735,12 +735,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
                             disabled={!quickStreamUrl.trim() || isPolling}
                             onClick={() => {
-                                const targets = resolveTargets();
-                                if (targets.length === 0) {
-                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                const activeTargets = resolveTargets().filter(id => states.get(id)?.active);
+                                if (activeTargets.length === 0) {
+                                    Toasts.show({ message: t("No ghost is connected in voice"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                                     return;
                                 }
-                                const targetId = targets[0];
+                                const targetId = activeTargets[0];
                                 setStreamingUserId(targetId);
                                 startStream(quickStreamUrl, targetId);
                             }}
@@ -748,6 +748,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             {isPolling ? t("Starting...") : t("Stream")}
                         </button>
                     </div>
+
                 </div>
 
                 <div className="gc-popover-divider" />

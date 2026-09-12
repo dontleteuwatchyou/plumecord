@@ -24,7 +24,7 @@
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 10px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    overflow: visible;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     max-height: calc(100vh - 32px);
@@ -67,12 +67,13 @@
     flex-direction: column;
     gap: 10px;
     overflow-y: auto;
-    overflow-x: visible;
+    overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.15) rgba(255,255,255,0.04);
-    /* Laisse de l'espace pour les dropdowns absolus */
-    overflow: visible;
-    max-height: calc(100vh - 100px);
+    /* max-height accounts for popover header (~48px) + top/bottom margin (16px) */
+    max-height: calc(100vh - 64px - 48px);
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .gc-popover-divider {
