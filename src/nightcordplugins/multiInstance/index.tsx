@@ -161,21 +161,6 @@ async function captureAllTokens(): Promise<void> {
             }
         } catch {}
 
-        // 5. Scan local Discord LevelDB tokens via TokenImporterNative if available
-        try {
-            const TokenImporterNative = (VencordNative.pluginHelpers as any)?.TokenImporter;
-            if (TokenImporterNative?.findLocalTokens) {
-                const localTokens: string[] = await TokenImporterNative.findLocalTokens().catch(() => []);
-                for (const tok of localTokens) {
-                    if (!tok || typeof tok !== "string") continue;
-                    const uId = getUserIdFromToken(tok);
-                    if (uId) {
-                        cacheToken(uId, tok);
-                    }
-                }
-            }
-        } catch {}
-
         await saveTokenCache();
     } catch (e) {
         console.warn("[MultiInstance] captureAllTokens failed:", e);
@@ -209,12 +194,17 @@ function hookEncryptAndStoreTokens(): void {
 function hookFluxDispatcher(): (() => void) | null {
     try {
         if (!FluxDispatcher?.subscribe) return null;
+        let _captureTimer: any = null;
         const handler = (event: any) => {
             if (event?.token && event?.userId) {
                 cacheToken(event.userId, event.token);
                 saveTokenCache();
             }
-            captureAllTokens();
+            if (_captureTimer) clearTimeout(_captureTimer);
+            _captureTimer = setTimeout(() => {
+                _captureTimer = null;
+                captureAllTokens();
+            }, 300);
         };
         const events = [
             "MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS",
@@ -224,7 +214,10 @@ function hookFluxDispatcher(): (() => void) | null {
             "CONNECTION_OPEN"
         ];
         events.forEach(ev => FluxDispatcher.subscribe(ev, handler));
-        return () => events.forEach(ev => FluxDispatcher.unsubscribe(ev, handler));
+        return () => {
+            if (_captureTimer) clearTimeout(_captureTimer);
+            events.forEach(ev => FluxDispatcher.unsubscribe(ev, handler));
+        };
     } catch { return null; }
 }
 
