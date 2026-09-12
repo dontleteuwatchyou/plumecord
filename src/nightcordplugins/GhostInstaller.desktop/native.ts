@@ -526,6 +526,37 @@ async function copyDir(src: string, dest: string) {
     }
 }
 
+function patchGhostServerFiles(serverDir: string) {
+    try {
+        const srvPath = path.join(serverDir, "server.js");
+        if (fs.existsSync(srvPath)) {
+            let content = fs.readFileSync(srvPath, "utf-8");
+            if (!content.includes("globalThis.WebSocket")) {
+                content = content.replace(
+                    'import https from "https";',
+                    'import https from "https";\nimport WebSocket from "ws";\nif (!globalThis.WebSocket) globalThis.WebSocket = WebSocket;'
+                );
+                fs.writeFileSync(srvPath, content, "utf-8");
+                log("OK: Patched server.js with WebSocket polyfill.");
+            }
+        }
+        const bmcPath = path.join(serverDir, "node_modules", "@dank074", "discord-video-stream", "dist", "client", "voice", "BaseMediaConnection.js");
+        if (fs.existsSync(bmcPath)) {
+            let content = fs.readFileSync(bmcPath, "utf-8");
+            if (!content.includes("Buffer.isBuffer(e.data)")) {
+                content = content.replace(
+                    'if (e.data instanceof ArrayBuffer) {',
+                    'if (e.data instanceof ArrayBuffer || Buffer.isBuffer(e.data) || ArrayBuffer.isView(e.data)) {'
+                );
+                fs.writeFileSync(bmcPath, content, "utf-8");
+                log("OK: Patched BaseMediaConnection.js with DAVE binary MLS fix.");
+            }
+        }
+    } catch (e: any) {
+        log(`WARN: patchGhostServerFiles error: ${e.message}`);
+    }
+}
+
 async function killRunningServer(): Promise<void> {
     try {
         await new Promise<void>(resolve => {
@@ -630,6 +661,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         const persistentServerDest = path.join(app.getPath("userData"), "ghost-server");
         log(`INFO: Copying ghost-server to persistent storage: ${persistentServerDest}`);
         await copyDir(serverSource, persistentServerDest);
+        patchGhostServerFiles(persistentServerDest);
 
         const nightcordRoot = findNightcordRoot();
         if (nightcordRoot) {
@@ -643,6 +675,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             const repoServerDest = path.join(nightcordRoot, "ghost-server");
             try {
                 await copyDir(serverSource, repoServerDest);
+                patchGhostServerFiles(repoServerDest);
             } catch {}
 
             // Ensure binaries are placed in persistent location if present

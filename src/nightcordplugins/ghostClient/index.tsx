@@ -202,10 +202,13 @@ function startFollowing() {
 
         for (const s of statesList) {
             if (s.userId !== myId) continue;
-            const newCh: string | null = s.channelId ?? null;
+            // Toujours vérifier l'état réel actuel via getMyVoiceState()
+            // pour éviter qu'une mise à jour partielle (mute, deaf, etc.) avec channelId absent ne déclenche une fausse déconnexion
+            const curVoice = getMyVoiceState();
+            const newCh: string | null = curVoice?.channelId ?? null;
             if (newCh === myLastChannelId) continue;
             myLastChannelId = newCh;
-            const guild: string = s.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
+            const guild: string = curVoice?.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
             const accounts: GhostAccount[] = savedAccounts.length > 0
                 ? savedAccounts
                 : (await DataStore.get(DS_KEY_TOKENS) as GhostAccount[] | null ?? []);
@@ -817,7 +820,22 @@ export default definePlugin({
         const autoFollow = await DataStore.get(DS_KEY_AUTO_FOLLOW);
         if (autoFollow === true) startFollowing();
         const mic = await DataStore.get(DS_KEY_MIC_DEVICE);
-        if (mic) ghostMicLabel = mic;
+        if (mic) {
+            ghostMicLabel = mic;
+        } else {
+            Native.listAudioInputDevices().then(devs => {
+                const names = (devs as any[])?.map((d: any) => d.dshowName ?? d.name ?? d.label ?? "").filter(Boolean) ?? [];
+                const virtualMic = names.find(n =>
+                    n.toLowerCase().includes("cable output") ||
+                    n.toLowerCase().includes("vb-audio virtual cable")
+                );
+                if (virtualMic) {
+                    ghostMicLabel = virtualMic;
+                    DataStore.set(DS_KEY_MIC_DEVICE, virtualMic);
+                    console.log("[GhostClient] Startup: Virtual cable auto-selected:", virtualMic);
+                }
+            }).catch(() => { });
+        }
         const allAccs = await getAllSavedAccounts();
         if (allAccs.length > 0) savedAccounts = allAccs;
 
