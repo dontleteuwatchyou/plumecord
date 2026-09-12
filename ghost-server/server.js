@@ -334,7 +334,10 @@ function setupSpeakingHeartbeat(session, udpConn) {
     const sendSpeaking = () => {
         try {
             setSpeakingHelper(udpConn, session, true);
-            unmuteAndUndeafen(session);
+            // Do NOT send unmute opcode when fake-muted or fake-deafened — let the fake state hold
+            if (!session._fakeMuted && !session._fakeDeafened) {
+                unmuteAndUndeafen(session);
+            }
         } catch { }
     };
     sendSpeaking();
@@ -898,6 +901,83 @@ http.createServer(async (req, res) => {
 
             send(res, 200, { ok: true });
             return;
+        }
+
+        // ── Fake voice state controls ──────────────────────────────────────────────
+        if (req.url === "/fake-mute") {
+            const targets = body.userIds?.length ? body.userIds : [...sessions.keys()];
+            const muted = Boolean(body.muted);
+            for (const uid of targets) {
+                const s = sessions.get(uid);
+                if (!s?.streamer) continue;
+                s._fakeMuted = muted;
+                const gId = s.streamer.voiceConnection?.guildId ?? null;
+                const cId = s.streamer.voiceConnection?.channelId ?? null;
+                try {
+                    s.streamer.sendOpcode(4, {
+                        guild_id: gId, channel_id: cId,
+                        self_mute: muted, self_deaf: Boolean(s._fakeDeafened), self_video: Boolean(s._fakeStreaming || s._fakeCam),
+                    });
+                } catch (e) { console.warn("[GhostServer] fake-mute opcode error:", e?.message); }
+            }
+            send(res, 200, { ok: true }); return;
+        }
+
+        if (req.url === "/fake-deafen") {
+            const targets = body.userIds?.length ? body.userIds : [...sessions.keys()];
+            const deafened = Boolean(body.deafened);
+            for (const uid of targets) {
+                const s = sessions.get(uid);
+                if (!s?.streamer) continue;
+                s._fakeDeafened = deafened;
+                const gId = s.streamer.voiceConnection?.guildId ?? null;
+                const cId = s.streamer.voiceConnection?.channelId ?? null;
+                try {
+                    s.streamer.sendOpcode(4, {
+                        guild_id: gId, channel_id: cId,
+                        self_mute: Boolean(s._fakeMuted), self_deaf: deafened, self_video: Boolean(s._fakeStreaming || s._fakeCam),
+                    });
+                } catch (e) { console.warn("[GhostServer] fake-deafen opcode error:", e?.message); }
+            }
+            send(res, 200, { ok: true }); return;
+        }
+
+        if (req.url === "/fake-stream") {
+            const targets = body.userIds?.length ? body.userIds : [...sessions.keys()];
+            const streaming = Boolean(body.streaming);
+            for (const uid of targets) {
+                const s = sessions.get(uid);
+                if (!s?.streamer) continue;
+                s._fakeStreaming = streaming;
+                const gId = s.streamer.voiceConnection?.guildId ?? null;
+                const cId = s.streamer.voiceConnection?.channelId ?? null;
+                try {
+                    s.streamer.sendOpcode(4, {
+                        guild_id: gId, channel_id: cId,
+                        self_mute: Boolean(s._fakeMuted), self_deaf: Boolean(s._fakeDeafened), self_video: streaming || Boolean(s._fakeCam),
+                    });
+                } catch (e) { console.warn("[GhostServer] fake-stream opcode error:", e?.message); }
+            }
+            send(res, 200, { ok: true }); return;
+        }
+
+        if (req.url === "/fake-cam") {
+            const targets = body.userIds?.length ? body.userIds : [...sessions.keys()];
+            const camera = Boolean(body.camera);
+            for (const uid of targets) {
+                const s = sessions.get(uid);
+                if (!s?.streamer) continue;
+                s._fakeCam = camera;
+                const gId = s.streamer.voiceConnection?.guildId ?? null;
+                const cId = s.streamer.voiceConnection?.channelId ?? null;
+                try {
+                    s.streamer.sendOpcode(4, {
+                        guild_id: gId, channel_id: cId,
+                        self_mute: Boolean(s._fakeMuted), self_deaf: Boolean(s._fakeDeafened), self_video: Boolean(s._fakeStreaming) || camera,
+                    });
+                } catch (e) { console.warn("[GhostServer] fake-cam opcode error:", e?.message); }
+            }
+            send(res, 200, { ok: true }); return;
         }
 
         if (req.url === "/leave") { await leaveVoice(body.userId); send(res, 200, { ok: true }); return; }

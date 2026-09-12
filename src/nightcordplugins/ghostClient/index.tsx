@@ -44,6 +44,11 @@ function UserIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fil
 function CheckIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z" /></svg>; }
 function TrashIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2h4a1 1 0 1 1 0 2h-1.1l-.9 12.1A3 3 0 0 1 17 23H7a3 3 0 0 1-3-2.9L3.1 8H2a1 1 0 0 1 0-2h4V4Zm2 0v2h6V4H9ZM5.1 8l.9 11.9a1 1 0 0 0 1 .1h6a1 1 0 0 0 1-.1L14.9 8H5.1Z" /></svg>; }
 function VideoIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.3l3.4 2.5A1 1 0 0 0 23 14V9a1 1 0 0 0-1.6-.8L18 10.7V6a2 2 0 0 0-2-2H4Z" /></svg>; }
+function MicOffIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3.27 2 2 3.27l4.99 4.99V11c0 2.76 2.24 5 5 5 .78 0 1.51-.18 2.17-.5l3.57 3.57c-1.63 1.19-3.6 1.93-5.74 1.93-4.42 0-8-3.58-8-8H2c0 5.17 3.93 9.42 9 9.94V22h2v-2.06c1.6-.16 3.1-.73 4.41-1.61l3.32 3.32 1.27-1.27L3.27 2zM12 4c-1.66 0-3 1.34-3 3v.8l6 6V7c0-1.66-1.34-3-3-3zm6 7c0 .54-.08 1.05-.22 1.54l1.52 1.52A8.95 8.95 0 0 0 21 11h-2z" /></svg>; }
+function HeadphonesIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v7c0 1.66 1.34 3 3 3h3v-8H5v-2a7 7 0 0 1 14 0v2h-4v8h3c1.66 0 3-1.34 3-3v-7a9 9 0 0 0-9-9z" /></svg>; }
+function ScreenIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h6l-2 3v1h8v-1l-2-3h6c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H4V5h16v11z" /></svg>; }
+function CameraIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 3.5V7l-4 3.5z" /></svg>; }
+
 function SettingsGearIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -382,6 +387,13 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [pollStatus, setPollStatus] = useStreamPoller(streamingUserId, isPolling);
     const states = useGhostStates();
     const popoverRef = useRef<HTMLDivElement>(null);
+    // Quick Controls state
+    const [isFakeMuted, setIsFakeMuted] = useState(false);
+    const [isFakeDeafened, setIsFakeDeafened] = useState(false);
+    const [isFakeStreaming, setIsFakeStreaming] = useState(false);
+    const [isFakeCam, setIsFakeCam] = useState(false);
+    const [quickStreamUrl, setQuickStreamUrl] = useState("");
+
 
     // Le status affiché est soit le direct (pendant la requête initiale) soit le poll
     const displayStatus = isPolling ? pollStatus : streamStatus;
@@ -518,6 +530,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         ...dshowDevices.map(d => ({ value: d, label: d }))
     ];
 
+    /** Returns the ghost userId(s) to target for quick controls. */
+    function resolveTargets(): string[] {
+        if (selectedId === "all") return accounts.map(a => a.userId);
+        return [selectedId];
+    }
+
     return (
         <div ref={popoverRef} className="gc-popover" style={style}>
             <div className="gc-popover-header">
@@ -571,6 +589,175 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         DataStore.set(DS_KEY_MIC_DEVICE, v);
                         Native.setMicDevice(v).catch(() => { });
                     }} />
+
+                <div className="gc-popover-divider" />
+
+                {/* ── Quick Controls (Fake mute, deafen, stream, cam & Stream URL) ── */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div className="gc-section-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span>{t("Quick controls")}</span>
+                        <span style={{ fontSize: 10, color: "var(--text-muted, #949ba4)", textTransform: "none", fontWeight: 400 }}>
+                            {selectedId === "all" ? t("All accounts") : (accounts.find(a => a.userId === selectedId)?.username ?? "")}
+                        </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                            className="gc-header-action"
+                            style={{
+                                flex: 1,
+                                height: 30,
+                                borderRadius: 6,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: isFakeMuted ? "var(--brand-500, #5865f2)" : "rgba(255,255,255,0.06)",
+                                color: isFakeMuted ? "#ffffff" : "var(--interactive-normal, #b5bac1)",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "background-color 0.15s ease, color 0.15s ease",
+                            }}
+                            title={isFakeMuted ? t("Unmute (Fake)") : t("Fake mute")}
+                            onClick={async () => {
+                                const targets = resolveTargets();
+                                if (targets.length === 0) {
+                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    return;
+                                }
+                                const next = !isFakeMuted;
+                                setIsFakeMuted(next);
+                                await Native.fakeMute(targets, next);
+                            }}
+                        >
+                            <MicOffIcon />
+                        </button>
+                        <button
+                            className="gc-header-action"
+                            style={{
+                                flex: 1,
+                                height: 30,
+                                borderRadius: 6,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: isFakeDeafened ? "var(--brand-500, #5865f2)" : "rgba(255,255,255,0.06)",
+                                color: isFakeDeafened ? "#ffffff" : "var(--interactive-normal, #b5bac1)",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "background-color 0.15s ease, color 0.15s ease",
+                            }}
+                            title={isFakeDeafened ? t("Undeafen (Fake)") : t("Fake deafen")}
+                            onClick={async () => {
+                                const targets = resolveTargets();
+                                if (targets.length === 0) {
+                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    return;
+                                }
+                                const next = !isFakeDeafened;
+                                setIsFakeDeafened(next);
+                                await Native.fakeDeafen(targets, next);
+                            }}
+                        >
+                            <HeadphonesIcon />
+                        </button>
+                        <button
+                            className="gc-header-action"
+                            style={{
+                                flex: 1,
+                                height: 30,
+                                borderRadius: 6,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: isFakeStreaming ? "var(--brand-500, #5865f2)" : "rgba(255,255,255,0.06)",
+                                color: isFakeStreaming ? "#ffffff" : "var(--interactive-normal, #b5bac1)",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "background-color 0.15s ease, color 0.15s ease",
+                            }}
+                            title={isFakeStreaming ? t("Stop fake stream") : t("Fake stream")}
+                            onClick={async () => {
+                                const targets = resolveTargets();
+                                if (targets.length === 0) {
+                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    return;
+                                }
+                                const next = !isFakeStreaming;
+                                setIsFakeStreaming(next);
+                                await Native.fakeStream(targets, next);
+                            }}
+                        >
+                            <ScreenIcon />
+                        </button>
+                        <button
+                            className="gc-header-action"
+                            style={{
+                                flex: 1,
+                                height: 30,
+                                borderRadius: 6,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                background: isFakeCam ? "var(--brand-500, #5865f2)" : "rgba(255,255,255,0.06)",
+                                color: isFakeCam ? "#ffffff" : "var(--interactive-normal, #b5bac1)",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "background-color 0.15s ease, color 0.15s ease",
+                            }}
+                            title={isFakeCam ? t("Stop fake cam") : t("Fake cam")}
+                            onClick={async () => {
+                                const targets = resolveTargets();
+                                if (targets.length === 0) {
+                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    return;
+                                }
+                                const next = !isFakeCam;
+                                setIsFakeCam(next);
+                                await Native.fakeCam(targets, next);
+                            }}
+                        >
+                            <CameraIcon />
+                        </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                        <input
+                            className="gc-input"
+                            style={{ flex: 1, fontSize: 12, fontFamily: "monospace", padding: "6px 8px" }}
+                            placeholder={t("Stream URL (YouTube, Twitch, MP4)...")}
+                            value={quickStreamUrl}
+                            onChange={e => setQuickStreamUrl(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === "Enter" && quickStreamUrl.trim()) {
+                                    const targets = resolveTargets();
+                                    if (targets.length === 0) {
+                                        Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                        return;
+                                    }
+                                    const targetId = targets[0];
+                                    setStreamingUserId(targetId);
+                                    startStream(quickStreamUrl, targetId);
+                                }
+                            }}
+                        />
+                        <button
+                            className="gc-add-btn"
+                            style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+                            disabled={!quickStreamUrl.trim() || isPolling}
+                            onClick={() => {
+                                const targets = resolveTargets();
+                                if (targets.length === 0) {
+                                    Toasts.show({ message: t("No ghost accounts available"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+                                    return;
+                                }
+                                const targetId = targets[0];
+                                setStreamingUserId(targetId);
+                                startStream(quickStreamUrl, targetId);
+                            }}
+                        >
+                            {isPolling ? t("Starting...") : t("Stream")}
+                        </button>
+                    </div>
+                </div>
+
                 <div className="gc-popover-divider" />
                 <div className="gc-follow-row" onClick={() => toggleAutoFollow(!autoFollow)}>
                     <div className="gc-follow-info">

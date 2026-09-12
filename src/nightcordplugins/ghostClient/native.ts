@@ -378,6 +378,22 @@ export async function setMicDevice(_: any, micDevice: string): Promise<void> {
     try { await api("/set-mic", { micDevice }); } catch { }
 }
 
+export async function fakeMute(_: any, userIds: string[], muted: boolean): Promise<void> {
+    try { await api("/fake-mute", { userIds, muted }); } catch { }
+}
+
+export async function fakeDeafen(_: any, userIds: string[], deafened: boolean): Promise<void> {
+    try { await api("/fake-deafen", { userIds, deafened }); } catch { }
+}
+
+export async function fakeStream(_: any, userIds: string[], streaming: boolean): Promise<void> {
+    try { await api("/fake-stream", { userIds, streaming }); } catch { }
+}
+
+export async function fakeCam(_: any, userIds: string[], camera: boolean): Promise<void> {
+    try { await api("/fake-cam", { userIds, camera }); } catch { }
+}
+
 export async function init(_: any): Promise<void> {
     const script = findServerScript();
     console.log("[GhostNative] init — server.js:", script ?? "NON TROUVÉ");

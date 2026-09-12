@@ -11,6 +11,17 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Quick controls": {"en":"Quick controls","fr":"Contrôles rapides","ar":"عناصر التحكم السريعة","es":"Controles rápidos","ru":"Быстрое управление","zh":"快捷控制"},
+    "Fake mute": {"en":"Fake mute","fr":"Faux muet","ar":"كتم زائف","es":"Silencio falso","ru":"Фальшивый мут","zh":"假静音"},
+    "Unmute (Fake)": {"en":"Unmute (Fake)","fr":"Activer le micro (Faux)","ar":"إلغاء الكتم (زائف)","es":"Reactivar micrófono (Falso)","ru":"Включить микрофон (Фальш)","zh":"取消静音（假）"},
+    "Fake deafen": {"en":"Fake deafen","fr":"Faux assourdir","ar":"صمم زائف","es":"Ensordecer falso","ru":"Фальшивый дефен","zh":"假拒听"},
+    "Undeafen (Fake)": {"en":"Undeafen (Fake)","fr":"Désassourdir (Faux)","ar":"إلغاء الصمم (زائف)","es":"Desensordecer (Falso)","ru":"Отключить дефен (Фальш)","zh":"取消拒听（假）"},
+    "Fake stream": {"en":"Fake stream","fr":"Faux stream","ar":"بث زائف","es":"Transmisión falsa","ru":"Фальшивый стрим","zh":"假直播"},
+    "Stop fake stream": {"en":"Stop fake stream","fr":"Arrêter le faux stream","ar":"إيقاف البث الزائف","es":"Detener transmisión falsa","ru":"Остановить фальшивый стрим","zh":"停止假直播"},
+    "Fake cam": {"en":"Fake cam","fr":"Fausse caméra","ar":"كاميرا زائفة","es":"Cámara falsa","ru":"Фальшивая камера","zh":"假摄像头"},
+    "Stop fake cam": {"en":"Stop fake cam","fr":"Arrêter la fausse caméra","ar":"إيقاف الكاميرا الزائفة","es":"Detener cámara falsa","ru":"Остановить фальшивую камеру","zh":"停止假摄像头"},
+    "Stream URL (YouTube, Twitch, MP4)...": {"en":"Stream URL (YouTube, Twitch, MP4)...","fr":"URL du flux (YouTube, Twitch, MP4)...","ar":"رابط البث (يوتيوب، تويتش، MP4)...","es":"URL del flujo (YouTube, Twitch, MP4)...","ru":"URL потока (YouTube, Twitch, MP4)...","zh":"流 URL（YouTube、Twitch、MP4）..."},
+    "No ghost accounts available": {"en":"No ghost accounts available","fr":"Aucun compte ghost disponible","ar":"لا توجد حسابات شبح متاحة","es":"No hay cuentas ghost disponibles","ru":"Нет доступных ghost-аккаунтов","zh":"没有可用的幽灵账户"},
     "Resolving stream URL...": {"en":"Resolving stream URL...","fr":"Résolution de l'URL du flux...","ar":"جارٍ تحديد رابط البث...","es":"Resolviendo la URL de la transmisión...","ru":"Разрешение URL потока...","zh":"正在解析流 URL..."},
     "Starting stream...": {"en":"Starting stream...","fr":"Démarrage du flux...","ar":"جارٍ بدء البث...","es":"Iniciando la transmisión...","ru":"Запуск потока...","zh":"正在启动流..."},
     "Stream active": {"en":"Stream active","fr":"Flux actif","ar":"البث نشط","es":"Transmisión activa","ru":"Поток активен","zh":"流已激活"},
