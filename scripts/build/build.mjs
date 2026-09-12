@@ -55,11 +55,7 @@ const nodeCommonOpts = {
     format: "cjs",
     platform: "node",
     target: ["esnext"],
-    // @ts-expect-error this is never undefined
-    // "mellowtel" is external: it's a runtime-only, opt-in dependency (see
-    // src/main/mellowtel.ts). The package is installed as a devDependency but
-    // must remain external so Electron can load it from its own node_modules.
-    external: ["electron", "original-fs", "~pluginNatives", "mellowtel", ...commonOpts.external]
+    external: ["electron", "original-fs", "~pluginNatives", ...commonOpts.external]
 };
 
 const sourceMapFooter = s => watch ? "" : `//# sourceMappingURL=vencord://${s}.js.map`;
@@ -247,3 +243,22 @@ await Promise.all([
     createPackage("dist/desktop", "dist/desktop.asar"),
     createPackage("dist/nightcord", "dist/nightcord.asar"),
 ]);
+
+// Automatically mirror dist/desktop to LocalAppData/Nightcord/dist if it exists
+try {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+        const targetDir = join(localAppData, "Nightcord", "dist");
+        if (await exists(targetDir)) {
+            const { copyFile } = await import("fs/promises");
+            const files = ["patcher.js", "preload.js", "renderer.js", "renderer.css", "package.json"];
+            for (const file of files) {
+                const src = join("dist", "desktop", file);
+                const dest = join(targetDir, file);
+                if (await exists(src)) {
+                    await copyFile(src, dest);
+                }
+            }
+        }
+    }
+} catch { }

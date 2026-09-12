@@ -1222,10 +1222,44 @@ function startDomObserver() {
     if (!isEnabled || document.visibilityState === "hidden") return;
     if (!storedData?.username && !storedData?.globalName && !storedData?.createdAt) return;
 
-    requestAnimationFrame(() => {
+    // Time-sliced scanner that yields every 4ms so the main thread / UI never freezes at startup
+    const runDeferredScan = () => {
         if (!isEnabled || document.visibilityState === "hidden") return;
-        scanNode(document.body);
-    });
+        const targets = [
+            document.querySelector("section[aria-label]"),
+            document.querySelector("[class*='userProfile']"),
+            document.querySelector("[class*='userPopout']"),
+            document.querySelector("[class*='accountProfileCard']")
+        ].filter(Boolean) as Node[];
+
+        for (const t of targets) scanNode(t);
+
+        const ric = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1000));
+        ric(() => {
+            if (!isEnabled || document.visibilityState === "hidden") return;
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            let n: Node | null;
+            const slice = () => {
+                if (!isEnabled || document.visibilityState === "hidden") return;
+                const start = performance.now();
+                while ((n = walker.nextNode())) {
+                    const parent = n.parentElement;
+                    if (parent) {
+                        const tag = parent.tagName;
+                        if (tag === "SCRIPT" || tag === "STYLE" || tag === "SVG" || tag === "CANVAS" || tag === "VIDEO" || tag === "IFRAME") continue;
+                    }
+                    scanTextNode(n as Text);
+                    if (performance.now() - start > 4) {
+                        requestAnimationFrame(slice);
+                        return;
+                    }
+                }
+            };
+            slice();
+        }, { timeout: 3000 });
+    };
+
+    setTimeout(runDeferredScan, 1500);
 
     domObserver = new MutationObserver(mutations => {
         if (!isEnabled || !mutations.length) return;
