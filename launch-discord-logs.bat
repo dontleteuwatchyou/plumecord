@@ -18,12 +18,24 @@ if not exist "%DISCORD_ROOT%" (
     exit /b 1
 )
 
-rem -- Fermer Discord si deja ouvert pour capturer tous les logs depuis le demarrage
+rem -- Fermer Discord proprement pour que Chromium flush son stockage de session (evite toute deconnexion)
 tasklist /FI "IMAGENAME eq Discord.exe" 2>nul | find /i "Discord.exe" >nul
 if not errorlevel 1 (
-    echo [INFO] Fermeture de l'instance Discord existante...
-    taskkill /F /IM Discord.exe /T >nul 2>&1
-    timeout /t 2 /nobreak >nul
+    echo [INFO] Fermeture propre de Discord en cours...
+    if exist "%DISCORD_ROOT%\Update.exe" (
+        "%DISCORD_ROOT%\Update.exe" --processStop Discord.exe >nul 2>&1
+        timeout /t 3 /nobreak >nul
+    )
+    tasklist /FI "IMAGENAME eq Discord.exe" 2>nul | find /i "Discord.exe" >nul
+    if not errorlevel 1 (
+        taskkill /IM Discord.exe >nul 2>&1
+        timeout /t 2 /nobreak >nul
+    )
+    tasklist /FI "IMAGENAME eq Discord.exe" 2>nul | find /i "Discord.exe" >nul
+    if not errorlevel 1 (
+        taskkill /F /IM Discord.exe /T >nul 2>&1
+        timeout /t 1 /nobreak >nul
+    )
 )
 
 rem -- Trouver le dossier app-* le plus recent (tri descendant par nom)

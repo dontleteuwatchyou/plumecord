@@ -70,7 +70,10 @@ async function cleanModulePatches(resPath) {
                         }
                     }
                     if (!restored) {
-                        await safeDelete(pf);
+                        try {
+                            const cleaned = content.replace(/require\(["'][^"']*(?:vencord|equicord|nightcord)[^"']*["']\);?/gi, "");
+                            await fs.writeFile(pf, cleaned, "utf-8");
+                        } catch {}
                     }
                 }
 

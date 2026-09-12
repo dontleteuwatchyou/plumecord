@@ -9,8 +9,7 @@ import electron, { app, BrowserWindowConstructorOptions, Menu, session } from "e
 import { existsSync as fsExistsSync, statSync as fsStatSync } from "original-fs";
 import { dirname, join } from "path";
 
-import { registerMediaPermissionsForSession } from "../nightcord/main/mediaPermissions";
-import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
+import { makeLinksOpenExternally } from "./utils/externalLinks";
 import { RendererSettings } from "./settings";
 import { patchTrayMenu } from "./trayMenu";
 import { applyPendingUpdateOnStartup } from "./updater/pendingUpdate";
@@ -106,13 +105,6 @@ if (!IS_VANILLA) {
             options.webPreferences.sandbox = false;
             options.webPreferences.backgroundThrottling = false;
 
-            let ses = options.webPreferences.session;
-            if (!ses && options.webPreferences.partition) {
-                ses = electron.session.fromPartition(options.webPreferences.partition);
-            }
-            ses ??= electron.session.defaultSession;
-            registerMediaPermissionsForSession(ses);
-
             if (settings.mainWindowFrameless && isMainWindow) {
                 options.frame = false;
             } else if (settings.frameless) {
@@ -176,9 +168,30 @@ if (!IS_VANILLA) {
 
     process.env.DATA_DIR = join(app.getPath("userData"), "..", "Nightcord");
 
-    app.whenReady().then(() => {
-        registerMediaPermissionsForSession(session.defaultSession);
-    });
+    // Auto-recover session data if it was accidentally redirected to app/Data
+    try {
+        const strayDataDir = join(process.resourcesPath, "..", "Data");
+        const straySession = join(strayDataDir, "sessionData");
+        const officialUserData = app.getPath("userData");
+        if (fsExistsSync(straySession) && officialUserData) {
+            const { cpSync, rmSync } = require("fs");
+            for (const item of ["Local Storage", "IndexedDB", "Network", "Preferences"]) {
+                const src = join(straySession, item);
+                const dst = join(officialUserData, item);
+                if (fsExistsSync(src)) {
+                    try {
+                        cpSync(src, dst, { recursive: true, force: true });
+                    } catch { }
+                }
+            }
+            try {
+                rmSync(strayDataDir, { recursive: true, force: true });
+            } catch { }
+            console.log("[Nightcord] Restored session data to official userData directory");
+        }
+    } catch (e) {
+        console.error("[Nightcord] Session migration failed:", e);
+    }
 } else {
     console.log("[Nightcord] Running in vanilla mode. Not loading Nightcord");
 }

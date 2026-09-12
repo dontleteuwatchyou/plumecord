@@ -39,36 +39,17 @@ export function registerMediaPermissionsForSession(ses: Session) {
     originalSetPermissionCheckHandler(checkHandler);
     originalSetPermissionRequestHandler(requestHandler);
 
-    // Prevent Discord from overwriting our permissive handlers
-    Object.defineProperty(ses, 'setPermissionRequestHandler', {
-        value: () => {},
-        writable: false,
-        configurable: true
-    });
-    
-    Object.defineProperty(ses, 'setPermissionCheckHandler', {
-        value: () => {},
-        writable: false,
-        configurable: true
-    });
-
     if ('setDevicePermissionHandler' in ses) {
         // @ts-ignore
-        const originalSetDevicePermissionHandler = ses.setDevicePermissionHandler.bind(ses);
-        originalSetDevicePermissionHandler(() => true);
-        Object.defineProperty(ses, 'setDevicePermissionHandler', {
-            value: () => {},
-            writable: false,
-            configurable: true
-        });
+        ses.setDevicePermissionHandler(() => true);
     }
 
     // Inject CSS into QxChat iframe to hide buttons since they don't work
-    const { app, webFrameMain } = require('electron');
+    const { app } = require('electron');
     app.on('web-contents-created', (event: any, contents: any) => {
         contents.on('did-frame-navigate', (e: any, url: string, httpResponseCode: number, httpStatusText: string, isMainFrame: boolean, frameProcessId: number, frameRoutingId: number) => {
             if (!isMainFrame && url.includes('qxch.at')) {
-                const frame = contents.mainFrame.framesInSubtree.find((f: any) => f.url.includes('qxch.at'));
+                const frame = contents.mainFrame?.framesInSubtree?.find((f: any) => f.url.includes('qxch.at'));
                 if (frame) {
                     frame.executeJavaScript(`
                         const inject = () => {
@@ -88,19 +69,15 @@ export function registerMediaPermissionsForSession(ses: Session) {
                             document.head.appendChild(style);
                         };
                         inject();
-                    `).catch(console.error);
+                    `).catch(() => {});
                 }
             }
         });
 
-        // Prevent Discord from blocking our webview attachment
-        contents.removeAllListeners('will-attach-webview');
         contents.on('will-attach-webview', (e: any, webPreferences: any, params: any) => {
             if (params.src && params.src.includes('qxch.at')) {
                 // Allow it by not calling preventDefault
                 webPreferences.preloadURL = webPreferences.preload;
-            } else {
-                e.preventDefault(); // Block others for security like Discord does
             }
         });
     });

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -11,20 +11,28 @@ import { dirname, join } from "path";
 import { CommandLine } from "./cli";
 import { domain } from "../../../DOMAIN.json";
 
+const isDiscordHost =
+    process.execPath.toLowerCase().includes("discord") ||
+    (Boolean(process.resourcesPath) && process.resourcesPath.toLowerCase().includes("discord"));
+
 const NightcordDir = dirname(process.execPath);
 
 export const PORTABLE =
+    !isDiscordHost &&
     process.platform === "win32" &&
     !process.execPath.toLowerCase().endsWith("electron.exe") &&
     !existsSync(join(NightcordDir, "Uninstall Nightcord.exe"));
 
 export const DATA_DIR =
-    process.env.Nightcord_USER_DATA_DIR || (PORTABLE ? join(NightcordDir, "Data") : join(app.getPath("userData")));
+    process.env.Nightcord_USER_DATA_DIR ||
+    (PORTABLE ? join(NightcordDir, "Data") : isDiscordHost ? join(app.getPath("userData"), "..", "Nightcord") : join(app.getPath("userData")));
 
 mkdirSync(DATA_DIR, { recursive: true });
 
 export const SESSION_DATA_DIR = join(DATA_DIR, "sessionData");
-app.setPath("sessionData", SESSION_DATA_DIR);
+if (!isDiscordHost) {
+    app.setPath("sessionData", SESSION_DATA_DIR);
+}
 
 export const VENCORD_SETTINGS_DIR = join(DATA_DIR, "settings");
 mkdirSync(VENCORD_SETTINGS_DIR, { recursive: true });

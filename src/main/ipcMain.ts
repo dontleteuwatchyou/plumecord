@@ -20,7 +20,6 @@ import {domain} from "../../DOMAIN.json";
 import { registerCspIpcHandlers } from "./csp/manager";
 import { registerUserPluginsIpcHandlers } from "./userplugins";
 import { ALLOWED_PROTOCOLS, DATA_DIR, QUICK_CSS_PATH, SETTINGS_DIR, THEMES_DIR } from "./utils/constants";
-import { makeLinksOpenExternally } from "../nightcord/main/utils/makeLinksOpenExternally";
 import { getThemeInfo, stripBOM } from "../utils/themes/bd";
 
 const RENDERER_CSS_PATH = join(__dirname, "renderer.css");

@@ -8,8 +8,6 @@ import { app, BrowserWindow, ipcMain,screen, session } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
-import { registerMediaPermissionsForSession } from "../../nightcord/main/mediaPermissions";
-
 const openWindows = new Map<string, BrowserWindow>();
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,8 +210,6 @@ function registerWindowControlIpc(win: BrowserWindow): () => void {
 // sur la bonne BrowserWindow.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { setBadgeCount } from "../../nightcord/main/appBadge";
-
 // Canaux IPC connus pour la gestion des badges / notifications Discord
 const BADGE_IPC_CHANNELS = [
     "DISCORD_SET_BADGE_COUNT",
@@ -243,7 +239,6 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
         if (win.isDestroyed()) return;
         try {
             const n = typeof count === "number" ? count : 0;
-            setBadgeCount(n, win);
             if (process.platform === "win32") {
                 win.flashFrame(n > 0);
             }
