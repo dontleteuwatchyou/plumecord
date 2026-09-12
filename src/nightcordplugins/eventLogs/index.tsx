@@ -6,6 +6,7 @@
 
 import "./styles.css";
 
+import * as DataStore from "@api/DataStore";
 import { addHeaderBarButton, HeaderBarButton, removeHeaderBarButton } from "@api/HeaderBar";
 import { ModalCloseButton,ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
@@ -103,23 +104,51 @@ export const settings = definePluginSettings({
         description: "Max Logs Limit — Limit the maximum number of logs to retain (0 = Unlimited, no auto-deletion)",
         restartNeeded: false,
     },
-    persistentLogs: [] as Omit<LogEntry, "id" | "timeStr">[]
 });
 
-function loadPersistLogs() {
+const DATA_STORE_KEY = "Nightcord_EventLogs";
+const MAX_PERSISTENT_LOGS = 1000;
+
+function formatTimestamp(ts: number): string {
+    const d = new Date(ts);
+    const h = d.getHours().toString().padStart(2, "0");
+    const m = d.getMinutes().toString().padStart(2, "0");
+    const s = d.getSeconds().toString().padStart(2, "0");
+    return `${h}:${m}:${s}`;
+}
+
+async function loadPersistLogs() {
     try {
-        const saved = settings.store.persistentLogs;
+        // Clean up legacy settings.store.persistentLogs if present in settings.json
+        const legacy = (settings.store as any).persistentLogs;
+        if (legacy) {
+            delete (settings.store as any).persistentLogs;
+        }
+
+        let saved = await DataStore.get<any[]>(DATA_STORE_KEY);
+        if (!saved || !Array.isArray(saved) || saved.length === 0) {
+            // Check if there was any legacy array in settings
+            if (Array.isArray(legacy) && legacy.length > 0) {
+                saved = legacy.slice(0, MAX_PERSISTENT_LOGS);
+                DataStore.set(DATA_STORE_KEY, safeSanitizeLogs(saved)).catch(() => {});
+            }
+        }
+
         if (Array.isArray(saved) && saved.length > 0) {
-            // Reconstruct full objects
-            const parsed = saved.map((l: any) => ({
+            const capped = saved.slice(0, MAX_PERSISTENT_LOGS);
+            const parsed: LogEntry[] = capped.map((l: any) => ({
                 ...l,
-                id: Math.random().toString(36).slice(2),
-                timeStr: new Date(l.timestamp).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                id: l.id || `${l.timestamp}_${logCount++}`,
+                timeStr: formatTimestamp(l.timestamp)
             }));
             const seen = new Set(logs.map(l => `${l.timestamp}_${l.type}_${l.authorId || ""}_${l.content || ""}`));
-            const fresh = parsed.filter((l: any) => !seen.has(`${l.timestamp}_${l.type}_${l.authorId || ""}_${l.content || ""}`));
+            const fresh = parsed.filter(l => !seen.has(`${l.timestamp}_${l.type}_${l.authorId || ""}_${l.content || ""}`));
             logs = fresh.concat(logs).sort((a, b) => b.timestamp - a.timestamp);
             logCount = Math.max(logCount, logs.length);
+            globalVersion++;
+            for (const fn of updateListeners) {
+                try { fn(); } catch { }
+            }
         }
     } catch { }
 }
@@ -140,16 +169,15 @@ function safeSanitizeLogs(arr: any[]): any[] {
 
 function savePersistLogs() {
     try {
-        const limit = settings.store.maxLogsLimit ?? 0;
-        let persistentFiltered = logs.filter(l => PERSISTENT_TYPES.has(l.type));
-        if (limit > 0) {
-            persistentFiltered = persistentFiltered.slice(0, limit);
-        }
+        const limit = settings.store.maxLogsLimit && settings.store.maxLogsLimit > 0
+            ? Math.min(settings.store.maxLogsLimit, MAX_PERSISTENT_LOGS)
+            : MAX_PERSISTENT_LOGS;
+        const persistentFiltered = logs.filter(l => PERSISTENT_TYPES.has(l.type)).slice(0, limit);
         const toSave = persistentFiltered.map(l => {
             const { id, timeStr, ...rest } = l;
             return rest;
         });
-        settings.store.persistentLogs = safeSanitizeLogs(toSave);
+        DataStore.set(DATA_STORE_KEY, safeSanitizeLogs(toSave)).catch(() => {});
     } catch { }
 }
 
@@ -1163,9 +1191,11 @@ export default definePlugin({
             if (vcId) myVoiceChannelId = vcId;
         } catch { }
         if (settings.store.keepLogsOnRestart !== false) {
-            setTimeout(() => {
-                loadPersistLogs();
-            }, 100);
+            if ("requestIdleCallback" in window) {
+                (window as any).requestIdleCallback(() => loadPersistLogs(), { timeout: 1500 });
+            } else {
+                setTimeout(() => loadPersistLogs(), 500);
+            }
         }
         subscribeToEvents();
         // Also save on page unload (Discord force-close / crash)
@@ -1174,8 +1204,9 @@ export default definePlugin({
     stop() {
         window.removeEventListener("beforeunload", savePersistLogs);
         unsubs.forEach(fn => fn()); unsubs = [];
-        // Save before clearing — cancel the debounce timer then immediately persist
+        // Save before clearing — cancel the debounce timers then immediately persist
         if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
+        if (saveTimer !== null) { clearTimeout(saveTimer); saveTimer = null; }
         savePersistLogs();
         logs = []; msgCache.clear(); prevVS.clear(); updateListeners.clear();
         isLoadingMessages = false;

@@ -808,26 +808,6 @@ export default definePlugin({
                     replace: "$1CollectiblesShop:()=>$self.renderPanel()$3",
                 },
             ]
-        },
-        {
-            // Patch 2 : Remplace le bouton Boutique (Shop) dans la liste au-dessus des DMs (tutorialId:"direct-messages")
-            find: 'tutorialId:"direct-messages"',
-            replacement: [
-                {
-                    match: /((?:\(0,\s*\i\.[ja]sx\)|\i\.[ja]sx|\(0,\s*\i\.jsxs\)|\i\.jsxs)\s*\(\s*\i[\s\S]{1,500}?,"discord-shop"\))/,
-                    replace: "$self.renderNavButton($1)"
-                }
-            ]
-        },
-        {
-            // Patch 3 : Variante de recherche par .FRIENDS
-            find: '.FRIENDS},"friends"',
-            replacement: [
-                {
-                    match: /((?:\(0,\s*\i\.[ja]sx\)|\i\.[ja]sx|\(0,\s*\i\.jsxs\)|\i\.jsxs)\s*\(\s*\i[\s\S]{1,500}?,"discord-shop"\))/,
-                    replace: "$self.renderNavButton($1)"
-                }
-            ]
         }
     ],
 
