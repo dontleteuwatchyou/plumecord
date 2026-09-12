@@ -207,8 +207,8 @@ function GhostClientInstallerPanel() {
     async function runPatch(): Promise<void> {
         const targetUrl = githubUrl.trim() || info?.defaultGithubUrl;
         if (!targetUrl) {
-            setStatus(t("Please provide a valid GitHub bundle URL."));
-            showToast(t("Please provide a valid GitHub bundle URL."), Toasts.Type.FAILURE);
+            setStatus(t("Please provide a valid release URL."));
+            showToast(t("Please provide a valid release URL."), Toasts.Type.FAILURE);
             return;
         }
 
@@ -242,7 +242,7 @@ function GhostClientInstallerPanel() {
             confirmColor: "brand",
             body: (
                 <div style={{ color: "var(--text-normal, #dbdee1)", fontSize: "14px", lineHeight: "1.4" }}>
-                    {t("This will download GhostClient and ghost-server from GitHub, inject them into Nightcord, and launch the background service. Do you want to proceed?")}
+                    {t("This will download GhostClient and ghost-server from the release source, inject them into Nightcord, and launch the background service. Do you want to proceed?")}
                 </div>
             ),
             onConfirm: () => void runPatch()
@@ -274,10 +274,10 @@ function GhostClientInstallerPanel() {
             <div className="vc-ghost-installer-controls">
                 <div className="vc-ghost-installer-select-grid">
                     <div className="vc-ghost-installer-select-row">
-                        <span>{t("GitHub Bundle URL")}</span>
+                        <span>{t("Release URL")}</span>
                         <TextInput
                             value={githubUrl}
-                            placeholder={t("https://github.com/.../ghostclient-bundle.zip")}
+                            placeholder="https://source.nightcord.st/nightcord/ghostclient/releases"
                             onChange={(value: string) => setGithubUrl(value)}
                             disabled={busy}
                         />

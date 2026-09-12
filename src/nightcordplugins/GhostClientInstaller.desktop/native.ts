@@ -14,7 +14,8 @@ import * as os from "os";
 import * as path from "path";
 
 const PORT = 47821;
-const DEFAULT_GITHUB_URL = "https://github.com/ProdHallow/GhostClient-Bundle/releases/latest/download/ghostclient-bundle.zip";
+export const DEFAULT_RELEASE_URL = "https://source.nightcord.st/nightcord/ghostclient/releases";
+const DEFAULT_GITHUB_URL = DEFAULT_RELEASE_URL;
 
 export interface InstallInfo {
     platformKey: string;
@@ -221,7 +222,10 @@ async function getInstallInfo(customRoot?: string): Promise<InstallInfo> {
 
     const savedState = getSavedState();
     const lastPatchLabel = savedState.lastPatched ? new Date(savedState.lastPatched).toLocaleString() : "--";
-    const defaultGithubUrl = savedState.githubUrl || DEFAULT_GITHUB_URL;
+    const savedUrl = savedState.releaseUrl || savedState.githubUrl;
+    const defaultGithubUrl = (savedUrl && !savedUrl.includes("github.com/ProdHallow/GhostClient-Bundle"))
+        ? savedUrl
+        : DEFAULT_RELEASE_URL;
 
     let installStatus: "installed" | "notInstalled" | "needsReinstall" = "notInstalled";
     let repatchWarning = "";
@@ -278,6 +282,166 @@ export async function autoDetect(): Promise<NativeResult<InstallInfo>> {
     }
 }
 
+async function fetchJson(urlStr: string, headers: Record<string, string> = {}, maxRedirects = 5): Promise<any> {
+    if (maxRedirects < 0) throw new Error("Too many redirects");
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(urlStr);
+        const client = urlObj.protocol === "https:" ? https : http;
+        const req = client.get(urlStr, {
+            headers: {
+                "User-Agent": "Nightcord-GhostClientInstaller",
+                "Accept": "application/json",
+                ...headers
+            }
+        }, res => {
+            if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                const nextUrl = new URL(res.headers.location, urlStr).toString();
+                return fetchJson(nextUrl, headers, maxRedirects - 1).then(resolve).catch(reject);
+            }
+            if (res.statusCode !== 200) {
+                return reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage || "Error"}`));
+            }
+            let data = "";
+            res.setEncoding("utf-8");
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) {
+                    reject(new Error(`Failed to parse JSON response: ${e}`));
+                }
+            });
+        });
+        req.on("error", reject);
+        req.setTimeout(15000, () => {
+            req.destroy();
+            reject(new Error("Request timed out after 15s"));
+        });
+    });
+}
+
+function extractZipUrlFromRelease(release: any): string | null {
+    if (!release) return null;
+    if (Array.isArray(release.assets) && release.assets.length > 0) {
+        const bundleAsset = release.assets.find((a: any) =>
+            typeof a.name === "string" && a.name.toLowerCase().includes("ghostclient") && a.name.toLowerCase().endsWith(".zip")
+        ) || release.assets.find((a: any) =>
+            typeof a.name === "string" && a.name.toLowerCase().endsWith(".zip")
+        );
+
+        if (bundleAsset?.browser_download_url) {
+            return bundleAsset.browser_download_url;
+        }
+    }
+
+    if (release.zipball_url) {
+        return release.zipball_url;
+    }
+
+    return null;
+}
+
+export async function resolveLatestReleaseDownloadUrl(inputUrl: string): Promise<{ downloadUrl: string; releaseName?: string; tag?: string; }> {
+    const trimmed = inputUrl.trim();
+    if (!trimmed) {
+        throw new Error("No release URL provided");
+    }
+
+    // Direct .zip download URL provided
+    if (trimmed.endsWith(".zip")) {
+        return { downloadUrl: trimmed };
+    }
+
+    log(`INFO: Resolving latest release from: ${trimmed}`);
+
+    // Forgejo / Gitea (e.g. source.nightcord.st/<owner>/<repo>)
+    const giteaMatch = trimmed.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)(?:\/releases.*)?$/i);
+    if (giteaMatch) {
+        const host = giteaMatch[1];
+        const owner = giteaMatch[2];
+        const repo = giteaMatch[3].replace(/\.git$/, "");
+
+        const apiLatest = `https://${host}/api/v1/repos/${owner}/${repo}/releases/latest`;
+        const apiAll = `https://${host}/api/v1/repos/${owner}/${repo}/releases`;
+
+        try {
+            log(`INFO: Querying latest release endpoint: ${apiLatest}`);
+            const latest = await fetchJson(apiLatest);
+            const downloadUrl = extractZipUrlFromRelease(latest);
+            if (downloadUrl) {
+                const tag = latest.tag_name || latest.name;
+                log(`OK: Found latest release "${tag}" -> ${downloadUrl}`);
+                return { downloadUrl, releaseName: latest.name, tag: latest.tag_name };
+            }
+        } catch (e: any) {
+            log(`WARN: /releases/latest endpoint returned: ${e.message}, checking releases list...`);
+        }
+
+        try {
+            log(`INFO: Querying releases list: ${apiAll}`);
+            const releases = await fetchJson(apiAll);
+            if (Array.isArray(releases) && releases.length > 0) {
+                // First entry in Forgejo / Gitea is the newest release
+                const latest = releases[0];
+                const downloadUrl = extractZipUrlFromRelease(latest);
+                if (downloadUrl) {
+                    const tag = latest.tag_name || latest.name;
+                    log(`OK: Found newest release "${tag}" -> ${downloadUrl}`);
+                    return { downloadUrl, releaseName: latest.name, tag: latest.tag_name };
+                }
+            }
+        } catch (e: any) {
+            log(`WARN: /releases list returned: ${e.message}`);
+        }
+    }
+
+    // GitHub (github.com/<owner>/<repo>)
+    const ghMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/releases.*)?$/i);
+    if (ghMatch) {
+        const owner = ghMatch[1];
+        const repo = ghMatch[2].replace(/\.git$/, "");
+        const apiLatest = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
+
+        try {
+            log(`INFO: Querying GitHub latest release: ${apiLatest}`);
+            const latest = await fetchJson(apiLatest, { "User-Agent": "Nightcord-GhostClientInstaller" });
+            const downloadUrl = extractZipUrlFromRelease(latest);
+            if (downloadUrl) {
+                const tag = latest.tag_name || latest.name;
+                log(`OK: Found latest GitHub release "${tag}" -> ${downloadUrl}`);
+                return { downloadUrl, releaseName: latest.name, tag: latest.tag_name };
+            }
+        } catch (e: any) {
+            log(`WARN: GitHub API failed: ${e.message}`);
+        }
+    }
+
+    return { downloadUrl: trimmed };
+}
+
+function findDirectoryContaining(startDir: string, targetFile: string, maxDepth = 4): string | null {
+    if (!fs.existsSync(startDir)) return null;
+
+    function search(dir: string, currentDepth: number): string | null {
+        if (currentDepth > maxDepth) return null;
+        try {
+            if (fs.existsSync(path.join(dir, targetFile))) {
+                return dir;
+            }
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory() && entry.name !== "node_modules") {
+                    const found = search(path.join(dir, entry.name), currentDepth + 1);
+                    if (found) return found;
+                }
+            }
+        } catch {}
+        return null;
+    }
+
+    return search(startDir, 0);
+}
+
 function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void> {
     return new Promise((resolve, reject) => {
         if (maxRedirects < 0) {
@@ -295,7 +459,25 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
                 return reject(new Error(`Server returned HTTP ${res.statusCode}: ${res.statusMessage}`));
             }
 
+            const totalBytes = parseInt(res.headers["content-length"] || "0", 10);
+            let downloadedBytes = 0;
+            let lastLoggedStep = 0;
+
             const fileStream = fs.createWriteStream(dest);
+            res.on("data", (chunk: Buffer) => {
+                downloadedBytes += chunk.length;
+                if (totalBytes > 0) {
+                    const pct = Math.floor((downloadedBytes / totalBytes) * 100);
+                    const step = Math.floor(pct / 20) * 20;
+                    if (step > lastLoggedStep && step < 100) {
+                        lastLoggedStep = step;
+                        const dlMb = (downloadedBytes / (1024 * 1024)).toFixed(1);
+                        const totMb = (totalBytes / (1024 * 1024)).toFixed(1);
+                        log(`INFO: Downloading: ${step}% (${dlMb} MB / ${totMb} MB)`);
+                    }
+                }
+            });
+
             res.pipe(fileStream);
             fileStream.on("finish", () => {
                 fileStream.close(() => resolve());
@@ -307,9 +489,9 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
         });
 
         req.on("error", reject);
-        req.setTimeout(60000, () => {
+        req.setTimeout(300000, () => {
             req.destroy();
-            reject(new Error("Download timed out after 60s"));
+            reject(new Error("Download timed out after 5 minutes"));
         });
     });
 }
@@ -368,7 +550,7 @@ async function killRunningServer(): Promise<void> {
 
 export async function patchGhostClient(options: { githubUrl?: string; discordRoot?: string; } = {}): Promise<NativeResult<ActionInfo>> {
     log("INFO: Starting GhostClient installation and patch sequence...");
-    const url = options.githubUrl?.trim() || DEFAULT_GITHUB_URL;
+    const rawUrl = options.githubUrl?.trim() || DEFAULT_RELEASE_URL;
     const tempDir = path.join(os.tmpdir(), "nightcord_ghost_download");
 
     try {
@@ -380,8 +562,14 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         const zipPath = path.join(tempDir, "ghostclient-bundle.zip");
         const extractPath = path.join(tempDir, "extracted");
 
-        log(`INFO: Downloading bundle from: ${url}`);
-        await downloadFile(url, zipPath);
+        const resolved = await resolveLatestReleaseDownloadUrl(rawUrl);
+        const downloadUrl = resolved.downloadUrl;
+        if (resolved.tag) {
+            log(`INFO: Target release version: ${resolved.tag}`);
+        }
+
+        log(`INFO: Downloading bundle from: ${downloadUrl}`);
+        await downloadFile(downloadUrl, zipPath);
         const stats = await fsp.stat(zipPath);
         log(`OK: Download complete (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
 
@@ -407,6 +595,9 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
                 break;
             }
         }
+        if (!pluginSource) {
+            pluginSource = findDirectoryContaining(extractPath, "index.tsx");
+        }
 
         const candidateServerDirs = [
             path.join(extractPath, "ghost-server"),
@@ -420,6 +611,9 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
                 serverSource = cand;
                 break;
             }
+        }
+        if (!serverSource) {
+            serverSource = findDirectoryContaining(extractPath, "server.js");
         }
 
         if (!pluginSource) {
@@ -480,7 +674,10 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         saveState({
             installed: true,
             lastPatched: Date.now(),
-            githubUrl: url,
+            githubUrl: rawUrl,
+            releaseUrl: rawUrl,
+            resolvedDownloadUrl: downloadUrl,
+            releaseTag: resolved.tag,
             pluginDest,
             persistentServerDest
         });
