@@ -36,6 +36,7 @@ const PLUGIN_ICON_NAMES: Record<string, string[]> = {
     OpenInApp: ["ExternalLinkIcon", "ShareIcon", "LaunchIcon"],
     PermissionsViewer: ["KeyIcon", "LockUnlockedIcon", "ShieldIcon"],
     PinDMs: ["PinIcon", "PushpinIcon", "ChatIcon"],
+    SaveGroups: ["FolderIcon", "ArchiveIcon", "ChatIcon", "GroupIcon"],
     QuickMention: ["AtSignIcon", "ChatIcon", "UserIcon"],
     ReadAllNotifications: ["DoubleCheckmarkIcon", "CheckmarkIcon", "BellIcon"],
     RelationshipNotifier: ["UserPlusIcon", "HeartAlertIcon", "UserIcon"],
