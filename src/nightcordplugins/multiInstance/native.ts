@@ -482,7 +482,8 @@ export async function openInstanceWindow(
     performanceMode = false
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
-        token = decryptTokenSync(token);
+        const cleanTok = decryptTokenSync(token);
+        token = cleanTok;
         // Fenetre deja ouverte -> focus
         const existing = openWindows.get(userId);
         if (existing && !existing.isDestroyed()) {
@@ -580,7 +581,7 @@ export async function openInstanceWindow(
         }
 
         openWindows.set(userId, win);
-        pendingInstanceAuth.set(win.webContents.id, { token: cleanToken, userId, username });
+        pendingInstanceAuth.set(win.webContents.id, { token: cleanTok, userId, username });
 
         win.on("enter-html-full-screen", () => {
             win.setFullScreen(true);
@@ -635,7 +636,6 @@ export async function openInstanceWindow(
         });
 
         // Injection du token
-        const cleanTok = decryptTokenSync(token);
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(userId || "");
         const injectJs = `(function(){
@@ -717,7 +717,8 @@ export async function openInstanceWindowGrouped(
     performanceMode = false
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
-        token = decryptTokenSync(token);
+        const cleanTok = decryptTokenSync(token);
+        token = cleanTok;
         // Focus si deja ouverte
         const existing = openGroupedWindows.get(userId);
         if (existing && !existing.isDestroyed()) {
