@@ -209,14 +209,15 @@ async function getInstallInfo(customRoot?: string): Promise<InstallInfo> {
     const nightcordRoot = findNightcordRoot();
     const ghostPluginPath = nightcordRoot
         ? path.join(nightcordRoot, "src", "nightcordplugins", "ghostClient")
-        : path.join(app.getPath("userData"), "nightcord-plugins", "ghostClient");
+        : "Built-in (Nightcord Core)";
 
     const persistentServerPath = path.join(app.getPath("userData"), "ghost-server");
     const ghostServerPath = fs.existsSync(persistentServerPath)
         ? persistentServerPath
-        : (nightcordRoot ? path.join(nightcordRoot, "ghost-server") : persistentServerPath);
+        : (nightcordRoot && fs.existsSync(path.join(nightcordRoot, "ghost-server")) ? path.join(nightcordRoot, "ghost-server") : persistentServerPath);
 
-    const isPluginPresent = fs.existsSync(path.join(ghostPluginPath, "index.tsx"));
+    // ghostClient plugin is built into Nightcord core!
+    const isPluginPresent = nightcordRoot ? fs.existsSync(path.join(ghostPluginPath, "index.tsx")) : true;
     const isServerPresent = fs.existsSync(path.join(ghostServerPath, "server.js"));
     const isServerRunning = await pingServer();
 
@@ -230,14 +231,11 @@ async function getInstallInfo(customRoot?: string): Promise<InstallInfo> {
     let installStatus: "installed" | "notInstalled" | "needsReinstall" = "notInstalled";
     let repatchWarning = "";
 
-    if (isPluginPresent && isServerPresent) {
+    if (isServerPresent) {
         installStatus = "installed";
-    } else if (isPluginPresent && !isServerPresent) {
+    } else if (savedState.installed && !isServerPresent) {
         installStatus = "needsReinstall";
-        repatchWarning = "GhostClient plugin found, but ghost-server files are missing or incomplete.";
-    } else if (savedState.installed && (!isPluginPresent || !isServerPresent)) {
-        installStatus = "needsReinstall";
-        repatchWarning = "GhostClient was previously installed, but requires re-patching.";
+        repatchWarning = "ghost-server companion files are missing or incomplete. Click Patch to reinstall.";
     }
 
     const ghostServerStatus = isServerRunning
@@ -616,58 +614,59 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             serverSource = findDirectoryContaining(extractPath, "server.js");
         }
 
-        if (!pluginSource) {
-            throw new Error("Could not find GhostClient plugin files (index.tsx) in downloaded bundle.");
-        }
         if (!serverSource) {
             throw new Error("Could not find ghost-server files (server.js) in downloaded bundle.");
         }
 
-        log(`OK: Found plugin files at: ${pluginSource}`);
+        if (pluginSource) {
+            log(`OK: Found plugin files at: ${pluginSource}`);
+        }
         log(`OK: Found ghost-server files at: ${serverSource}`);
 
         // Target locations
-        const nightcordRoot = findNightcordRoot();
-        if (!nightcordRoot) {
-            throw new Error("Could not locate Nightcord repository root on this machine.");
-        }
-
-        const pluginDest = path.join(nightcordRoot, "src", "nightcordplugins", "ghostClient");
         const persistentServerDest = path.join(app.getPath("userData"), "ghost-server");
-        const repoServerDest = path.join(nightcordRoot, "ghost-server");
-
-        log(`INFO: Copying plugin files to: ${pluginDest}`);
-        await copyDir(pluginSource, pluginDest);
-
         log(`INFO: Copying ghost-server to persistent storage: ${persistentServerDest}`);
         await copyDir(serverSource, persistentServerDest);
 
-        try {
-            await copyDir(serverSource, repoServerDest);
-        } catch {}
+        const nightcordRoot = findNightcordRoot();
+        if (nightcordRoot) {
+            log(`INFO: Nightcord repository detected at: ${nightcordRoot}`);
+            if (pluginSource) {
+                const pluginDest = path.join(nightcordRoot, "src", "nightcordplugins", "ghostClient");
+                log(`INFO: Copying plugin files to: ${pluginDest}`);
+                await copyDir(pluginSource, pluginDest);
+            }
 
-        // Ensure binaries (node.exe, ffmpeg.exe, yt-dlp.exe) are placed in persistent location if present
-        log("INFO: Verifying node.exe and ffmpeg binaries...");
-        const bundledNode = path.join(nightcordRoot, "release", "nightcord-dist", "node.exe");
-        if (fs.existsSync(bundledNode) && !fs.existsSync(path.join(persistentServerDest, "node.exe"))) {
-            try { await fsp.copyFile(bundledNode, path.join(persistentServerDest, "node.exe")); } catch {}
-        }
+            const repoServerDest = path.join(nightcordRoot, "ghost-server");
+            try {
+                await copyDir(serverSource, repoServerDest);
+            } catch {}
 
-        // Rebuild & reinject Nightcord
-        log("INFO: Rebuilding Nightcord bundle (pnpm build)...");
-        try {
-            execSync("pnpm build", { cwd: nightcordRoot, stdio: "ignore" });
-            log("OK: Nightcord compilation successful.");
-        } catch (e: any) {
-            log(`WARN: pnpm build encountered an issue: ${e.message}. Retrying injection directly.`);
-        }
+            // Ensure binaries are placed in persistent location if present
+            log("INFO: Verifying node.exe and ffmpeg binaries...");
+            const bundledNode = path.join(nightcordRoot, "release", "nightcord-dist", "node.exe");
+            if (fs.existsSync(bundledNode) && !fs.existsSync(path.join(persistentServerDest, "node.exe"))) {
+                try { await fsp.copyFile(bundledNode, path.join(persistentServerDest, "node.exe")); } catch {}
+            }
 
-        log("INFO: Injecting into Discord installations (node scripts/inject.mjs)...");
-        try {
-            execSync("node scripts/inject.mjs", { cwd: nightcordRoot, stdio: "ignore" });
-            log("OK: Nightcord successfully injected into Discord.");
-        } catch (e: any) {
-            log(`WARN: Injection command error: ${e.message}`);
+            // Rebuild & reinject Nightcord in developer mode
+            log("INFO: Rebuilding Nightcord bundle (pnpm build)...");
+            try {
+                execSync("pnpm build", { cwd: nightcordRoot, stdio: "ignore" });
+                log("OK: Nightcord compilation successful.");
+            } catch (e: any) {
+                log(`WARN: pnpm build encountered an issue: ${e.message}. Retrying injection directly.`);
+            }
+
+            log("INFO: Injecting into Discord installations (node scripts/inject.mjs)...");
+            try {
+                execSync("node scripts/inject.mjs", { cwd: nightcordRoot, stdio: "ignore" });
+                log("OK: Nightcord successfully injected into Discord.");
+            } catch (e: any) {
+                log(`WARN: Injection command error: ${e.message}`);
+            }
+        } else {
+            log("INFO: Standalone Nightcord installation detected. GhostClient plugin is built into core.");
         }
 
         // Save state
@@ -678,7 +677,6 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             releaseUrl: rawUrl,
             resolvedDownloadUrl: downloadUrl,
             releaseTag: resolved.tag,
-            pluginDest,
             persistentServerDest
         });
 
@@ -700,9 +698,9 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             });
             child.unref();
 
-            // Wait up to 5s for ping
+            // Wait up to 6s for ping
             let ready = false;
-            for (let i = 0; i < 25; i++) {
+            for (let i = 0; i < 30; i++) {
                 await new Promise(r => setTimeout(r, 200));
                 if (await pingServer()) {
                     ready = true;
@@ -722,7 +720,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         // Cleanup temp files
         try { await fsp.rm(tempDir, { recursive: true, force: true }); } catch {}
 
-        log("OK: GhostClient successfully installed and ready!");
+        log("OK: GhostClient companion server successfully installed and ready!");
         const info = await getInstallInfo(options.discordRoot);
         return {
             success: true,
@@ -744,25 +742,10 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
 }
 
 export async function revertGhostClient(options: { discordRoot?: string; } = {}): Promise<NativeResult<ActionInfo>> {
-    log("WARN: Initiating GhostClient removal sequence...");
+    log("WARN: Initiating GhostClient companion removal sequence...");
     try {
         log("INFO: Terminating ghost-server...");
         await killRunningServer();
-
-        const nightcordRoot = findNightcordRoot();
-        if (nightcordRoot) {
-            const pluginDest = path.join(nightcordRoot, "src", "nightcordplugins", "ghostClient");
-            if (fs.existsSync(pluginDest)) {
-                log(`INFO: Deleting plugin directory: ${pluginDest}`);
-                await fsp.rm(pluginDest, { recursive: true, force: true });
-                log("OK: Plugin directory deleted.");
-            }
-
-            const repoServerDest = path.join(nightcordRoot, "ghost-server");
-            if (fs.existsSync(repoServerDest)) {
-                try { await fsp.rm(repoServerDest, { recursive: true, force: true }); } catch {}
-            }
-        }
 
         const persistentServerDest = path.join(app.getPath("userData"), "ghost-server");
         if (fs.existsSync(persistentServerDest)) {
@@ -771,14 +754,11 @@ export async function revertGhostClient(options: { discordRoot?: string; } = {})
             log("OK: Persistent server files removed.");
         }
 
+        const nightcordRoot = findNightcordRoot();
         if (nightcordRoot) {
-            log("INFO: Recompiling Nightcord bundle without GhostClient...");
-            try {
-                execSync("pnpm build", { cwd: nightcordRoot, stdio: "ignore" });
-                execSync("node scripts/inject.mjs", { cwd: nightcordRoot, stdio: "ignore" });
-                log("OK: Clean rebuild and reinjection complete.");
-            } catch (e: any) {
-                log(`WARN: Rebuild notice: ${e.message}`);
+            const repoServerDest = path.join(nightcordRoot, "ghost-server");
+            if (fs.existsSync(repoServerDest)) {
+                try { await fsp.rm(repoServerDest, { recursive: true, force: true }); } catch {}
             }
         }
 
@@ -787,7 +767,7 @@ export async function revertGhostClient(options: { discordRoot?: string; } = {})
             lastUninstalled: Date.now()
         });
 
-        log("OK: GhostClient has been completely deleted.");
+        log("OK: GhostClient companion server has been completely uninstalled.");
         const info = await getInstallInfo(options.discordRoot);
         return {
             success: true,
