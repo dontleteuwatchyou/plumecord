@@ -56,9 +56,14 @@ const typeLabels: Record<SurveillanceEventType, string> = {
     activity_start: "Activity",
     activity_stop: "Activity",
     activity_update: "Activity",
+    call_start: "Call",
+    call_end: "Call",
+    call_update: "Call",
     channel_create: "Channel",
     channel_delete: "Channel",
     channel_update: "Channel",
+    connection: "Connected",
+    disconnection: "Disconnected",
     guild_member_add: "Member",
     guild_member_remove: "Member",
     guild_member_update: "Member",
@@ -77,6 +82,7 @@ const typeLabels: Record<SurveillanceEventType, string> = {
     thread_delete: "Thread",
     thread_update: "Thread",
     typing: "Typing",
+    user_update: "Profile",
     voice_join: "Voice",
     voice_leave: "Voice",
     voice_move: "Voice",
@@ -111,7 +117,8 @@ const eventMatchesPage = (event: SurveillanceEvent, page: SurveillancePage) =>
 
 const eventMatchesFilter = (event: SurveillanceEvent, filter: EventFilter) => {
     if (filter === "all") return true;
-    if (filter === "presence") return event.type === "status";
+    if (filter === "presence") return event.type === "status" || event.type === "connection" || event.type === "disconnection";
+    if (filter === "voice") return event.type.startsWith("voice") || event.type.startsWith("call");
     if (filter === "server") return event.scope === "server" || ["channel_", "thread_", "guild_", "role_"].some(prefix => event.type.startsWith(prefix));
     return event.type.startsWith(filter);
 };

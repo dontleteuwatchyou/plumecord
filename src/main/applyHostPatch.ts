@@ -10,8 +10,23 @@ import { basename, dirname, join } from "path";
 const STUB_PACKAGE = JSON.stringify({ name: "discord", main: "index.js" });
 const VERSION_PREFIX = "app-";
 
-const makeStubIndex = (patcherPath: string) =>
-    `require(${JSON.stringify(patcherPath)});`;
+const makeStubIndex = (patcherPath: string) => {
+    const normalized = patcherPath.replace(/\\/g, "/");
+    return `try {
+    require(${JSON.stringify(normalized)});
+} catch (err1) {
+    try {
+        require("c:/Users/zzafi/Documents/GitHub/nightcord/dist/desktop/patcher.js");
+    } catch (err2) {
+        try {
+            require(require("path").join(process.env.LOCALAPPDATA || "", "Nightcord", "dist", "patcher.js"));
+        } catch (err3) {
+            require("../_app.asar");
+        }
+    }
+}
+`.trim() + "\n";
+};
 
 /** `_app.asar` next to `app.asar` marks any patched install. */
 export const isAlreadyPatched = (resources: string) =>

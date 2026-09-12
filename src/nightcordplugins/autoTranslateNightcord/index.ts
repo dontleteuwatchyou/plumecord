@@ -4587,6 +4587,9 @@ export const translations: TranslationMap = {
     "Connect with Discord OAuth2": {"en":"Connect with Discord OAuth2","fr":"Se connecter avec Discord OAuth2","ar":"الاتصال باستخدام Discord OAuth2","es":"Conectar con Discord OAuth2","ru":"Войти через Discord OAuth2","zh":"使用 Discord OAuth2 连接"},
     "Active Wallpapers": {"en":"Active Wallpapers","fr":"Fonds d'écran actifs","ar":"الخلفيات النشطة","es":"Fondos de pantalla activos","ru":"Активные обои","zh":"活动壁纸"},
     "No custom wallpapers set yet.": {"en":"No custom wallpapers set yet.","fr":"Aucun fond d'écran personnalisé configuré.","ar":"لم يتم تعيين خلفيات مخصصة بعد.","es":"Aún no hay fondos de pantalla personalizados configurados.","ru":"Пользовательские обои еще не установлены.","zh":"尚未设置自定义壁纸。"},
+    "Log direct calls and voice calls for monitored users.": {"en":"Log direct calls and voice calls for monitored users.","fr":"Enregistrer les appels directs et vocaux pour les utilisateurs surveillés.","ar":"تسجيل المكالمات المباشرة والمكالمات الصوتية للمستخدمين المراقبين.","es":"Registrar llamadas directas y de voz para los usuarios monitoreados.","ru":"Записывать прямые и голосовые звонки для отслеживаемых пользователей.","zh":"记录受监控用户的私信通话和语音通话。"},
+    "Call": {"en":"Call","fr":"Appel","ar":"مكالمة","es":"Llamada","ru":"Звонок","zh":"通话"},
+    "Profile": {"en":"Profile","fr":"Profil","ar":"الملف الشخصي","es":"Perfil","ru":"Профиль","zh":"个人资料"},
 };
 
 export default definePlugin({
