@@ -339,6 +339,10 @@ export async function disconnectGhost(_: any, userId: string): Promise<void> {
     try { await api("/disconnect", { userId }); } catch { }
 }
 
+export async function setMicDevice(_: any, micDevice: string): Promise<void> {
+    try { await api("/set-mic", { micDevice }); } catch { }
+}
+
 export async function init(_: any): Promise<void> {
     const script = findServerScript();
     console.log("[GhostNative] init — server.js:", script ?? "NON TROUVÉ");

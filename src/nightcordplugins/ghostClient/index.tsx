@@ -437,12 +437,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         setMicLabel(virtualMic);
                         ghostMicLabel = virtualMic;
                         DataStore.set(DS_KEY_MIC_DEVICE, virtualMic);
+                        Native.setMicDevice(virtualMic).catch(() => { });
                         console.log("[GhostClient] Cable virtuel détecté et sélectionné par défaut:", virtualMic);
                     }
                 } else {
                     setMicLabel(savedMic as string);
                     ghostMicLabel = savedMic as string;
                     console.log("[GhostClient] Chargement du micro préféré de l'utilisateur :", savedMic);
+                    Native.setMicDevice(savedMic as string).catch(() => { });
                 }
             }
         }).catch(() => { });
@@ -563,7 +565,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         DataStore.set(DS_KEY_SELECTED, v);
                     }} />
                 <Dropdown icon={<MicIcon />} label={t("Source microphone")} value={micLabel} options={micOptions}
-                    onChange={v => { setMicLabel(v); ghostMicLabel = v; DataStore.set(DS_KEY_MIC_DEVICE, v); }} />
+                    onChange={v => {
+                        setMicLabel(v);
+                        ghostMicLabel = v;
+                        DataStore.set(DS_KEY_MIC_DEVICE, v);
+                        Native.setMicDevice(v).catch(() => { });
+                    }} />
                 <div className="gc-popover-divider" />
                 <div className="gc-follow-row" onClick={() => toggleAutoFollow(!autoFollow)}>
                     <div className="gc-follow-info">

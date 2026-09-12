@@ -1,3 +1,9 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 /**
  * ghost-server.js — Nightcord Ghost Client
  * Architecture "always-on" + optimisé performance :
@@ -79,7 +85,10 @@ function listDshowDevices(ffmpeg) {
     if (_dshowDevicesCache !== null) return _dshowDevicesCache;
     const res = spawnSync(ffmpeg, ["-list_devices", "true", "-f", "dshow", "-i", "dummy"],
         { timeout: 5000, encoding: "buffer" });
-    const text = [res.stderr, res.stdout].map(b => (b || Buffer.alloc(0)).toString("utf8")).join("\n");
+    let text = [res.stderr, res.stdout].map(b => (b || Buffer.alloc(0)).toString("utf8")).join("\n");
+    if (text.includes("\ufffd")) {
+        text = [res.stderr, res.stdout].map(b => (b || Buffer.alloc(0)).toString("latin1")).join("\n");
+    }
     const devices = [];
     for (const line of text.split(/\r?\n/)) {
         if (!/\(audio\)/i.test(line) || /Alternative name/i.test(line)) continue;
@@ -221,6 +230,19 @@ async function preconnectGhost({ userId, token, micLabel, micDevice }) {
     const client = new Client({ checkUpdate: false });
     const streamer = new DVS.Streamer(client);
 
+    // Monkey-patch signalVideo to ensure ghost account is NEVER deafened in voice
+    streamer.signalVideo = function (video_enabled) {
+        if (!this.voiceConnection) return;
+        const { guildId: guild_id, channelId: channel_id } = this.voiceConnection;
+        this.sendOpcode(4, {
+            guild_id: guild_id || null,
+            channel_id: channel_id || null,
+            self_mute: false,
+            self_deaf: false,
+            self_video: Boolean(video_enabled),
+        });
+    };
+
     await new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error("Login timeout")), 20000);
         client.once("ready", () => { clearTimeout(t); resolve(); });
@@ -285,6 +307,39 @@ function setSpeakingHelper(udpConn, session, enabled) {
         }
     } catch { }
 }
+
+function unmuteAndUndeafen(session, guildId, channelId) {
+    try {
+        if (!session?.streamer) return;
+        const gId = (guildId && guildId !== "") ? guildId : (session.streamer.voiceConnection?.guildId || null);
+        const cId = (channelId && channelId !== "") ? channelId : (session.streamer.voiceConnection?.channelId || null);
+        session.streamer.sendOpcode(4, {
+            guild_id: gId,
+            channel_id: cId,
+            self_mute: false,
+            self_deaf: false,
+            self_video: false,
+        });
+        console.log(`[GhostServer] Voice state unmuted & undeafened for ${session.userId} (guild: ${gId}, channel: ${cId})`);
+    } catch (e) {
+        console.warn("[GhostServer] unmuteAndUndeafen error:", e?.message ?? e);
+    }
+}
+
+function setupSpeakingHeartbeat(session, udpConn) {
+    if (session._speakingHeartbeat) {
+        clearInterval(session._speakingHeartbeat);
+        session._speakingHeartbeat = null;
+    }
+    const sendSpeaking = () => {
+        try {
+            setSpeakingHelper(udpConn, session, true);
+        } catch { }
+    };
+    sendSpeaking();
+    session._speakingHeartbeat = setInterval(sendSpeaking, 5000);
+}
+
 async function doJoinVoice(session, guildId, channelId) {
     stopStream(session);
 
@@ -324,6 +379,7 @@ async function doJoinVoice(session, guildId, channelId) {
     session.udpConn = udpConn;
     try { udpConn.setPacketizer("H264"); } catch { }
     console.log("[GhostServer] Voice connecte (avec reception audio) ✓");
+    unmuteAndUndeafen(session, guildId, channelId);
 
     // Activer l'audio ET setSpeaking seulement quand WebRTC est vraiment "connected"
     // sendAudioFrame retourne silencieusement si udpConn.ready === false
@@ -336,6 +392,7 @@ async function doJoinVoice(session, guildId, channelId) {
                 else udpConn.setPacketizer?.("H264");
             }
         } catch { }
+        unmuteAndUndeafen(session, guildId, channelId);
         setupSpeakingHeartbeat(session, udpConn);
         audioPipelines.set(session.userId, { udpTarget: udpConn });
         startPermanentAudio(session, udpConn);
@@ -425,6 +482,7 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
 
         s.udpConn = udpConn;
         try { udpConn.setPacketizer("H264"); } catch { }
+        unmuteAndUndeafen(s, guildId, channelId);
 
         function activateAudio() {
             try {
@@ -433,6 +491,7 @@ async function joinVoiceSilent(userId, guildId, channelId, micLabel, micDevice) 
                     else udpConn.setPacketizer?.("H264");
                 }
             } catch { }
+            unmuteAndUndeafen(s, guildId, channelId);
             setupSpeakingHeartbeat(s, udpConn);
             audioPipelines.set(userId, { udpTarget: udpConn });
             startPermanentAudio(s, udpConn);
@@ -564,6 +623,12 @@ function startPermanentAudio(session, initialUdpConn) {
         if (msg && !msg.includes("Guessed Channel Layout") && !msg.includes("size=")) console.warn("[ffmpeg] " + msg);
     });
 
+    proc.on("error", err => {
+        console.error(`[GhostServer] Erreur process ffmpeg pour ${device}:`, err.message);
+        sharedAudios.delete(device);
+        try { encoder.delete(); } catch { }
+    });
+
     proc.on("exit", code => {
         sharedAudios.delete(device);
         // Reset l'encodeur Opus pour libérer la mémoire native
@@ -651,6 +716,10 @@ function stopStream(session) {
 }
 
 function stopAll(session) {
+    if (session._speakingHeartbeat) {
+        clearInterval(session._speakingHeartbeat);
+        session._speakingHeartbeat = null;
+    }
     stopMic(session);
     stopStream(session);
     if (session.udpConn) {
@@ -768,13 +837,28 @@ http.createServer(async (req, res) => {
                 for (const userId of joined) {
                     const s = sessions.get(userId);
                     const pipe = audioPipelines.get(userId);
-                    if (s?.udpConn && pipe) {
-                        pipe.udpTarget = s.udpConn;
-                        try { s.udpConn.mediaConnection?.setSpeaking(true); } catch { }
+                    if (s?.udpConn) {
+                        if (pipe) pipe.udpTarget = s.udpConn;
+                        unmuteAndUndeafen(s, body.guildId, body.channelId);
+                        setupSpeakingHeartbeat(s, s.udpConn);
                     }
                 }
                 console.log(`[GhostServer] Audio sync ${joined.length}/${ids.length} ✓`);
             })();
+            return;
+        }
+
+        if (req.url === "/set-mic") {
+            const newDevice = body.micDevice;
+            console.log("[GhostServer] Changement de micro demandé:", newDevice);
+            for (const [userId, session] of sessions) {
+                session.micLabel = newDevice;
+                if (session.udpConn) {
+                    stopMic(session);
+                    startPermanentAudio(session, session.udpConn);
+                }
+            }
+            send(res, 200, { ok: true });
             return;
         }
 
