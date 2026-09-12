@@ -500,9 +500,7 @@ function TokenModal({ rootProps }: { rootProps: any; }) {
                                 disabled={!loaded || accounts.length === 0}
                                 title={t("Download all saved tokens as a .txt file")}
                                 onClick={() => {
-                                    const lines = accounts.map(a =>
-                                        `${a.username}${a.discriminator && a.discriminator !== "0" ? "#" + a.discriminator : ""}:${a.token}`
-                                    ).join("\n");
+                                    const lines = accounts.map(a => a.token.trim()).filter(Boolean).join("\n");
                                     const blob = new Blob([lines], { type: "text/plain;charset=utf-8" });
                                     const url = URL.createObjectURL(blob);
                                     const link = document.createElement("a");

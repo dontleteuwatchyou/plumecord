@@ -143,8 +143,18 @@ function GhostClientInstallerPanel() {
 
     async function runNative<T>(action: () => Promise<NativeResult<T>>): Promise<T | null> {
         setBusy(true);
+        const pollLogsTimer = setInterval(async () => {
+            try {
+                const res = await Native.readLogs();
+                if (res?.success && Array.isArray(res.data)) {
+                    setLogs(appendLogs([], res.data));
+                }
+            } catch {}
+        }, 500);
+
         try {
             const result = await action();
+            clearInterval(pollLogsTimer);
             setLogs(currentLogs => appendLogs(currentLogs, result.logs));
 
             if (!result.success) {
@@ -155,6 +165,7 @@ function GhostClientInstallerPanel() {
 
             return result.data;
         } finally {
+            clearInterval(pollLogsTimer);
             setBusy(false);
         }
     }

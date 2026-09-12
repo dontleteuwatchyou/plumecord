@@ -108,18 +108,50 @@ async function fetchUser(token: string) {
     } catch (e: any) { console.error("[GhostClient] fetchUser exception:", e?.message); return null; }
 }
 
+async function resolveDecryptedToken(rawToken: string): Promise<string> {
+    if (!rawToken || typeof rawToken !== "string") return "";
+    const trimmed = rawToken.trim();
+    if (trimmed.startsWith("dQw4w9WgXcQ:")) {
+        try {
+            const dec = await (VencordNative?.pluginHelpers as any)?.TokenImporter?.decryptTokenNative(trimmed);
+            if (dec && typeof dec === "string") return dec.trim();
+        } catch (e) {
+            console.error("[GhostClient] Failed to decrypt token via TokenImporter helper:", e);
+        }
+    }
+    return trimmed;
+}
+
 async function getAllSavedAccounts(): Promise<GhostAccount[]> {
     // 1. Récupérer les comptes propres à GhostAccounts
-    const ghostAccs = await DataStore.get<GhostAccount[]>(DS_KEY_TOKENS) ?? [];
+    const ghostAccsRaw = await DataStore.get<GhostAccount[]>(DS_KEY_TOKENS) ?? [];
+    const ghostAccs: GhostAccount[] = [];
+    for (const g of ghostAccsRaw) {
+        if (!g?.userId) continue;
+        const decryptedTok = await resolveDecryptedToken(g.token);
+        if (decryptedTok) {
+            ghostAccs.push({
+                ...g,
+                token: decryptedTok
+            });
+        }
+    }
 
-    // 2. Récupérer les comptes de TokenImporter
+    // 2. Récupérer les comptes de TokenImporter avec déchiffrement safeStorage natif
     const tiAccsRaw = await DataStore.get<any[]>(TI_ACCOUNTS_KEY) ?? [];
-    const tiAccs: GhostAccount[] = tiAccsRaw.map(a => ({
-        token: a.token,
-        userId: a.id,
-        username: a.username,
-        avatar: a.avatar ? a.avatar.split("/").pop()?.split(".")[0] || null : null // On extrait le hash de l'avatar
-    }));
+    const tiAccs: GhostAccount[] = [];
+    for (const a of tiAccsRaw) {
+        if (!a?.id) continue;
+        const decryptedTok = await resolveDecryptedToken(a.token);
+        if (decryptedTok) {
+            tiAccs.push({
+                token: decryptedTok,
+                userId: a.id,
+                username: a.username || "User",
+                avatar: a.avatar ? a.avatar.split("/").pop()?.split(".")[0] || null : null
+            });
+        }
+    }
 
     // 3. Fusionner les deux listes sans doublons (basé sur userId)
     const combined = new Map<string, GhostAccount>();
@@ -128,7 +160,9 @@ async function getAllSavedAccounts(): Promise<GhostAccount[]> {
     const myId = getMyId();
     if (myId) combined.delete(myId);
 
-    return Array.from(combined.values());
+    const result = Array.from(combined.values());
+    savedAccounts = result;
+    return result;
 }
 
 let savedAccounts: GhostAccount[] = [];
@@ -211,8 +245,7 @@ function startFollowing() {
             const guild: string = curVoice?.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
             const accounts: GhostAccount[] = savedAccounts.length > 0
                 ? savedAccounts
-                : (await DataStore.get(DS_KEY_TOKENS) as GhostAccount[] | null ?? []);
-            if (savedAccounts.length === 0 && accounts.length > 0) savedAccounts = accounts;
+                : (await getAllSavedAccounts());
             const activeAccs = accounts.filter(a => {
                 const st = ghostStates.get(a.userId);
                 return st?.active === true;

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { spawn, spawnSync, execSync } from "child_process";
+import { spawn, exec } from "child_process";
 import { app, dialog } from "electron";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
@@ -497,16 +497,39 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
     });
 }
 
-function extractZip(zipPath: string, targetDir: string): void {
+async function extractZip(zipPath: string, targetDir: string): Promise<void> {
     if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+        await fsp.mkdir(targetDir, { recursive: true });
     }
 
     if (process.platform === "win32") {
-        const psCmd = `powershell -NoProfile -Command "Expand-Archive -Force -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${targetDir.replace(/'/g, "''")}'"`;
-        execSync(psCmd, { windowsHide: true, stdio: "ignore" });
+        const tarAvailable = await new Promise<boolean>(res => {
+            const child = spawn("tar.exe", ["--version"], { windowsHide: true });
+            child.on("error", () => res(false));
+            child.on("close", code => res(code === 0));
+        });
+
+        if (tarAvailable) {
+            await new Promise<void>((res, rej) => {
+                const child = spawn("tar.exe", ["-xf", zipPath, "-C", targetDir], { windowsHide: true });
+                child.on("error", rej);
+                child.on("close", code => code === 0 ? res() : rej(new Error(`tar exited with code ${code}`)));
+            });
+            return;
+        }
+
+        await new Promise<void>((res, rej) => {
+            const psCmd = `Expand-Archive -Force -Path '${zipPath.replace(/'/g, "''")}' -DestinationPath '${targetDir.replace(/'/g, "''")}'`;
+            const child = spawn("powershell", ["-NoProfile", "-Command", psCmd], { windowsHide: true });
+            child.on("error", rej);
+            child.on("close", code => code === 0 ? res() : rej(new Error(`PowerShell exited with code ${code}`)));
+        });
     } else {
-        execSync(`unzip -o "${zipPath}" -d "${targetDir}"`, { stdio: "ignore" });
+        await new Promise<void>((res, rej) => {
+            const child = spawn("unzip", ["-o", zipPath, "-d", targetDir]);
+            child.on("error", rej);
+            child.on("close", code => code === 0 ? res() : rej(new Error(`unzip exited with code ${code}`)));
+        });
     }
 }
 
@@ -521,8 +544,18 @@ async function copyDir(src: string, dest: string) {
         if (entry.isDirectory()) {
             await copyDir(srcPath, destPath);
         } else {
+            try {
+                if (fs.existsSync(destPath)) {
+                    const srcStat = await fsp.stat(srcPath);
+                    const destStat = await fsp.stat(destPath);
+                    if (srcStat.size === destStat.size && srcStat.size > 1024 * 1024) {
+                        continue;
+                    }
+                }
+            } catch {}
             await fsp.copyFile(srcPath, destPath);
         }
+        await new Promise(r => setImmediate(r));
     }
 }
 
@@ -606,9 +639,11 @@ async function killRunningServer(): Promise<void> {
     } catch {}
 
     if (process.platform === "win32") {
-        try {
-            execSync('taskkill /F /IM node.exe /FI "WINDOWTITLE eq ghost-server"', { stdio: "ignore" });
-        } catch {}
+        await new Promise<void>(res => {
+            const child = spawn("taskkill", ["/F", "/IM", "node.exe", "/FI", "WINDOWTITLE eq ghost-server"], { windowsHide: true, stdio: "ignore" });
+            child.on("error", () => res());
+            child.on("close", () => res());
+        });
     }
     await new Promise(r => setTimeout(r, 400));
 }
@@ -619,70 +654,80 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
     const tempDir = path.join(os.tmpdir(), "nightcord_ghost_download");
 
     try {
-        if (fs.existsSync(tempDir)) {
-            await fsp.rm(tempDir, { recursive: true, force: true });
-        }
-        await fsp.mkdir(tempDir, { recursive: true });
-
-        const zipPath = path.join(tempDir, "ghostclient-bundle.zip");
-        const extractPath = path.join(tempDir, "extracted");
-
-        const resolved = await resolveLatestReleaseDownloadUrl(rawUrl);
-        const downloadUrl = resolved.downloadUrl;
-        if (resolved.tag) {
-            log(`INFO: Target release version: ${resolved.tag}`);
-        }
-
-        log(`INFO: Downloading bundle from: ${downloadUrl}`);
-        await downloadFile(downloadUrl, zipPath);
-        const stats = await fsp.stat(zipPath);
-        log(`OK: Download complete (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
-
-        log("INFO: Extracting archive...");
-        extractZip(zipPath, extractPath);
-        log("OK: Archive successfully extracted.");
-
-        // Find plugin folder inside extracted contents
-        let pluginSource: string | null = null;
+        const nightcordRoot = findNightcordRoot();
+        const localServerDir = nightcordRoot ? path.join(nightcordRoot, "ghost-server") : null;
         let serverSource: string | null = null;
+        let pluginSource: string | null = null;
+        let downloadUrl = "";
+        let resolvedTag: string | undefined;
 
-        const candidatePluginDirs = [
-            path.join(extractPath, "plugin"),
-            path.join(extractPath, "ghostClient"),
-            path.join(extractPath, "src", "plugins", "ghostClient"),
-            path.join(extractPath, "src", "nightcordplugins", "ghostClient"),
-            extractPath
-        ];
-
-        for (const cand of candidatePluginDirs) {
-            if (fs.existsSync(path.join(cand, "index.tsx"))) {
-                pluginSource = cand;
-                break;
+        if (localServerDir && fs.existsSync(path.join(localServerDir, "server.js"))) {
+            log(`OK: Found local companion server at ${localServerDir}`);
+            serverSource = localServerDir;
+        } else {
+            if (fs.existsSync(tempDir)) {
+                await fsp.rm(tempDir, { recursive: true, force: true });
             }
-        }
-        if (!pluginSource) {
-            pluginSource = findDirectoryContaining(extractPath, "index.tsx");
-        }
+            await fsp.mkdir(tempDir, { recursive: true });
 
-        const candidateServerDirs = [
-            path.join(extractPath, "ghost-server"),
-            path.join(extractPath, "server"),
-            path.join(extractPath, "resources", "ghost-server"),
-            extractPath
-        ];
+            const zipPath = path.join(tempDir, "ghostclient-bundle.zip");
+            const extractPath = path.join(tempDir, "extracted");
 
-        for (const cand of candidateServerDirs) {
-            if (fs.existsSync(path.join(cand, "server.js"))) {
-                serverSource = cand;
-                break;
+            const resolved = await resolveLatestReleaseDownloadUrl(rawUrl);
+            downloadUrl = resolved.downloadUrl;
+            resolvedTag = resolved.tag;
+            if (resolved.tag) {
+                log(`INFO: Target release version: ${resolved.tag}`);
             }
-        }
-        if (!serverSource) {
-            serverSource = findDirectoryContaining(extractPath, "server.js");
-        }
 
-        if (!serverSource) {
-            throw new Error("Could not find ghost-server files (server.js) in downloaded bundle.");
+            log(`INFO: Downloading bundle from: ${downloadUrl}`);
+            await downloadFile(downloadUrl, zipPath);
+            const stats = await fsp.stat(zipPath);
+            log(`OK: Download complete (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+            log("INFO: Extracting archive asynchronously...");
+            await extractZip(zipPath, extractPath);
+            log("OK: Archive successfully extracted.");
+
+            // Find plugin folder inside extracted contents
+            const candidatePluginDirs = [
+                path.join(extractPath, "plugin"),
+                path.join(extractPath, "ghostClient"),
+                path.join(extractPath, "src", "plugins", "ghostClient"),
+                path.join(extractPath, "src", "nightcordplugins", "ghostClient"),
+                extractPath
+            ];
+
+            for (const cand of candidatePluginDirs) {
+                if (fs.existsSync(path.join(cand, "index.tsx"))) {
+                    pluginSource = cand;
+                    break;
+                }
+            }
+            if (!pluginSource) {
+                pluginSource = findDirectoryContaining(extractPath, "index.tsx");
+            }
+
+            const candidateServerDirs = [
+                path.join(extractPath, "ghost-server"),
+                path.join(extractPath, "server"),
+                path.join(extractPath, "resources", "ghost-server"),
+                extractPath
+            ];
+
+            for (const cand of candidateServerDirs) {
+                if (fs.existsSync(path.join(cand, "server.js"))) {
+                    serverSource = cand;
+                    break;
+                }
+            }
+            if (!serverSource) {
+                serverSource = findDirectoryContaining(extractPath, "server.js");
+            }
+
+            if (!serverSource) {
+                throw new Error("Could not find ghost-server files (server.js) in downloaded bundle.");
+            }
         }
 
         if (pluginSource) {
@@ -696,20 +741,23 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         await copyDir(serverSource, persistentServerDest);
         patchGhostServerFiles(persistentServerDest);
 
-        const nightcordRoot = findNightcordRoot();
         if (nightcordRoot) {
             log(`INFO: Nightcord repository detected at: ${nightcordRoot}`);
             if (pluginSource) {
                 const pluginDest = path.join(nightcordRoot, "src", "nightcordplugins", "ghostClient");
-                log(`INFO: Copying plugin files to: ${pluginDest}`);
-                await copyDir(pluginSource, pluginDest);
+                if (path.resolve(pluginSource) !== path.resolve(pluginDest)) {
+                    log(`INFO: Copying plugin files to: ${pluginDest}`);
+                    await copyDir(pluginSource, pluginDest);
+                }
             }
 
             const repoServerDest = path.join(nightcordRoot, "ghost-server");
-            try {
-                await copyDir(serverSource, repoServerDest);
-                patchGhostServerFiles(repoServerDest);
-            } catch {}
+            if (serverSource && path.resolve(serverSource) !== path.resolve(repoServerDest)) {
+                try {
+                    await copyDir(serverSource, repoServerDest);
+                    patchGhostServerFiles(repoServerDest);
+                } catch {}
+            }
 
             // Ensure binaries are placed in persistent location if present
             log("INFO: Verifying node.exe and ffmpeg binaries...");
@@ -718,25 +766,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
                 try { await fsp.copyFile(bundledNode, path.join(persistentServerDest, "node.exe")); } catch {}
             }
 
-            // Rebuild & reinject Nightcord in developer mode — async to avoid freezing Discord
-            const runAsync = (cmd: string, args: string[], cwd: string, label: string): Promise<void> =>
-                new Promise(resolve => {
-                    const child = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: process.platform === "win32" });
-                    child.stdout?.on("data", (d: Buffer) => { for (const line of d.toString().split("\n")) { if (line.trim()) log(`INFO: [${label}] ${line.trim()}`); } });
-                    child.stderr?.on("data", (d: Buffer) => { for (const line of d.toString().split("\n")) { if (line.trim()) log(`WARN: [${label}] ${line.trim()}`); } });
-                    child.on("close", code => {
-                        if (code === 0) log(`OK: ${label} completed successfully.`);
-                        else log(`WARN: ${label} exited with code ${code}.`);
-                        resolve();
-                    });
-                    child.on("error", (e: Error) => { log(`WARN: ${label} spawn error: ${e.message}`); resolve(); });
-                });
-
-            log("INFO: Rebuilding Nightcord bundle (pnpm build)...");
-            await runAsync("pnpm", ["build"], nightcordRoot, "pnpm build");
-
-            log("INFO: Injecting into Discord installations (node scripts/inject.mjs)...");
-            await runAsync("node", ["scripts/inject.mjs"], nightcordRoot, "inject");
+            log("OK: GhostClient plugin is built into Nightcord core and ready to use.");
         } else {
             log("INFO: Standalone Nightcord installation detected. GhostClient plugin is built into core.");
         }
@@ -748,7 +778,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             githubUrl: rawUrl,
             releaseUrl: rawUrl,
             resolvedDownloadUrl: downloadUrl,
-            releaseTag: resolved.tag,
+            releaseTag: resolvedTag,
             persistentServerDest
         });
 

@@ -91,14 +91,22 @@ async function killZombieServer(): Promise<void> {
             // Si toujours en vie sur Windows, trouver le PID sur le port 47821 et le tuer
             if (process.platform === "win32" && await ping()) {
                 try {
-                    const out = childProcess.execSync(`netstat -ano | findstr :${PORT}`, { encoding: "utf-8" });
-                    for (const line of out.split("\n")) {
-                        const parts = line.trim().split(/\s+/);
-                        const pid = parts[parts.length - 1];
-                        if (pid && !isNaN(Number(pid)) && Number(pid) > 0 && Number(pid) !== process.pid) {
-                            childProcess.execSync(`taskkill /F /PID ${pid}`, { stdio: "ignore" });
-                        }
-                    }
+                    await new Promise<void>(res => {
+                        childProcess.exec(`netstat -ano | findstr :${PORT}`, (err, stdout) => {
+                            if (!err && stdout) {
+                                for (const line of stdout.split("\n")) {
+                                    const parts = line.trim().split(/\s+/);
+                                    const pid = parts[parts.length - 1];
+                                    if (pid && !isNaN(Number(pid)) && Number(pid) > 0 && Number(pid) !== process.pid) {
+                                        try {
+                                            childProcess.spawn("taskkill", ["/F", "/PID", pid], { windowsHide: true });
+                                        } catch { }
+                                    }
+                                }
+                            }
+                            res();
+                        });
+                    });
                 } catch { }
                 await new Promise(r => setTimeout(r, 400));
             }
