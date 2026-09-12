@@ -11,6 +11,9 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Allows choosing which application audio to share on screenshare (specific app or entire system).": {"en":"Allows choosing which application audio to share on screenshare (specific app or entire system).","fr":"Permet de choisir l'audio de quelle application diffuser lors du partage d'écran (application spécifique ou système entier).","ar":"يتيح اختيار صوت التطبيق المراد مشاركته في بث الشاشة (تطبيق محدد أو النظام بالكامل).","es":"Permite elegir el audio de qué aplicación compartir en la transmisión de pantalla (aplicación específica o todo el sistema).","ru":"Позволяет выбирать звук какого приложения транслировать при демонстрации экрана (конкретное приложение или вся система).","zh":"允许选择在屏幕共享中共享哪个应用程序的音频（特定应用或整个系统）。"},
+    "Stream Audio Application": {"en":"Stream Audio Application","fr":"Application audio du stream","ar":"تطبيق صوت البث","es":"Aplicación de audio del stream","ru":"Аудио-приложение стрима","zh":"直播音频应用程序"},
+    "No running applications detected": {"en":"No running applications detected","fr":"Aucune application en cours détectée","ar":"لم يتم اكتشاف أي تطبيقات قيد التشغيل","es":"No se detectaron aplicaciones en ejecución","ru":"Запущенных приложений не обнаружено","zh":"未检测到正在运行的应用程序"},
     "Quick controls": {"en":"Quick controls","fr":"Contrôles rapides","ar":"عناصر التحكم السريعة","es":"Controles rápidos","ru":"Быстрое управление","zh":"快捷控制"},
     "Fake mute": {"en":"Fake mute","fr":"Faux muet","ar":"كتم زائف","es":"Silencio falso","ru":"Фальшивый мут","zh":"假静音"},
     "Unmute (Fake)": {"en":"Unmute (Fake)","fr":"Activer le micro (Faux)","ar":"إلغاء الكتم (زائف)","es":"Reactivar micrófono (Falso)","ru":"Включить микрофон (Фальш)","zh":"取消静音（假）"},
