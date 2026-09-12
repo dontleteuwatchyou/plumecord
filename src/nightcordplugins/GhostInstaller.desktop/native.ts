@@ -116,8 +116,11 @@ export function findNightcordRoot(): string | null {
         path.resolve(__dirname, "../../.."),
         path.resolve(__dirname, "../../../.."),
         path.resolve(__dirname, "../../../../.."),
-        "C:\\Users\\zzafi\\Documents\\GitHub\\nightcord",
-    ];
+        // Nightcord .exe installer locations (Windows)
+        process.env.APPDATA ? path.join(process.env.APPDATA, "Nightcord") : null,
+        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "Nightcord") : null,
+        process.env.APPDATA ? path.join(process.env.APPDATA, "nightcord") : null,
+    ].filter(Boolean) as string[];
 
     for (const c of candidates) {
         if (!c) continue;

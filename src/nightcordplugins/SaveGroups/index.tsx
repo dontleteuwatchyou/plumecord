@@ -887,15 +887,23 @@ function patchChannelStore() {
     channelStoreAny._origGetChannel = origGetChannel;
     ChannelStore.getChannel = function(id: string) {
         if (id && savedGroups.has(id)) {
-            const realCh = origGetChannel.apply(this, arguments as any);
-            if (realCh && !realCh.isArchivedGroup) {
-                const currentUserId = UserStore.getCurrentUser()?.id;
-                const isRecipient = !currentUserId || realCh.recipients?.some((r: any) => (typeof r === "string" ? r : r?.id) === currentUserId);
-                if (isRecipient) {
-                    unarchiveGroup(id, realCh);
-                    return realCh;
+            // Only check for re-add if we have a confirmed userId
+            const currentUserId = UserStore.getCurrentUser()?.id;
+            if (currentUserId) {
+                const realCh = origGetChannel.apply(this, arguments as any);
+                // Real (non-archived) channel exists and user is a confirmed recipient → unarchive
+                if (realCh && !realCh.isArchivedGroup) {
+                    const recipients: any[] = realCh.recipients ?? [];
+                    const isRecipient = recipients.some(
+                        (r: any) => (typeof r === "string" ? r : r?.id) === currentUserId
+                    );
+                    if (isRecipient) {
+                        unarchiveGroup(id, realCh);
+                        return realCh;
+                    }
                 }
             }
+            // Kicked or no userId yet → return the preserved hydrated archived channel
             return hydratedChannels.get(id);
         }
         return origGetChannel.apply(this, arguments as any);
