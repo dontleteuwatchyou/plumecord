@@ -188,6 +188,35 @@ async function captureAndMergeSharedSettings(sourceEvent: any): Promise<Record<s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Audio Settings Sync (Krisp, volume, périphériques audio)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AUDIO_SETTINGS_FILE = join(app.getPath("userData"), "nightcord-mi-audio-settings.json");
+
+export function saveMasterAudioSettings(_: any, settings: any): boolean {
+    try {
+        if (!settings || typeof settings !== "object") return false;
+        writeFileSync(AUDIO_SETTINGS_FILE, JSON.stringify(settings), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] Failed to save master audio settings:", e);
+        return false;
+    }
+}
+
+export function getMasterAudioSettings(): any {
+    try {
+        if (!existsSync(AUDIO_SETTINGS_FILE)) return null;
+        const raw = readFileSync(AUDIO_SETTINGS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Intercepte les IPC de contrôle de fenêtre pour une instance multi.
 //
 // Discord natif utilise ipcMain.handle("DISCORD_WINDOW_CLOSE" | "DISCORD_WINDOW_MINIMIZE" | ...)
@@ -585,7 +614,7 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
  */
 const activePreloads = new Set<string>();
 
-function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}, targetUserId = ""): string {
+function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}, targetUserId = "", audioSettings?: any): string {
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
@@ -613,11 +642,24 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         tokensMap[effectiveUid] = encryptedToken;
     }
 
+    const effectiveAudio = audioSettings || getMasterAudioSettings();
+    let rawAudioStr = "";
+    if (effectiveAudio) {
+        if (typeof effectiveAudio.rawMediaEngineStore === "string" && effectiveAudio.rawMediaEngineStore.length > 5) {
+            rawAudioStr = effectiveAudio.rawMediaEngineStore;
+        } else if (effectiveAudio.fullState) {
+            rawAudioStr = JSON.stringify(effectiveAudio.fullState);
+        } else if (effectiveAudio.defaultSettings) {
+            rawAudioStr = JSON.stringify({ default: effectiveAudio.defaultSettings });
+        }
+    }
+
     // Serialize values to JS string literals safe to embed via JSON.stringify
     const tokenLiteral = JSON.stringify(cleanToken);
     const settingsLiteral = JSON.stringify(JSON.stringify(sharedSettings ?? {}));
     const targetUserIdLiteral = JSON.stringify(effectiveUid ?? "");
     const tokensMapLiteral = JSON.stringify(JSON.stringify(tokensMap));
+    const audioLiteral = JSON.stringify(rawAudioStr);
 
     // Inner script: runs in main world via webFrame.executeJavaScript.
     // Must be plain JavaScript — no TypeScript syntax, no template literals.
@@ -627,11 +669,15 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  var SETTINGS_JSON = " + settingsLiteral + ";",
         "  var TARGET_UID = " + targetUserIdLiteral + ";",
         "  var TOKENS_JSON = " + tokensMapLiteral + ";",
+        "  var RAW_AUDIO = " + audioLiteral + ";",
         "  var CONFLICT = ['token','default_token','multiaccount_tokens','tokens','user_id_cache','MultiAccountStore','AuthenticationStore','login_token'];",
         "  try {",
         "    var sh = JSON.parse(SETTINGS_JSON || '{}');",
-        "    for (var k in sh) { if (CONFLICT.indexOf(k) >= 0) continue; if (localStorage.getItem(k) === null) localStorage.setItem(k, sh[k]); }",
+        "    for (var k in sh) { if (CONFLICT.indexOf(k) >= 0) continue; if (k === 'MediaEngineStore' || localStorage.getItem(k) === null) localStorage.setItem(k, sh[k]); }",
         "  } catch(e) {}",
+        "  if (RAW_AUDIO && RAW_AUDIO.length > 5) {",
+        "    try { localStorage.setItem('MediaEngineStore', RAW_AUDIO); } catch(e) {}",
+        "  }",
         "  if (RAW_TOKEN && RAW_TOKEN !== 'undefined') {",
         "    var qt = JSON.stringify(RAW_TOKEN);",
         "    try { localStorage.setItem('token', qt); } catch(e) {}",
@@ -684,6 +730,10 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "    var rawToken = " + tokenLiteral + ";",
         "    var targetUid = " + targetUserIdLiteral + ";",
         "    var tokensJson = " + tokensMapLiteral + ";",
+        "    var rawAudio = " + audioLiteral + ";",
+        "    if (rawAudio && rawAudio.length > 5 && typeof window !== 'undefined' && window.localStorage) {",
+        "      try { window.localStorage.setItem('MediaEngineStore', rawAudio); } catch(e) {}",
+        "    }",
         "    if (rawToken && rawToken !== 'undefined' && typeof window !== 'undefined' && window.localStorage) {",
         "      try {",
         "        var qt = JSON.stringify(rawToken);",
@@ -742,7 +792,8 @@ export async function openInstanceWindow(
     username = "",
     domain = "discord.com",
     blockExternalTokenAccess = false,
-    performanceMode = false
+    performanceMode = false,
+    audioSettings?: any
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
         const cleanTok = decryptTokenSync(token);
@@ -798,8 +849,12 @@ export async function openInstanceWindow(
 
         grantSessionMediaPermissions(ses);
 
+        if (audioSettings) {
+            saveMasterAudioSettings(null, audioSettings);
+        }
+        const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings, userId);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -920,6 +975,8 @@ export async function openInstanceWindow(
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(effectiveUid || "");
         const safeTokensMapStr = JSON.stringify(JSON.stringify(tokensMap));
+        const rawAudio = effectiveAudio?.rawMediaEngineStore || (effectiveAudio?.fullState ? JSON.stringify(effectiveAudio.fullState) : (effectiveAudio?.defaultSettings ? JSON.stringify({ default: effectiveAudio.defaultSettings }) : ""));
+        const safeAudioStr = JSON.stringify(rawAudio || "");
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -936,6 +993,12 @@ export async function openInstanceWindow(
                     localStorage.setItem("tokens", tokensJson);
                     localStorage.setItem("multiaccount_tokens", tokensJson);
                 }
+                const rawAud = ${safeAudioStr};
+                if (rawAud && rawAud.length > 5) {
+                    try {
+                        localStorage.setItem("MediaEngineStore", rawAud);
+                    } catch(e) {}
+                }
                 const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
                     localStorage.removeItem("AuthenticationStore");
@@ -951,6 +1014,9 @@ export async function openInstanceWindow(
                     if (tokensJson && tokensJson !== "{}") {
                         iframe.contentWindow.localStorage.tokens = tokensJson;
                         iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
+                    }
+                    if (rawAud && rawAud.length > 5) {
+                        iframe.contentWindow.localStorage.MediaEngineStore = rawAud;
                     }
                 } catch(e) {}
                 document.body.removeChild(iframe);
@@ -1003,7 +1069,8 @@ export async function openInstanceWindowGrouped(
     username = "",
     domain = "discord.com",
     blockExternalTokenAccess = false,
-    performanceMode = false
+    performanceMode = false,
+    audioSettings?: any
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
         const cleanTok = decryptTokenSync(token);
@@ -1048,8 +1115,12 @@ export async function openInstanceWindowGrouped(
 
         grantSessionMediaPermissions(ses);
 
+        if (audioSettings) {
+            saveMasterAudioSettings(null, audioSettings);
+        }
+        const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings, userId);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -1148,6 +1219,8 @@ export async function openInstanceWindowGrouped(
         const safeTokenStr = JSON.stringify(cleanTok);
         const safeTargetId = JSON.stringify(effectiveUid || "");
         const safeTokensMapStr = JSON.stringify(JSON.stringify(tokensMap));
+        const rawAudio = effectiveAudio?.rawMediaEngineStore || (effectiveAudio?.fullState ? JSON.stringify(effectiveAudio.fullState) : (effectiveAudio?.defaultSettings ? JSON.stringify({ default: effectiveAudio.defaultSettings }) : ""));
+        const safeAudioStr = JSON.stringify(rawAudio || "");
         const injectJs = `(function(){
             try {
                 const raw = ${safeTokenStr};
@@ -1164,6 +1237,12 @@ export async function openInstanceWindowGrouped(
                     localStorage.setItem("tokens", tokensJson);
                     localStorage.setItem("multiaccount_tokens", tokensJson);
                 }
+                const rawAud = ${safeAudioStr};
+                if (rawAud && rawAud.length > 5) {
+                    try {
+                        localStorage.setItem("MediaEngineStore", rawAud);
+                    } catch(e) {}
+                }
                 const uid = localStorage.getItem("user_id_cache");
                 if (uid && target && uid.replace(/"/g, "") !== target) {
                     localStorage.removeItem("AuthenticationStore");
@@ -1179,6 +1258,9 @@ export async function openInstanceWindowGrouped(
                     if (tokensJson && tokensJson !== "{}") {
                         iframe.contentWindow.localStorage.tokens = tokensJson;
                         iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
+                    }
+                    if (rawAud && rawAud.length > 5) {
+                        iframe.contentWindow.localStorage.MediaEngineStore = rawAud;
                     }
                 } catch(e) {}
                 document.body.removeChild(iframe);

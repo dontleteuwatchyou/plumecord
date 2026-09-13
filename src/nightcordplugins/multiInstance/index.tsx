@@ -12,7 +12,7 @@ import { definePluginSettings } from "@api/Settings";
 import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps, waitFor } from "@webpack";
-import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, React, ReactDOM, UserStore } from "@webpack/common";
+import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, MediaEngineStore, React, ReactDOM, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 
@@ -25,6 +25,11 @@ const settings = definePluginSettings({
             { label: "Discord PTB", value: "ptb.discord.com" },
             { label: "Discord Canary", value: "canary.discord.com" }
         ]
+    },
+    syncAudioSettings: {
+        type: OptionType.BOOLEAN,
+        description: "Audio Settings Sync: Automatically inherit audio devices, volume, and Krisp from your main Discord window.",
+        default: true
     },
     blockExternalTokenAccess: {
         type: OptionType.BOOLEAN,
@@ -187,6 +192,268 @@ function hookFluxDispatcher(): (() => void) | null {
         FluxDispatcher.subscribe("MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS", handler);
         return () => FluxDispatcher.unsubscribe("MULTI_ACCOUNT_VALIDATE_TOKEN_SUCCESS", handler);
     } catch { return null; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Synchronisation des réglages audio (Krisp, volume, micros, casques)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isCurrentInstanceWindow(): boolean {
+    return !!((window as any).__nightcord_token || (window as any).__nightcord_user_id);
+}
+
+function captureMasterAudioSettings(): Record<string, any> | null {
+    try {
+        const rawLs = window.localStorage.getItem("MediaEngineStore");
+        let parsedLs: any = null;
+        if (rawLs) {
+            try {
+                parsedLs = JSON.parse(rawLs);
+            } catch {}
+        }
+
+        let storeSettings: any = null;
+        try {
+            if (MediaEngineStore) {
+                storeSettings = {
+                    noiseCancellation: MediaEngineStore.getNoiseCancellation?.(),
+                    noiseSuppression: MediaEngineStore.getNoiseSuppression?.(),
+                    echoCancellation: MediaEngineStore.getEchoCancellation?.(),
+                    automaticGainControl: MediaEngineStore.getAutomaticGainControl?.(),
+                    inputVolume: MediaEngineStore.getInputVolume?.(),
+                    outputVolume: MediaEngineStore.getOutputVolume?.(),
+                    inputDeviceId: MediaEngineStore.getInputDeviceId?.(),
+                    outputDeviceId: MediaEngineStore.getOutputDeviceId?.(),
+                    mode: MediaEngineStore.getMode?.(),
+                    modeOptions: MediaEngineStore.getModeOptions?.(),
+                    attenuation: MediaEngineStore.getAttenuation?.(),
+                    attenuateWhileSpeakingSelf: MediaEngineStore.getAttenuateWhileSpeakingSelf?.(),
+                    attenuateWhileSpeakingOthers: MediaEngineStore.getAttenuateWhileSpeakingOthers?.(),
+                    qos: MediaEngineStore.getQoS?.(),
+                };
+            }
+        } catch {}
+
+        const defaultSettings = {
+            ...(parsedLs?.default || {}),
+            ...(storeSettings || {})
+        };
+
+        return {
+            rawMediaEngineStore: rawLs || (defaultSettings ? JSON.stringify({ default: defaultSettings }) : ""),
+            defaultSettings,
+            fullState: parsedLs || (defaultSettings ? { default: defaultSettings } : null)
+        };
+    } catch {
+        return null;
+    }
+}
+
+let _audioSaveTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleMasterAudioSave(): void {
+    if (isCurrentInstanceWindow()) return;
+    if (_audioSaveTimer !== undefined) clearTimeout(_audioSaveTimer);
+    _audioSaveTimer = setTimeout(() => {
+        _audioSaveTimer = undefined;
+        const audio = captureMasterAudioSettings();
+        if (audio && typeof Native?.saveMasterAudioSettings === "function") {
+            Native.saveMasterAudioSettings(audio).catch(() => {});
+        }
+    }, 500);
+}
+
+function applyAudioSettings(audio: any): void {
+    if (!audio) return;
+    const def = audio.defaultSettings || audio;
+    if (!def || typeof def !== "object") return;
+
+    // 1. Output Volume
+    if (typeof def.outputVolume === "number") {
+        try {
+            FluxDispatcher?.dispatch?.({
+                type: "AUDIO_SET_OUTPUT_VOLUME",
+                volume: def.outputVolume
+            });
+        } catch {}
+    }
+
+    // 2. Input Volume
+    if (typeof def.inputVolume === "number") {
+        try {
+            FluxDispatcher?.dispatch?.({
+                type: "AUDIO_SET_INPUT_VOLUME",
+                volume: def.inputVolume
+            });
+        } catch {}
+    }
+
+    // 3. Output Device
+    if (def.outputDeviceId && typeof def.outputDeviceId === "string") {
+        try {
+            FluxDispatcher?.dispatch?.({
+                type: "AUDIO_SET_OUTPUT_DEVICE",
+                id: def.outputDeviceId
+            });
+        } catch {}
+    }
+
+    // 4. Input Device
+    if (def.inputDeviceId && typeof def.inputDeviceId === "string") {
+        try {
+            FluxDispatcher?.dispatch?.({
+                type: "AUDIO_SET_INPUT_DEVICE",
+                id: def.inputDeviceId
+            });
+        } catch {}
+    }
+
+    // 5. Krisp (noiseCancellation) & Noise Suppression
+    const meActions = findByProps("setNoiseCancellation", "setNoiseSuppression") || findByProps("setNoiseCancellation");
+    if (typeof def.noiseCancellation === "boolean") {
+        try {
+            meActions?.setNoiseCancellation?.(def.noiseCancellation);
+        } catch {}
+        try {
+            MediaEngineStore?.getMediaEngine?.()?.setNoiseCancellation?.(def.noiseCancellation);
+        } catch {}
+    }
+    if (typeof def.noiseSuppression === "boolean") {
+        try {
+            meActions?.setNoiseSuppression?.(def.noiseSuppression);
+        } catch {}
+        try {
+            MediaEngineStore?.getMediaEngine?.()?.setNoiseSuppression?.(def.noiseSuppression);
+        } catch {}
+    }
+
+    // 6. Echo Cancellation & Automatic Gain Control
+    if (typeof def.echoCancellation === "boolean") {
+        try {
+            meActions?.setEchoCancellation?.(def.echoCancellation);
+        } catch {}
+        try {
+            MediaEngineStore?.getMediaEngine?.()?.setEchoCancellation?.(def.echoCancellation);
+        } catch {}
+    }
+    if (typeof def.automaticGainControl === "boolean") {
+        try {
+            meActions?.setAutomaticGainControl?.(def.automaticGainControl);
+        } catch {}
+        try {
+            MediaEngineStore?.getMediaEngine?.()?.setAutomaticGainControl?.(def.automaticGainControl);
+        } catch {}
+    }
+
+    // 7. Voice Mode & Sensitivity / Options
+    if (def.mode && def.modeOptions) {
+        try {
+            const modeActions = findByProps("setMode") || meActions;
+            modeActions?.setMode?.(def.mode, def.modeOptions);
+        } catch {}
+    }
+
+    // 8. Attenuation
+    if (typeof def.attenuation === "number") {
+        try {
+            const attActions = findByProps("setAttenuation") || meActions;
+            attActions?.setAttenuation?.(
+                def.attenuation,
+                Boolean(def.attenuateWhileSpeakingSelf),
+                Boolean(def.attenuateWhileSpeakingOthers)
+            );
+        } catch {}
+    }
+
+    // 9. Direct MediaEngineStore state sync
+    try {
+        if (MediaEngineStore) {
+            const state = MediaEngineStore.getState?.();
+            if (state?.settingsByContext?.default) {
+                Object.assign(state.settingsByContext.default, def);
+                MediaEngineStore.emitChange?.();
+            }
+        }
+    } catch {}
+
+    // 10. Persist to localStorage
+    if (audio.rawMediaEngineStore && typeof audio.rawMediaEngineStore === "string") {
+        try {
+            window.localStorage.setItem("MediaEngineStore", audio.rawMediaEngineStore);
+        } catch {}
+    }
+}
+
+async function syncInstanceAudioSettings(): Promise<void> {
+    try {
+        if (typeof Native?.getMasterAudioSettings !== "function") return;
+        const masterAudio = await Native.getMasterAudioSettings();
+        if (!masterAudio) return;
+
+        if (masterAudio.rawMediaEngineStore && typeof masterAudio.rawMediaEngineStore === "string") {
+            try {
+                window.localStorage.setItem("MediaEngineStore", masterAudio.rawMediaEngineStore);
+            } catch {}
+        }
+
+        const tryApply = () => applyAudioSettings(masterAudio);
+        tryApply();
+
+        waitFor(["dispatch", "subscribe"], (dispatcher: any) => {
+            const unConn = dispatcher.subscribe("CONNECTION_OPEN", () => {
+                try { unConn(); } catch {}
+                setTimeout(tryApply, 500);
+                setTimeout(tryApply, 1500);
+            });
+        });
+
+        [1000, 2500, 5000].forEach(delay => {
+            setTimeout(tryApply, delay);
+        });
+    } catch (e) {
+        console.warn("[NightcordMI] syncInstanceAudioSettings error:", e);
+    }
+}
+
+let unhookAudioWatcher: (() => void) | null = null;
+function hookAudioSettingsWatcher(): void {
+    if (unhookAudioWatcher) return;
+    const unsubs: Array<() => void> = [];
+
+    const onAudioChanged = () => scheduleMasterAudioSave();
+
+    if (FluxDispatcher?.subscribe) {
+        const events = [
+            "AUDIO_SET_OUTPUT_VOLUME",
+            "AUDIO_SET_INPUT_VOLUME",
+            "AUDIO_SET_OUTPUT_DEVICE",
+            "AUDIO_SET_INPUT_DEVICE",
+            "AUDIO_SET_MODE",
+            "AUDIO_SET_NOISE_SUPPRESSION",
+            "AUDIO_SET_NOISE_CANCELLATION",
+            "MEDIA_ENGINE_SET_AUDIO_SUB_SYSTEM"
+        ];
+        for (const evt of events) {
+            try {
+                FluxDispatcher.subscribe(evt, onAudioChanged);
+                unsubs.push(() => FluxDispatcher.unsubscribe(evt, onAudioChanged));
+            } catch {}
+        }
+    }
+
+    if (MediaEngineStore?.addChangeListener) {
+        try {
+            MediaEngineStore.addChangeListener(onAudioChanged);
+            unsubs.push(() => MediaEngineStore.removeChangeListener(onAudioChanged));
+        } catch {}
+    }
+
+    unhookAudioWatcher = () => {
+        for (const u of unsubs) {
+            try { u(); } catch {}
+        }
+        unsubs.length = 0;
+        unhookAudioWatcher = null;
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -465,9 +732,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         setCtx(null);
         setStatus(t("Opening window…"));
-        const { domain, blockExternalTokenAccess, performanceMode } = settings.store;
-        // @ts-ignore - Passage du pseudo, domaine, token protection, perf mode
-        const res = await Native.openInstanceWindow(acc.token, acc.id, false, acc.username, domain, blockExternalTokenAccess, performanceMode).catch(() => ({ ok: false, error: "error" }));
+        const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
+        const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
+        // @ts-ignore - Passage du pseudo, domaine, token protection, perf mode, audioSettings
+        const res = await Native.openInstanceWindow(acc.token, acc.id, false, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any).ok) {
             setStatus(t("Window opened"));
             await refreshInstances();
@@ -488,9 +756,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         setCtx(null);
         setStatus(t("Opening detached instance…"));
-        const { domain, blockExternalTokenAccess, performanceMode } = settings.store;
-        // @ts-ignore - Argument 'detached', pseudo, domaine, token protection, perf mode
-        const res = await Native.openInstanceWindow(acc.token, acc.id, true, acc.username, domain, blockExternalTokenAccess, performanceMode).catch(() => ({ ok: false, error: "error" }));
+        const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
+        const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
+        // @ts-ignore - Argument 'detached', pseudo, domaine, token protection, perf mode, audioSettings
+        const res = await Native.openInstanceWindow(acc.token, acc.id, true, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any).ok) {
             setStatus(t("Instance opened"));
             await refreshInstances();
@@ -511,9 +780,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         setCtx(null);
         setStatus(t("Opening grouped instance…"));
-        const { domain, blockExternalTokenAccess, performanceMode } = settings.store;
+        const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
+        const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
         // @ts-ignore
-        const res = await Native.openInstanceWindowGrouped(acc.token, acc.id, acc.username, domain, blockExternalTokenAccess, performanceMode).catch(() => ({ ok: false, error: "error" }));
+        const res = await Native.openInstanceWindowGrouped(acc.token, acc.id, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any).ok) {
             setStatus(t("Instance opened"));
             await refreshInstances();
@@ -874,6 +1144,10 @@ async function initInstanceWindowAuth(): Promise<void> {
         });
     });
 
+    if (settings.store.syncAudioSettings !== false) {
+        syncInstanceAudioSettings();
+    }
+
     // 5. Gentle fallback checks (at 1s, 2.5s, 5s)
     [1000, 2500, 5000].forEach(delay => {
         setTimeout(() => {
@@ -911,12 +1185,17 @@ export default definePlugin({
         hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();
         captureCurrentToken();
+        if (!isCurrentInstanceWindow()) {
+            scheduleMasterAudioSave();
+            hookAudioSettingsWatcher();
+        }
         addHeaderBarButton("nightcord-multi-instance", () => <MultiInstanceButton />, 9);
     },
 
     stop() {
         removeHeaderBarButton("nightcord-multi-instance");
         if (this._fluxUnsub) { this._fluxUnsub(); this._fluxUnsub = null; }
+        if (unhookAudioWatcher) { unhookAudioWatcher(); }
         const root = document.getElementById("nightcord-mi-ctx-root");
         if (root) root.remove();
     },
