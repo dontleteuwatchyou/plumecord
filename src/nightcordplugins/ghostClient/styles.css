@@ -25,8 +25,8 @@
 
 /* Popover container */
 .gc-popover {
-    width: 480px;
-    max-width: 95vw;
+    width: 380px;
+    max-width: calc(100vw - 20px);
     background: #2b2d31;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;

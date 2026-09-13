@@ -6,12 +6,14 @@
 
 import "./styles.css";
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { DataStore } from "@api/index";
 import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React, ReactDOM, Toasts, useState, useEffect, useRef, SettingsRouter } from "@webpack/common";
+import { React, ReactDOM, Toasts, useState, useEffect, useRef, SettingsRouter, Slider } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
+import { openTokenImporterModal } from "../tokenImporter";
 
 // UserAreaButton 100% sûr - aucun proxy lazy Webpack pour éviter les erreurs de type Reflect
 const UserAreaButton: any = (props: any) => {
@@ -57,7 +59,7 @@ const DS_KEY_VOLUME = "nightcord-ghost-volume-booster";
 const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
 
 let ghostMicLabel: string = "default";
-let ghostJoinDelay: number = 200;
+let ghostJoinDelay: number = 0;
 let ghostVolumeMultiplier: number = 1.0;
 
 // ─── Backend natif / HTTP ─────────────────────────────────────────────────────
@@ -395,9 +397,14 @@ async function validateToken(rawToken: string): Promise<GhostAccount | null> {
 }
 
 let savedAccounts: GhostAccount[] = [];
+let _isScanningAccounts = false;
 
 // Récupère les comptes sauvegardés + scan local automatique des installations Discord
-async function getAllSavedAccounts(): Promise<GhostAccount[]> {
+async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
+    if (!forceScan && savedAccounts.length > 0) {
+        return savedAccounts;
+    }
+
     const combined = new Map<string, GhostAccount>();
 
     // 1. Lire les comptes de TokenImporter
@@ -437,28 +444,33 @@ async function getAllSavedAccounts(): Promise<GhostAccount[]> {
         }
     }
 
-    // 3. Scanner automatiquement les comptes Discord locaux (identique à TokenImporter)
-    try {
-        const tiNative = (VencordNative?.pluginHelpers as any)?.TokenImporter;
-        if (tiNative?.findLocalTokens) {
-            const localTokens: string[] = await tiNative.findLocalTokens().catch(() => []);
-            if (Array.isArray(localTokens)) {
-                for (const rawTok of localTokens) {
-                    const decrypted = await decryptToken(rawTok);
-                    if (!decrypted || decrypted.startsWith("dQw4w9WgXcQ:")) continue;
+    // 3. Scanner automatiquement les comptes Discord locaux lors d'un scan complet
+    if (forceScan && !_isScanningAccounts) {
+        _isScanningAccounts = true;
+        try {
+            const tiNative = (VencordNative?.pluginHelpers as any)?.TokenImporter;
+            if (tiNative?.findLocalTokens) {
+                const localTokens: string[] = await tiNative.findLocalTokens().catch(() => []);
+                if (Array.isArray(localTokens)) {
+                    for (const rawTok of localTokens) {
+                        const decrypted = await decryptToken(rawTok);
+                        if (!decrypted || decrypted.startsWith("dQw4w9WgXcQ:")) continue;
 
-                    const alreadyPresent = Array.from(combined.values()).some(acc => acc.token === decrypted);
-                    if (alreadyPresent) continue;
+                        const alreadyPresent = Array.from(combined.values()).some(acc => acc.token === decrypted);
+                        if (alreadyPresent) continue;
 
-                    const verified = await validateToken(decrypted);
-                    if (verified && verified.userId) {
-                        combined.set(verified.userId, verified);
+                        const verified = await validateToken(decrypted);
+                        if (verified && verified.userId) {
+                            combined.set(verified.userId, verified);
+                        }
                     }
                 }
             }
+        } catch (e) {
+            console.error("[GhostClient] Auto-scan local tokens error:", e);
+        } finally {
+            _isScanningAccounts = false;
         }
-    } catch (e) {
-        console.error("[GhostClient] Auto-scan local tokens error:", e);
     }
 
     // Ne jamais inclure l'utilisateur actuel
@@ -491,11 +503,17 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
     }
     notify();
 
-    for (let i = 0; i < ids.length; i++) {
-        const userId = ids[i];
-        Native.leaveVoice(userId, guildId).catch(() => {});
-        if (i < ids.length - 1 && ghostJoinDelay > 0) {
-            await new Promise(r => setTimeout(r, ghostJoinDelay));
+    if (ghostJoinDelay === 0) {
+        Native.leaveVoiceAll(ids).catch(() => {
+            ids.forEach(uid => Native.leaveVoice(uid, guildId).catch(() => {}));
+        });
+    } else {
+        for (let i = 0; i < ids.length; i++) {
+            const userId = ids[i];
+            Native.leaveVoice(userId, guildId).catch(() => {});
+            if (i < ids.length - 1 && ghostJoinDelay > 0) {
+                await new Promise(r => setTimeout(r, ghostJoinDelay));
+            }
         }
     }
 
@@ -522,7 +540,7 @@ function startFollowing() {
             if (newCh === myLastChannelId) return;
             myLastChannelId = newCh;
 
-            const accounts: GhostAccount[] = savedAccounts.length > 0 ? savedAccounts : (await getAllSavedAccounts());
+            const accounts: GhostAccount[] = savedAccounts.length > 0 ? savedAccounts : (await getAllSavedAccounts(false));
             if (savedAccounts.length === 0 && accounts.length > 0) savedAccounts = accounts;
 
             const activeAccs = accounts.filter(a => ghostStates.get(a.userId)?.active === true || ghostStates.get(a.userId)?.connecting === true);
@@ -530,29 +548,51 @@ function startFollowing() {
 
             const guild: string = curVoice?.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
 
-            for (let i = 0; i < activeAccs.length; i++) {
-                const acc = activeAccs[i];
-                if (newCh) {
-                    let realToken = acc.token;
-                    try { realToken = await decryptToken(acc.token); } catch {}
-                    ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), connecting: true });
-                    notify();
-                    Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel)
-                        .then(result => {
+            if (ghostJoinDelay === 0) {
+                await Promise.all(activeAccs.map(async acc => {
+                    if (newCh) {
+                        let realToken = acc.token;
+                        try { realToken = await decryptToken(acc.token); } catch {}
+                        ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), connecting: true });
+                        notify();
+                        try {
+                            const result = await Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel);
                             ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
-                            notify();
-                        })
-                        .catch(e => {
+                        } catch (e) {
                             ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: false, connecting: false, error: String(e) });
-                            notify();
-                        });
-                } else {
-                    Native.leaveVoice(acc.userId).catch(() => {});
-                    ghostStates.set(acc.userId, defaultState());
-                    notify();
-                }
-                if (i < activeAccs.length - 1 && ghostJoinDelay > 0) {
-                    await new Promise(r => setTimeout(r, ghostJoinDelay));
+                        }
+                        notify();
+                    } else {
+                        Native.leaveVoice(acc.userId).catch(() => {});
+                        ghostStates.set(acc.userId, defaultState());
+                        notify();
+                    }
+                }));
+            } else {
+                for (let i = 0; i < activeAccs.length; i++) {
+                    const acc = activeAccs[i];
+                    if (newCh) {
+                        let realToken = acc.token;
+                        try { realToken = await decryptToken(acc.token); } catch {}
+                        ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), connecting: true });
+                        notify();
+                        Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel)
+                            .then(result => {
+                                ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
+                                notify();
+                            })
+                            .catch(e => {
+                                ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: false, connecting: false, error: String(e) });
+                                notify();
+                            });
+                    } else {
+                        Native.leaveVoice(acc.userId).catch(() => {});
+                        ghostStates.set(acc.userId, defaultState());
+                        notify();
+                    }
+                    if (i < activeAccs.length - 1 && ghostJoinDelay > 0) {
+                        await new Promise(r => setTimeout(r, ghostJoinDelay));
+                    }
                 }
             }
         }, 30);
@@ -770,7 +810,7 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
 
 // ─── Popover Principal ────────────────────────────────────────────────────────
 function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect: DOMRect | null; }) {
-    const [accounts, setAccounts] = useState<GhostAccount[]>([]);
+    const [accounts, setAccounts] = useState<GhostAccount[]>(savedAccounts);
     const [selectedId, setSelectedId] = useState<string>("all");
     const [autoFollow, setAutoFollowState] = useState(globalAutoFollow);
     const [micLabel, setMicLabel] = useState(ghostMicLabel);
@@ -794,7 +834,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
     const style = React.useMemo<React.CSSProperties>(() => {
         if (!anchorRect) return { position: "fixed", bottom: 60, left: 8, zIndex: 2147483647 };
-        const PW = 480, margin = 10;
+        const PW = 380, margin = 10;
         let left = anchorRect.left;
         if (left + PW > window.innerWidth - margin) left = window.innerWidth - PW - margin;
         if (left < margin) left = margin;
@@ -813,20 +853,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     useEffect(() => {
         Native.isServerInstalled().then(v => setServerInstalled(Boolean(v))).catch(() => setServerInstalled(true));
 
-        getAllSavedAccounts().then(async v => {
-            setAccounts(v);
-            savedAccounts = v;
-            for (const acc of v) {
-                const info = await validateToken(acc.token);
-                const cur = ghostStates.get(acc.userId) ?? defaultState();
-                if (info) {
-                    if (cur.error && (cur.error.toLowerCase().includes("invalid token") || cur.error.toLowerCase().includes("token invalide"))) {
-                        ghostStates.set(acc.userId, { ...cur, error: null });
-                    }
-                }
-            }
-            notify();
-        });
+        if (savedAccounts.length > 0) {
+            setAccounts(savedAccounts);
+        } else {
+            getAllSavedAccounts(false).then(v => {
+                setAccounts(v);
+                savedAccounts = v;
+            });
+        }
 
         DataStore.get(DS_KEY_AUTO_FOLLOW).then((v: boolean | null) => {
             const f = v ?? true;
@@ -839,7 +873,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         });
 
         DataStore.get(DS_KEY_JOIN_DELAY).then((v: number | null) => {
-            if (v != null) { setJoinDelay(v); ghostJoinDelay = v; }
+            const d = v ?? 0;
+            setJoinDelay(d);
+            ghostJoinDelay = d;
         });
 
         DataStore.get(DS_KEY_VOLUME).then((v: number | null) => {
@@ -888,6 +924,19 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         if (v) startFollowing(); else stopFollowing();
     }
 
+    function handleOpenTokenImporter() {
+        onClose();
+        if (isPluginEnabled("TokenImporter")) {
+            try {
+                openTokenImporterModal();
+            } catch {
+                SettingsRouter.openUserSettings("equicord_plugins_panel");
+            }
+        } else {
+            SettingsRouter.openUserSettings("equicord_plugins_panel");
+        }
+    }
+
     async function startStream(url: string, userId: string) {
         if (!url.trim()) return;
         setStreamStatus(t("Sending stream request..."));
@@ -927,16 +976,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             <div className="gc-popover-header">
                 <GhostIcon width={16} height={16} />
                 <span className="gc-popover-title">{t("Ghost Accounts")}</span>
-                <button
-                    className="gc-header-action"
-                    title={t("Open GhostInstaller")}
-                    onClick={() => {
-                        onClose();
-                        SettingsRouter.openUserSettings("nightcord_ghost_client_installer_panel");
-                    }}
-                >
-                    <SettingsGearIcon />
-                </button>
                 <button className="gc-popover-close" onClick={onClose} title={t("Close")}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
                 </button>
@@ -1007,12 +1046,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     </div>
                     <div className="gc-delay-ctrl">
                         <button className="gc-delay-btn" onClick={() => {
-                            const v = Math.max(0, joinDelay - 100);
+                            const v = Math.max(0, joinDelay - 50);
                             setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
                         }}>−</button>
                         <span className="gc-delay-val">{joinDelay}ms</span>
                         <button className="gc-delay-btn" onClick={() => {
-                            const v = Math.min(5000, joinDelay + 100);
+                            const v = Math.min(5000, joinDelay + 50);
                             setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
                         }}>+</button>
                     </div>
@@ -1022,23 +1061,58 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 7,
+                    gap: 8,
                     padding: "9px 11px",
                     background: "rgba(255,255,255,0.03)",
-                    border: "1.5px solid rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.06)",
                     borderRadius: 6,
                     boxSizing: "border-box"
                 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div className="gc-delay-info">
-                            <span className="gc-delay-title"><VolumeIcon /> {t("Volume Booster")}</span>
+                            <span className="gc-delay-title" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <VolumeIcon /> {t("Volume Booster")}
+                            </span>
                             <span className="gc-delay-sub">{t("Radically amplifies or lowers selected device volume")}</span>
                         </div>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: volumeMultiplier > 1 ? "#faa61a" : "#fff", minWidth: 44, textAlign: "right" }}>
-                            {Math.round(volumeMultiplier * 100)}%
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: volumeMultiplier > 1 ? "#faa61a" : "#fff", minWidth: 40, textAlign: "right", fontFamily: "monospace" }}>
+                                {Math.round(volumeMultiplier * 100)}%
+                            </span>
+                            <button
+                                className="gc-delay-btn"
+                                title={t("Reset volume")}
+                                style={{ width: "auto", padding: "2px 6px", fontSize: 11 }}
+                                onClick={() => {
+                                    setVolumeMultiplier(1.0);
+                                    ghostVolumeMultiplier = 1.0;
+                                    DataStore.set(DS_KEY_VOLUME, 1.0);
+                                    Native.setVolume(1.0).catch(() => {});
+                                }}
+                            >
+                                {t("Reset")}
+                            </button>
+                        </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {Slider ? (
+                        <div style={{ padding: "4px 2px 8px" }}>
+                            <Slider
+                                minValue={0}
+                                maxValue={500}
+                                initialValue={Math.round(volumeMultiplier * 100)}
+                                asValueChanges={(val: number) => {
+                                    const v = Math.round(val) / 100;
+                                    setVolumeMultiplier(v);
+                                    ghostVolumeMultiplier = v;
+                                    DataStore.set(DS_KEY_VOLUME, v);
+                                    Native.setVolume(v).catch(() => {});
+                                }}
+                                onValueRender={(v: number) => `${Math.round(v)}%`}
+                                markers={[0, 100, 200, 300, 400, 500]}
+                                equidistant={true}
+                            />
+                        </div>
+                    ) : (
                         <input
                             type="range"
                             min="0"
@@ -1053,7 +1127,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 Native.setVolume(val).catch(() => {});
                             }}
                             style={{
-                                flex: 1,
+                                width: "100%",
                                 height: 6,
                                 borderRadius: 3,
                                 cursor: "pointer",
@@ -1061,20 +1135,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 background: "rgba(255,255,255,0.15)",
                             }}
                         />
-                        <button
-                            className="gc-delay-btn"
-                            title={t("Reset volume")}
-                            style={{ width: "auto", padding: "2px 8px", fontSize: 11 }}
-                            onClick={() => {
-                                setVolumeMultiplier(1.0);
-                                ghostVolumeMultiplier = 1.0;
-                                DataStore.set(DS_KEY_VOLUME, 1.0);
-                                Native.setVolume(1.0).catch(() => {});
-                            }}
-                        >
-                            {t("Reset")}
-                        </button>
-                    </div>
+                    )}
                 </div>
 
                 <div className="gc-popover-divider" />
@@ -1316,17 +1377,18 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     gap: 8,
                     background: "rgba(255,255,255,0.02)",
                     borderRadius: 6,
-                    border: "1px solid rgba(255,255,255,0.05)"
-                }}>
+                    border: "1px solid rgba(255,255,255,0.05)",
+                    cursor: "pointer"
+                }} onClick={handleOpenTokenImporter}>
                     <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: 1.4 }}>
                         {t("Manage and add accounts from the TokenImporter plugin.")}
                     </span>
                     <button
                         className="gc-batch-btn"
                         style={{ whiteSpace: "nowrap", flexShrink: 0, padding: "4px 8px" }}
-                        onClick={() => {
-                            onClose();
-                            SettingsRouter.openUserSettings("nightcord_plugins_panel");
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenTokenImporter();
                         }}
                     >
                         TokenImporter
@@ -1365,7 +1427,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        const storedAccounts = await getAllSavedAccounts();
+        const storedAccounts = await getAllSavedAccounts(false);
         const storedSelected = await DataStore.get(DS_KEY_SELECTED) as string | null ?? "all";
         const myId = getMyId();
         const filteredAccounts = storedAccounts.filter(a => a.userId !== myId);
@@ -1396,25 +1458,46 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 Toasts.show({ message: t("Join a voice channel first"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
                 return;
             }
-            for (let i = 0; i < targets.length; i++) {
-                const acc = targets[i];
-                let realToken = acc.token;
-                try { realToken = await decryptToken(acc.token); } catch {}
-                ghostStates.set(acc.userId, { ...defaultState(), connecting: true });
-                notify();
-                try {
-                    const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                    ghostStates.set(acc.userId, {
-                        ...defaultState(),
-                        active: result.ok,
-                        error: result.ok ? null : (result.error ?? t("Connection error"))
-                    });
-                } catch (e) {
-                    ghostStates.set(acc.userId, { ...defaultState(), error: String(e) });
-                }
-                notify();
-                if (i < targets.length - 1 && ghostJoinDelay > 0) {
-                    await new Promise(r => setTimeout(r, ghostJoinDelay));
+
+            if (ghostJoinDelay === 0) {
+                await Promise.all(targets.map(async acc => {
+                    let realToken = acc.token;
+                    try { realToken = await decryptToken(acc.token); } catch {}
+                    ghostStates.set(acc.userId, { ...defaultState(), connecting: true });
+                    notify();
+                    try {
+                        const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                        ghostStates.set(acc.userId, {
+                            ...defaultState(),
+                            active: result.ok,
+                            error: result.ok ? null : (result.error ?? t("Connection error"))
+                        });
+                    } catch (e) {
+                        ghostStates.set(acc.userId, { ...defaultState(), error: String(e) });
+                    }
+                    notify();
+                }));
+            } else {
+                for (let i = 0; i < targets.length; i++) {
+                    const acc = targets[i];
+                    let realToken = acc.token;
+                    try { realToken = await decryptToken(acc.token); } catch {}
+                    ghostStates.set(acc.userId, { ...defaultState(), connecting: true });
+                    notify();
+                    try {
+                        const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                        ghostStates.set(acc.userId, {
+                            ...defaultState(),
+                            active: result.ok,
+                            error: result.ok ? null : (result.error ?? t("Connection error"))
+                        });
+                    } catch (e) {
+                        ghostStates.set(acc.userId, { ...defaultState(), error: String(e) });
+                    }
+                    notify();
+                    if (i < targets.length - 1 && ghostJoinDelay > 0) {
+                        await new Promise(r => setTimeout(r, ghostJoinDelay));
+                    }
                 }
             }
         }
@@ -1477,6 +1560,7 @@ export default definePlugin({
 
         const delay = await DataStore.get(DS_KEY_JOIN_DELAY);
         if (delay != null) ghostJoinDelay = delay;
+        else ghostJoinDelay = 0;
 
         const vol = await DataStore.get(DS_KEY_VOLUME);
         if (vol != null) {
@@ -1484,7 +1568,7 @@ export default definePlugin({
             Native.setVolume(vol).catch(() => {});
         }
 
-        const allAccs = await getAllSavedAccounts();
+        const allAccs = await getAllSavedAccounts(true);
         if (allAccs.length > 0) savedAccounts = allAccs;
 
         setTimeout(() => {

@@ -608,8 +608,12 @@ function TokenModal({ rootProps }: { rootProps: any; }) {
     );
 }
 
+export function openTokenImporterModal() {
+    openModal(props => <TokenModal rootProps={props} />);
+}
+
 function TokenImporterButton() {
-    return <HeaderBarButton icon={FolderIcon} tooltip={t("Token Importer")} onClick={() => openModal(props => <TokenModal rootProps={props} />)} />;
+    return <HeaderBarButton icon={FolderIcon} tooltip={t("Token Importer")} onClick={openTokenImporterModal} />;
 }
 
 export default definePlugin({
