@@ -3770,6 +3770,7 @@ export const translations: TranslationMap = {
     "Stream": {"en":"Stream","fr":"Flux","ar":"تدفق","es":"Stream","ru":"Стрим","zh":"直播"},
     "Stream URL not found": {"en":"Stream URL not found","fr":"Stream URL not found","ar":"Stream URL not found","es":"URL de stream no encontrada","ru":"URL потока не найден","zh":"未找到流媒体URL"},
     "Stream error": {"en":"Stream error","fr":"Stream error","ar":"Stream error","es":"Error de stream","ru":"Ошибка потока","zh":"流媒体错误"},
+    "Stream for": {"en":"Stream for","fr":"Stream pour","ar":"بث لـ","es":"Transmitir para","ru":"Стрим для","zh":"流媒体为"},
     "Stream pour": {"en":"Stream for","fr":"Stream pour","ar":"Stream pour","es":"Stream para","ru":"Стрим для","zh":"流媒体为"},
     "Stream started": {"en":"Stream started","fr":"Flux démarré","ar":"بدأ البث","es":"Stream iniciado","ru":"Стрим начат","zh":"直播已开始"},
     "Stream stopped": {"en":"Stream stopped","fr":"Flux arrêté","ar":"توقف الدفق","es":"Stream detenido","ru":"Стрим остановлен","zh":"直播已停止"},

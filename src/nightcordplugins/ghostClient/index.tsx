@@ -11,7 +11,7 @@ import { DataStore } from "@api/index";
 import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React, ReactDOM, Toasts, useState, useEffect, useRef, SettingsRouter, Slider, Select } from "@webpack/common";
+import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { openTokenImporterModal } from "../tokenImporter";
 
@@ -717,7 +717,11 @@ function stopFollowing() {
 }
 
 // ─── Stream Poller ───────────────────────────────────────────────────────────
-function useStreamPoller(userId: string | null, active: boolean) {
+function useStreamPoller(
+    userId: string | null,
+    active: boolean,
+    onFinish?: (state: "active" | "error" | "idle") => void
+) {
     const [status, setStatus] = useState<string | null>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -730,11 +734,22 @@ function useStreamPoller(userId: string | null, active: boolean) {
             try {
                 const d = await Native.getStreamStatus(userId);
                 if (!d) return;
-                if (d.state === "resolving") setStatus(t("Resolving stream URL..."));
-                else if (d.state === "starting") setStatus(t("Starting stream..."));
-                else if (d.state === "active") { setStatus(t("Stream active")); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
-                else if (d.state === "error") { setStatus(`${t("Stream error: ")}${d.error ?? "unknown"}`); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
-                else if (d.state === "idle") { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
+                if (d.state === "resolving") {
+                    setStatus(t("Resolving stream URL..."));
+                } else if (d.state === "starting") {
+                    setStatus(t("Starting stream..."));
+                } else if (d.state === "active") {
+                    setStatus(t("Stream active"));
+                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                    onFinish?.("active");
+                } else if (d.state === "error") {
+                    setStatus(`${t("Stream error: ")}${d.error ?? "unknown"}`);
+                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                    onFinish?.("error");
+                } else if (d.state === "idle") {
+                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                    onFinish?.("idle");
+                }
             } catch {}
         }, 800);
         return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
@@ -823,12 +838,25 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [volumeMultiplier, setVolumeMultiplier] = useState(ghostVolumeMultiplier);
     const [sliderKey, setSliderKey] = useState(0);
     const [dshowDevices, setDshowDevices] = useState<string[]>([]);
-    const [streamingUserId, setStreamingUserId] = useState<string | null>(null);
+    const [streamInputUserId, setStreamInputUserId] = useState<string | null>(null);
     const [streamInput, setStreamInput] = useState("");
     const [isPolling, setIsPolling] = useState(false);
     const [serverInstalled, setServerInstalled] = useState<boolean>(true);
     const [streamStatus, setStreamStatusDirect] = useState<string | null>(null);
-    const [pollStatus, setPollStatus] = useStreamPoller(streamingUserId, isPolling);
+    const [pollStatus, setPollStatus] = useStreamPoller(
+        streamInputUserId,
+        isPolling,
+        useCallback((state: "active" | "error" | "idle") => {
+            setIsPolling(false);
+            if (state === "active" && streamInputUserId) {
+                const cur = ghostStates.get(streamInputUserId);
+                if (cur) {
+                    ghostStates.set(streamInputUserId, { ...cur, streaming: true });
+                    notify();
+                }
+            }
+        }, [streamInputUserId])
+    );
     const states = useGhostStates();
     const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -1426,7 +1454,8 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         const state = states.get(acc.userId) ?? defaultState();
                         const isActive = state.active;
                         const isConnecting = state.connecting;
-                        const isStreaming = streamingUserId === acc.userId;
+                        const isStreaming = Boolean(state.streaming);
+                        const isStreamInputOpen = streamInputUserId === acc.userId;
                         return (
                             <div key={acc.userId} className={`gc-account ${isActive ? "gc-account--on" : ""}`}>
                                 <div className="gc-account-left">
@@ -1439,17 +1468,15 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                         <span className="gc-account-status">
                                             {isConnecting
                                                 ? t("Connecting to voice...")
-                                                : state.streaming
+                                                : isStreaming
                                                     ? t("Streaming")
                                                     : state.camera
                                                         ? t("Camera on")
-                                                        : isStreaming
-                                                            ? t("Stream active")
-                                                            : isActive
-                                                                ? t("Active in voice")
-                                                                : state.error
-                                                                    ? `${t("Error: ")}${state.error.slice(0, 35)}`
-                                                                    : t("Disconnected")}
+                                                        : isActive
+                                                            ? t("Active in voice")
+                                                            : state.error
+                                                                ? `${t("Error: ")}${state.error.slice(0, 35)}`
+                                                                : t("Disconnected")}
                                         </span>
                                     </div>
                                 </div>
@@ -1457,20 +1484,29 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     <TokenControls acc={acc} state={state} />
                                     {isActive && (
                                         <button
-                                            className={`gc-btn-video ${isStreaming ? "gc-btn-video--on" : ""}`}
+                                            className={`gc-btn-video ${isStreaming ? "gc-btn-video--on" : isStreamInputOpen ? "gc-btn-video--active" : ""}`}
                                             title={isStreaming ? t("Stop stream") : t("Start video stream")}
                                             onClick={async () => {
                                                 if (isStreaming) {
                                                     setIsPolling(false);
                                                     setStreamStatus(t("Stopping..."));
                                                     await Native.stopStream(acc.userId).catch(() => {});
-                                                    setStreamingUserId(null);
+                                                    const cur = ghostStates.get(acc.userId);
+                                                    if (cur) {
+                                                        ghostStates.set(acc.userId, { ...cur, streaming: false });
+                                                        notify();
+                                                    }
+                                                    setStreamInputUserId(null);
                                                     setStreamStatus(null);
                                                 } else {
-                                                    setStreamingUserId(acc.userId);
-                                                    setStreamInput("");
-                                                    setStreamStatus(null);
-                                                    setIsPolling(false);
+                                                    if (streamInputUserId === acc.userId) {
+                                                        setStreamInputUserId(null);
+                                                    } else {
+                                                        setStreamInputUserId(acc.userId);
+                                                        setStreamInput("");
+                                                        setStreamStatus(null);
+                                                        setIsPolling(false);
+                                                    }
                                                 }
                                             }}
                                         >
@@ -1494,8 +1530,8 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 </div>
 
                 {/* Video stream modal inline input */}
-                {streamingUserId && (() => {
-                    const acc = accounts.find(a => a.userId === streamingUserId);
+                {streamInputUserId && (() => {
+                    const acc = accounts.find(a => a.userId === streamInputUserId);
                     if (!acc) return null;
                     return (
                         <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1509,19 +1545,19 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     placeholder={t("YouTube, MP4, M3U8...")}
                                     value={streamInput}
                                     onChange={e => setStreamInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === "Enter" && streamInput.trim()) startStream(streamInput, streamingUserId); }}
+                                    onKeyDown={e => { if (e.key === "Enter" && streamInput.trim() && !isPolling) startStream(streamInput, streamInputUserId); }}
                                 />
                                 <button
                                     className="gc-add-btn"
                                     style={{ padding: "4px 10px", fontSize: 12, whiteSpace: "nowrap" }}
                                     disabled={!streamInput.trim() || isPolling}
-                                    onClick={() => startStream(streamInput, streamingUserId)}
+                                    onClick={() => startStream(streamInput, streamInputUserId)}
                                 >
                                     {isPolling ? t("Starting...") : t("Start")}
                                 </button>
                                 <button
                                     style={{ background: "rgba(237,66,69,.1)", border: "none", borderRadius: 6, color: "#ed4245", padding: "4px 8px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}
-                                    onClick={() => { setStreamingUserId(null); setIsPolling(false); setStreamStatus(null); }}
+                                    onClick={() => { setStreamInputUserId(null); setIsPolling(false); setStreamStatus(null); }}
                                 >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
                                 </button>

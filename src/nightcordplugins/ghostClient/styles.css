@@ -538,6 +538,11 @@
     border-color: rgba(237, 66, 69, 0.5);
     color: #ed4245;
 }
+.gc-btn-video--active {
+    background: rgba(88, 101, 242, 0.25);
+    border-color: rgba(88, 101, 242, 0.5);
+    color: #5865f2;
+}
 
 .gc-btn-del {
     width: 25px;
