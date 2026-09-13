@@ -62,7 +62,7 @@ const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
 let ghostMicLabel: string = "default";
 let ghostJoinDelay: number = 0;
 let ghostVolumeMultiplier: number = 1.0;
-let ghostVocalBoost: boolean = true;
+let ghostVocalBoost: boolean = false;
 
 // ─── Backend natif / HTTP ─────────────────────────────────────────────────────
 const GHOST_SERVER = "http://127.0.0.1:47821";
@@ -136,7 +136,7 @@ const Native = {
         if (n?.setMicDevice) { try { await n.setMicDevice(micDevice); return; } catch {} }
         await sfetch("/set-mic", { micDevice });
     },
-    async setVolume(volume: number, vocalBoost = true): Promise<void> {
+    async setVolume(volume: number, vocalBoost = false): Promise<void> {
         const n = getNative();
         if (n?.setVolume) { try { await n.setVolume(volume, vocalBoost); return; } catch {} }
         await sfetch("/set-volume", { volume, vocalBoost });
@@ -747,7 +747,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [micLabel, setMicLabel] = useState(ghostMicLabel);
     const [joinDelay, setJoinDelay] = useState(ghostJoinDelay);
     const [volumeMultiplier, setVolumeMultiplier] = useState(ghostVolumeMultiplier);
-    const [vocalBoost, setVocalBoost] = useState(ghostVocalBoost);
     const [dshowDevices, setDshowDevices] = useState<string[]>([]);
     const [streamingUserId, setStreamingUserId] = useState<string | null>(null);
     const [streamInput, setStreamInput] = useState("");
@@ -1212,7 +1211,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     setVolumeMultiplier(1.0);
                                     ghostVolumeMultiplier = 1.0;
                                     DataStore.set(DS_KEY_VOLUME, 1.0);
-                                    Native.setVolume(1.0, vocalBoost).catch(() => {});
+                                    Native.setVolume(1.0).catch(() => {});
                                 }}
                             >
                                 {t("Reset")}
@@ -1230,7 +1229,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     setVolumeMultiplier(v);
                                     ghostVolumeMultiplier = v;
                                     DataStore.set(DS_KEY_VOLUME, v);
-                                    Native.setVolume(v, vocalBoost).catch(() => {});
+                                    Native.setVolume(v).catch(() => {});
                                 }}
                                 onValueRender={(v: number) => `${Math.round(v)}%`}
                                 markers={[0, 100, 200, 300, 400, 500]}
@@ -1249,7 +1248,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 setVolumeMultiplier(val);
                                 ghostVolumeMultiplier = val;
                                 DataStore.set(DS_KEY_VOLUME, val);
-                                Native.setVolume(val, vocalBoost).catch(() => {});
+                                Native.setVolume(val).catch(() => {});
                             }}
                             style={{
                                 width: "100%",
@@ -1261,37 +1260,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                         />
                     )}
-                    {/* Vocal Overdrive (Aigus / Voix Over) Toggle */}
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            paddingTop: 7,
-                            borderTop: "1px solid rgba(255,255,255,0.06)",
-                            cursor: "pointer",
-                            userSelect: "none"
-                        }}
-                        onClick={() => {
-                            const next = !vocalBoost;
-                            setVocalBoost(next);
-                            ghostVocalBoost = next;
-                            DataStore.set(DS_KEY_VOCAL_BOOST, next);
-                            Native.setVolume(volumeMultiplier, next).catch(() => {});
-                        }}
-                    >
-                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--header-primary)" }}>
-                                {t("Vocal Overdrive (Highs / Voice Over)")}
-                            </span>
-                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                                {t("Boosts high frequencies so vocals cleanly overpower the beat")}
-                            </span>
-                        </div>
-                        <div className={`gc-toggle ${vocalBoost ? "gc-toggle--on" : ""}`} style={{ flexShrink: 0 }}>
-                            <div className="gc-toggle-thumb" />
-                        </div>
-                    </div>
                 </div>
 
                 <div className="gc-popover-divider" />
@@ -1731,7 +1699,7 @@ export default definePlugin({
 
         const vb = await DataStore.get(DS_KEY_VOCAL_BOOST);
         if (vb != null) ghostVocalBoost = Boolean(vb);
-        else ghostVocalBoost = true;
+        else ghostVocalBoost = false;
 
         const vol = await DataStore.get(DS_KEY_VOLUME);
         if (vol != null) {
