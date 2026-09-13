@@ -12,18 +12,29 @@ import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
 import { Devs } from "@utils/constants";
 import definePlugin, { OptionType } from "@utils/types";
-import { Button, ChannelStore, Menu, React, RelationshipStore, SelectedChannelStore, showToast, Text, Toasts, UserStore } from "@webpack/common";
+import { Button, ChannelStore, Menu, React, SelectedChannelStore, showToast, Text, Toasts, UserStore } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+interface CloudWallpaperEntry {
+    url: string;
+    updatedAt: number;
+    authorId?: string;
+}
+
 interface CloudWallpaperConfig {
-    dmWallpapers?: Record<string, string>; // [friendUserId]: wallpaperUrl
+    dmWallpapers?: Record<string, CloudWallpaperEntry | string>; // [friendUserId]: entry or url
     updatedAt?: number;
     private?: boolean;
 }
 
-// ── In-Memory State & Caches ───────────────────────────────────────────────────
+interface DeletionRecord {
+    url: string;
+    deletedAt: number;
+}
+
+// ── In-Memory State & Persistent Storage Keys ──────────────────────────────────
 
 let _cachedOpacity = 0.3;
 let _cachedBlur = 0;
@@ -31,9 +42,45 @@ let _wpCache: Record<string, string> | null = null;
 let _wpRaw = "";
 let _activeVideo: HTMLVideoElement | null = null;
 let _syncPollInterval: ReturnType<typeof setInterval> | null = null;
-const LS_CLOUD_DM_WALLPAPERS = "NightcordCW_cloudDMs";
+let _chatObserver: MutationObserver | null = null;
+let _activeChannelId: string | null = null;
+let _activeWallpaperUrl: string | null = null;
 
-function loadOwnCloudDmWallpapers(): Record<string, string> {
+const LS_CLOUD_DM_WALLPAPERS = "NightcordCW_cloudDMs";
+const LS_LOCAL_WALLPAPERS = "NightcordCW_localWallpapers";
+const LS_USER_SET_CHANNELS = "NightcordCW_userSet";
+const LS_SYNCED_CHANNELS = "NightcordCW_syncedFriends";
+const LS_DELETED_CHANNELS = "NightcordCW_deletedChannels";
+
+function loadSet(key: string): Set<string> {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw) return new Set(JSON.parse(raw));
+    } catch {}
+    return new Set();
+}
+
+function saveSet(key: string, set: Set<string>) {
+    try {
+        localStorage.setItem(key, JSON.stringify([...set]));
+    } catch {}
+}
+
+function loadMap<T>(key: string): Record<string, T> {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return {};
+}
+
+function saveMap<T>(key: string, map: Record<string, T>) {
+    try {
+        localStorage.setItem(key, JSON.stringify(map));
+    } catch {}
+}
+
+function loadOwnCloudDmWallpapers(): Record<string, any> {
     try {
         const raw = localStorage.getItem(LS_CLOUD_DM_WALLPAPERS);
         if (raw) return JSON.parse(raw);
@@ -41,16 +88,18 @@ function loadOwnCloudDmWallpapers(): Record<string, string> {
     return {};
 }
 
-function saveOwnCloudDmWallpapers(map: Record<string, string>) {
+function saveOwnCloudDmWallpapers(map: Record<string, any>) {
     try {
         localStorage.setItem(LS_CLOUD_DM_WALLPAPERS, JSON.stringify(map));
     } catch {}
 }
 
-let _cachedOwnCloudDmWallpapers: Record<string, string> = loadOwnCloudDmWallpapers();
-const _syncedFromFriends = new Set<string>(); // channelIds synced from friend
-const _syncLastFetched: Record<string, number> = {}; // channelId -> timestamp of last cloud sync
-const SYNC_THROTTLE_MS = 10_000; // skip repeat sync calls within 10 s
+let _cachedOwnCloudDmWallpapers: Record<string, any> = loadOwnCloudDmWallpapers();
+let _userSetChannels = loadSet(LS_USER_SET_CHANNELS);
+let _syncedFromFriends = loadSet(LS_SYNCED_CHANNELS);
+let _deletedChannels = loadMap<DeletionRecord>(LS_DELETED_CHANNELS);
+const _syncLastFetched: Record<string, number> = {};
+const SYNC_THROTTLE_MS = 10_000;
 
 // ── Settings ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +119,11 @@ const settings = definePluginSettings({
         default: 0.3,
         stickToMarkers: false,
         restartNeeded: false,
-        onChange(v: number) { _cachedOpacity = v; applyWallpaper(); }
+        onChange(v: number) {
+            _cachedOpacity = v;
+            const container = document.getElementById(CONTAINER_ID);
+            if (container) container.style.opacity = String(v);
+        }
     },
     blur: {
         type: OptionType.SLIDER,
@@ -79,7 +132,11 @@ const settings = definePluginSettings({
         default: 0,
         stickToMarkers: false,
         restartNeeded: false,
-        onChange(v: number) { _cachedBlur = v; applyWallpaper(); }
+        onChange(v: number) {
+            _cachedBlur = v;
+            const container = document.getElementById(CONTAINER_ID);
+            if (container) container.style.filter = v > 0 ? `blur(${v}px)` : "";
+        }
     },
     defaultWallpaper: {
         type: OptionType.STRING,
@@ -100,6 +157,20 @@ function getWallpapers(): Record<string, string> {
     const raw = settings.store.wallpapers || "{}";
     if (raw === _wpRaw && _wpCache !== null) return _wpCache;
     try { _wpCache = JSON.parse(raw); } catch { _wpCache = {}; }
+
+    // Dual-layer fallback with localStorage
+    const backup = loadMap<string>(LS_LOCAL_WALLPAPERS);
+    let dirty = false;
+    for (const [k, v] of Object.entries(backup)) {
+        if (v && !_wpCache[k]) {
+            _wpCache[k] = v;
+            dirty = true;
+        }
+    }
+    if (dirty) {
+        settings.store.wallpapers = JSON.stringify(_wpCache);
+    }
+
     _wpRaw = raw;
     return _wpCache!;
 }
@@ -121,16 +192,26 @@ function hasWallpaper(channelId: string): boolean {
 
 function saveLocalWallpaperOnly(channelId: string, url: string) {
     const wp = getWallpapers();
+    const backup = loadMap<string>(LS_LOCAL_WALLPAPERS);
+
     if (url) {
         wp[channelId] = url;
+        backup[channelId] = url;
     } else {
         delete wp[channelId];
+        delete backup[channelId];
     }
+
     settings.store.wallpapers = JSON.stringify(wp);
+    saveMap(LS_LOCAL_WALLPAPERS, backup);
     _invalidateWpCache();
 
     if (SelectedChannelStore.getChannelId() === channelId) {
-        applyWallpaper(channelId);
+        if (url) {
+            applyWallpaper(channelId);
+        } else {
+            removeWallpaperElements();
+        }
     }
 }
 
@@ -138,17 +219,18 @@ function saveLocalWallpaperOnly(channelId: string, url: string) {
 
 async function syncWallpaperToCloud(recipientUserId: string, wallpaperUrl: string): Promise<boolean> {
     try {
-        let token = await authorizeUser();
+        const token = await authorizeUser();
         if (!token) {
             showToast(t("Connect with Discord OAuth2 to sync with friends"), Toasts.Type.WARNING);
             return false;
         }
 
-        if (wallpaperUrl) {
-            _cachedOwnCloudDmWallpapers[recipientUserId] = wallpaperUrl;
-        } else {
-            delete _cachedOwnCloudDmWallpapers[recipientUserId];
-        }
+        const myUserId = UserStore.getCurrentUser()?.id || "";
+        _cachedOwnCloudDmWallpapers[recipientUserId] = {
+            url: wallpaperUrl || "",
+            updatedAt: Date.now(),
+            authorId: myUserId
+        };
         saveOwnCloudDmWallpapers(_cachedOwnCloudDmWallpapers);
 
         const cloudPayload: CloudWallpaperConfig = {
@@ -179,7 +261,6 @@ async function syncWithFriendForChannel(channelId: string, force = false) {
     const myUserId = UserStore.getCurrentUser()?.id;
     if (!myUserId || friendUserId === myUserId) return;
 
-    // Throttle: skip cloud API call if this channel was synced recently (unless forced)
     const now = Date.now();
     if (!force && _syncLastFetched[channelId] && now - _syncLastFetched[channelId] < SYNC_THROTTLE_MS) return;
     _syncLastFetched[channelId] = now;
@@ -188,22 +269,63 @@ async function syncWithFriendForChannel(channelId: string, force = false) {
         const friendConfig: any = await getPublicPluginConfig("channelWallpaper", friendUserId);
         if (!friendConfig) return;
 
-        // CRITICAL FIX: The backend wraps the payload inside .settings!
-        // Check both friendConfig.settings.dmWallpapers and friendConfig.dmWallpapers for robustness
         const dmWallpapers = friendConfig.settings?.dmWallpapers || friendConfig.dmWallpapers;
         if (!dmWallpapers || typeof dmWallpapers !== "object") return;
 
-        const friendSharedWp = dmWallpapers[myUserId] || "";
-        const currentWp = getWallpaper(channelId);
+        const rawEntry = dmWallpapers[myUserId];
+        let friendSharedWp = "";
+        let friendUpdatedAt = 0;
 
-        if (friendSharedWp && friendSharedWp !== currentWp) {
-            saveLocalWallpaperOnly(channelId, friendSharedWp);
-            _syncedFromFriends.add(channelId);
-            showToast(t("Applied shared wallpaper from friend!"), Toasts.Type.SUCCESS);
-        } else if (!friendSharedWp && currentWp && _syncedFromFriends.has(channelId)) {
-            saveLocalWallpaperOnly(channelId, "");
-            _syncedFromFriends.delete(channelId);
-            showToast(t("Friend removed the shared wallpaper"), Toasts.Type.MESSAGE);
+        if (typeof rawEntry === "string") {
+            friendSharedWp = rawEntry;
+        } else if (rawEntry && typeof rawEntry === "object") {
+            friendSharedWp = rawEntry.url || "";
+            friendUpdatedAt = rawEntry.updatedAt || 0;
+        }
+
+        const currentWp = getWallpaper(channelId);
+        const deletion = _deletedChannels[channelId];
+        const isUserOwned = _userSetChannels.has(channelId);
+
+        // Case 1: Friend shared a non-empty wallpaper
+        if (friendSharedWp) {
+            // Guard: Did the current user explicitly delete this same wallpaper?
+            if (deletion) {
+                // If friend's URL matches what user deleted AND friend hasn't set a newer one:
+                if (friendSharedWp === deletion.url || (friendUpdatedAt > 0 && friendUpdatedAt <= deletion.deletedAt)) {
+                    return; // Stale wallpaper, do not resurrect!
+                }
+                // Friend has set a genuinely new wallpaper: clear deletion record
+                delete _deletedChannels[channelId];
+                saveMap(LS_DELETED_CHANNELS, _deletedChannels);
+            }
+
+            // Guard: If user explicitly set their own wallpaper, do not overwrite unless friend's is newer
+            if (isUserOwned && currentWp && currentWp !== friendSharedWp) {
+                if (friendUpdatedAt <= (_syncLastFetched[channelId] || 0)) {
+                    return;
+                }
+            }
+
+            if (friendSharedWp !== currentWp) {
+                saveLocalWallpaperOnly(channelId, friendSharedWp);
+                _syncedFromFriends.add(channelId);
+                saveSet(LS_SYNCED_CHANNELS, _syncedFromFriends);
+                _userSetChannels.delete(channelId);
+                saveSet(LS_USER_SET_CHANNELS, _userSetChannels);
+                showToast(t("Applied shared wallpaper from friend!"), Toasts.Type.SUCCESS);
+            }
+        }
+        // Case 2: Friend shared an empty wallpaper / removed it
+        else {
+            // Only clear if the wallpaper was genuinely synced from friend and NOT set by user
+            if (currentWp && _syncedFromFriends.has(channelId) && !isUserOwned) {
+                saveLocalWallpaperOnly(channelId, "");
+                _syncedFromFriends.delete(channelId);
+                saveSet(LS_SYNCED_CHANNELS, _syncedFromFriends);
+                removeWallpaperElements();
+                showToast(t("Friend removed the shared wallpaper"), Toasts.Type.MESSAGE);
+            }
         }
     } catch (err) {
         console.error("[ChannelWallpaper] Failed to fetch friend wallpaper config:", err);
@@ -211,8 +333,25 @@ async function syncWithFriendForChannel(channelId: string, force = false) {
 }
 
 async function saveWallpaper(channelId: string, url: string): Promise<"synced" | "local" | "failed"> {
+    if (!url) {
+        await removeWallpaper(channelId);
+        return "local";
+    }
+
+    // 1. Mark as user-owned
+    _userSetChannels.add(channelId);
+    saveSet(LS_USER_SET_CHANNELS, _userSetChannels);
+
+    // 2. Clear friend sync and deletion flags
+    _syncedFromFriends.delete(channelId);
+    saveSet(LS_SYNCED_CHANNELS, _syncedFromFriends);
+    delete _deletedChannels[channelId];
+    saveMap(LS_DELETED_CHANNELS, _deletedChannels);
+
+    // 3. Save locally
     saveLocalWallpaperOnly(channelId, url);
 
+    // 4. Push to cloud if DM
     const channel = ChannelStore.getChannel(channelId);
     const isDM = Boolean(channel && (channel.type === 1 || (channel as any).isDM?.()));
 
@@ -220,8 +359,7 @@ async function saveWallpaper(channelId: string, url: string): Promise<"synced" |
         const friendUserId = (channel as any).getRecipientId?.() || channel?.recipients?.[0] || (channel as any)?.rawRecipients?.[0]?.id;
         const myUserId = UserStore.getCurrentUser()?.id;
         if (friendUserId && friendUserId !== myUserId) {
-            // Check size limit: max 1.3 MB for cloud sync payload
-            if (url && url.length > 1.3 * 1024 * 1024) {
+            if (url.length > 1.3 * 1024 * 1024) {
                 showToast(t("Video/file too large for cloud sync (max 1.2 MB). Applied locally only."), Toasts.Type.WARNING);
                 return "local";
             }
@@ -232,14 +370,58 @@ async function saveWallpaper(channelId: string, url: string): Promise<"synced" |
     return "local";
 }
 
+async function removeWallpaper(channelId: string) {
+    const currentWp = getWallpaper(channelId);
+
+    // 1. Record deletion timestamp and URL to prevent ghost resurrection from friend's cloud
+    _deletedChannels[channelId] = {
+        url: currentWp,
+        deletedAt: Date.now()
+    };
+    saveMap(LS_DELETED_CHANNELS, _deletedChannels);
+
+    // 2. Clear state flags
+    _userSetChannels.delete(channelId);
+    saveSet(LS_USER_SET_CHANNELS, _userSetChannels);
+    _syncedFromFriends.delete(channelId);
+    saveSet(LS_SYNCED_CHANNELS, _syncedFromFriends);
+
+    // 3. Remove locally & from DOM
+    saveLocalWallpaperOnly(channelId, "");
+    removeWallpaperElements();
+
+    // 4. Update cloud config if DM
+    const channel = ChannelStore.getChannel(channelId);
+    const isDM = Boolean(channel && (channel.type === 1 || (channel as any).isDM?.()));
+    if (isDM && settings.store.syncWithFriends) {
+        const friendUserId = (channel as any).getRecipientId?.() || channel?.recipients?.[0] || (channel as any)?.rawRecipients?.[0]?.id;
+        const myUserId = UserStore.getCurrentUser()?.id;
+        if (friendUserId && friendUserId !== myUserId) {
+            await syncWallpaperToCloud(friendUserId, "");
+        }
+    }
+
+    showToast(t("Wallpaper deleted"), Toasts.Type.SUCCESS);
+}
+
 // ── Wallpaper Application & DOM Injection ─────────────────────────────────────
 
 const STYLE_ID = "channel-wallpaper-style";
 const CONTAINER_ID = "channel-wallpaper-container";
 
 function removeWallpaperElements() {
+    _activeChannelId = null;
+    _activeWallpaperUrl = null;
+    if (_chatObserver) {
+        _chatObserver.disconnect();
+        _chatObserver = null;
+    }
     document.getElementById(STYLE_ID)?.remove();
     document.getElementById(CONTAINER_ID)?.remove();
+    if (_activeVideo) {
+        _activeVideo.pause();
+        _activeVideo = null;
+    }
 }
 
 function pauseVideo() {
@@ -264,19 +446,11 @@ function handleFocusChange() {
     else pauseVideo();
 }
 
-function applyWallpaper(channelId?: string) {
-    removeWallpaperElements();
+function injectWallpaperContainer(channelId: string, url: string): boolean {
+    const currentCid = SelectedChannelStore?.getChannelId?.();
+    if (currentCid !== channelId) return false;
 
-    const cid = channelId || SelectedChannelStore?.getChannelId?.();
-    if (!cid) return;
-
-    const url = getWallpaper(cid);
-    if (!url) return;
-
-    const opacity = _cachedOpacity;
-    const blur = _cachedBlur;
-    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(url) || url.startsWith("data:video/");
-
+    // Ensure CSS overrides exist
     if (!document.getElementById(STYLE_ID)) {
         const style = document.createElement("style");
         style.id = STYLE_ID;
@@ -284,7 +458,9 @@ function applyWallpaper(channelId?: string) {
 [class*="messagesWrapper"],
 [class*="chatContent"],
 [class*="chat-messages"],
-[class*="scroller"][class*="message"] {
+[class*="chat_"],
+[class*="scroller"][class*="message"],
+[class*="scrollerInner"] {
     background: transparent !important;
 }
 
@@ -294,8 +470,8 @@ function applyWallpaper(channelId?: string) {
     z-index: 0;
     pointer-events: none;
     overflow: hidden;
-    opacity: ${opacity};
-    ${blur > 0 ? `filter: blur(${blur}px);` : ""}
+    opacity: ${_cachedOpacity};
+    ${_cachedBlur > 0 ? `filter: blur(${_cachedBlur}px);` : ""}
 }
 
 #${CONTAINER_ID} img,
@@ -313,8 +489,22 @@ function applyWallpaper(channelId?: string) {
         document.head.appendChild(style);
     }
 
+    // Check if container already exists with the same URL and is connected to DOM
+    const existing = document.getElementById(CONTAINER_ID);
+    if (existing && existing.isConnected && existing.dataset.url === url) {
+        existing.style.opacity = String(_cachedOpacity);
+        existing.style.filter = _cachedBlur > 0 ? `blur(${_cachedBlur}px)` : "";
+        return true;
+    }
+
+    // Otherwise recreate
+    existing?.remove();
+
+    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(url) || url.startsWith("data:video/");
     const container = document.createElement("div");
     container.id = CONTAINER_ID;
+    container.dataset.url = url;
+    container.dataset.channelId = channelId;
 
     if (isVideo) {
         const video = document.createElement("video");
@@ -334,34 +524,59 @@ function applyWallpaper(channelId?: string) {
         container.appendChild(img);
     }
 
-    const tryInject = () => {
-        const target =
-            document.querySelector('[class*="messagesWrapper"]') ||
-            document.querySelector('[class*="chat-messages"]') ||
-            document.querySelector('[class*="chatContent"]') ||
-            document.querySelector('[class*="content_"][class*="chat"]');
+    const target =
+        document.querySelector('[class*="messagesWrapper"]') ||
+        document.querySelector('[class*="chat-messages"]') ||
+        document.querySelector('[class*="chatContent"]') ||
+        document.querySelector('[class*="content_"][class*="chat"]');
 
-        if (target && target instanceof HTMLElement) {
-            if (!target.closest('[class*="popout"]') && !target.closest('[class*="modal"]')) {
-                if (!target.querySelector(`#${CONTAINER_ID}`)) {
-                    (target as HTMLElement).style.position = "relative";
-                    target.prepend(container);
-                }
-                return true;
-            }
+    if (target && target instanceof HTMLElement) {
+        if (!target.closest('[class*="popout"]') && !target.closest('[class*="modal"]')) {
+            target.style.position = "relative";
+            target.prepend(container);
+            return true;
         }
-        return false;
-    };
+    }
+    return false;
+}
 
-    if (!tryInject()) {
-        let tick = 0;
-        const observer = new MutationObserver((_, obs) => {
-            if (++tick % 3 !== 0) return;
-            if (tryInject()) obs.disconnect();
+function applyWallpaper(channelId?: string) {
+    const cid = channelId || SelectedChannelStore?.getChannelId?.();
+    if (!cid) {
+        removeWallpaperElements();
+        return;
+    }
+
+    const url = getWallpaper(cid);
+    if (!url) {
+        removeWallpaperElements();
+        return;
+    }
+
+    _activeChannelId = cid;
+    _activeWallpaperUrl = url;
+
+    injectWallpaperContainer(cid, url);
+
+    // Ensure continuous observer so container stays mounted if Discord re-renders or switches views
+    if (!_chatObserver) {
+        let lastCheck = 0;
+        _chatObserver = new MutationObserver(() => {
+            const now = Date.now();
+            if (now - lastCheck < 150) return;
+            lastCheck = now;
+
+            const cur = SelectedChannelStore?.getChannelId?.();
+            if (cur !== _activeChannelId || !_activeWallpaperUrl) return;
+
+            const el = document.getElementById(CONTAINER_ID);
+            if (!el || !el.isConnected) {
+                injectWallpaperContainer(cur, _activeWallpaperUrl);
+            }
         });
-        const root = document.querySelector('[class*="chat"]') || document.body;
-        observer.observe(root, { childList: true, subtree: true });
-        setTimeout(() => observer.disconnect(), 3000);
+
+        const chatRoot = document.querySelector('[class*="chat"]') || document.body;
+        _chatObserver.observe(chatRoot, { childList: true, subtree: true });
     }
 }
 
@@ -480,11 +695,6 @@ async function setWallpaperFromUrl(channelId: string) {
     }
 }
 
-async function removeWallpaper(channelId: string) {
-    await saveWallpaper(channelId, "");
-    showToast(t("Wallpaper deleted"), Toasts.Type.SUCCESS);
-}
-
 // ── Context Menu Components ───────────────────────────────────────────────────
 
 function WallpaperIcon() {
@@ -600,6 +810,7 @@ const channelContextMenuPatch: NavContextMenuPatchCallback = (children, { channe
 function ChannelWallpaperSettingsComponent() {
     const [token, setToken] = React.useState<string | null>(null);
     const [loadingAuth, setLoadingAuth] = React.useState(false);
+    const [refreshTick, setRefreshTick] = React.useState(0);
     const wpMap = getWallpapers();
     const wpEntries = Object.entries(wpMap);
 
@@ -699,8 +910,9 @@ function ChannelWallpaperSettingsComponent() {
                                         size={Button.Sizes.MIN}
                                         color={Button.Colors.RED}
                                         look={Button.Looks.OUTLINED}
-                                        onClick={() => {
-                                            saveWallpaper(cid, "");
+                                        onClick={async () => {
+                                            await removeWallpaper(cid);
+                                            setRefreshTick(t => t + 1);
                                         }}
                                     >
                                         {t("Clear")}
@@ -734,10 +946,10 @@ export default definePlugin({
     flux: {
         CHANNEL_SELECT({ channelId }: { channelId: string; }) {
             if (channelId) {
-                setTimeout(() => {
-                    applyWallpaper(channelId);
-                    syncWithFriendForChannel(channelId);
-                }, 100);
+                applyWallpaper(channelId);
+                setTimeout(() => applyWallpaper(channelId), 150);
+                setTimeout(() => applyWallpaper(channelId), 400);
+                syncWithFriendForChannel(channelId);
             } else {
                 removeWallpaperElements();
             }
@@ -747,6 +959,13 @@ export default definePlugin({
     start() {
         _cachedOpacity = settings.store.opacity ?? 0.3;
         _cachedBlur = settings.store.blur ?? 0;
+
+        _wpCache = null;
+        _wpRaw = "";
+        _userSetChannels = loadSet(LS_USER_SET_CHANNELS);
+        _syncedFromFriends = loadSet(LS_SYNCED_CHANNELS);
+        _deletedChannels = loadMap<DeletionRecord>(LS_DELETED_CHANNELS);
+        _cachedOwnCloudDmWallpapers = loadOwnCloudDmWallpapers();
 
         // Try loading own remote cloud config to merge with local cached DMs
         getStoredToken().then(async token => {
@@ -763,10 +982,10 @@ export default definePlugin({
 
         const cid = SelectedChannelStore.getChannelId();
         if (cid) {
-            setTimeout(() => {
-                applyWallpaper(cid);
-                syncWithFriendForChannel(cid);
-            }, 300);
+            applyWallpaper(cid);
+            setTimeout(() => applyWallpaper(cid), 200);
+            setTimeout(() => applyWallpaper(cid), 500);
+            syncWithFriendForChannel(cid);
         }
 
         // Periodic background sync for active DM channel (every 10s)
