@@ -1566,7 +1566,7 @@ export default definePlugin({
     name: "GhostClient",
     description: "Discord ghost accounts — left-click to enable/disable, right-click to configure. Mute/deafen/stream/cam controls per token.",
     authors: [{ name: "Nightcord", id: 0n }],
-    enabledByDefault: false,
+    enabledByDefault: true,
     userPlugin: true as any,
     isUserPlugin: true as any,
     userAreaButton: { icon: GhostIcon, render: GhostUserAreaButton, priority: 1 },

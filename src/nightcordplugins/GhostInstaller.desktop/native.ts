@@ -47,6 +47,34 @@ export type NativeResult<T> = {
     logs: string[];
 };
 
+export interface InstallProgress {
+    active: boolean;
+    percent: number;
+    stage: string;
+    detail: string;
+    error: string | null;
+    done: boolean;
+    info: ActionInfo | null;
+}
+
+let currentProgress: InstallProgress = {
+    active: false,
+    percent: 0,
+    stage: "",
+    detail: "",
+    error: null,
+    done: false,
+    info: null
+};
+
+export function getInstallProgress(): NativeResult<InstallProgress> {
+    return {
+        success: true,
+        data: { ...currentProgress },
+        logs: logBuffer
+    };
+}
+
 let logBuffer: string[] = [];
 const MAX_LOG_LINES = 500;
 
@@ -443,7 +471,21 @@ function findDirectoryContaining(startDir: string, targetFile: string, maxDepth 
     return search(startDir, 0);
 }
 
-function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void> {
+function setProgress(percent: number, stage: string, detail: string) {
+    currentProgress.active = true;
+    currentProgress.percent = Math.max(0, Math.min(100, Math.round(percent)));
+    currentProgress.stage = stage;
+    currentProgress.detail = detail;
+    currentProgress.error = null;
+    currentProgress.done = false;
+}
+
+function downloadFile(
+    url: string,
+    dest: string,
+    onProgress?: (downloaded: number, total: number) => void,
+    maxRedirects = 5
+): Promise<void> {
     return new Promise((resolve, reject) => {
         if (maxRedirects < 0) {
             return reject(new Error("Too many redirects"));
@@ -453,7 +495,7 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
         const req = client.get(url, { headers: { "User-Agent": "Nightcord-GhostClientInstaller" } }, res => {
             if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 const nextUrl = new URL(res.headers.location, url).toString();
-                return downloadFile(nextUrl, dest, maxRedirects - 1).then(resolve).catch(reject);
+                return downloadFile(nextUrl, dest, onProgress, maxRedirects - 1).then(resolve).catch(reject);
             }
 
             if (res.statusCode !== 200) {
@@ -468,6 +510,7 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
             res.on("data", (chunk: Buffer) => {
                 downloadedBytes += chunk.length;
                 if (totalBytes > 0) {
+                    onProgress?.(downloadedBytes, totalBytes);
                     const pct = Math.floor((downloadedBytes / totalBytes) * 100);
                     const step = Math.floor(pct / 20) * 20;
                     if (step > lastLoggedStep && step < 100) {
@@ -533,7 +576,29 @@ async function extractZip(zipPath: string, targetDir: string): Promise<void> {
     }
 }
 
-async function copyDir(src: string, dest: string) {
+async function countEntries(src: string): Promise<number> {
+    let count = 0;
+    try {
+        const entries = await fsp.readdir(src, { withFileTypes: true });
+        for (const entry of entries) {
+            count++;
+            if (entry.isDirectory()) {
+                count += await countEntries(path.join(src, entry.name));
+            }
+        }
+    } catch {}
+    return count;
+}
+
+async function copyDir(
+    src: string,
+    dest: string,
+    onProgress?: (copied: number, total: number, name: string) => void,
+    tracker = { copied: 0, total: 0 }
+) {
+    if (tracker.total === 0 && onProgress) {
+        tracker.total = await countEntries(src);
+    }
     await fsp.mkdir(dest, { recursive: true });
     const entries = await fsp.readdir(src, { withFileTypes: true });
 
@@ -542,18 +607,22 @@ async function copyDir(src: string, dest: string) {
         const destPath = path.join(dest, entry.name);
 
         if (entry.isDirectory()) {
-            await copyDir(srcPath, destPath);
+            await copyDir(srcPath, destPath, onProgress, tracker);
         } else {
             try {
-                if (fs.existsSync(destPath)) {
-                    const srcStat = await fsp.stat(srcPath);
-                    const destStat = await fsp.stat(destPath);
-                    if (srcStat.size === destStat.size && srcStat.size > 1024 * 1024) {
-                        continue;
-                    }
+                const [srcStat, destStat] = await Promise.all([
+                    fsp.stat(srcPath),
+                    fsp.stat(destPath).catch(() => null)
+                ]);
+                if (destStat && srcStat.size === destStat.size && srcStat.size > 1024 * 1024) {
+                    tracker.copied++;
+                    onProgress?.(tracker.copied, tracker.total, entry.name);
+                    continue;
                 }
             } catch {}
             await fsp.copyFile(srcPath, destPath);
+            tracker.copied++;
+            onProgress?.(tracker.copied, tracker.total, entry.name);
         }
         await new Promise(r => setImmediate(r));
     }
@@ -649,7 +718,22 @@ async function killRunningServer(): Promise<void> {
 }
 
 export async function patchGhostClient(options: { githubUrl?: string; discordRoot?: string; } = {}): Promise<NativeResult<ActionInfo>> {
+    if (currentProgress.active) {
+        log("WARN: GhostClient installation already in progress, returning existing task.");
+        const info = await getInstallInfo(options.discordRoot);
+        return {
+            success: true,
+            data: {
+                ...info,
+                logPath: getLogFilePath()
+            },
+            logs: logBuffer
+        };
+    }
+
     log("INFO: Starting GhostClient installation and patch sequence...");
+    setProgress(3, "Initializing", "Preparing installation workspace...");
+
     const rawUrl = options.githubUrl?.trim() || DEFAULT_RELEASE_URL;
     const tempDir = path.join(os.tmpdir(), "nightcord_ghost_download");
 
@@ -663,8 +747,10 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
 
         if (localServerDir && fs.existsSync(path.join(localServerDir, "server.js"))) {
             log(`OK: Found local companion server at ${localServerDir}`);
+            setProgress(30, "Deploying Server", "Deploying local companion server...");
             serverSource = localServerDir;
         } else {
+            setProgress(8, "Cleaning Workspace", "Purging temporary staging directory...");
             if (fs.existsSync(tempDir)) {
                 await fsp.rm(tempDir, { recursive: true, force: true });
             }
@@ -673,6 +759,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             const zipPath = path.join(tempDir, "ghostclient-bundle.zip");
             const extractPath = path.join(tempDir, "extracted");
 
+            setProgress(12, "Checking Releases", "Resolving latest release package...");
             const resolved = await resolveLatestReleaseDownloadUrl(rawUrl);
             downloadUrl = resolved.downloadUrl;
             resolvedTag = resolved.tag;
@@ -680,11 +767,23 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
                 log(`INFO: Target release version: ${resolved.tag}`);
             }
 
+            setProgress(16, "Downloading", "Starting package download...");
             log(`INFO: Downloading bundle from: ${downloadUrl}`);
-            await downloadFile(downloadUrl, zipPath);
+            await downloadFile(downloadUrl, zipPath, (downloaded, total) => {
+                const rawPct = Math.min(100, Math.floor((downloaded / total) * 100));
+                // Download phase covers 16% to 62%
+                const overallPct = Math.floor(16 + (rawPct * 0.46));
+                const dlMb = (downloaded / (1024 * 1024)).toFixed(1);
+                const totMb = (total / (1024 * 1024)).toFixed(1);
+                currentProgress.active = true;
+                currentProgress.percent = overallPct;
+                currentProgress.stage = "Downloading";
+                currentProgress.detail = `${dlMb} MB / ${totMb} MB (${rawPct}%)`;
+            });
             const stats = await fsp.stat(zipPath);
             log(`OK: Download complete (${(stats.size / (1024 * 1024)).toFixed(2)} MB)`);
 
+            setProgress(63, "Extracting", "Extracting files from archive...");
             log("INFO: Extracting archive asynchronously...");
             await extractZip(zipPath, extractPath);
             log("OK: Archive successfully extracted.");
@@ -738,7 +837,17 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         // Target locations
         const persistentServerDest = path.join(app.getPath("userData"), "ghost-server");
         log(`INFO: Copying ghost-server to persistent storage: ${persistentServerDest}`);
-        await copyDir(serverSource, persistentServerDest);
+        setProgress(70, "Installing Files", "Copying companion server files...");
+        await copyDir(serverSource, persistentServerDest, (copied, total, name) => {
+            if (total > 0) {
+                const pct = Math.floor(70 + ((copied / total) * 14));
+                currentProgress.percent = pct;
+                currentProgress.stage = "Installing Files";
+                currentProgress.detail = `${name} (${copied}/${total})`;
+            }
+        });
+
+        setProgress(85, "Configuring", "Patching audio packetizer and WebSocket runtime...");
         patchGhostServerFiles(persistentServerDest);
 
         if (nightcordRoot) {
@@ -783,6 +892,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
         });
 
         // Test server startup
+        setProgress(90, "Starting Service", "Terminating stale instances...");
         log("INFO: Verifying ghost-server responsiveness...");
         await killRunningServer();
 
@@ -791,6 +901,7 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
             : "node";
 
         const serverScript = path.join(persistentServerDest, "server.js");
+        setProgress(93, "Starting Service", "Spawning companion service on port 47821...");
         try {
             const child = spawn(nodeExecutable, [serverScript], {
                 cwd: persistentServerDest,
@@ -824,6 +935,18 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
 
         log("OK: GhostClient companion server successfully installed and ready!");
         const info = await getInstallInfo(options.discordRoot);
+
+        currentProgress.active = false;
+        currentProgress.percent = 100;
+        currentProgress.stage = "Complete";
+        currentProgress.detail = "GhostClient companion server is active and ready.";
+        currentProgress.done = true;
+        currentProgress.error = null;
+        currentProgress.info = {
+            ...info,
+            logPath: getLogFilePath()
+        };
+
         return {
             success: true,
             data: {
@@ -835,6 +958,14 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
     } catch (e: any) {
         log(`FAIL: Installation failed: ${e.message}`);
         try { await fsp.rm(tempDir, { recursive: true, force: true }); } catch {}
+
+        currentProgress.active = false;
+        currentProgress.percent = 0;
+        currentProgress.stage = "Failed";
+        currentProgress.detail = e.message || String(e);
+        currentProgress.error = e.message || String(e);
+        currentProgress.done = false;
+
         return {
             success: false,
             error: e.message || String(e),
@@ -844,11 +975,23 @@ export async function patchGhostClient(options: { githubUrl?: string; discordRoo
 }
 
 export async function revertGhostClient(options: { discordRoot?: string; } = {}): Promise<NativeResult<ActionInfo>> {
+    if (currentProgress.active) {
+        log("WARN: An operation is already in progress.");
+        return {
+            success: false,
+            error: "An installation or deletion is already in progress.",
+            logs: logBuffer
+        };
+    }
+
     log("WARN: Initiating GhostClient companion removal sequence...");
+    setProgress(15, "Stopping Service", "Terminating ghost-server...");
+
     try {
         log("INFO: Terminating ghost-server...");
         await killRunningServer();
 
+        setProgress(45, "Removing Files", "Deleting persistent ghost-server files...");
         const persistentServerDest = path.join(app.getPath("userData"), "ghost-server");
         if (fs.existsSync(persistentServerDest)) {
             log(`INFO: Deleting persistent ghost-server: ${persistentServerDest}`);
@@ -864,6 +1007,7 @@ export async function revertGhostClient(options: { discordRoot?: string; } = {})
             }
         }
 
+        setProgress(85, "Updating State", "Clearing installer state...");
         saveState({
             installed: false,
             lastUninstalled: Date.now()
@@ -871,6 +1015,18 @@ export async function revertGhostClient(options: { discordRoot?: string; } = {})
 
         log("OK: GhostClient companion server has been completely uninstalled.");
         const info = await getInstallInfo(options.discordRoot);
+
+        currentProgress.active = false;
+        currentProgress.percent = 100;
+        currentProgress.stage = "Complete";
+        currentProgress.detail = "GhostClient companion server uninstalled.";
+        currentProgress.done = true;
+        currentProgress.error = null;
+        currentProgress.info = {
+            ...info,
+            logPath: getLogFilePath()
+        };
+
         return {
             success: true,
             data: {
@@ -881,6 +1037,12 @@ export async function revertGhostClient(options: { discordRoot?: string; } = {})
         };
     } catch (e: any) {
         log(`FAIL: Deletion encountered an error: ${e.message}`);
+        currentProgress.active = false;
+        currentProgress.stage = "Failed";
+        currentProgress.detail = e.message || String(e);
+        currentProgress.error = e.message || String(e);
+        currentProgress.done = false;
+
         return {
             success: false,
             error: e.message || String(e),

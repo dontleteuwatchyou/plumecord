@@ -11,6 +11,8 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Installing...": {"en":"Installing...","fr":"Installation en cours...","ar":"جارٍ التثبيت...","es":"Instalando...","ru":"Установка...","zh":"正在安装..."},
+    "Installation Complete": {"en":"Installation Complete","fr":"Installation terminée","ar":"اكتمل التثبيت","es":"Instalación completada","ru":"Установка завершена","zh":"安装完成"},
     "Volume Booster": {"en":"Volume Booster","fr":"Booster de volume","ar":"مضخم الصوت","es":"Amplificador de volumen","ru":"Усилитель громкости","zh":"音量增强器"},
     "Radically amplifies or lowers selected device volume": {"en":"Radically amplifies or lowers selected device volume","fr":"Amplifie ou réduit radicalement le volume du périphérique sélectionné","ar":"يضخم أو يخفض صوت الجهاز المحدد بشكل جذري","es":"Amplifica o reduce radicalmente el volumen del dispositivo seleccionado","ru":"Радикально усиливает или понижает громкость выбранного устройства","zh":"极大增强或降低所选设备的音量"},
     "Reset volume": {"en":"Reset volume","fr":"Réinitialiser le volume","ar":"إعادة تعيين مستوى الصوت","es":"Restablecer volumen","ru":"Сбросить громкость","zh":"重置音量"},

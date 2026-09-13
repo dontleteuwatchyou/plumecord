@@ -307,3 +307,82 @@
 .vc-ghost-installer-install-status-not-installed svg {
     color: var(--text-muted, #a3a6ac) !important;
 }
+
+.vc-ghost-installer-progress-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: var(--background-secondary, #2b2d31);
+    border: 1px solid var(--brand-500, #5865f2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.vc-ghost-installer-progress-error {
+    border-color: var(--status-danger, #f23f43) !important;
+}
+
+.vc-ghost-installer-progress-done {
+    border-color: var(--status-positive, #23a55a) !important;
+}
+
+.vc-ghost-installer-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vc-ghost-installer-progress-title-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.vc-ghost-installer-progress-stage {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--header-primary, #ffffff) !important;
+}
+
+.vc-ghost-installer-progress-detail {
+    font-size: 12px;
+    color: var(--text-muted, #949ba4) !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vc-ghost-installer-progress-percent {
+    font-size: 16px;
+    font-weight: 800;
+    font-family: var(--font-code, monospace);
+    color: var(--header-primary, #ffffff) !important;
+}
+
+.vc-ghost-installer-progress-bar-bg {
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--background-tertiary, #1e1f22);
+    overflow: hidden;
+    position: relative;
+}
+
+.vc-ghost-installer-progress-bar-fill {
+    height: 100%;
+    background: var(--brand-500, #5865f2);
+    border-radius: 5px;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vc-ghost-installer-progress-error .vc-ghost-installer-progress-bar-fill {
+    background: var(--status-danger, #f23f43);
+}
+
+.vc-ghost-installer-progress-done .vc-ghost-installer-progress-bar-fill {
+    background: var(--status-positive, #23a55a);
+}
+
