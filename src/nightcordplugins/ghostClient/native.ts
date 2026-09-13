@@ -386,6 +386,10 @@ export async function setMicDevice(_: any, micDevice: string): Promise<void> {
     try { await api("/set-mic", { micDevice }); } catch { }
 }
 
+export async function setVolume(_: any, volume: number): Promise<void> {
+    try { await api("/set-volume", { volume }); } catch { }
+}
+
 export async function fakeMute(_: any, userIds: string[], muted: boolean): Promise<void> {
     try { await api("/fake-mute", { userIds, muted }); } catch { }
 }
