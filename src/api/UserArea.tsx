@@ -10,7 +10,7 @@ import ErrorBoundary from "@components/ErrorBoundary";
 import { fetchUserProfile } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { findComponentByCodeLazy } from "@webpack";
-import { ReactDOM, Tooltip, useEffect, useState, UserProfileStore, UserStore } from "@webpack/common";
+import { ReactDOM, Tooltip, useEffect, useRef, useState, UserProfileStore, UserStore } from "@webpack/common";
 import type { ComponentType, MouseEventHandler, ReactNode } from "react";
 
 import { addStealthListener, isStealthModeEnabled, removeStealthListener } from "./HeaderBar";
@@ -197,8 +197,8 @@ function UserAreaBadges({ userId }: { userId: string; }) {
             style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "3px",
-                marginLeft: "6px",
+                gap: "4px",
+                marginLeft: "5px",
                 verticalAlign: "middle",
                 flexShrink: 0
             }}
@@ -211,8 +211,10 @@ function UserAreaBadges({ userId }: { userId: string; }) {
                             src={b.iconSrc}
                             alt={b.description}
                             style={{
-                                width: "16px",
-                                height: "16px",
+                                width: "18px",
+                                height: "18px",
+                                minWidth: "18px",
+                                minHeight: "18px",
                                 objectFit: "contain",
                                 borderRadius: b.round ? "50%" : "0",
                                 display: "block",
@@ -230,6 +232,7 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
     const [, forceUpdate] = useState(0);
     const settings = useSettings(["betterUserArea"]);
     const [nameTagTarget, setNameTagTarget] = useState<Element | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const listener = () => forceUpdate(n => n + 1);
@@ -244,23 +247,50 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
     useEffect(() => {
         if (!settings.betterUserArea) {
             setNameTagTarget(null);
+            document.querySelectorAll(".nc-better-user-area").forEach(c => c.classList.remove("nc-better-user-area"));
             return;
         }
 
-        const findTarget = () => {
-            const target =
-                document.querySelector('div[class*="accountPopoutButtonWrapper_"] div[class*="nameTag_"] > div:first-child') ||
-                document.querySelector('div[class*="nameTag_"] > div:first-child');
-            setNameTagTarget(prev => (prev !== target ? target : prev));
+        const updateElements = () => {
+            // 1. Tag the container with .nc-better-user-area
+            const el = containerRef.current;
+            const container =
+                el?.closest('section[class*="panels_"] > div') ||
+                el?.closest('div[class*="container_"]') ||
+                document.querySelector('section[class*="panels_"] > div:has([class*="nameTag"])') ||
+                document.querySelector('section[class*="panels_"] > div:has([class*="accountPopoutButtonWrapper"])') ||
+                document.querySelector('div[class*="container_"]:has([class*="nameTag"])');
+
+            if (container && !container.classList.contains("nc-better-user-area")) {
+                container.classList.add("nc-better-user-area");
+            }
+
+            // 2. Find the exact title row (pseudo) to portal badges next to it
+            const panels = document.querySelector('section[class*="panels_"]') || document;
+            const nameTag = panels.querySelector('[class*="nameTag_"]') || panels.querySelector('[class*="nameTag"]');
+            if (nameTag) {
+                const titleRow =
+                    nameTag.querySelector('[class*="panelTitle_"]') ||
+                    nameTag.querySelector('[class*="title_"]') ||
+                    nameTag.querySelector('[class*="username"]')?.parentElement ||
+                    nameTag.firstElementChild;
+
+                if (titleRow && titleRow !== nameTag) {
+                    setNameTagTarget(prev => (prev !== titleRow ? titleRow : prev));
+                }
+            }
         };
 
-        findTarget();
-        const obs = new MutationObserver(findTarget);
-        const panels = document.querySelector('section[class*="panels_"]');
+        updateElements();
+        const obs = new MutationObserver(updateElements);
+        const panels = document.querySelector('section[class*="panels_"]') || document.body;
         if (panels) {
             obs.observe(panels, { childList: true, subtree: true });
         }
-        return () => obs.disconnect();
+        return () => {
+            obs.disconnect();
+            document.querySelectorAll(".nc-better-user-area").forEach(c => c.classList.remove("nc-better-user-area"));
+        };
     }, [settings.betterUserArea]);
 
     if (isStealthModeEnabled()) return null;
@@ -272,53 +302,87 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
             <style>{`
                 ${settings.betterUserArea ? `
                 /* ── Better User Area (2-Row Layout) ── */
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) {
+                .nc-better-user-area,
+                section[class*="panels_"] > div:has([class*="nameTag"]),
+                section[class*="panels_"] > div:has([class*="accountPopoutButtonWrapper"]),
+                div[class*="container_"]:has([class*="nameTag"]),
+                div[class*="container_"]:has([class*="accountPopoutButtonWrapper"]) {
                     display: flex !important;
                     flex-direction: column !important;
                     height: auto !important;
                     min-height: 84px !important;
-                    padding: 6px 8px !important;
+                    padding: 6px 8px 8px !important;
                     gap: 6px !important;
                     box-sizing: border-box !important;
                 }
 
                 /* Row 1: Profile Info & Badges */
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) > div[class*="accountPopoutButtonWrapper_"] {
+                .nc-better-user-area > [class*="accountPopoutButtonWrapper"],
+                .nc-better-user-area > [class*="avatarWrapper"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) > [class*="accountPopoutButtonWrapper"],
+                div[class*="container_"]:has([class*="nameTag"]) > [class*="accountPopoutButtonWrapper"],
+                div[class*="container_"]:has([class*="accountPopoutButtonWrapper"]) > [class*="accountPopoutButtonWrapper"] {
                     width: 100% !important;
                     max-width: 100% !important;
                     min-width: 0 !important;
                     display: flex !important;
+                    flex-direction: row !important;
                     align-items: center !important;
                     padding: 2px 4px !important;
                     margin: 0 !important;
                     border-radius: 4px !important;
+                    box-sizing: border-box !important;
                 }
 
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) div[class*="nameTag_"] {
+                .nc-better-user-area [class*="nameTag_"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="nameTag_"],
+                div[class*="container_"]:has([class*="nameTag"]) [class*="nameTag_"] {
                     min-width: 0 !important;
                     flex: 1 1 auto !important;
-                    flex-shrink: 1 !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    justify-content: center !important;
                 }
 
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) div[class*="nameTag_"] > div:first-child {
+                /* Line 1 inside nametag: Display Name + Badges side-by-side horizontally */
+                .nc-better-user-area [class*="nameTag_"] > div:first-child,
+                .nc-better-user-area [class*="nameTag_"] [class*="panelTitle_"],
+                .nc-better-user-area [class*="nameTag_"] [class*="title_"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="nameTag_"] > div:first-child,
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="nameTag_"] [class*="panelTitle_"],
+                div[class*="container_"]:has([class*="nameTag"]) [class*="nameTag_"] > div:first-child,
+                div[class*="container_"]:has([class*="nameTag"]) [class*="nameTag_"] [class*="panelTitle_"] {
                     display: flex !important;
+                    flex-direction: row !important;
                     align-items: center !important;
                     flex-wrap: nowrap !important;
-                    gap: 4px !important;
                     min-width: 0 !important;
+                    gap: 4px !important;
                 }
 
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) div[class*="nameTag_"] > div:first-child > * {
+                .nc-better-user-area [class*="nameTag_"] > div:first-child > :not(.nc-userarea-badges),
+                .nc-better-user-area [class*="nameTag_"] [class*="panelTitle_"] > :not(.nc-userarea-badges),
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="nameTag_"] > div:first-child > :not(.nc-userarea-badges),
+                div[class*="container_"]:has([class*="nameTag"]) [class*="nameTag_"] > div:first-child > :not(.nc-userarea-badges) {
                     overflow: hidden !important;
                     text-overflow: ellipsis !important;
                     white-space: nowrap !important;
+                    min-width: 0 !important;
+                    flex-shrink: 1 !important;
                 }
 
-                /* Row 2: Action Buttons */
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) > div[class*="buttons_"] {
+                /* Row 2: Action Buttons spanning the entire width */
+                .nc-better-user-area > [class*="buttons_"],
+                .nc-better-user-area [class*="buttons_"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) > [class*="buttons_"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="buttons_"],
+                div[class*="container_"]:has([class*="nameTag"]) > [class*="buttons_"],
+                div[class*="container_"]:has([class*="nameTag"]) [class*="buttons_"] {
                     width: 100% !important;
                     max-width: 100% !important;
+                    min-width: 0 !important;
                     display: flex !important;
+                    flex-direction: row !important;
                     align-items: center !important;
                     justify-content: space-between !important;
                     gap: 2px !important;
@@ -327,24 +391,36 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                     box-sizing: border-box !important;
                 }
 
-                /* Proportional flex distribution on all buttons in Row 2 to eliminate empty space on the right */
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) > div[class*="buttons_"] > button,
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) > div[class*="buttons_"] > div,
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) .vc-user-area-btns > button,
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) .vc-user-area-btns > div,
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) [class*="audioButtonParent_"] {
+                /* Proportional flex distribution on all buttons in Row 2 to eliminate dead space */
+                .nc-better-user-area [class*="buttons_"] > button,
+                .nc-better-user-area [class*="buttons_"] > div,
+                .nc-better-user-area .vc-user-area-btns > button,
+                .nc-better-user-area .vc-user-area-btns > div,
+                .nc-better-user-area [class*="audioButtonParent_"],
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="buttons_"] > button,
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="buttons_"] > div,
+                section[class*="panels_"] > div:has([class*="nameTag"]) .vc-user-area-btns > button,
+                section[class*="panels_"] > div:has([class*="nameTag"]) .vc-user-area-btns > div,
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="audioButtonParent_"],
+                div[class*="container_"]:has([class*="nameTag"]) [class*="buttons_"] > button,
+                div[class*="container_"]:has([class*="nameTag"]) [class*="buttons_"] > div,
+                div[class*="container_"]:has([class*="nameTag"]) .vc-user-area-btns > button,
+                div[class*="container_"]:has([class*="nameTag"]) .vc-user-area-btns > div,
+                div[class*="container_"]:has([class*="nameTag"]) [class*="audioButtonParent_"] {
                     flex: 1 1 0 !important;
                     display: flex !important;
                     align-items: center !important;
                     justify-content: center !important;
                     max-width: 40px !important;
-                    min-width: 26px !important;
+                    min-width: 24px !important;
                     height: 32px !important;
                     margin: 0 !important;
                     padding: 0 !important;
                 }
 
-                div[class*="container_"]:has(> div[class*="buttons_"]:has(> .vc-user-area-btns)) [class*="audioButtonParent_"] > button {
+                .nc-better-user-area [class*="audioButtonParent_"] > button,
+                section[class*="panels_"] > div:has([class*="nameTag"]) [class*="audioButtonParent_"] > button,
+                div[class*="container_"]:has([class*="nameTag"]) [class*="audioButtonParent_"] > button {
                     width: 100% !important;
                     height: 100% !important;
                     display: flex !important;
@@ -415,7 +491,7 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                     }
                 }
             `}</style>
-            <div className="vc-user-area-btns" style={{ display: "contents" }}>
+            <div className="vc-user-area-btns" ref={containerRef} style={{ display: "contents" }}>
                 {Array.from(buttons)
                     .sort(([, a], [, b]) => a.priority - b.priority)
                     .map(([id, { render: Button }]) => (
