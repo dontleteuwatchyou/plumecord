@@ -2170,7 +2170,11 @@ function CustomProfileModal({ rootProps }: { rootProps: any; }) {
                                     padding: "16px", background: "rgba(250, 166, 26, 0.05)",
                                     border: "1px solid rgba(250, 166, 26, 0.15)", borderRadius: 12, display: "flex", gap: 16, marginBottom: 24
                                 }}>
-                                    <span style={{ fontSize: 24, lineHeight: 1 }}>⚠️</span>
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--text-warning, #faa61a)", marginTop: 2 }}>
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
                                     <span style={{ color: "rgba(250, 166, 26, 0.9)", fontSize: 14, lineHeight: 1.5, fontWeight: 500 }}>
                                         {t("This requires Discord authorization. Once enabled, everyone using Nightcord will be able to see your Custom Profile, and you will be able to see theirs.")}
                                     </span>
@@ -2311,7 +2315,8 @@ function CPDMNotice({ userId }: { userId: string; }) {
     const hasRealModifications = data && (
         data.username || data.globalName || data.avatar || data.banner ||
         data.bio || data.pronouns || data.accentColor != null ||
-        data.badgeFlags || data.nitro || data.decorationAsset || data.profileEffectId ||
+        data.badgeFlags || data.nitro || (data.boostMonths != null && data.boostMonths >= 0) ||
+        data.decorationAsset || data.profileEffectId ||
         (data.customBadgeIds && data.customBadgeIds.length > 0) ||
         data.createdAt
     );
@@ -2331,7 +2336,11 @@ function CPDMNotice({ userId }: { userId: string; }) {
             alignItems: "flex-start",
             gap: 10,
         }}>
-            <span style={{ fontSize: 18, flexShrink: 0 }}>⚠️</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--text-warning, #faa61a)", marginTop: 2 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
             <div style={{ flex: 1 }}>
                 <span style={{ color: "var(--text-warning, #faa61a)", fontWeight: 600, fontSize: 13 }}>
                     {t("WARNING — This user has CustomProfile enabled. Their profile has been modified.")}
@@ -2353,6 +2362,7 @@ function CPDMNotice({ userId }: { userId: string; }) {
                     if (data.pronouns) fields.push([t("Pronouns"), data.pronouns]);
                     if (data.createdAt) fields.push([t("Account created"), data.createdAt]);
                     if (data.nitro) fields.push(["Nitro", t("Simulated")]);
+                    if (data.boostMonths != null && data.boostMonths >= 0) fields.push([t("Server Boost"), t("Simulated")]);
                     return (
                         <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: 2 }}>
                             {fields.map(([k, v]) => (
@@ -2642,8 +2652,9 @@ export default definePlugin({
         const hasCustomDeco = !!data.decorationAsset;
         const hasCustomBadgeFlags = data.badgeFlags != null;
         const hasCustomNitro = !!data.nitro;
+        const hasCustomBoost = data.boostMonths != null && data.boostMonths >= 0;
 
-        if (!hasCustomUsername && !hasCustomGlobalName && !hasCustomAvatar && !hasCustomEmail && !hasCustomPhone && !hasCustomCreatedAt && !hasCustomDeco && !hasCustomBadgeFlags && !hasCustomNitro) {
+        if (!hasCustomUsername && !hasCustomGlobalName && !hasCustomAvatar && !hasCustomEmail && !hasCustomPhone && !hasCustomCreatedAt && !hasCustomDeco && !hasCustomBadgeFlags && !hasCustomNitro && !hasCustomBoost) {
             return realUser;
         }
 
@@ -2712,12 +2723,10 @@ export default definePlugin({
                     return target.premiumSince;
                 }
                 if (prop === "premiumGuildSince") {
-                    if (data.nitro) {
-                        const bm = data.boostMonths ?? -1;
-                        if (bm >= 0) {
-                            const seedBase = target.id || "other";
-                            return getFakeBoostDate(bm, seedBase);
-                        }
+                    const bm = data.boostMonths ?? -1;
+                    if (bm >= 0) {
+                        const seedBase = target.id || "other";
+                        return getFakeBoostDate(bm, seedBase);
                     }
                     return target.premiumGuildSince;
                 }
@@ -2746,11 +2755,12 @@ export default definePlugin({
         });
     },
 
-    hookOtherUserProfile(profile: any, data: CustomProfileData, timestamp = 0) {
+    hookOtherUserProfile(profile: any, data: CustomProfileData, timestamp = 0, guildOnly = false) {
         if (!profile) return profile;
 
         const hasDeco = !!data.decorationAsset;
         const hasNitro = !!data.nitro;
+        const hasBoost = data.boostMonths != null && data.boostMonths >= 0;
         const hasBadgeFlags = data.badgeFlags != null;
         const hasBio = !!data.bio;
         const hasPronouns = !!data.pronouns;
@@ -2759,12 +2769,12 @@ export default definePlugin({
         const hasEffect = !!data.profileEffectId;
         const hasCustomBadges = Array.isArray(data.customBadgeIds) && data.customBadgeIds.length > 0;
 
-        if (!hasDeco && !hasNitro && !hasBadgeFlags && !hasBio && !hasPronouns && !hasAccentColor && !hasBanner && !hasEffect && !hasCustomBadges) {
+        if (!hasDeco && !hasNitro && !hasBoost && !hasBadgeFlags && !hasBio && !hasPronouns && !hasAccentColor && !hasBanner && !hasEffect && !hasCustomBadges) {
             return profile;
         }
 
         const userId = profile.userId;
-        if (userId) {
+        if (userId && !guildOnly) {
             const cachedVal = this._otherProfilesCache.get(userId);
             if (cachedVal && cachedVal.input === profile && cachedVal.timestamp === timestamp) {
                 return cachedVal.output;
@@ -2788,7 +2798,8 @@ export default definePlugin({
                 merged.avatarDecorationData = decoData;
             }
 
-            const overrideFlags = data.nitro || data.badgeFlags != null;
+            const overrideFlags = data.nitro || data.badgeFlags != null || hasBoost;
+            const seedBase = profile?.userId || data.copiedUserId || "other";
 
             if (overrideFlags) {
                 merged.premiumType = data.nitro ? 2 : 0;
@@ -2799,18 +2810,16 @@ export default definePlugin({
                         merged.themeColors = [data.accentColor, c2];
                     }
                     const nl = data.nitroLevel ?? 0;
-                    const seedBase = profile?.userId || data.copiedUserId || "other";
                     const since = getFakeNitroDate(nl, seedBase);
                     merged.premiumSince = since;
-
-                    const bm = data.boostMonths ?? -1;
-                    if (bm >= 0) {
-                        merged.premiumGuildSince = getFakeBoostDate(bm, seedBase);
-                    } else {
-                        merged.premiumGuildSince = null;
-                    }
                 } else {
                     merged.premiumSince = null;
+                }
+
+                const bm = data.boostMonths ?? -1;
+                if (bm >= 0) {
+                    merged.premiumGuildSince = getFakeBoostDate(bm, seedBase);
+                } else {
                     merged.premiumGuildSince = null;
                 }
 
@@ -2831,7 +2840,6 @@ export default definePlugin({
                     const months = LEVEL_MONTHS[nl] ?? 1;
                     const nitroId = `premium_tenure_${months}_month_v2`;
 
-                    const seedBase = profile?.userId || data.copiedUserId || "other";
                     const since = getFakeNitroDate(nl, seedBase);
                     merged.premiumSince = since;
                     badgesArr.push({
@@ -2841,6 +2849,23 @@ export default definePlugin({
                     });
                 } else {
                     merged.premiumSince = null;
+                }
+
+                const bm = data.boostMonths ?? -1;
+                if (bm >= 0) {
+                    const BOOST_LVLS = ["lvl1", "lvl2", "lvl3", "lvl4", "lvl5", "lvl6", "lvl7", "lvl8", "lvl9"];
+                    const boostHash = BOOST_ICONS[bm]?.split("/").pop()?.replace(".png", "") || "51040c70d4f20a921ad6674ff86fc95c";
+                    const boostLvl = BOOST_LVLS[bm] || "lvl1";
+                    const boostSince = getFakeBoostDate(bm, seedBase);
+                    merged.premiumGuildSince = boostSince;
+
+                    badgesArr.push({
+                        id: `guild_booster_${boostLvl}`,
+                        icon: boostHash,
+                        description: formatBoostBadgeDesc(boostSince),
+                        link: "https://discord.com/settings/guild-boosting"
+                    });
+                } else {
                     merged.premiumGuildSince = null;
                 }
                 
@@ -2896,7 +2921,9 @@ export default definePlugin({
                 badgesArr.push({ id: "gifting_level", icon: "ca105ad9cfc8580c765101d17bbb2323", description: getLevelBadgeDesc(lvl) });
             }
             badgesArr = deduplicateProfileBadges(badgesArr);
-            merged.badges = badgesArr;
+            if (!guildOnly) {
+                merged.badges = badgesArr;
+            }
 
             if (data.profileEffectId) {
                 merged.profileEffectId = data.profileEffectId;
@@ -2912,7 +2939,7 @@ export default definePlugin({
             }
 
             const result = cleanMerge(profile, merged);
-            if (userId) {
+            if (userId && !guildOnly) {
                 this._otherProfilesCache.set(userId, { input: profile, output: result, timestamp });
             }
             return result;
@@ -2964,7 +2991,9 @@ export default definePlugin({
                 merged.avatarDecorationData = decoData;
             }
 
-            const overrideFlags = isEnabled && (storedData.nitro || storedData.badgeFlags != null);
+            const hasBoost = storedData.boostMonths != null && storedData.boostMonths >= 0;
+            const overrideFlags = isEnabled && (storedData.nitro || storedData.badgeFlags != null || hasBoost);
+            const seedBase = UserStore.getCurrentUser()?.id || "self";
 
             if (overrideFlags) {
                 merged.premiumType = storedData.nitro ? 2 : 0;
@@ -2975,18 +3004,16 @@ export default definePlugin({
                         merged.themeColors = [storedData.accentColor, c2];
                     }
                     const nl = storedData.nitroLevel ?? 0;
-                    const seedBase = UserStore.getCurrentUser()?.id || "self";
                     const since = getFakeNitroDate(nl, seedBase);
                     merged.premiumSince = since;
-
-                    const bm = storedData.boostMonths ?? -1;
-                    if (bm >= 0) {
-                        merged.premiumGuildSince = getFakeBoostDate(bm, seedBase);
-                    } else {
-                        merged.premiumGuildSince = null;
-                    }
                 } else {
                     merged.premiumSince = null;
+                }
+
+                const bm = storedData.boostMonths ?? -1;
+                if (bm >= 0) {
+                    merged.premiumGuildSince = getFakeBoostDate(bm, seedBase);
+                } else {
                     merged.premiumGuildSince = null;
                 }
 
@@ -3011,7 +3038,6 @@ export default definePlugin({
                     const months = LEVEL_MONTHS[nl] ?? 1;
                     const nitroId = `premium_tenure_${months}_month_v2`;
 
-                    const seedBase = UserStore.getCurrentUser()?.id || "self";
                     const since = getFakeNitroDate(nl, seedBase);
                     merged.premiumSince = since;
                     badgesArr.push({
@@ -3019,26 +3045,25 @@ export default definePlugin({
                         icon: nitroHash,
                         description: formatNitroBadgeDesc(since)
                     });
-
-                    const bm = storedData.boostMonths ?? -1;
-                    if (bm >= 0) {
-                        const BOOST_LVLS = ["lvl1", "lvl2", "lvl3", "lvl4", "lvl5", "lvl6", "lvl7", "lvl8", "lvl9"];
-                        const boostHash = BOOST_ICONS[bm]?.split("/").pop()?.replace(".png", "") || "51040c70d4f20a921ad6674ff86fc95c";
-                        const boostLvl = BOOST_LVLS[bm] || "lvl1";
-                        const boostSince = getFakeBoostDate(bm, seedBase);
-                        merged.premiumGuildSince = boostSince;
-
-                        badgesArr.push({
-                            id: `guild_booster_${boostLvl}`,
-                            icon: boostHash,
-                            description: formatBoostBadgeDesc(boostSince),
-                            link: "https://discord.com/settings/guild-boosting"
-                        });
-                    } else {
-                        merged.premiumGuildSince = null;
-                    }
                 } else {
                     merged.premiumSince = null;
+                }
+
+                const bm = storedData.boostMonths ?? -1;
+                if (bm >= 0) {
+                    const BOOST_LVLS = ["lvl1", "lvl2", "lvl3", "lvl4", "lvl5", "lvl6", "lvl7", "lvl8", "lvl9"];
+                    const boostHash = BOOST_ICONS[bm]?.split("/").pop()?.replace(".png", "") || "51040c70d4f20a921ad6674ff86fc95c";
+                    const boostLvl = BOOST_LVLS[bm] || "lvl1";
+                    const boostSince = getFakeBoostDate(bm, seedBase);
+                    merged.premiumGuildSince = boostSince;
+
+                    badgesArr.push({
+                        id: `guild_booster_${boostLvl}`,
+                        icon: boostHash,
+                        description: formatBoostBadgeDesc(boostSince),
+                        link: "https://discord.com/settings/guild-boosting"
+                    });
+                } else {
                     merged.premiumGuildSince = null;
                 }
                 const wantedFlags = (storedData.badgeFlags != null) ? storedData.badgeFlags : profile.publicFlags;
@@ -3229,7 +3254,7 @@ export default definePlugin({
             const d = cached.data;
             const hasRealModifications = d.username || d.globalName || d.avatar || d.banner ||
                 d.bio || d.pronouns || d.accentColor != null || d.badgeFlags ||
-                d.nitro || d.decorationAsset || d.profileEffectId || (d.customBadgeIds && d.customBadgeIds.length > 0) || d.createdAt;
+                d.nitro || (d.boostMonths != null && d.boostMonths >= 0) || d.decorationAsset || d.profileEffectId || (d.customBadgeIds && d.customBadgeIds.length > 0) || d.createdAt;
             if (!hasRealModifications) return null;
             return <CPDMNotice userId={recipientId} />;
         } catch { return null; }
@@ -3568,7 +3593,7 @@ export default definePlugin({
                             fetchPublicProfileIfNeeded(userId);
                             const cached = publicProfilesCache.get(userId);
                             if (cached?.fetched && cached.data && profile) {
-                                return this.hookOtherUserProfile(profile, cached.data, cached.timestamp);
+                                return this.hookOtherUserProfile(profile, cached.data, cached.timestamp, true);
                             }
                         }
                         
