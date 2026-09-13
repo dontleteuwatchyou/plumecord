@@ -816,7 +816,7 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
 // ─── Popover Principal ────────────────────────────────────────────────────────
 function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect: DOMRect | null; }) {
     const [accounts, setAccounts] = useState<GhostAccount[]>(savedAccounts);
-    const [selectedIds, setSelectedIds] = useState<string[]>(["all"]);
+    const [selectedId, setSelectedId] = useState<string>("all");
     const [autoFollow, setAutoFollowState] = useState(globalAutoFollow);
     const [micLabel, setMicLabel] = useState(ghostMicLabel);
     const [joinDelay, setJoinDelay] = useState(ghostJoinDelay);
@@ -900,9 +900,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
         DataStore.get(DS_KEY_SELECTED).then((v: any) => {
             if (Array.isArray(v) && v.length > 0) {
-                setSelectedIds(v);
+                setSelectedId(v[0] || "all");
             } else if (typeof v === "string" && v) {
-                setSelectedIds([v]);
+                setSelectedId(v);
+            } else {
+                setSelectedId("all");
             }
         });
 
@@ -992,7 +994,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
     const myId = getMyId();
     const validAccounts = accounts.filter(a => a.userId !== myId);
-    const isAll = selectedIds.includes("all") || (validAccounts.length > 0 && validAccounts.every(a => selectedIds.includes(a.userId)));
+    const isAll = selectedId === "all";
 
     function handleAccountSelect(val: string) {
         if (val !== "all" && val === myId) {
@@ -1000,36 +1002,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             return;
         }
 
-        let next: string[];
-        if (val === "all") {
-            if (isAll) {
-                next = [];
-            } else {
-                next = ["all"];
-            }
-        } else {
-            if (isAll) {
-                next = validAccounts.map(a => a.userId).filter(id => id !== val);
-            } else if (selectedIds.includes(val)) {
-                next = selectedIds.filter(id => id !== val && id !== "all");
-            } else {
-                next = [...selectedIds.filter(id => id !== "all"), val];
-                if (validAccounts.length > 0 && validAccounts.every(a => next.includes(a.userId))) {
-                    next = ["all"];
-                }
-            }
-        }
-
-        setSelectedIds(next);
-        DataStore.set(DS_KEY_SELECTED, next);
+        setSelectedId(val);
+        DataStore.set(DS_KEY_SELECTED, val);
     }
 
-    function isAccountSelected(val: string): boolean {
-        if (val === "all") return isAll;
-        return isAll || selectedIds.includes(val);
-    }
+    const renderAccountOptionValue = (selected?: any[]) => {
+        const option = selected?.[0];
+        const val = option?.value ?? selectedId;
 
-    const renderAccountOptionValue = () => {
         if (validAccounts.length === 0) {
             return (
                 <span style={{ color: "var(--text-muted, #949ba4)", pointerEvents: "none" }}>
@@ -1038,7 +1018,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             );
         }
 
-        if (isAll) {
+        if (val === "all") {
             return (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
                     <div style={{
@@ -1061,67 +1041,31 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             );
         }
 
-        const currentlySelected = validAccounts.filter(a => selectedIds.includes(a.userId));
-
-        if (currentlySelected.length === 1) {
-            const acc = currentlySelected[0];
-            return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
-                    {acc.avatar ? (
-                        <img
-                            src={avatarUrl(acc.userId, acc.avatar)}
-                            style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
-                            alt=""
-                        />
-                    ) : (
-                        <div
-                            className="gc-dropdown-avatar-placeholder"
-                            style={{ width: 20, height: 20, fontSize: 10, flexShrink: 0 }}
-                        >
-                            {acc.username?.[0]?.toUpperCase() ?? "?"}
-                        </div>
-                    )}
-                    <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {acc.username}
-                    </span>
-                </div>
-            );
-        }
-
-        if (currentlySelected.length > 1) {
-            return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
-                    <div style={{ display: "flex", alignItems: "center" }}>
-                        {currentlySelected.slice(0, 3).map((a, idx) => (
-                            <div key={a.userId} style={{ marginLeft: idx > 0 ? -6 : 0, zIndex: 3 - idx }}>
-                                {a.avatar ? (
-                                    <img
-                                        src={avatarUrl(a.userId, a.avatar)}
-                                        style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--background-floating, #1e1f22)" }}
-                                        alt=""
-                                    />
-                                ) : (
-                                    <div
-                                        className="gc-dropdown-avatar-placeholder"
-                                        style={{ width: 20, height: 20, fontSize: 10, border: "1.5px solid var(--background-floating, #1e1f22)" }}
-                                    >
-                                        {a.username?.[0]?.toUpperCase() ?? "?"}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500 }}>
-                        {currentlySelected.length} {t("accounts selected")}
-                    </span>
-                </div>
-            );
-        }
+        const acc = validAccounts.find(a => a.userId === val);
+        const name = acc?.username ?? option?.label ?? val;
+        const avatar = acc?.avatar ?? option?.avatar;
+        const uid = acc?.userId ?? option?.userId ?? val;
 
         return (
-            <span style={{ color: "var(--text-muted, #949ba4)", pointerEvents: "none" }}>
-                {t("Select accounts...")}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
+                {avatar ? (
+                    <img
+                        src={avatarUrl(uid, avatar)}
+                        style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                        alt=""
+                    />
+                ) : (
+                    <div
+                        className="gc-dropdown-avatar-placeholder"
+                        style={{ width: 20, height: 20, fontSize: 10, flexShrink: 0 }}
+                    >
+                        {name?.[0]?.toUpperCase() ?? "?"}
+                    </div>
+                )}
+                <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {name}
+                </span>
+            </div>
         );
     };
 
@@ -1225,15 +1169,15 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     <div className="gc-dropdown-label"><UserIcon /><span>{t("Active accounts")}</span></div>
                     <Select
                         options={accountOptions}
-                        isSelected={(val: string) => isAccountSelected(val)}
+                        isSelected={(val: string) => val === selectedId}
                         select={(val: string) => handleAccountSelect(val)}
                         serialize={(val: string) => val}
-                        placeholder={t("Select accounts...")}
-                        closeOnSelect={false}
+                        placeholder={t("Select account...")}
+                        closeOnSelect={true}
                         maxVisibleItems={8}
                         popoutPosition="bottom"
                         renderOptionLabel={(opt: any) => renderAccountOptionLabel(opt)}
-                        renderOptionValue={() => renderAccountOptionValue()}
+                        renderOptionValue={(selected: any[]) => renderAccountOptionValue(selected)}
                     />
                 </div>
                 <div className="gc-dropdown-wrap">
