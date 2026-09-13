@@ -63,6 +63,7 @@ let ghostMicLabel: string = "default";
 let ghostJoinDelay: number = 0;
 let ghostVolumeMultiplier: number = 1.0;
 let ghostVocalBoost: boolean = false;
+let _voiceSyncUnsub: (() => void) | null = null;
 
 // ─── Backend natif / HTTP ─────────────────────────────────────────────────────
 const GHOST_SERVER = "http://127.0.0.1:47821";
@@ -285,6 +286,38 @@ function defaultState(): GhostState {
 const ghostStates = new Map<string, GhostState>();
 let ghostListeners: Array<() => void> = [];
 function notify() { ghostListeners.forEach(f => f()); }
+
+function syncGhostStateFromDiscord(userId: string) {
+    try {
+        const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+        const cur = ghostStates.get(userId) ?? defaultState();
+        if (!vs || !vs.channelId) {
+            if (cur.active) {
+                ghostStates.set(userId, { ...cur, active: false, connecting: false, streaming: false, camera: false });
+                notify();
+            }
+            return;
+        }
+        const active = true;
+        const muted = Boolean(vs.selfMute || vs.mute);
+        const deafened = Boolean(vs.selfDeaf || vs.deaf);
+        const camera = Boolean(vs.selfVideo);
+        const streaming = Boolean(vs.selfStream);
+
+        if (cur.active !== active || cur.muted !== muted || cur.deafened !== deafened || cur.camera !== camera || cur.streaming !== streaming) {
+            ghostStates.set(userId, {
+                ...cur,
+                active,
+                connecting: false,
+                muted,
+                deafened,
+                camera,
+                streaming,
+            });
+            notify();
+        }
+    } catch { }
+}
 
 function useGhostStates() {
     const [, setTick] = useState(0);
@@ -555,18 +588,27 @@ function startFollowing() {
                     if (newCh) {
                         let realToken = acc.token;
                         try { realToken = await decryptToken(acc.token); } catch {}
-                        ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), connecting: true });
+                        const cur = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...cur, connecting: true });
                         notify();
                         try {
                             const result = await Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel);
-                            ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
+                            const updated = ghostStates.get(acc.userId) ?? defaultState();
+                            ghostStates.set(acc.userId, {
+                                ...updated,
+                                active: result.ok,
+                                connecting: false,
+                                error: result.ok ? null : (result.error ?? "Error")
+                            });
                         } catch (e) {
-                            ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: false, connecting: false, error: String(e) });
+                            const updated = ghostStates.get(acc.userId) ?? defaultState();
+                            ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
                         }
                         notify();
                     } else {
                         Native.leaveVoice(acc.userId).catch(() => {});
-                        ghostStates.set(acc.userId, defaultState());
+                        const cur = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...cur, active: false, connecting: false, streaming: false, camera: false });
                         notify();
                     }
                 }));
@@ -576,20 +618,24 @@ function startFollowing() {
                     if (newCh) {
                         let realToken = acc.token;
                         try { realToken = await decryptToken(acc.token); } catch {}
-                        ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), connecting: true });
+                        const cur = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...cur, connecting: true });
                         notify();
                         Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel)
                             .then(result => {
-                                ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
+                                const updated = ghostStates.get(acc.userId) ?? defaultState();
+                                ghostStates.set(acc.userId, { ...updated, active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
                                 notify();
                             })
                             .catch(e => {
-                                ghostStates.set(acc.userId, { ...(ghostStates.get(acc.userId) ?? defaultState()), active: false, connecting: false, error: String(e) });
+                                const updated = ghostStates.get(acc.userId) ?? defaultState();
+                                ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
                                 notify();
                             });
                     } else {
                         Native.leaveVoice(acc.userId).catch(() => {});
-                        ghostStates.set(acc.userId, defaultState());
+                        const cur = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...cur, active: false, connecting: false, streaming: false, camera: false });
                         notify();
                     }
                     if (i < activeAccs.length - 1 && ghostJoinDelay > 0) {
@@ -603,17 +649,33 @@ function startFollowing() {
     const handler = (data: any) => {
         if (!data) return;
         const myId = getMyId();
-        if (data.channelId !== undefined) {
-            triggerFollow();
+        if (!myId) return;
+
+        // If this voice state update belongs to one of our ghost accounts, sync its real-time state!
+        if (data.userId && data.userId !== myId) {
+            if (ghostStates.has(data.userId)) {
+                syncGhostStateFromDiscord(data.userId);
+            }
             return;
         }
+
         let statesList: any[] = [];
         try {
             if (data?.voiceStates != null) statesList = Array.isArray(data.voiceStates) ? data.voiceStates : Array.from(data.voiceStates as any);
             else if (data?.userId != null) statesList = [data];
         } catch { statesList = []; }
-        const myState = statesList.find((s: any) => s.userId === myId);
-        if (!myState) return;
+
+        for (const s of statesList) {
+            if (s?.userId && s.userId !== myId && ghostStates.has(s.userId)) {
+                syncGhostStateFromDiscord(s.userId);
+            }
+        }
+
+        if (statesList.length > 0) {
+            const myState = statesList.find((s: any) => s.userId === myId);
+            if (!myState) return;
+        }
+
         triggerFollow();
     };
 
@@ -784,12 +846,36 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     useEffect(() => {
         Native.isServerInstalled().then(v => setServerInstalled(Boolean(v))).catch(() => setServerInstalled(true));
 
+        const syncStates = (accs: GhostAccount[]) => {
+            for (const a of accs) {
+                syncGhostStateFromDiscord(a.userId);
+            }
+            fetch("http://127.0.0.1:47821/status").then(r => r.json()).then(d => {
+                if (d?.ok && d.sessionDetails) {
+                    for (const [uid, det] of Object.entries(d.sessionDetails as Record<string, any>)) {
+                        const cur = ghostStates.get(uid) ?? defaultState();
+                        ghostStates.set(uid, {
+                            ...cur,
+                            active: Boolean(det.connected),
+                            muted: Boolean(det.fakeMuted),
+                            deafened: Boolean(det.fakeDeafened),
+                            camera: Boolean(det.fakeCam),
+                            streaming: Boolean(det.fakeStreaming),
+                        });
+                    }
+                    notify();
+                }
+            }).catch(() => {});
+        };
+
         if (savedAccounts.length > 0) {
             setAccounts(savedAccounts);
+            syncStates(savedAccounts);
         } else {
             getAllSavedAccounts(false).then(v => {
                 setAccounts(v);
                 savedAccounts = v;
+                syncStates(v);
             });
         }
 
@@ -1598,17 +1684,21 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 await Promise.all(targets.map(async acc => {
                     let realToken = acc.token;
                     try { realToken = await decryptToken(acc.token); } catch {}
-                    ghostStates.set(acc.userId, { ...defaultState(), connecting: true });
+                    const cur = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, { ...cur, connecting: true });
                     notify();
                     try {
                         const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                        const updated = ghostStates.get(acc.userId) ?? defaultState();
                         ghostStates.set(acc.userId, {
-                            ...defaultState(),
+                            ...updated,
                             active: result.ok,
+                            connecting: false,
                             error: result.ok ? null : (result.error ?? t("Connection error"))
                         });
                     } catch (e) {
-                        ghostStates.set(acc.userId, { ...defaultState(), error: String(e) });
+                        const updated = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
                     }
                     notify();
                 }));
@@ -1617,17 +1707,21 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                     const acc = targets[i];
                     let realToken = acc.token;
                     try { realToken = await decryptToken(acc.token); } catch {}
-                    ghostStates.set(acc.userId, { ...defaultState(), connecting: true });
+                    const cur = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, { ...cur, connecting: true });
                     notify();
                     try {
                         const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                        const updated = ghostStates.get(acc.userId) ?? defaultState();
                         ghostStates.set(acc.userId, {
-                            ...defaultState(),
+                            ...updated,
                             active: result.ok,
+                            connecting: false,
                             error: result.ok ? null : (result.error ?? t("Connection error"))
                         });
                     } catch (e) {
-                        ghostStates.set(acc.userId, { ...defaultState(), error: String(e) });
+                        const updated = ghostStates.get(acc.userId) ?? defaultState();
+                        ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
                     }
                     notify();
                     if (i < targets.length - 1 && ghostJoinDelay > 0) {
@@ -1729,9 +1823,31 @@ export default definePlugin({
                 });
             }
         } catch {}
+
+        const onVoiceUpdate = (data: any) => {
+            if (!data) return;
+            if (data.userId && ghostStates.has(data.userId)) {
+                syncGhostStateFromDiscord(data.userId);
+            }
+            if (Array.isArray(data.voiceStates)) {
+                for (const s of data.voiceStates) {
+                    if (s?.userId && ghostStates.has(s.userId)) {
+                        syncGhostStateFromDiscord(s.userId);
+                    }
+                }
+            }
+        };
+        FluxDispatcher?.subscribe?.("VOICE_STATE_UPDATE", onVoiceUpdate);
+        FluxDispatcher?.subscribe?.("VOICE_STATE_UPDATES", onVoiceUpdate);
+        _voiceSyncUnsub = () => {
+            FluxDispatcher?.unsubscribe?.("VOICE_STATE_UPDATE", onVoiceUpdate);
+            FluxDispatcher?.unsubscribe?.("VOICE_STATE_UPDATES", onVoiceUpdate);
+        };
     },
 
     stop() {
+        _voiceSyncUnsub?.();
+        _voiceSyncUnsub = null;
         ghostDisableClean();
         stopFollowing();
     },
