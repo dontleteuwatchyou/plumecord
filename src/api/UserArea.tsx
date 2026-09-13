@@ -80,16 +80,75 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
     return (
         <>
             <style>{`
-                /* Allow the username and status text to shrink and truncate when the sidebar is small, 
-                   freeing up space for the extra plugins buttons without cutting them off */
+                /* ── Auto-adaptive UserArea layout ──
+                   Ensure all buttons (AntiMove, FakeVoice, Ghost, Mute, Deafen, Settings)
+                   ALWAYS stay strictly inside the panel container, regardless of width or resizing/deforming.
+                   Buttons keep their exact size and spacing without being cut off. */
+
+                /* 1. Container wrapping and fluid auto-height */
+                section[class*="panels_"] > div[class*="container_"],
+                div[class*="container_"]:has(> div[class*="buttons_"]),
+                div[class*="containerRtcOpened_"] {
+                    flex-wrap: wrap !important;
+                    height: auto !important;
+                    min-height: 52px !important;
+                    padding-top: 4px !important;
+                    padding-bottom: 4px !important;
+                    row-gap: 4px !important;
+                    box-sizing: border-box !important;
+                    overflow: visible !important;
+                }
+
+                /* Ensure section panels doesn't clip when container expands */
+                section[class*="panels_"] {
+                    height: auto !important;
+                    overflow: visible !important;
+                }
+
+                /* 2. Account popout wrapper and nametag shrinking */
+                section[class*="panels_"] div[class*="accountPopoutButtonWrapper_"] {
+                    min-width: 0 !important;
+                    flex: 1 1 auto !important;
+                    flex-shrink: 1 !important;
+                }
+
+                section[class*="panels_"] div[class*="nameTag_"],
                 div[class*="nameTag_"] {
                     min-width: 0 !important;
+                    flex-shrink: 1 !important;
                 }
+
+                section[class*="panels_"] div[class*="nameTag_"] *,
                 div[class*="nameTag_"] > * {
                     min-width: 0 !important;
                     overflow: hidden !important;
                     text-overflow: ellipsis !important;
                     white-space: nowrap !important;
+                }
+
+                /* 3. Buttons container wraps cleanly when space is tight */
+                section[class*="panels_"] div[class*="buttons_"],
+                div[class*="buttons_"]:has(> .vc-user-area-btns) {
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    flex: 0 0 auto !important;
+                    max-width: 100% !important;
+                    align-items: center !important;
+                    row-gap: 2px !important;
+                }
+
+                /* 4. Ensure audio button parents and individual buttons never shrink or change spacing */
+                section[class*="panels_"] div[class*="audioButtonParent_"] {
+                    display: flex !important;
+                    flex-shrink: 0 !important;
+                    white-space: nowrap !important;
+                }
+
+                section[class*="panels_"] div[class*="buttons_"] > button,
+                section[class*="panels_"] div[class*="buttons_"] > div,
+                .vc-user-area-btns > button,
+                .vc-user-area-btns > div {
+                    flex-shrink: 0 !important;
                 }
 
                 /* ── Nightcord UserArea Bottom-Left Buttons Hover Spring Animation ── */
