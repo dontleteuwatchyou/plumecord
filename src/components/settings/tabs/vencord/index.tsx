@@ -327,13 +327,6 @@ function EquicordSettings() {
                 restartRequired: false,
                 warning: { enabled: false },
             },
-            {
-                key: "betterUserArea",
-                title: t("Better User Area"),
-                description: t("Expands the user profile panel into two sleek rows: profile and badges on top, perfectly distributed action buttons below."),
-                restartRequired: false,
-                warning: { enabled: false },
-            },
         ];
 
     return (

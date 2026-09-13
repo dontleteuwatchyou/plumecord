@@ -85,7 +85,6 @@ export interface Settings {
     streamProof: boolean;
     enableInAppNotifications: boolean;
     hideNativeHeaderButtons: boolean;
-    betterUserArea: boolean;
     seeAllCustomProfile: boolean;
     syncOwnCustomProfile: boolean;
     syncDiscordLanguage: boolean;
@@ -151,7 +150,6 @@ const DefaultSettings: Settings = {
     streamProof: false,
     enableInAppNotifications: true,
     hideNativeHeaderButtons: true,
-    betterUserArea: false,
     seeAllCustomProfile: true,
     syncOwnCustomProfile: false,
     syncDiscordLanguage: false,
