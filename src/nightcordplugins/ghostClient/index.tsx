@@ -11,7 +11,7 @@ import { DataStore } from "@api/index";
 import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React, ReactDOM, Toasts, useState, useEffect, useRef, SettingsRouter, Slider } from "@webpack/common";
+import { React, ReactDOM, Toasts, useState, useEffect, useRef, SettingsRouter, Slider, Select } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { openTokenImporterModal } from "../tokenImporter";
 
@@ -669,77 +669,6 @@ function useStreamPoller(userId: string | null, active: boolean) {
     return [status, setStatus] as const;
 }
 
-// ─── Dropdown Component ──────────────────────────────────────────────────────
-function Dropdown({ icon, label, value, options, onChange }: {
-    icon: React.ReactNode;
-    label: string;
-    value: string;
-    options: Array<{ value: string; label: string; avatar?: string | null; userId?: string; }>;
-    onChange: (v: string) => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const [listStyle, setListStyle] = useState<React.CSSProperties>({});
-    const btnRef = useRef<HTMLButtonElement>(null);
-    const selected = options.find(o => o.value === value);
-
-    useEffect(() => {
-        const h = (e: MouseEvent) => {
-            const tgt = e.target as HTMLElement;
-            if (!tgt || !document.body.contains(tgt)) return;
-            if (!tgt.closest(".gc-dropdown-wrap") && !tgt.closest(".gc-dropdown-list")) setOpen(false);
-        };
-        if (open) {
-            const timer = setTimeout(() => document.addEventListener("mousedown", h), 10);
-            return () => { clearTimeout(timer); document.removeEventListener("mousedown", h); };
-        }
-    }, [open]);
-
-    function openDropdown(e: React.MouseEvent) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!btnRef.current) { setOpen(v => !v); return; }
-        const rect = btnRef.current.getBoundingClientRect();
-        const listH = Math.min(200, options.length * 40);
-        const spaceBelow = window.innerHeight - rect.bottom - 8;
-        const spaceAbove = rect.top - 8;
-        let top = (spaceBelow >= listH || spaceBelow >= spaceAbove) ? rect.bottom + 4 : rect.top - listH - 4;
-        top = Math.max(8, Math.min(top, window.innerHeight - listH - 8));
-        setListStyle({ top, left: rect.left, width: rect.width });
-        setOpen(v => !v);
-    }
-
-    return (
-        <div className="gc-dropdown-wrap">
-            <div className="gc-dropdown-label">{icon}<span>{label}</span></div>
-            <button ref={btnRef} className={`gc-dropdown-btn ${open ? "gc-dropdown-btn--open" : ""}`} onClick={openDropdown}>
-                <div className="gc-dropdown-selected">
-                    {selected?.avatar !== undefined && (selected.avatar
-                        ? <img src={avatarUrl(selected.userId!, selected.avatar)} className="gc-dropdown-avatar" alt="" />
-                        : <div className="gc-dropdown-avatar-placeholder">{selected.label[0]?.toUpperCase()}</div>)}
-                    <span className="gc-dropdown-selected-label">{selected?.label ?? "—"}</span>
-                </div>
-                <ChevronIcon />
-            </button>
-            {open && (
-                <div className="gc-dropdown-list" style={listStyle}>
-                    {options.map(opt => (
-                        <div
-                            key={opt.value}
-                            className={`gc-dropdown-item ${opt.value === value ? "gc-dropdown-item--selected" : ""}`}
-                            onMouseDown={e => { e.preventDefault(); onChange(opt.value); setOpen(false); }}
-                        >
-                            {opt.avatar !== undefined && (opt.avatar
-                                ? <img src={avatarUrl(opt.userId!, opt.avatar)} className="gc-dropdown-avatar" alt="" />
-                                : <div className="gc-dropdown-avatar-placeholder">{opt.label[0]?.toUpperCase()}</div>)}
-                            <span className="gc-dropdown-item-label">{opt.label}</span>
-                            {opt.value === value && <span className="gc-dropdown-check"><CheckIcon /></span>}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
 
 // ─── Contrôles rapides par compte ─────────────────────────────────────────────
 function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState }) {
@@ -813,7 +742,7 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
 // ─── Popover Principal ────────────────────────────────────────────────────────
 function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect: DOMRect | null; }) {
     const [accounts, setAccounts] = useState<GhostAccount[]>(savedAccounts);
-    const [selectedId, setSelectedId] = useState<string>("all");
+    const [selectedIds, setSelectedIds] = useState<string[]>(["all"]);
     const [autoFollow, setAutoFollowState] = useState(globalAutoFollow);
     const [micLabel, setMicLabel] = useState(ghostMicLabel);
     const [joinDelay, setJoinDelay] = useState(ghostJoinDelay);
@@ -871,8 +800,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             if (f) startFollowing();
         });
 
-        DataStore.get(DS_KEY_SELECTED).then((v: string | null) => {
-            if (v) setSelectedId(v);
+        DataStore.get(DS_KEY_SELECTED).then((v: any) => {
+            if (Array.isArray(v) && v.length > 0) {
+                setSelectedIds(v);
+            } else if (typeof v === "string" && v) {
+                setSelectedIds([v]);
+            }
         });
 
         DataStore.get(DS_KEY_JOIN_DELAY).then((v: number | null) => {
@@ -965,9 +898,196 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         }
     }
 
+    const myId = getMyId();
+    const validAccounts = accounts.filter(a => a.userId !== myId);
+    const isAll = selectedIds.includes("all") || (validAccounts.length > 0 && validAccounts.every(a => selectedIds.includes(a.userId)));
+
+    function handleAccountSelect(val: string) {
+        if (val !== "all" && val === myId) {
+            Toasts.show({ message: t("You cannot connect your own account as a ghost"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+            return;
+        }
+
+        let next: string[];
+        if (val === "all") {
+            if (isAll) {
+                next = [];
+            } else {
+                next = ["all"];
+            }
+        } else {
+            if (isAll) {
+                next = validAccounts.map(a => a.userId).filter(id => id !== val);
+            } else if (selectedIds.includes(val)) {
+                next = selectedIds.filter(id => id !== val && id !== "all");
+            } else {
+                next = [...selectedIds.filter(id => id !== "all"), val];
+                if (validAccounts.length > 0 && validAccounts.every(a => next.includes(a.userId))) {
+                    next = ["all"];
+                }
+            }
+        }
+
+        setSelectedIds(next);
+        DataStore.set(DS_KEY_SELECTED, next);
+    }
+
+    function isAccountSelected(val: string): boolean {
+        if (val === "all") return isAll;
+        return isAll || selectedIds.includes(val);
+    }
+
+    const renderAccountOptionValue = () => {
+        if (validAccounts.length === 0) {
+            return (
+                <span style={{ color: "var(--text-muted, #949ba4)" }}>
+                    {t("No accounts found")}
+                </span>
+            );
+        }
+
+        if (isAll) {
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{
+                        width: 20,
+                        height: 20,
+                        borderRadius: "50%",
+                        background: "var(--brand-500, #5865f2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#fff",
+                        flexShrink: 0
+                    }}>
+                        <GhostIcon width={12} height={12} />
+                    </div>
+                    <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500 }}>
+                        {t("All accounts")} ({validAccounts.length})
+                    </span>
+                </div>
+            );
+        }
+
+        const currentlySelected = validAccounts.filter(a => selectedIds.includes(a.userId));
+
+        if (currentlySelected.length === 1) {
+            const acc = currentlySelected[0];
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {acc.avatar ? (
+                        <img
+                            src={avatarUrl(acc.userId, acc.avatar)}
+                            style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                            alt=""
+                        />
+                    ) : (
+                        <div
+                            className="gc-dropdown-avatar-placeholder"
+                            style={{ width: 20, height: 20, fontSize: 10, flexShrink: 0 }}
+                        >
+                            {acc.username?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                    )}
+                    <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {acc.username}
+                    </span>
+                </div>
+            );
+        }
+
+        if (currentlySelected.length > 1) {
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                        {currentlySelected.slice(0, 3).map((a, idx) => (
+                            <div key={a.userId} style={{ marginLeft: idx > 0 ? -6 : 0, zIndex: 3 - idx }}>
+                                {a.avatar ? (
+                                    <img
+                                        src={avatarUrl(a.userId, a.avatar)}
+                                        style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", border: "1.5px solid var(--background-floating, #1e1f22)" }}
+                                        alt=""
+                                    />
+                                ) : (
+                                    <div
+                                        className="gc-dropdown-avatar-placeholder"
+                                        style={{ width: 20, height: 20, fontSize: 10, border: "1.5px solid var(--background-floating, #1e1f22)" }}
+                                    >
+                                        {a.username?.[0]?.toUpperCase() ?? "?"}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <span style={{ color: "var(--text-normal, #fff)", fontWeight: 500 }}>
+                        {currentlySelected.length} {t("accounts selected")}
+                    </span>
+                </div>
+            );
+        }
+
+        return (
+            <span style={{ color: "var(--text-muted, #949ba4)" }}>
+                {t("Select accounts...")}
+            </span>
+        );
+    };
+
+    const renderAccountOptionLabel = (opt: any) => {
+        if (opt.value === "all") {
+            return (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
+                    <div style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        background: "var(--brand-500, #5865f2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#fff",
+                        flexShrink: 0
+                    }}>
+                        <GhostIcon width={14} height={14} />
+                    </div>
+                    <span style={{ flex: 1, fontWeight: 600, color: "var(--text-normal, #fff)" }}>
+                        {opt.label}
+                    </span>
+                    {validAccounts.length > 0 && (
+                        <span style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", paddingRight: 4 }}>
+                            ({validAccounts.length})
+                        </span>
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
+                {opt.avatar ? (
+                    <img
+                        src={avatarUrl(opt.userId!, opt.avatar)}
+                        style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                        alt=""
+                    />
+                ) : (
+                    <div
+                        className="gc-dropdown-avatar-placeholder"
+                        style={{ width: 24, height: 24, fontSize: 11, flexShrink: 0 }}
+                    >
+                        {opt.label?.[0]?.toUpperCase() ?? "?"}
+                    </div>
+                )}
+                <span style={{ flex: 1, color: "var(--text-normal, #fff)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {opt.label}
+                </span>
+            </div>
+        );
+    };
+
     const accountOptions = [
-        { value: "all", label: t("All accounts"), avatar: undefined },
-        ...accounts.map(a => ({ value: a.userId, label: a.username, avatar: a.avatar, userId: a.userId }))
+        { value: "all", label: t("All accounts") },
+        ...validAccounts.map(a => ({ value: a.userId, label: a.username, avatar: a.avatar, userId: a.userId }))
     ];
     const micOptions = [
         { value: "default", label: t("Default microphone") },
@@ -1002,33 +1122,35 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     </div>
                 )}
 
-                {/* Dropdowns */}
-                <Dropdown
-                    icon={<UserIcon />}
-                    label={t("Active account")}
-                    value={selectedId}
-                    options={accountOptions}
-                    onChange={v => {
-                        if (v !== "all" && v === getMyId()) {
-                            Toasts.show({ message: t("You cannot connect your own account as a ghost"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
-                            return;
-                        }
-                        setSelectedId(v);
-                        DataStore.set(DS_KEY_SELECTED, v);
-                    }}
-                />
-                <Dropdown
-                    icon={<MicIcon />}
-                    label={t("Source microphone")}
-                    value={micLabel}
-                    options={micOptions}
-                    onChange={v => {
-                        setMicLabel(v);
-                        ghostMicLabel = v;
-                        DataStore.set(DS_KEY_MIC_DEVICE, v);
-                        Native.setMicDevice(v).catch(() => {});
-                    }}
-                />
+                {/* Account and Mic Selectors */}
+                <div className="gc-dropdown-wrap">
+                    <div className="gc-dropdown-label"><UserIcon /><span>{t("Active accounts")}</span></div>
+                    <Select
+                        options={accountOptions}
+                        isSelected={(val: string) => isAccountSelected(val)}
+                        select={(val: string) => handleAccountSelect(val)}
+                        serialize={(val: string) => val}
+                        placeholder={t("Select accounts...")}
+                        closeOnSelect={false}
+                        renderOptionLabel={(opt: any) => renderAccountOptionLabel(opt)}
+                        renderOptionValue={() => renderAccountOptionValue()}
+                    />
+                </div>
+                <div className="gc-dropdown-wrap">
+                    <div className="gc-dropdown-label"><MicIcon /><span>{t("Source microphone")}</span></div>
+                    <Select
+                        options={micOptions}
+                        isSelected={(v: string) => v === micLabel}
+                        select={(v: string) => {
+                            setMicLabel(v);
+                            ghostMicLabel = v;
+                            DataStore.set(DS_KEY_MIC_DEVICE, v);
+                            Native.setMicDevice(v).catch(() => {});
+                        }}
+                        serialize={(v: string) => v}
+                        closeOnSelect={true}
+                    />
+                </div>
 
                 <div className="gc-popover-divider" />
 
@@ -1462,15 +1584,26 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         }
 
         const storedAccounts = await getAllSavedAccounts(false);
-        const storedSelected = await DataStore.get(DS_KEY_SELECTED) as string | null ?? "all";
+        const storedSelected = await DataStore.get(DS_KEY_SELECTED) as any ?? "all";
         const myId = getMyId();
         const filteredAccounts = storedAccounts.filter(a => a.userId !== myId);
-        const targets = storedSelected === "all" ? filteredAccounts : filteredAccounts.filter(a => a.userId === storedSelected);
+
+        let selectedArray: string[] = [];
+        if (Array.isArray(storedSelected)) {
+            selectedArray = storedSelected;
+        } else if (typeof storedSelected === "string" && storedSelected) {
+            selectedArray = [storedSelected];
+        } else {
+            selectedArray = ["all"];
+        }
+
+        const isAll = selectedArray.includes("all");
+        const targets = isAll
+            ? filteredAccounts
+            : filteredAccounts.filter(a => selectedArray.includes(a.userId));
 
         if (targets.length === 0) {
-            if (storedSelected !== "all" && storedSelected === myId) {
-                Toasts.show({ message: t("You cannot connect your own account as a ghost"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
-            }
+            Toasts.show({ message: t("No accounts selected"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
             openPopover();
             return;
         }

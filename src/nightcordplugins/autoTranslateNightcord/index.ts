@@ -4723,6 +4723,11 @@ export const translations: TranslationMap = {
     "Log direct calls and voice calls for monitored users.": {"en":"Log direct calls and voice calls for monitored users.","fr":"Enregistrer les appels directs et vocaux pour les utilisateurs surveillés.","ar":"تسجيل المكالمات المباشرة والمكالمات الصوتية للمستخدمين المراقبين.","es":"Registrar llamadas directas y de voz para los usuarios monitoreados.","ru":"Записывать прямые и голосовые звонки для отслеживаемых пользователей.","zh":"记录受监控用户的私信通话和语音通话。"},
     "Call": {"en":"Call","fr":"Appel","ar":"مكالمة","es":"Llamada","ru":"Звонок","zh":"通话"},
     "Profile": {"en":"Profile","fr":"Profil","ar":"الملف الشخصي","es":"Perfil","ru":"Профиль","zh":"个人资料"},
+    "Active accounts": {"en":"Active accounts","fr":"Comptes actifs","ar":"الحسابات النشطة","es":"Cuentas activas","ru":"Активные аккаунты","zh":"活动帐户"},
+    "accounts selected": {"en":"accounts selected","fr":"comptes sélectionnés","ar":"حسابات محددة","es":"cuentas seleccionadas","ru":"аккаунтов выбрано","zh":"已选帐户"},
+    "Select accounts...": {"en":"Select accounts...","fr":"Sélectionner des comptes...","ar":"اختر الحسابات...","es":"Seleccionar cuentas...","ru":"Выберите аккаунты...","zh":"选择帐户..."},
+    "No accounts selected": {"en":"No accounts selected","fr":"Aucun compte sélectionné","ar":"لم يتم تحديد أي حسابات","es":"No hay cuentas seleccionadas","ru":"Аккаунты не выбраны","zh":"未选择帐户"},
+    "No accounts found": {"en":"No accounts found","fr":"Aucun compte trouvé","ar":"لم يتم العثور على حسابات","es":"No se encontraron cuentas","ru":"Аккаунты не найдены","zh":"未找到帐户"},
 };
 
 export default definePlugin({
