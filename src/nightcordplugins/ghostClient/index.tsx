@@ -61,6 +61,7 @@ const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
 
 let ghostMicLabel: string = "default";
 let ghostJoinDelay: number = 0;
+let isConnectingBatch = false;
 let ghostVolumeMultiplier: number = 1.0;
 let ghostVocalBoost: boolean = false;
 let _voiceSyncUnsub: (() => void) | null = null;
@@ -1644,6 +1645,8 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
     }, [showPopover]);
 
     async function handleLeftClick() {
+        if (isConnectingBatch) return;
+
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
             Toasts.show({ message: t("GhostClient companion server is not installed. Open GhostInstaller to install it."), type: Toasts.Type.FAILURE, id: Toasts.genId() });
@@ -1694,54 +1697,42 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 return;
             }
 
-            if (ghostJoinDelay === 0) {
-                await Promise.all(targets.map(async acc => {
-                    let realToken = acc.token;
-                    try { realToken = await decryptToken(acc.token); } catch {}
-                    const cur = ghostStates.get(acc.userId) ?? defaultState();
-                    ghostStates.set(acc.userId, { ...cur, connecting: true });
-                    notify();
-                    try {
-                        const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                        const updated = ghostStates.get(acc.userId) ?? defaultState();
-                        ghostStates.set(acc.userId, {
-                            ...updated,
-                            active: result.ok,
-                            connecting: false,
-                            error: result.ok ? null : (result.error ?? t("Connection error"))
-                        });
-                    } catch (e) {
-                        const updated = ghostStates.get(acc.userId) ?? defaultState();
-                        ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
-                    }
-                    notify();
-                }));
-            } else {
-                for (let i = 0; i < targets.length; i++) {
-                    const acc = targets[i];
-                    let realToken = acc.token;
-                    try { realToken = await decryptToken(acc.token); } catch {}
-                    const cur = ghostStates.get(acc.userId) ?? defaultState();
-                    ghostStates.set(acc.userId, { ...cur, connecting: true });
-                    notify();
-                    try {
-                        const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                        const updated = ghostStates.get(acc.userId) ?? defaultState();
-                        ghostStates.set(acc.userId, {
-                            ...updated,
-                            active: result.ok,
-                            connecting: false,
-                            error: result.ok ? null : (result.error ?? t("Connection error"))
-                        });
-                    } catch (e) {
-                        const updated = ghostStates.get(acc.userId) ?? defaultState();
-                        ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
-                    }
-                    notify();
-                    if (i < targets.length - 1 && ghostJoinDelay > 0) {
-                        await new Promise(r => setTimeout(r, ghostJoinDelay));
+            const connectSingleAccount = async (acc: GhostAccount) => {
+                let realToken = acc.token;
+                try { realToken = await decryptToken(acc.token); } catch {}
+                const cur = ghostStates.get(acc.userId) ?? defaultState();
+                ghostStates.set(acc.userId, { ...cur, connecting: true });
+                notify();
+                try {
+                    const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                    const updated = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, {
+                        ...updated,
+                        active: Boolean(result?.ok),
+                        connecting: false,
+                        error: result?.ok ? null : (result?.error ?? t("Connection error"))
+                    });
+                } catch (e) {
+                    const updated = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
+                }
+                notify();
+            };
+
+            isConnectingBatch = true;
+            try {
+                if (ghostJoinDelay === 0) {
+                    await Promise.all(targets.map(connectSingleAccount));
+                } else {
+                    for (let i = 0; i < targets.length; i++) {
+                        connectSingleAccount(targets[i]);
+                        if (i < targets.length - 1 && ghostJoinDelay > 0) {
+                            await new Promise(r => setTimeout(r, ghostJoinDelay));
+                        }
                     }
                 }
+            } finally {
+                isConnectingBatch = false;
             }
         }
     }
@@ -1802,7 +1793,7 @@ export default definePlugin({
         }
 
         const delay = await DataStore.get(DS_KEY_JOIN_DELAY);
-        if (delay != null) ghostJoinDelay = delay;
+        if (delay != null) ghostJoinDelay = Number(delay) || 0;
         else ghostJoinDelay = 0;
 
         const vb = await DataStore.get(DS_KEY_VOCAL_BOOST);
@@ -1860,6 +1851,7 @@ export default definePlugin({
     },
 
     stop() {
+        isConnectingBatch = false;
         _voiceSyncUnsub?.();
         _voiceSyncUnsub = null;
         ghostDisableClean();
