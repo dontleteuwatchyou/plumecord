@@ -1024,7 +1024,28 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const validAccounts = accounts.filter(a => a.userId !== myId);
     const isAll = selectedId === "all";
 
-    function handleAccountSelect(val: string) {
+    function extractOptionValue(raw: any): string {
+        if (!raw) return "all";
+        if (typeof raw === "string") return raw;
+        if (typeof raw === "number") return String(raw);
+        if (raw instanceof Set) {
+            const first = raw.values().next().value;
+            return extractOptionValue(first);
+        }
+        if (Array.isArray(raw)) {
+            return extractOptionValue(raw[0]);
+        }
+        if (typeof raw === "object") {
+            if ("value" in raw && raw.value !== undefined) return extractOptionValue(raw.value);
+            if ("id" in raw && raw.id !== undefined) return extractOptionValue(raw.id);
+            if ("key" in raw && raw.key !== undefined) return extractOptionValue(raw.key);
+            if ("userId" in raw && raw.userId !== undefined) return extractOptionValue(raw.userId);
+        }
+        return String(raw);
+    }
+
+    function handleAccountSelect(raw: any) {
+        const val = extractOptionValue(raw);
         if (val !== "all" && val === myId) {
             Toasts.show({ message: t("You cannot connect your own account as a ghost"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
             return;
@@ -1034,9 +1055,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         DataStore.set(DS_KEY_SELECTED, val);
     }
 
-    const renderAccountOptionValue = (selected?: any[]) => {
-        const option = selected?.[0];
-        const val = option?.value ?? selectedId;
+    const renderAccountOptionValue = (selected?: any) => {
+        let val = selectedId;
+        if (selected && !Array.isArray(selected)) {
+            const v = extractOptionValue(selected);
+            if (v) val = v;
+        }
 
         if (validAccounts.length === 0) {
             return (
@@ -1069,10 +1093,10 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             );
         }
 
-        const acc = validAccounts.find(a => a.userId === val);
-        const name = acc?.username ?? option?.label ?? val;
-        const avatar = acc?.avatar ?? option?.avatar;
-        const uid = acc?.userId ?? option?.userId ?? val;
+        const acc = validAccounts.find(a => String(a.userId) === String(val));
+        const name = acc?.username ?? val;
+        const avatar = acc?.avatar;
+        const uid = acc?.userId ?? val;
 
         return (
             <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
@@ -1099,9 +1123,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
     const renderAccountOptionLabel = (opt: any) => {
         if (!opt) return null;
-        if (opt.value === "all") {
+        const val = extractOptionValue(opt);
+
+        if (val === "all") {
             return (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0", pointerEvents: "none" }}>
                     <div style={{
                         width: 24,
                         height: 24,
@@ -1116,7 +1142,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         <GhostIcon width={14} height={14} />
                     </div>
                     <span style={{ flex: 1, fontWeight: 600, color: "var(--text-normal, #fff)" }}>
-                        {opt.label}
+                        {opt.label ?? t("All accounts")}
                     </span>
                     {validAccounts.length > 0 && (
                         <span style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", paddingRight: 4 }}>
@@ -1127,13 +1153,13 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             );
         }
 
-        const acc = validAccounts.find(a => a.userId === opt.value);
+        const acc = validAccounts.find(a => String(a.userId) === String(val));
         const avatar = acc?.avatar ?? opt.avatar;
-        const uid = acc?.userId ?? opt.userId ?? opt.value;
-        const name = acc?.username ?? opt.label ?? opt.value;
+        const uid = acc?.userId ?? opt.userId ?? val;
+        const name = acc?.username ?? opt.label ?? val;
 
         return (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0", pointerEvents: "none" }}>
                 {avatar ? (
                     <img
                         src={avatarUrl(uid, avatar)}
@@ -1156,13 +1182,27 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     };
 
     const accountOptions = [
-        { value: "all", label: t("All accounts") },
-        ...validAccounts.map(a => ({ value: a.userId, label: a.username, avatar: a.avatar, userId: a.userId }))
+        { key: "all", value: "all", label: t("All accounts") },
+        ...validAccounts.map(a => ({
+            key: String(a.userId),
+            value: String(a.userId),
+            label: a.username,
+            avatar: a.avatar,
+            userId: String(a.userId)
+        }))
     ];
     const micOptions = [
-        { value: "default", label: t("Default microphone") },
-        ...dshowDevices.map(d => ({ value: d, label: d }))
+        { key: "default", value: "default", label: t("Default microphone") },
+        ...dshowDevices.map(d => ({ key: d, value: d, label: d }))
     ];
+
+    const handleMicSelect = (raw: any) => {
+        const v = extractOptionValue(raw);
+        setMicLabel(v);
+        ghostMicLabel = v;
+        DataStore.set(DS_KEY_MIC_DEVICE, v);
+        Native.setMicDevice(v).catch(() => {});
+    };
 
     return (
         <div ref={popoverRef} className="gc-popover" style={style}>
@@ -1197,29 +1237,30 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     <div className="gc-dropdown-label"><UserIcon /><span>{t("Active accounts")}</span></div>
                     <Select
                         options={accountOptions}
-                        isSelected={(val: string) => val === selectedId}
-                        select={(val: string) => handleAccountSelect(val)}
-                        serialize={(val: string) => val}
+                        value={selectedId}
+                        isSelected={(item: any) => extractOptionValue(item) === selectedId}
+                        select={(val: any) => handleAccountSelect(val)}
+                        onSelectionChange={(val: any) => handleAccountSelect(val)}
+                        onChange={(val: any) => handleAccountSelect(val)}
+                        serialize={(val: any) => extractOptionValue(val)}
                         placeholder={t("Select account...")}
                         closeOnSelect={true}
                         maxVisibleItems={8}
                         popoutPosition="bottom"
                         renderOptionLabel={(opt: any) => renderAccountOptionLabel(opt)}
-                        renderOptionValue={(selected: any[]) => renderAccountOptionValue(selected)}
+                        renderOptionValue={() => renderAccountOptionValue()}
                     />
                 </div>
                 <div className="gc-dropdown-wrap">
                     <div className="gc-dropdown-label"><MicIcon /><span>{t("Source microphone")}</span></div>
                     <Select
                         options={micOptions}
-                        isSelected={(v: string) => v === micLabel}
-                        select={(v: string) => {
-                            setMicLabel(v);
-                            ghostMicLabel = v;
-                            DataStore.set(DS_KEY_MIC_DEVICE, v);
-                            Native.setMicDevice(v).catch(() => {});
-                        }}
-                        serialize={(v: string) => v}
+                        value={micLabel}
+                        isSelected={(item: any) => extractOptionValue(item) === micLabel}
+                        select={handleMicSelect}
+                        onSelectionChange={handleMicSelect}
+                        onChange={handleMicSelect}
+                        serialize={(v: any) => extractOptionValue(v)}
                         closeOnSelect={true}
                         maxVisibleItems={8}
                         popoutPosition="bottom"
@@ -1617,6 +1658,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         const handler = (e: MouseEvent) => {
             const tgt = e.target as HTMLElement;
             if (tgt.closest(".gc-popover")) return;
+            if (tgt.closest("[role='listbox']") || tgt.closest("[role='option']") || tgt.closest("[class*='popout']") || tgt.closest("[class*='layerContainer']")) return;
             if (btnRef.current?.contains(tgt)) return;
             setShowPopover(false);
         };
