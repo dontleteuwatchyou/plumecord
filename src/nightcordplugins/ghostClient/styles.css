@@ -6,7 +6,7 @@
 
 .gc-popover-portal {
     position: fixed;
-    z-index: 2147483647;
+    z-index: 995;
     pointer-events: none;
     isolation: isolate;
     transform: translateZ(0);

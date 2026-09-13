@@ -186,6 +186,21 @@ const Native = {
         if (n?.fakeCam) { try { await n.fakeCam(userIds, camera); return; } catch {} }
         await sfetch("/fake-cam", { userIds, camera });
     },
+    async startStream(userId: string, url: string): Promise<any> {
+        const n = getNative();
+        if (n?.startStream) { try { return await n.startStream(userId, url); } catch {} }
+        return await sfetch("/stream-start", { userId, url });
+    },
+    async stopStream(userId: string): Promise<any> {
+        const n = getNative();
+        if (n?.stopStream) { try { return await n.stopStream(userId); } catch {} }
+        return await sfetch("/stream-stop", { userId });
+    },
+    async getStreamStatus(userId: string): Promise<any> {
+        const n = getNative();
+        if (n?.getStreamStatus) { try { return await n.getStreamStatus(userId); } catch {} }
+        return await sfetch("/stream-status", { userId });
+    },
 };
 
 // ─── Icons (Strict Zero-Emoji, Minimalist SVG Primitives) ────────────────────
@@ -712,12 +727,8 @@ function useStreamPoller(userId: string | null, active: boolean) {
         }
         pollRef.current = setInterval(async () => {
             try {
-                const r = await fetch("http://127.0.0.1:47821/stream-status", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId }),
-                });
-                const d = await r.json();
+                const d = await Native.getStreamStatus(userId);
+                if (!d) return;
                 if (d.state === "resolving") setStatus(t("Resolving stream URL..."));
                 else if (d.state === "starting") setStatus(t("Starting stream..."));
                 else if (d.state === "active") { setStatus(t("Stream active")); if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
@@ -809,6 +820,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [micLabel, setMicLabel] = useState(ghostMicLabel);
     const [joinDelay, setJoinDelay] = useState(ghostJoinDelay);
     const [volumeMultiplier, setVolumeMultiplier] = useState(ghostVolumeMultiplier);
+    const [sliderKey, setSliderKey] = useState(0);
     const [dshowDevices, setDshowDevices] = useState<string[]>([]);
     const [streamingUserId, setStreamingUserId] = useState<string | null>(null);
     const [streamInput, setStreamInput] = useState("");
@@ -826,7 +838,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     }
 
     const style = React.useMemo<React.CSSProperties>(() => {
-        if (!anchorRect) return { position: "fixed", bottom: 60, left: 8, zIndex: 2147483647 };
+        if (!anchorRect) return { position: "fixed", bottom: 60, left: 8, zIndex: 995 };
         const PW = 380, margin = 10;
         let left = anchorRect.left;
         if (left + PW > window.innerWidth - margin) left = window.innerWidth - PW - margin;
@@ -839,7 +851,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             left,
             bottom,
             maxHeight,
-            zIndex: 2147483647
+            zIndex: 995
         };
     }, [anchorRect]);
 
@@ -963,15 +975,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         setStreamStatus(t("Sending stream request..."));
         setIsPolling(false);
         try {
-            const r = await fetch("http://127.0.0.1:47821/stream-start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, url: url.trim() }),
-                signal: AbortSignal.timeout(5000),
-            });
-            const d = await r.json();
-            if (!d.ok) {
-                setStreamStatus(`${t("Stream error: ")}${d.error ?? "unknown"}`);
+            const d = await Native.startStream(userId, url.trim());
+            if (!d?.ok) {
+                setStreamStatus(`${t("Stream error: ")}${d?.error ?? "unknown"}`);
                 setIsPolling(false);
             } else {
                 setStreamStatusDirect(null);
@@ -1025,7 +1031,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const renderAccountOptionValue = () => {
         if (validAccounts.length === 0) {
             return (
-                <span style={{ color: "var(--text-muted, #949ba4)" }}>
+                <span style={{ color: "var(--text-muted, #949ba4)", pointerEvents: "none" }}>
                     {t("No accounts found")}
                 </span>
             );
@@ -1033,7 +1039,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
         if (isAll) {
             return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
                     <div style={{
                         width: 20,
                         height: 20,
@@ -1059,7 +1065,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         if (currentlySelected.length === 1) {
             const acc = currentlySelected[0];
             return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
                     {acc.avatar ? (
                         <img
                             src={avatarUrl(acc.userId, acc.avatar)}
@@ -1083,7 +1089,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
         if (currentlySelected.length > 1) {
             return (
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "none" }}>
                     <div style={{ display: "flex", alignItems: "center" }}>
                         {currentlySelected.slice(0, 3).map((a, idx) => (
                             <div key={a.userId} style={{ marginLeft: idx > 0 ? -6 : 0, zIndex: 3 - idx }}>
@@ -1112,13 +1118,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         }
 
         return (
-            <span style={{ color: "var(--text-muted, #949ba4)" }}>
+            <span style={{ color: "var(--text-muted, #949ba4)", pointerEvents: "none" }}>
                 {t("Select accounts...")}
             </span>
         );
     };
 
     const renderAccountOptionLabel = (opt: any) => {
+        if (!opt) return null;
         if (opt.value === "all") {
             return (
                 <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
@@ -1147,11 +1154,16 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             );
         }
 
+        const acc = validAccounts.find(a => a.userId === opt.value);
+        const avatar = acc?.avatar ?? opt.avatar;
+        const uid = acc?.userId ?? opt.userId ?? opt.value;
+        const name = acc?.username ?? opt.label ?? opt.value;
+
         return (
             <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "2px 0" }}>
-                {opt.avatar ? (
+                {avatar ? (
                     <img
-                        src={avatarUrl(opt.userId!, opt.avatar)}
+                        src={avatarUrl(uid, avatar)}
                         style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
                         alt=""
                     />
@@ -1160,11 +1172,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         className="gc-dropdown-avatar-placeholder"
                         style={{ width: 24, height: 24, fontSize: 11, flexShrink: 0 }}
                     >
-                        {opt.label?.[0]?.toUpperCase() ?? "?"}
+                        {name?.[0]?.toUpperCase() ?? "?"}
                     </div>
                 )}
                 <span style={{ flex: 1, color: "var(--text-normal, #fff)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {opt.label}
+                    {name}
                 </span>
             </div>
         );
@@ -1217,6 +1229,8 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         serialize={(val: string) => val}
                         placeholder={t("Select accounts...")}
                         closeOnSelect={false}
+                        maxVisibleItems={8}
+                        popoutPosition="bottom"
                         renderOptionLabel={(opt: any) => renderAccountOptionLabel(opt)}
                         renderOptionValue={() => renderAccountOptionValue()}
                     />
@@ -1234,6 +1248,8 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         }}
                         serialize={(v: string) => v}
                         closeOnSelect={true}
+                        maxVisibleItems={8}
+                        popoutPosition="bottom"
                     />
                 </div>
 
@@ -1298,6 +1314,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     ghostVolumeMultiplier = 1.0;
                                     DataStore.set(DS_KEY_VOLUME, 1.0);
                                     Native.setVolume(1.0).catch(() => {});
+                                    setSliderKey(k => k + 1);
                                 }}
                             >
                                 {t("Reset")}
@@ -1307,6 +1324,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     {Slider ? (
                         <div style={{ padding: "4px 2px 8px" }}>
                             <Slider
+                                key={sliderKey}
                                 minValue={0}
                                 maxValue={500}
                                 initialValue={Math.round(volumeMultiplier * 100)}
@@ -1500,11 +1518,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                                 if (isStreaming) {
                                                     setIsPolling(false);
                                                     setStreamStatus(t("Stopping..."));
-                                                    await fetch("http://127.0.0.1:47821/stream-stop", {
-                                                        method: "POST",
-                                                        headers: { "Content-Type": "application/json" },
-                                                        body: JSON.stringify({ userId: acc.userId }),
-                                                    }).catch(() => {});
+                                                    await Native.stopStream(acc.userId).catch(() => {});
                                                     setStreamingUserId(null);
                                                     setStreamStatus(null);
                                                 } else {
