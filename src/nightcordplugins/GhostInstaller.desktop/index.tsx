@@ -10,7 +10,7 @@ import { showNotification } from "@api/Notifications";
 import { definePluginSettings, Settings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Heading } from "@components/Heading";
-import { DeleteIcon, GhostIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
+import { DeleteIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
 import { Paragraph } from "@components/Paragraph";
 import SettingsPlugin from "@plugins/_core/settings";
 import { classes, removeFromArray } from "@utils/misc";
@@ -55,14 +55,23 @@ function startGlobalPoller() {
 
 function GhostInstallerSidebarIcon(props: any) {
     return (
-        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24 }}>
-            <GhostIcon
-                {...props}
-                width={24}
-                height={24}
-                style={{ transform: "scale(1.25)", transformOrigin: "center", ...(props?.style || {}) }}
+        <svg
+            role="img"
+            viewBox="0 0 24 24"
+            width={24}
+            height={24}
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            {...props}
+            className={classes(props?.className, "vc-icon")}
+        >
+            <path
+                d="M12 2C7.58 2 4 5.58 4 10V19C4 20.66 5.34 22 7 22C8.66 22 10 20.66 10 19C10 20.66 11.34 22 13 22C14.66 22 16 20.66 16 19C16 20.66 17.34 22 19 22C20.66 22 22 20.66 22 19V10C22 5.58 18.42 2 14 2H10H12Z"
+                fill="currentColor"
             />
-        </span>
+            <circle cx="8.5" cy="10" r="1.5" fill="black" fillOpacity="0.6" />
+            <circle cx="15.5" cy="10" r="1.5" fill="black" fillOpacity="0.6" />
+        </svg>
     );
 }
 
@@ -155,7 +164,7 @@ function InstallationStatus({ info }: { info: InstallInfo | ActionInfo; }) {
     if (info.installStatus === "installed") {
         return (
             <div className={classes("vc-ghost-installer-install-status", "vc-ghost-installer-install-status-installed")}>
-                <GhostIcon width={36} height={36} />
+                <GhostInstallerSidebarIcon width={36} height={36} />
                 <div>
                     <Heading tag="h3">{t("GhostClient is installed")}</Heading>
                     <Paragraph>{t("GhostClient is active and ghost-server is ready for")} {info.clientLabel}.</Paragraph>
