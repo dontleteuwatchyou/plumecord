@@ -454,7 +454,7 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                             )}
                         </Tooltip>
                     )}
-                    {plugin.name === "GhostClient" && (
+                    {(plugin.name === "GhostClient" || plugin.name === "EnhancedRandomVoice") && (
                         <Tooltip text={tPlugin("This plugin was edited by official contributor (credule).")}>
                             {({ onMouseEnter, onMouseLeave }) => (
                                 <button
