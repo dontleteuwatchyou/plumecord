@@ -52,11 +52,13 @@ const CSS_TEXT = `
 .vc-random-voice-record {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    margin-bottom: 12px;
 }
 .vc-random-voice-keybind {
-    color: var(--text-muted);
-    font-size: 14px;
+    color: var(--header-primary, #ffffff) !important;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 20px;
 }
 .vc-random-voice-recording {
     display: flex;
@@ -756,10 +758,14 @@ function RandomVoiceKeybindSettings() {
 
     return (
         <div className={cl("record")}>
-            <div className={cl("keybind")}>{t("Keybind")}</div>
-            <Switch checked={keybindEnabled} onChange={value => { setStoreValue("keybindEnabled", value); }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span className={cl("keybind")} style={{ color: "var(--header-primary, #ffffff)", fontSize: 16, fontWeight: 600 }}>
+                    {t("Keybind")}
+                </span>
+                <Switch checked={keybindEnabled} onChange={value => { setStoreValue("keybindEnabled", value); }} />
+            </div>
             {keybindEnabled && (
-                <div className={cl("recording")}>
+                <div className={cl("recording")} style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
                     <Button type="button" variant="secondary" onClick={() => setIsListening(true)} disabled={isListening}>
                         {isListening ? t("Recording...") : formatKeybind(keybind)}
                     </Button>
@@ -1353,7 +1359,7 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 
 export default definePlugin({
     name: "EnhancedRandomVoice",
-    description: "Rejoint aléatoirement un autre salon vocal actif sur le même serveur (anti-kick, anti-voc-vide, anti-tous-mute, cycle sans répétition).",
+    description: "Randomly joins another active voice channel on the same server (anti-kick, anti-empty-vc, anti-all-muted, cycle without repeat).",
     tags: ["Fun", "Voice"],
     authors: [
         {
