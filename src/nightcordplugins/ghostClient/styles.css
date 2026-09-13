@@ -513,36 +513,6 @@
     color: #fbbf24;
 }
 
-.gc-btn-video {
-    width: 25px;
-    height: 25px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-    color: rgba(255, 255, 255, 0.7);
-    padding: 0;
-    cursor: pointer;
-    transition: all 0.12s;
-    flex-shrink: 0;
-}
-.gc-btn-video:hover {
-    background: rgba(255, 255, 255, 0.16);
-    color: #fff;
-    transform: translateY(-1px);
-}
-.gc-btn-video--on {
-    background: rgba(237, 66, 69, 0.25);
-    border-color: rgba(237, 66, 69, 0.5);
-    color: #ed4245;
-}
-.gc-btn-video--active {
-    background: rgba(88, 101, 242, 0.25);
-    border-color: rgba(88, 101, 242, 0.5);
-    color: #5865f2;
-}
 
 .gc-btn-del {
     width: 25px;

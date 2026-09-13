@@ -430,17 +430,6 @@ export async function fakeCam(_: any, userIds: string[], camera: boolean): Promi
     try { await api("/fake-cam", { userIds, camera }); } catch { }
 }
 
-export async function startStream(_: any, userId: string, url: string): Promise<any> {
-    try { return await api("/stream-start", { userId, url }); } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
-}
-
-export async function stopStream(_: any, userId: string): Promise<any> {
-    try { return await api("/stream-stop", { userId }); } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
-}
-
-export async function getStreamStatus(_: any, userId: string): Promise<any> {
-    try { return await api("/stream-status", { userId }); } catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
-}
 
 export async function init(_: any): Promise<void> {
     const script = findServerScript();

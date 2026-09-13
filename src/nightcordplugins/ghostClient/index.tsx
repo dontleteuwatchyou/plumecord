@@ -185,22 +185,6 @@ const Native = {
     async setCameraAll(userIds: string[], camera: boolean): Promise<void> {
         const n = getNative();
         if (n?.fakeCam) { try { await n.fakeCam(userIds, camera); return; } catch {} }
-        await sfetch("/fake-cam", { userIds, camera });
-    },
-    async startStream(userId: string, url: string): Promise<any> {
-        const n = getNative();
-        if (n?.startStream) { try { return await n.startStream(userId, url); } catch {} }
-        return await sfetch("/stream-start", { userId, url });
-    },
-    async stopStream(userId: string): Promise<any> {
-        const n = getNative();
-        if (n?.stopStream) { try { return await n.stopStream(userId); } catch {} }
-        return await sfetch("/stream-stop", { userId });
-    },
-    async getStreamStatus(userId: string): Promise<any> {
-        const n = getNative();
-        if (n?.getStreamStatus) { try { return await n.getStreamStatus(userId); } catch {} }
-        return await sfetch("/stream-status", { userId });
     },
 };
 
@@ -239,7 +223,6 @@ function UndeafenIcon() {
 function UserIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm-7 8a7 7 0 0 1 14 0H5Z" /></svg>; }
 function CheckIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17Z" /></svg>; }
 function TrashIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2h4a1 1 0 1 1 0 2h-1.1l-.9 12.1A3 3 0 0 1 17 23H7a3 3 0 0 1-3-2.9L3.1 8H2a1 1 0 0 1 0-2h4V4Zm2 0v2h6V4H9ZM5.1 8l.9 11.9a1 1 0 0 0 1 .1h6a1 1 0 0 0 1-.1L14.9 8H5.1Z" /></svg>; }
-function VideoIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.3l3.4 2.5A1 1 0 0 0 23 14V9a1 1 0 0 0-1.6-.8L18 10.7V6a2 2 0 0 0-2-2H4Z" /></svg>; }
 function CamIcon() {
     return (
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -716,49 +699,6 @@ function stopFollowing() {
     voiceUnsub = null;
 }
 
-// ─── Stream Poller ───────────────────────────────────────────────────────────
-function useStreamPoller(
-    userId: string | null,
-    active: boolean,
-    onFinish?: (state: "active" | "error" | "idle") => void
-) {
-    const [status, setStatus] = useState<string | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    useEffect(() => {
-        if (!active || !userId) {
-            if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-            return;
-        }
-        pollRef.current = setInterval(async () => {
-            try {
-                const d = await Native.getStreamStatus(userId);
-                if (!d) return;
-                if (d.state === "resolving") {
-                    setStatus(t("Resolving stream URL..."));
-                } else if (d.state === "starting") {
-                    setStatus(t("Starting stream..."));
-                } else if (d.state === "active") {
-                    setStatus(t("Stream active"));
-                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-                    onFinish?.("active");
-                } else if (d.state === "error") {
-                    setStatus(`${t("Stream error: ")}${d.error ?? "unknown"}`);
-                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-                    onFinish?.("error");
-                } else if (d.state === "idle") {
-                    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-                    onFinish?.("idle");
-                }
-            } catch {}
-        }, 800);
-        return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
-    }, [userId, active]);
-
-    return [status, setStatus] as const;
-}
-
-
 // ─── Contrôles rapides par compte ─────────────────────────────────────────────
 function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState }) {
     const [busy, setBusy] = useState<string | null>(null);
@@ -838,33 +778,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [volumeMultiplier, setVolumeMultiplier] = useState(ghostVolumeMultiplier);
     const [sliderKey, setSliderKey] = useState(0);
     const [dshowDevices, setDshowDevices] = useState<string[]>([]);
-    const [streamInputUserId, setStreamInputUserId] = useState<string | null>(null);
-    const [streamInput, setStreamInput] = useState("");
-    const [isPolling, setIsPolling] = useState(false);
     const [serverInstalled, setServerInstalled] = useState<boolean>(true);
-    const [streamStatus, setStreamStatusDirect] = useState<string | null>(null);
-    const [pollStatus, setPollStatus] = useStreamPoller(
-        streamInputUserId,
-        isPolling,
-        useCallback((state: "active" | "error" | "idle") => {
-            setIsPolling(false);
-            if (state === "active" && streamInputUserId) {
-                const cur = ghostStates.get(streamInputUserId);
-                if (cur) {
-                    ghostStates.set(streamInputUserId, { ...cur, streaming: true });
-                    notify();
-                }
-            }
-        }, [streamInputUserId])
-    );
     const states = useGhostStates();
     const popoverRef = useRef<HTMLDivElement>(null);
-
-    const displayStatus = isPolling ? pollStatus : streamStatus;
-    function setStreamStatus(msg: string | null) {
-        setStreamStatusDirect(msg);
-        if (!msg) setPollStatus(null);
-    }
 
     const style = React.useMemo<React.CSSProperties>(() => {
         if (!anchorRect) return { position: "fixed", bottom: 60, left: 8, zIndex: 995 };
@@ -998,25 +914,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             }
         } else {
             SettingsRouter.openUserSettings("equicord_plugins_panel");
-        }
-    }
-
-    async function startStream(url: string, userId: string) {
-        if (!url.trim()) return;
-        setStreamStatus(t("Sending stream request..."));
-        setIsPolling(false);
-        try {
-            const d = await Native.startStream(userId, url.trim());
-            if (!d?.ok) {
-                setStreamStatus(`${t("Stream error: ")}${d?.error ?? "unknown"}`);
-                setIsPolling(false);
-            } else {
-                setStreamStatusDirect(null);
-                setIsPolling(true);
-            }
-        } catch (e: any) {
-            setStreamStatus(`${t("Companion server unreachable: ")}${e?.message ?? String(e)}`);
-            setIsPolling(false);
         }
     }
 
@@ -1496,7 +1393,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         const isActive = state.active;
                         const isConnecting = state.connecting;
                         const isStreaming = Boolean(state.streaming);
-                        const isStreamInputOpen = streamInputUserId === acc.userId;
                         return (
                             <div key={acc.userId} className={`gc-account ${isActive ? "gc-account--on" : ""}`}>
                                 <div className="gc-account-left">
@@ -1523,37 +1419,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 </div>
                                 <div className="gc-account-actions">
                                     <TokenControls acc={acc} state={state} />
-                                    {isActive && (
-                                        <button
-                                            className={`gc-btn-video ${isStreaming ? "gc-btn-video--on" : isStreamInputOpen ? "gc-btn-video--active" : ""}`}
-                                            title={isStreaming ? t("Stop stream") : t("Start video stream")}
-                                            onClick={async () => {
-                                                if (isStreaming) {
-                                                    setIsPolling(false);
-                                                    setStreamStatus(t("Stopping..."));
-                                                    await Native.stopStream(acc.userId).catch(() => {});
-                                                    const cur = ghostStates.get(acc.userId);
-                                                    if (cur) {
-                                                        ghostStates.set(acc.userId, { ...cur, streaming: false });
-                                                        notify();
-                                                    }
-                                                    setStreamInputUserId(null);
-                                                    setStreamStatus(null);
-                                                } else {
-                                                    if (streamInputUserId === acc.userId) {
-                                                        setStreamInputUserId(null);
-                                                    } else {
-                                                        setStreamInputUserId(acc.userId);
-                                                        setStreamInput("");
-                                                        setStreamStatus(null);
-                                                        setIsPolling(false);
-                                                    }
-                                                }
-                                            }}
-                                        >
-                                            <VideoIcon />
-                                        </button>
-                                    )}
                                     <button
                                         className="gc-btn-del"
                                         title={t("Delete account")}
@@ -1569,49 +1434,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         );
                     })}
                 </div>
-
-                {/* Video stream modal inline input */}
-                {streamInputUserId && (() => {
-                    const acc = accounts.find(a => a.userId === streamInputUserId);
-                    if (!acc) return null;
-                    return (
-                        <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", gap: 6 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-                                {t("Stream for")} {acc.username}
-                            </div>
-                            <div style={{ display: "flex", gap: 6 }}>
-                                <input
-                                    className="gc-input"
-                                    style={{ flex: 1, fontSize: 12, fontFamily: "monospace" }}
-                                    placeholder={t("YouTube, MP4, M3U8...")}
-                                    value={streamInput}
-                                    onChange={e => setStreamInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === "Enter" && streamInput.trim() && !isPolling) startStream(streamInput, streamInputUserId); }}
-                                />
-                                <button
-                                    className="gc-add-btn"
-                                    style={{ padding: "4px 10px", fontSize: 12, whiteSpace: "nowrap" }}
-                                    disabled={!streamInput.trim() || isPolling}
-                                    onClick={() => startStream(streamInput, streamInputUserId)}
-                                >
-                                    {isPolling ? t("Starting...") : t("Start")}
-                                </button>
-                                <button
-                                    style={{ background: "rgba(237,66,69,.1)", border: "none", borderRadius: 6, color: "#ed4245", padding: "4px 8px", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}
-                                    onClick={() => { setStreamInputUserId(null); setIsPolling(false); setStreamStatus(null); }}
-                                >
-                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-                                </button>
-                            </div>
-                            {displayStatus && (
-                                <div style={{ fontSize: 11, color: displayStatus.toLowerCase().includes("error") || displayStatus.toLowerCase().includes("unreachable") ? "#ed4245" : displayStatus.toLowerCase().includes("active") ? "#3ba55c" : "rgba(255,255,255,0.6)" }}>
-                                    {displayStatus}
-                                </div>
-                            )}
-                            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.28)" }}>{t("YouTube, MP4 direct, M3U8, Twitch (requires yt-dlp)")}</div>
-                        </div>
-                    );
-                })()}
 
                 {/* TokenImporter helper notice text (replaces manual token textarea) */}
                 <div className="gc-popover-divider" />
