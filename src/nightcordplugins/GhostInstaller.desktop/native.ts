@@ -262,16 +262,20 @@ async function getInstallInfo(customRoot?: string): Promise<InstallInfo> {
     let installStatus: "installed" | "notInstalled" | "needsReinstall" = "notInstalled";
     let repatchWarning = "";
 
-    if (isServerPresent) {
+    if (savedState.installed === false) {
+        installStatus = "notInstalled";
+    } else if (isServerPresent) {
         installStatus = "installed";
     } else if (savedState.installed && !isServerPresent) {
         installStatus = "needsReinstall";
         repatchWarning = "ghost-server companion files are missing or incomplete. Click Patch to reinstall.";
     }
 
-    const ghostServerStatus = isServerRunning
-        ? "Running (Port 47821)"
-        : (isServerPresent ? "Installed (Stopped)" : "Not Installed");
+    const ghostServerStatus = (savedState.installed === false)
+        ? "Not Installed"
+        : (isServerRunning
+            ? "Running (Port 47821)"
+            : (isServerPresent ? "Installed (Stopped)" : "Not Installed"));
 
     return {
         platformKey: process.platform,
@@ -693,6 +697,22 @@ function patchGhostServerFiles(serverDir: string) {
 }
 
 async function killRunningServer(): Promise<void> {
+    // 1. Tell ghost accounts to leave voice channels
+    try {
+        await new Promise<void>(resolve => {
+            const req = http.request({
+                hostname: "127.0.0.1",
+                port: PORT,
+                path: "/leave-all",
+                method: "POST"
+            }, () => resolve());
+            req.setTimeout(800, () => { req.destroy(); resolve(); });
+            req.on("error", () => resolve());
+            req.end();
+        });
+    } catch {}
+
+    // 2. Send graceful shutdown request
     try {
         await new Promise<void>(resolve => {
             const req = http.request({
@@ -707,14 +727,43 @@ async function killRunningServer(): Promise<void> {
         });
     } catch {}
 
-    if (process.platform === "win32") {
-        await new Promise<void>(res => {
-            const child = spawn("taskkill", ["/F", "/IM", "node.exe", "/FI", "WINDOWTITLE eq ghost-server"], { windowsHide: true, stdio: "ignore" });
-            child.on("error", () => res());
-            child.on("close", () => res());
-        });
-    }
     await new Promise(r => setTimeout(r, 400));
+
+    // 3. On Windows, locate the exact PID listening on PORT 47821 and terminate it
+    if (process.platform === "win32") {
+        try {
+            await new Promise<void>(res => {
+                exec(`netstat -ano | findstr :${PORT}`, (err, stdout) => {
+                    if (!err && stdout) {
+                        for (const line of stdout.split("\n")) {
+                            const parts = line.trim().split(/\s+/);
+                            const pid = parts[parts.length - 1];
+                            if (pid && !isNaN(Number(pid)) && Number(pid) > 0 && Number(pid) !== process.pid) {
+                                try {
+                                    spawn("taskkill", ["/F", "/PID", pid], { windowsHide: true });
+                                } catch {}
+                            }
+                        }
+                    }
+                    res();
+                });
+            });
+        } catch {}
+
+        try {
+            await new Promise<void>(res => {
+                const child = spawn("taskkill", ["/F", "/IM", "node.exe", "/FI", "WINDOWTITLE eq ghost-server"], { windowsHide: true, stdio: "ignore" });
+                child.on("error", () => res());
+                child.on("close", () => res());
+            });
+        } catch {}
+    }
+
+    // 4. Poll until the port is closed or server stops responding
+    for (let i = 0; i < 15; i++) {
+        if (!await pingServer()) break;
+        await new Promise(r => setTimeout(r, 200));
+    }
 }
 
 export async function patchGhostClient(options: { githubUrl?: string; discordRoot?: string; } = {}): Promise<NativeResult<ActionInfo>> {

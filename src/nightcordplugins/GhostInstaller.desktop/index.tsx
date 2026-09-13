@@ -7,7 +7,8 @@
 import "./style.css";
 
 import { showNotification } from "@api/Notifications";
-import { definePluginSettings, Settings } from "@api/Settings";
+import { isPluginEnabled, plugins, startPlugin, stopPlugin } from "@api/PluginManager";
+import { definePluginSettings, flushSettings, Settings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Heading } from "@components/Heading";
 import { DeleteIcon, WarningIcon, NoEntrySignIcon } from "@components/Icons";
@@ -312,14 +313,41 @@ function GhostClientInstallerPanel() {
 
         if (!result) return;
         setInfo(result);
-        // Auto-enable the ghostClient plugin so it activates immediately after patching
-        try { (Settings.plugins["ghostClient"] ??= {} as any).enabled = true; } catch {}
+        // Auto-enable the GhostClient plugin so it activates immediately after patching
+        try {
+            (Settings.plugins["GhostClient"] ??= {} as any).enabled = true;
+            (Settings.plugins["ghostClient"] ??= {} as any).enabled = true;
+            flushSettings();
+            if (plugins["GhostClient"] && !isPluginEnabled("GhostClient")) {
+                startPlugin(plugins["GhostClient"]);
+            }
+        } catch {}
         setStatus(t("GhostClient installed successfully."));
         showToast(t("GhostClient installed successfully."), Toasts.Type.SUCCESS);
     }
 
     async function runDelete(): Promise<void> {
         startGlobalPoller();
+
+        // 1. Terminate all active ghost sessions first so accounts leave voice immediately
+        try {
+            await fetch("http://127.0.0.1:47821/leave-all", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+                signal: AbortSignal.timeout(1500)
+            }).catch(() => {});
+        } catch {}
+
+        // 2. Turn off GhostClient plugin in settings and stop it
+        try {
+            (Settings.plugins["GhostClient"] ??= {} as any).enabled = false;
+            (Settings.plugins["ghostClient"] ??= {} as any).enabled = false;
+            flushSettings();
+            if (plugins["GhostClient"] && isPluginEnabled("GhostClient")) {
+                stopPlugin(plugins["GhostClient"]);
+            }
+        } catch {}
 
         const result = await runNative<ActionInfo>(() => Native.revertGhostClient({
             discordRoot: root

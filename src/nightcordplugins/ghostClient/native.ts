@@ -23,8 +23,28 @@ let serverProc: childProcess.ChildProcess | null = null;
 let serverReady = false;
 let startPromise: Promise<boolean> | null = null;
 
+// ── Vérifier si l'utilisateur a désinstallé le serveur via GhostInstaller ────
+function isInstallerMarkedUninstalled(): boolean {
+    try {
+        let userData = "";
+        try { userData = app.getPath("userData"); } catch {}
+        if (userData) {
+            const stateFile = path.join(userData, "GhostClientInstaller", "ghost-installer-state.json");
+            if (fs.existsSync(stateFile)) {
+                const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+                if (state.installed === false) return true;
+            }
+        }
+    } catch {}
+    return false;
+}
+
 // ── Trouver ghost-server/server.js ────────────────────────────────────────────
 function findServerScript(): string | null {
+    if (isInstallerMarkedUninstalled()) {
+        return null;
+    }
+
     const execDir = path.dirname(process.execPath);
     const resPath = process.resourcesPath;
     let userData = "";
@@ -147,6 +167,10 @@ function syncServerScriptIfOutdated(): void {
 }
 
 async function ensureServer(): Promise<boolean> {
+    if (isInstallerMarkedUninstalled()) {
+        console.warn("[GhostNative] GhostClient companion server is uninstalled.");
+        return false;
+    }
     if (serverReady && serverProc && await ping()) return true;
     if (startPromise) return startPromise;
 
