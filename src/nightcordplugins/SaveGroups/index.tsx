@@ -20,6 +20,7 @@ import {
     MessageStore,
     PrivateChannelSortStore,
     React,
+    RestAPI,
     SelectedChannelStore,
     showToast,
     Toasts,
@@ -30,6 +31,7 @@ import { t } from "../autoTranslateNightcord";
 
 const DATA_STORE_SAVED_KEY = "Nightcord_SaveGroups_SavedEntries";
 const DATA_STORE_KNOWN_KEY = "Nightcord_SaveGroups_KnownActiveEntries";
+const LS_SAVED_SUMMARY_KEY = "Nightcord_SaveGroups_Summary";
 
 const createChannelRecordFromServer = findByCodeLazy(".GUILD_TEXT]", "fromServer)");
 const createMessageRecord = findByCodeLazy(".createFromServer(", ".isBlockedForMessage", "messageReference:");
@@ -54,6 +56,11 @@ const settings = definePluginSettings({
         description: "Save loaded message history when a group is archived.",
         default: true
     },
+    saveOnManualLeave: {
+        type: OptionType.BOOLEAN,
+        description: "Save group and message history when you leave a group voluntarily.",
+        default: true
+    },
     notifyOnSave: {
         type: OptionType.BOOLEAN,
         description: "Show a desktop notification when you are removed from a group and it gets saved.",
@@ -72,7 +79,6 @@ const savedGroups = new Map<string, SavedGroupData>();
 const hydratedChannels = new Map<string, any>();
 const knownActiveGroups = new Map<string, SavedGroupData>();
 const manuallyDeletedGroupIds = new Set<string>();
-const manuallyLeftGroupIds = new Set<string>();
 
 let unpatchFluxDispatch: (() => void) | null = null;
 let unpatchChannelStore: (() => void) | null = null;
@@ -86,6 +92,7 @@ let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
 let unpatchSendMessage: (() => void) | null = null;
 let unpatchHTTPGet: (() => void) | null = null;
+let unpatchRestGet: (() => void) | null = null;
 let unpatchCloseMethods: (() => void)[] = [];
 
 let channelStoreListener: (() => void) | null = null;
@@ -100,6 +107,19 @@ function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
+function sanitizeForStorage(data: any): any {
+    try {
+        return JSON.parse(JSON.stringify(data, (_, value) => {
+            if (typeof value === "function" || typeof value === "symbol") return undefined;
+            if (typeof value === "bigint") return value.toString();
+            if (value instanceof Node) return undefined;
+            return value;
+        }));
+    } catch {
+        return data;
+    }
+}
+
 function hydrateChannelRecord(data: SavedGroupData): any {
     let baseRecord: any = null;
 
@@ -108,7 +128,18 @@ function hydrateChannelRecord(data: SavedGroupData): any {
             const rawRecipients = Array.isArray(data.rawRecipients) && data.rawRecipients.length > 0
                 ? data.rawRecipients
                 : Array.isArray(data.recipients)
-                    ? data.recipients.map(r => typeof r === "object" ? r : { id: String(r), username: "User", discriminator: "0000" })
+                    ? data.recipients.map(r => {
+                        if (typeof r === "object" && r !== null) return r;
+                        const uid = String(r);
+                        const user = UserStore.getUser(uid);
+                        return {
+                            id: uid,
+                            username: user?.username || "User",
+                            discriminator: user?.discriminator || "0000",
+                            avatar: user?.avatar || null,
+                            global_name: user?.globalName || user?.global_name || user?.username || "User"
+                        };
+                    })
                     : [];
 
             baseRecord = createChannelRecordFromServer({
@@ -147,7 +178,7 @@ function hydrateChannelRecord(data: SavedGroupData): any {
 
     baseRecord.isArchivedGroup = true;
 
-    // Wrap in a defensive Proxy so that any unknown Discord Channel method returns safe defaults without throwing
+    // Wrap in a defensive Proxy so that any Discord Channel method returns safe defaults without throwing
     return new Proxy(baseRecord, {
         get(target, prop, receiver) {
             if (prop in target) {
@@ -199,38 +230,48 @@ function getChannelMessagesSnapshot(channelId: string): any[] {
         return rawList.map(msg => {
             if (!msg || typeof msg !== "object") return null;
             return {
-                id: msg.id,
-                channel_id: channelId,
-                content: msg.content || "",
+                id: String(msg.id),
+                channel_id: String(channelId),
+                content: typeof msg.content === "string" ? msg.content : "",
                 author: msg.author ? {
-                    id: msg.author.id,
-                    username: msg.author.username,
-                    discriminator: msg.author.discriminator,
-                    avatar: msg.author.avatar,
-                    global_name: msg.author.globalName || msg.author.global_name,
-                    bot: msg.author.bot || false
+                    id: String(msg.author.id),
+                    username: msg.author.username || "User",
+                    discriminator: msg.author.discriminator || "0000",
+                    avatar: msg.author.avatar || null,
+                    global_name: msg.author.globalName || msg.author.global_name || msg.author.username,
+                    bot: Boolean(msg.author.bot)
                 } : undefined,
                 timestamp: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
                 edited_timestamp: msg.editedTimestamp ? new Date(msg.editedTimestamp).toISOString() : null,
                 tts: Boolean(msg.tts),
                 mention_everyone: Boolean(msg.mentionEveryone || msg.mention_everyone),
-                mentions: Array.isArray(msg.mentions) ? msg.mentions : [],
+                mentions: Array.isArray(msg.mentions) ? msg.mentions.map((m: any) => ({
+                    id: String(m.id || m),
+                    username: m.username || "User",
+                    discriminator: m.discriminator || "0000",
+                    avatar: m.avatar || null,
+                    global_name: m.globalName || m.global_name || m.username
+                })) : [],
                 mention_roles: Array.isArray(msg.mentionRoles || msg.mention_roles) ? (msg.mentionRoles || msg.mention_roles) : [],
                 attachments: Array.isArray(msg.attachments) ? msg.attachments.map((a: any) => ({
-                    id: a.id,
-                    filename: a.filename,
-                    size: a.size,
-                    url: a.url,
-                    proxy_url: a.proxy_url || a.url,
+                    id: String(a.id),
+                    filename: a.filename || "file",
+                    size: a.size || 0,
+                    url: a.url || a.proxy_url || "",
+                    proxy_url: a.proxy_url || a.url || "",
                     width: a.width,
                     height: a.height,
                     content_type: a.content_type
                 })) : [],
-                embeds: Array.isArray(msg.embeds) ? msg.embeds : [],
-                reactions: Array.isArray(msg.reactions) ? msg.reactions : [],
+                embeds: Array.isArray(msg.embeds) ? sanitizeForStorage(msg.embeds) : [],
+                reactions: Array.isArray(msg.reactions) ? msg.reactions.map((r: any) => ({
+                    count: r.count || 1,
+                    emoji: r.emoji ? { id: r.emoji.id, name: r.emoji.name, animated: Boolean(r.emoji.animated) } : { name: "" },
+                    me: Boolean(r.me)
+                })) : [],
                 pinned: Boolean(msg.pinned),
-                type: msg.type ?? 0,
-                flags: msg.flags ?? 0
+                type: Number(msg.type ?? 0),
+                flags: Number(msg.flags ?? 0)
             };
         }).filter(Boolean);
     } catch {
@@ -274,7 +315,8 @@ function debouncedPersistKnownGroups() {
     _persistKnownTimer = setTimeout(async () => {
         _persistKnownTimer = undefined;
         try {
-            await DataStore.set(DATA_STORE_KNOWN_KEY, Array.from(knownActiveGroups.values()));
+            const clean = sanitizeForStorage(Array.from(knownActiveGroups.values()));
+            await DataStore.set(DATA_STORE_KNOWN_KEY, clean);
         } catch {}
     }, 2000);
 }
@@ -328,7 +370,21 @@ function updateKnownActiveGroups() {
 
 async function persistSavedGroups() {
     try {
-        await DataStore.set(DATA_STORE_SAVED_KEY, Array.from(savedGroups.values()));
+        const clean = sanitizeForStorage(Array.from(savedGroups.values()));
+        await DataStore.set(DATA_STORE_SAVED_KEY, clean);
+
+        // Fallback summary in localStorage for channel existence
+        try {
+            const summary = Array.from(savedGroups.values()).map(g => ({
+                id: g.id,
+                name: g.name,
+                icon: g.icon,
+                type: 3,
+                kickedAt: g.kickedAt,
+                msgCount: g.savedMessages?.length || 0
+            }));
+            localStorage.setItem(LS_SAVED_SUMMARY_KEY, JSON.stringify(summary));
+        } catch {}
     } catch (e) {
         console.error("[SaveGroups] Failed to save groups to DataStore:", e);
     }
@@ -336,7 +392,18 @@ async function persistSavedGroups() {
 
 async function archiveGroup(channelId: string, channelHint?: any) {
     if (manuallyDeletedGroupIds.has(channelId)) return;
-    if (savedGroups.has(channelId)) return;
+    if (savedGroups.has(channelId)) {
+        // If already saved, refresh messages if current store has more
+        const existingSaved = savedGroups.get(channelId)!;
+        if (settings.store.saveMessages) {
+            const currentMsgs = getChannelMessagesSnapshot(channelId);
+            if (currentMsgs.length > (existingSaved.savedMessages?.length || 0)) {
+                existingSaved.savedMessages = currentMsgs;
+                await persistSavedGroups();
+            }
+        }
+        return;
+    }
 
     let snapshot = knownActiveGroups.get(channelId);
     const existing = ChannelStore.getChannel(channelId) || channelHint;
@@ -390,7 +457,6 @@ async function archiveGroup(channelId: string, channelHint?: any) {
         });
     }
 
-
     const currentSelected = SelectedChannelStore?.getChannelId?.();
     if (currentSelected === channelId) {
         renderArchivedNoticeBanner(channelId);
@@ -404,7 +470,6 @@ async function unarchiveGroup(channelId: string, realChannel?: any) {
     savedGroups.delete(channelId);
     hydratedChannels.delete(channelId);
     manuallyDeletedGroupIds.delete(channelId);
-    manuallyLeftGroupIds.delete(channelId);
 
     const liveCh = realChannel || (ChannelStore as any)?._origGetChannel?.(channelId) || ChannelStore.getChannel(channelId);
     if (liveCh && !liveCh.isArchivedGroup) {
@@ -460,7 +525,7 @@ function checkOfflineKicks() {
 
         if (knownActiveGroups.size === 0) return;
         for (const [id, knownData] of Array.from(knownActiveGroups.entries())) {
-            if (!currentIds.has(id) && !savedGroups.has(id) && !manuallyDeletedGroupIds.has(id) && !manuallyLeftGroupIds.has(id)) {
+            if (!currentIds.has(id) && !savedGroups.has(id) && !manuallyDeletedGroupIds.has(id)) {
                 archiveGroup(id, knownData);
             }
         }
@@ -507,7 +572,6 @@ function updateStyles() {
 }
 
 function scanAndTagSidebarElements() {
-    // Purge any lingering red badges from earlier plugin runs
     document.querySelectorAll(".vc-savegroups-badge").forEach(el => el.remove());
 
     if (savedGroups.size === 0) return;
@@ -536,7 +600,7 @@ function startSidebarObserver() {
         }, 150);
     });
 
-    const target = document.querySelector('nav[aria-label]') ||
+    const target = document.querySelector("nav[aria-label]") ||
         document.querySelector('[class*="privateChannels_"]') ||
         document.querySelector('[class*="sidebar_"]') ||
         document.body;
@@ -551,31 +615,38 @@ function restoreSavedMessages(channelId: string) {
 
     try {
         const rawMsgs = saved.savedMessages || [];
+        if (rawMsgs.length === 0) return;
+
         const descMsgs = getDescendingMessages(rawMsgs);
         const messageRecords = descMsgs.map((msg: any) => {
             if (typeof createMessageRecord === "function") {
                 try {
-                    return createMessageRecord(msg);
+                    const record = createMessageRecord(msg);
+                    if (record) return record;
                 } catch {}
             }
             return msg;
         });
 
-        setTimeout(() => {
-            try {
-                FluxDispatcher.dispatch({
-                    type: "LOAD_MESSAGES_SUCCESS",
-                    channelId,
-                    messages: messageRecords,
-                    isBefore: false,
-                    isAfter: false,
-                    hasMoreBefore: false,
-                    hasMoreAfter: false,
-                    limit: 100,
-                });
-            } catch {}
-        }, 0);
-    } catch {}
+        // 1. Dispatch LOAD_MESSAGES_SUCCESS to populate Discord's MessageStore
+        FluxDispatcher.dispatch({
+            type: "LOAD_MESSAGES_SUCCESS",
+            channelId,
+            messages: messageRecords,
+            isBefore: false,
+            isAfter: false,
+            hasMoreBefore: false,
+            hasMoreAfter: false,
+            limit: Math.max(100, messageRecords.length),
+        });
+
+        // 2. Also emit change on MessageStore so React immediately re-renders
+        try {
+            (MessageStore as any)?.emitChange?.();
+        } catch {}
+    } catch (err) {
+        console.error("[SaveGroups] Failed to restore saved messages:", err);
+    }
 }
 
 function removeArchivedNoticeBanner() {
@@ -730,7 +801,12 @@ function handleChannelSelect(channelId: string) {
 
     if (savedGroups.has(channelId)) {
         renderArchivedNoticeBanner(channelId);
+        // Dispatch multiple times to guarantee MessageStore has messages ready as React mounts
         restoreSavedMessages(channelId);
+        setTimeout(() => restoreSavedMessages(channelId), 50);
+        setTimeout(() => restoreSavedMessages(channelId), 150);
+        setTimeout(() => restoreSavedMessages(channelId), 350);
+        setTimeout(() => restoreSavedMessages(channelId), 700);
     } else {
         removeArchivedNoticeBanner();
     }
@@ -793,6 +869,8 @@ function patchFluxDispatcher() {
                     }
                 }
             }
+            updateKnownActiveGroups();
+            checkOfflineKicks();
         }
 
         if (type === "MESSAGE_CREATE") {
@@ -807,12 +885,6 @@ function patchFluxDispatcher() {
             if (channelId) {
                 if (manuallyDeletedGroupIds.has(channelId)) {
                     manuallyDeletedGroupIds.delete(channelId);
-                    return origDispatch.apply(this, arguments as any);
-                }
-
-                if (manuallyLeftGroupIds.has(channelId)) {
-                    manuallyLeftGroupIds.delete(channelId);
-                    knownActiveGroups.delete(channelId);
                     return origDispatch.apply(this, arguments as any);
                 }
 
@@ -833,7 +905,7 @@ function patchFluxDispatcher() {
             const removedUserId = action.user?.id || action.userId;
             const channelId = action.channelId || action.channel?.id;
             if (currentUserId && removedUserId === currentUserId && channelId) {
-                if (!manuallyLeftGroupIds.has(channelId) && !manuallyDeletedGroupIds.has(channelId)) {
+                if (!manuallyDeletedGroupIds.has(channelId)) {
                     archiveGroup(channelId, action.channel);
                     return Promise.resolve();
                 }
@@ -851,20 +923,23 @@ function patchFluxDispatcher() {
 
 function patchManualLeaveTracking() {
     try {
-        const actionMods = [
-            findByProps("closePrivateChannel"),
-            findByProps("openPrivateChannel")
-        ].filter(Boolean) as any[];
+        const patchCloseMod = (mod: any) => {
+            if (!mod) return;
+            const closeMethods = ["closePrivateChannel", "closeChannel", "deletePrivateChannel", "closeDM"];
 
-        const closeMethods = ["closePrivateChannel", "closeChannel", "deletePrivateChannel", "closeDM"];
-
-        for (const mod of actionMods) {
             for (const method of closeMethods) {
                 if (typeof mod[method] === "function" && !mod[method].__nightcordSaveGroupsTracked) {
                     const origFn = mod[method];
                     mod[method] = function(channelId: string, ...args: any[]) {
                         if (channelId) {
-                            manuallyLeftGroupIds.add(channelId);
+                            const ch = ChannelStore.getChannel(channelId);
+                            const isGroup = ch?.type === 3 || ch?.isGroupDM?.() || knownActiveGroups.has(channelId);
+
+                            if (isGroup && !savedGroups.has(channelId) && settings.store.saveOnManualLeave) {
+                                // User is voluntarily leaving a group DM:
+                                // Archive immediately while messages are still in memory!
+                                archiveGroup(channelId, ch);
+                            }
                         }
                         return origFn.apply(this, [channelId, ...args]);
                     };
@@ -875,7 +950,15 @@ function patchManualLeaveTracking() {
                     });
                 }
             }
-        }
+        };
+
+        const actionMods = [
+            findByProps("closePrivateChannel"),
+            findByProps("openPrivateChannel")
+        ].filter(Boolean) as any[];
+
+        actionMods.forEach(patchCloseMod);
+        waitFor(["closePrivateChannel"], patchCloseMod);
     } catch {}
 }
 
@@ -887,11 +970,9 @@ function patchChannelStore() {
     channelStoreAny._origGetChannel = origGetChannel;
     ChannelStore.getChannel = function(id: string) {
         if (id && savedGroups.has(id)) {
-            // Only check for re-add if we have a confirmed userId
             const currentUserId = UserStore.getCurrentUser()?.id;
             if (currentUserId) {
                 const realCh = origGetChannel.apply(this, arguments as any);
-                // Real (non-archived) channel exists and user is a confirmed recipient → unarchive
                 if (realCh && !realCh.isArchivedGroup) {
                     const recipients: any[] = realCh.recipients ?? [];
                     const isRecipient = recipients.some(
@@ -903,8 +984,12 @@ function patchChannelStore() {
                     }
                 }
             }
-            // Kicked or no userId yet → return the preserved hydrated archived channel
-            return hydratedChannels.get(id);
+            let hydrated = hydratedChannels.get(id);
+            if (!hydrated && savedGroups.has(id)) {
+                hydrated = hydrateChannelRecord(savedGroups.get(id)!);
+                hydratedChannels.set(id, hydrated);
+            }
+            return hydrated;
         }
         return origGetChannel.apply(this, arguments as any);
     };
@@ -948,7 +1033,11 @@ function patchChannelStore() {
             const res = { ...chs };
             for (const [id] of savedGroups) {
                 if (!res[id]) {
-                    const hydrated = hydratedChannels.get(id);
+                    let hydrated = hydratedChannels.get(id);
+                    if (!hydrated) {
+                        hydrated = hydrateChannelRecord(savedGroups.get(id)!);
+                        hydratedChannels.set(id, hydrated);
+                    }
                     if (hydrated) res[id] = hydrated;
                 }
             }
@@ -965,7 +1054,11 @@ function patchChannelStore() {
             const res = { ...chs };
             for (const [id] of savedGroups) {
                 if (!res[id]) {
-                    const hydrated = hydratedChannels.get(id);
+                    let hydrated = hydratedChannels.get(id);
+                    if (!hydrated) {
+                        hydrated = hydrateChannelRecord(savedGroups.get(id)!);
+                        hydratedChannels.set(id, hydrated);
+                    }
                     if (hydrated) res[id] = hydrated;
                 }
             }
@@ -983,7 +1076,11 @@ function patchChannelStore() {
             const existingIds = new Set(result.map((c: any) => c?.id).filter(Boolean));
             for (const [id] of savedGroups) {
                 if (!existingIds.has(id)) {
-                    const hydrated = hydratedChannels.get(id);
+                    let hydrated = hydratedChannels.get(id);
+                    if (!hydrated) {
+                        hydrated = hydrateChannelRecord(savedGroups.get(id)!);
+                        hydratedChannels.set(id, hydrated);
+                    }
                     if (hydrated) result.push(hydrated);
                 }
             }
@@ -1014,7 +1111,11 @@ function patchPrivateChannelSortStore(sortStore: any) {
                     if (!existingIds.has(id)) {
                         existingIds.add(id);
                         if (isObjectArray) {
-                            const hydrated = hydratedChannels.get(id);
+                            let hydrated = hydratedChannels.get(id);
+                            if (!hydrated) {
+                                hydrated = hydrateChannelRecord(savedGroups.get(id)!);
+                                hydratedChannels.set(id, hydrated);
+                            }
                             if (hydrated) result.push(hydrated);
                         } else {
                             result.push(id);
@@ -1039,81 +1140,160 @@ function patchPrivateChannelSortStore(sortStore: any) {
 }
 
 function patchNetworkLayer() {
-    try {
-        const MessageActions = (findByProps("fetchMessages", "sendMessage") || findByProps("sendMessage")) as any;
-        if (MessageActions) {
-            if (typeof MessageActions.fetchMessages === "function") {
-                const origFetch = MessageActions.fetchMessages;
-                MessageActions.fetchMessages = function(opts: any) {
-                    const channelId = opts?.channelId;
-                    if (channelId && savedGroups.has(channelId)) {
-                        restoreSavedMessages(channelId);
-                        return Promise.resolve({ ok: true });
+    // 1. Intercept RestAPI.get (imported directly from @webpack/common)
+    if (RestAPI && typeof RestAPI.get === "function" && !(RestAPI.get as any).__nightcordSaveGroupsPatched) {
+        const origRestGet = RestAPI.get;
+        RestAPI.get = function(opts: any) {
+            const url = typeof opts === "string" ? opts : opts?.url;
+            if (url && typeof url === "string") {
+                for (const [id, savedGroup] of savedGroups) {
+                    if (url.includes(`/channels/${id}/messages`)) {
+                        const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
+                        return Promise.resolve({
+                            ok: true,
+                            status: 200,
+                            body: descMsgs,
+                            text: JSON.stringify(descMsgs),
+                            headers: {}
+                        });
                     }
-                    return origFetch.apply(this, arguments as any);
-                };
-                unpatchFetchMessages = () => { MessageActions.fetchMessages = origFetch; };
-            }
-
-            if (typeof MessageActions.sendMessage === "function") {
-                const origSend = MessageActions.sendMessage;
-                MessageActions.sendMessage = function(channelId: string, ...args: any[]) {
-                    if (channelId && savedGroups.has(channelId)) {
-                        showToast(t("Cannot send messages in an archived group."), Toasts.Type.FAILURE);
-                        return Promise.resolve({ ok: false });
-                    }
-                    return origSend.apply(this, [channelId, ...args]);
-                };
-                unpatchSendMessage = () => { MessageActions.sendMessage = origSend; };
-            }
-        }
-
-        const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
-        if (HTTP?.get) {
-            const origGet = HTTP.get;
-            HTTP.get = function(opts: any) {
-                const url = typeof opts === "string" ? opts : opts?.url;
-                if (url && typeof url === "string") {
-                    for (const [id, savedGroup] of savedGroups) {
-                        if (url.includes(`/channels/${id}/messages`)) {
-                            const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
-                            return Promise.resolve({
-                                ok: true,
-                                status: 200,
-                                body: descMsgs,
-                                text: JSON.stringify(descMsgs),
-                                headers: {}
-                            });
-                        }
-                        if (url.includes(`/channels/${id}`)) {
-                            const groupObj = {
-                                id: savedGroup.id,
-                                type: 3,
-                                name: savedGroup.name || "Group DM",
-                                icon: savedGroup.icon || null,
-                                owner_id: savedGroup.ownerId,
-                                ownerId: savedGroup.ownerId,
-                                topic: savedGroup.topic || "",
-                                recipients: savedGroup.recipients || [],
-                                rawRecipients: savedGroup.rawRecipients || [],
-                                last_message_id: savedGroup.lastMessageId || null,
-                                lastMessageId: savedGroup.lastMessageId || null,
-                            };
-                            return Promise.resolve({
-                                ok: true,
-                                status: 200,
-                                body: groupObj,
-                                text: JSON.stringify(groupObj),
-                                headers: {}
-                            });
-                        }
+                    if (url.includes(`/channels/${id}`)) {
+                        const groupObj = {
+                            id: savedGroup.id,
+                            type: 3,
+                            name: savedGroup.name || "Group DM",
+                            icon: savedGroup.icon || null,
+                            owner_id: savedGroup.ownerId,
+                            ownerId: savedGroup.ownerId,
+                            topic: savedGroup.topic || "",
+                            recipients: savedGroup.recipients || [],
+                            rawRecipients: savedGroup.rawRecipients || [],
+                            last_message_id: savedGroup.lastMessageId || null,
+                            lastMessageId: savedGroup.lastMessageId || null,
+                        };
+                        return Promise.resolve({
+                            ok: true,
+                            status: 200,
+                            body: groupObj,
+                            text: JSON.stringify(groupObj),
+                            headers: {}
+                        });
                     }
                 }
-                return origGet.apply(this, arguments as any);
+            }
+            return origRestGet.apply(this, arguments as any);
+        };
+        (RestAPI.get as any).__nightcordSaveGroupsPatched = true;
+        unpatchRestGet = () => {
+            RestAPI.get = origRestGet;
+            delete (RestAPI.get as any).__nightcordSaveGroupsPatched;
+        };
+    }
+
+    // 2. Intercept MessageActions.fetchMessages & sendMessage with waitFor for lazy-loaded webpack chunks
+    const patchMessageActions = (MessageActions: any) => {
+        if (!MessageActions || (MessageActions as any).__nightcordSaveGroupsPatched) return;
+        (MessageActions as any).__nightcordSaveGroupsPatched = true;
+
+        if (typeof MessageActions.fetchMessages === "function") {
+            const origFetch = MessageActions.fetchMessages;
+            MessageActions.fetchMessages = function(opts: any) {
+                const channelId = typeof opts === "string" ? opts : opts?.channelId;
+                if (channelId && savedGroups.has(channelId)) {
+                    restoreSavedMessages(channelId);
+                    return Promise.resolve({ ok: true });
+                }
+                return origFetch.apply(this, arguments as any);
             };
-            unpatchHTTPGet = () => { HTTP.get = origGet; };
+            unpatchFetchMessages = () => {
+                MessageActions.fetchMessages = origFetch;
+                delete (MessageActions as any).__nightcordSaveGroupsPatched;
+            };
         }
-    } catch {}
+
+        if (typeof MessageActions.sendMessage === "function") {
+            const origSend = MessageActions.sendMessage;
+            MessageActions.sendMessage = function(channelId: string, ...args: any[]) {
+                if (channelId && savedGroups.has(channelId)) {
+                    showToast(t("Cannot send messages in an archived group."), Toasts.Type.FAILURE);
+                    return Promise.resolve({ ok: false });
+                }
+                return origSend.apply(this, [channelId, ...args]);
+            };
+            unpatchSendMessage = () => {
+                MessageActions.sendMessage = origSend;
+                delete (MessageActions as any).__nightcordSaveGroupsPatched;
+            };
+        }
+    };
+
+    const existingMessageActions = (findByProps("fetchMessages", "sendMessage") || findByProps("sendMessage")) as any;
+    if (existingMessageActions) {
+        patchMessageActions(existingMessageActions);
+    }
+    waitFor(["fetchMessages"], (mod: any) => {
+        patchMessageActions(mod);
+    });
+
+    // 3. Intercept HTTP.get with waitFor
+    const patchHTTP = (HTTP: any) => {
+        if (!HTTP || !HTTP.get || (HTTP.get as any).__nightcordSaveGroupsPatched) return;
+        (HTTP.get as any).__nightcordSaveGroupsPatched = true;
+
+        const origGet = HTTP.get;
+        HTTP.get = function(opts: any) {
+            const url = typeof opts === "string" ? opts : opts?.url;
+            if (url && typeof url === "string") {
+                for (const [id, savedGroup] of savedGroups) {
+                    if (url.includes(`/channels/${id}/messages`)) {
+                        const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
+                        return Promise.resolve({
+                            ok: true,
+                            status: 200,
+                            body: descMsgs,
+                            text: JSON.stringify(descMsgs),
+                            headers: {}
+                        });
+                    }
+                    if (url.includes(`/channels/${id}`)) {
+                        const groupObj = {
+                            id: savedGroup.id,
+                            type: 3,
+                            name: savedGroup.name || "Group DM",
+                            icon: savedGroup.icon || null,
+                            owner_id: savedGroup.ownerId,
+                            ownerId: savedGroup.ownerId,
+                            topic: savedGroup.topic || "",
+                            recipients: savedGroup.recipients || [],
+                            rawRecipients: savedGroup.rawRecipients || [],
+                            last_message_id: savedGroup.lastMessageId || null,
+                            lastMessageId: savedGroup.lastMessageId || null,
+                        };
+                        return Promise.resolve({
+                            ok: true,
+                            status: 200,
+                            body: groupObj,
+                            text: JSON.stringify(groupObj),
+                            headers: {}
+                        });
+                    }
+                }
+            }
+            return origGet.apply(this, arguments as any);
+        };
+        unpatchHTTPGet = () => {
+            HTTP.get = origGet;
+            delete (HTTP.get as any).__nightcordSaveGroupsPatched;
+        };
+    };
+
+    const existingHTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
+    if (existingHTTP) {
+        patchHTTP(existingHTTP);
+    }
+    waitFor(["get", "post"], (mod: any) => {
+        patchHTTP(mod);
+    });
 }
 
 const ContextMenuPatch: NavContextMenuPatchCallback = (children, ctx: { channel?: any; } = {}) => {
@@ -1194,7 +1374,24 @@ export default definePlugin({
             checkOfflineKicks();
         },
         CHANNEL_SELECT(event: { channelId: string; }) {
-            handleChannelSelect(event?.channelId);
+            const cid = event?.channelId;
+            handleChannelSelect(cid);
+
+            // Continuously update active group message snapshot while user views it
+            if (cid && knownActiveGroups.has(cid)) {
+                setTimeout(() => {
+                    if (SelectedChannelStore.getChannelId() === cid) {
+                        const msgs = getChannelMessagesSnapshot(cid);
+                        if (msgs.length > 0) {
+                            const grp = knownActiveGroups.get(cid);
+                            if (grp && msgs.length >= (grp.savedMessages?.length || 0)) {
+                                grp.savedMessages = msgs;
+                                debouncedPersistKnownGroups();
+                            }
+                        }
+                    }
+                }, 1200);
+            }
         },
         MESSAGE_CREATE(event: { channelId: string; message: any; }) {
             const channelId = event?.channelId;
@@ -1226,6 +1423,31 @@ export default definePlugin({
             }
         } catch (e) {
             console.error("[SaveGroups] Failed to load saved groups from DataStore:", e);
+        }
+
+        // Check fallback summary if savedGroups was empty
+        if (savedGroups.size === 0) {
+            try {
+                const rawSummary = localStorage.getItem(LS_SAVED_SUMMARY_KEY);
+                if (rawSummary) {
+                    const parsed = JSON.parse(rawSummary);
+                    if (Array.isArray(parsed)) {
+                        for (const item of parsed) {
+                            if (item?.id && !savedGroups.has(item.id)) {
+                                savedGroups.set(item.id, {
+                                    id: item.id,
+                                    name: item.name || "Group DM",
+                                    icon: item.icon,
+                                    type: 3,
+                                    kickedAt: item.kickedAt || 0,
+                                    savedMessages: []
+                                });
+                                hydratedChannels.set(item.id, hydrateChannelRecord(savedGroups.get(item.id)!));
+                            }
+                        }
+                    }
+                }
+            } catch {}
         }
 
         try {
@@ -1270,6 +1492,9 @@ export default definePlugin({
         if (currentChannelId && savedGroups.has(currentChannelId)) {
             renderArchivedNoticeBanner(currentChannelId);
             restoreSavedMessages(currentChannelId);
+            setTimeout(() => restoreSavedMessages(currentChannelId), 100);
+            setTimeout(() => restoreSavedMessages(currentChannelId), 300);
+            setTimeout(() => restoreSavedMessages(currentChannelId), 800);
         }
 
         try { (ChannelStore as any)?.emitChange?.(); } catch {}
@@ -1336,6 +1561,10 @@ export default definePlugin({
             unpatchHTTPGet();
             unpatchHTTPGet = null;
         }
+        if (unpatchRestGet) {
+            unpatchRestGet();
+            unpatchRestGet = null;
+        }
 
         if (sidebarObserver) {
             sidebarObserver.disconnect();
@@ -1367,4 +1596,3 @@ export default definePlugin({
         try { sortStore?.emitChange?.(); } catch {}
     }
 });
-
