@@ -1546,8 +1546,15 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             if (btnRef.current?.contains(tgt)) return;
             setShowPopover(false);
         };
-        const timer = setTimeout(() => document.addEventListener("mousedown", handler), 50);
-        return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
+        const timer = setTimeout(() => {
+            document.addEventListener("mousedown", handler);
+            document.addEventListener("contextmenu", handler);
+        }, 150);
+        return () => {
+            clearTimeout(timer);
+            document.removeEventListener("mousedown", handler);
+            document.removeEventListener("contextmenu", handler);
+        };
     }, [showPopover]);
 
     async function handleLeftClick(e?: any) {
@@ -1693,14 +1700,6 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         openPopover();
     };
 
-    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (e.button === 2) {
-            e.preventDefault();
-            e.stopPropagation();
-            openPopover();
-        }
-    };
-
     return (
         <div ref={btnRef} style={{ position: "relative" }} onContextMenu={handleContextMenu}>
             <UserAreaButton
@@ -1709,8 +1708,6 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 plated={nameplate != null}
                 redGlow={false}
                 onClick={handleClick}
-                onContextMenu={handleContextMenu}
-                onMouseDown={handleMouseDown}
             />
             {showPopover && (ReactDOM as any).createPortal(
                 <GhostPopover onClose={() => setShowPopover(false)} anchorRect={anchorRect} />,

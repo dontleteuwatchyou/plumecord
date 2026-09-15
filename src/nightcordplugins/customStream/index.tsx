@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import "./styles.css";
+
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
@@ -1136,23 +1138,49 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
     const nextIndex = images.length > 1 && slideshowOn && !randomOn ? (pendingIndex + 1) % images.length : -1;
 
     return (
-        <ModalRoot {...rootProps} size={ModalSize.LARGE}>
-            <ModalHeader separator={false}>
+        <ModalRoot {...rootProps} size={ModalSize.LARGE} className="nc-custom-stream-modal theme-dark">
+            <ModalHeader separator={false} className="nc-custom-stream-header">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <StreamIcon size={22} color="var(--header-primary)" />
-                        <Text variant="heading-lg/bold" style={{ color: "var(--header-primary)" }}>
-                            {t("Stream Preview")}
-                        </Text>
-                        <Text variant="text-xs/normal" style={{ color: "var(--text-muted)", marginLeft: "4px" }}>
-                            {profiles.get(currentProfileId)?.name || "Default"} • {images.length} / {MAX_IMAGES_PER_PROFILE} {t("images")}
-                        </Text>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            backgroundColor: "rgba(88, 101, 242, 0.15)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0
+                        }}>
+                            <StreamIcon size={22} color="#5865f2" />
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <h2 className="nc-custom-stream-title">
+                                    {t("Stream Preview")}
+                                </h2>
+                                <span style={{
+                                    backgroundColor: "rgba(88, 101, 242, 0.15)",
+                                    color: "#5865f2",
+                                    border: "1px solid rgba(88, 101, 242, 0.3)",
+                                    borderRadius: "4px",
+                                    padding: "1px 7px",
+                                    fontSize: "11px",
+                                    fontWeight: 700
+                                }}>
+                                    {profiles.get(currentProfileId)?.name || "Default"}
+                                </span>
+                            </div>
+                            <span className="nc-custom-stream-subtitle">
+                                {images.length} / {MAX_IMAGES_PER_PROFILE} {t("images")}
+                            </span>
+                        </div>
                     </div>
                     <ModalCloseButton onClick={rootProps.onClose} />
                 </div>
             </ModalHeader>
 
-            <ModalContent>
+            <ModalContent className="nc-custom-stream-content">
                 {/* Fullscreen lightbox */}
                 {previewIndex !== null && images[previewIndex] && (
                     <div
@@ -1163,7 +1191,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            backgroundColor: "rgba(0, 0, 0, 0.92)",
+                            backgroundColor: "rgba(0, 0, 0, 0.94)",
                             zIndex: 10000,
                             display: "flex",
                             alignItems: "center",
@@ -1180,14 +1208,14 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                 maxHeight: "100%",
                                 objectFit: "contain",
                                 borderRadius: "8px",
-                                boxShadow: "0 8px 32px rgba(0,0,0,0.6)"
+                                boxShadow: "0 16px 48px rgba(0,0,0,0.8)"
                             }}
                         />
                         <div style={{
                             position: "absolute",
                             top: "20px",
                             right: "20px",
-                            color: "var(--text-muted)",
+                            color: "#949ba4",
                             fontSize: "13px"
                         }}>
                             {t("Esc or click to close")}
@@ -1198,9 +1226,9 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                             left: "20px",
                             color: "#ffffff",
                             fontSize: "14px",
-                            fontWeight: "600",
-                            backgroundColor: "rgba(0,0,0,0.6)",
-                            padding: "6px 12px",
+                            fontWeight: "700",
+                            backgroundColor: "rgba(0, 0, 0, 0.75)",
+                            padding: "6px 14px",
                             borderRadius: "8px"
                         }}>
                             #{previewIndex + 1} / {images.length}
@@ -1212,7 +1240,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                             transform: "translateX(-50%)",
                             color: "#ffffff",
                             fontSize: "13px",
-                            backgroundColor: "rgba(0,0,0,0.6)",
+                            backgroundColor: "rgba(0, 0, 0, 0.75)",
                             padding: "8px 16px",
                             borderRadius: "8px"
                         }}>
@@ -1222,7 +1250,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                 )}
 
                 <div
-                    style={{ padding: "8px 4px", position: "relative" }}
+                    style={{ position: "relative" }}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
@@ -1235,97 +1263,104 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                             onDrop={handleDrop}
                             style={{
                                 position: "absolute",
-                                top: "0",
-                                left: "0",
-                                right: "0",
-                                bottom: "0",
-                                backgroundColor: "rgba(32, 34, 37, 0.95)",
-                                borderRadius: "12px",
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: "rgba(18, 19, 22, 0.95)",
+                                borderRadius: "10px",
                                 display: "flex",
                                 flexDirection: "column",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 zIndex: 1000,
-                                border: "2px dashed var(--brand-500)",
+                                border: "2px dashed #5865f2",
                                 pointerEvents: "auto",
                                 backdropFilter: "blur(6px)"
                             }}
                         >
-                            <UploadIcon size={48} color="var(--brand-500)" />
-                            <Text variant="heading-lg/bold" style={{ color: "#ffffff", marginTop: "12px", marginBottom: "4px" }}>
+                            <UploadIcon size={48} color="#5865f2" />
+                            <div style={{ color: "#ffffff", fontSize: "18px", fontWeight: 700, marginTop: "12px", marginBottom: "4px" }}>
                                 {t("Drop to upload")}
-                            </Text>
-                            <Text variant="text-sm/normal" style={{ color: "var(--text-muted)" }}>
+                            </div>
+                            <div style={{ color: "#949ba4", fontSize: "13px" }}>
                                 {t("Supports PNG, JPEG, WebP")}
-                            </Text>
+                            </div>
                         </div>
                     )}
 
-                    {/* Main replace toggle card */}
+                    {/* Stream Replacement toggle card */}
                     <div
+                        className="nc-custom-stream-card"
                         onClick={() => setPluginEnabled(!pluginEnabled)}
                         style={{
-                            padding: "12px 18px",
-                            borderRadius: "8px",
-                            marginBottom: "14px",
-                            cursor: "pointer",
-                            backgroundColor: pluginEnabled ? "rgba(59, 165, 92, 0.15)" : "rgba(237, 66, 69, 0.15)",
-                            border: pluginEnabled ? "1px solid rgba(59, 165, 92, 0.4)" : "1px solid rgba(237, 66, 69, 0.4)",
-                            color: "#ffffff",
-                            fontWeight: "600",
-                            fontSize: "13px",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
-                            transition: "all 0.2s ease"
+                            cursor: "pointer",
+                            userSelect: "none",
+                            backgroundColor: "#2b2d31",
+                            border: pluginEnabled ? "1px solid rgba(35, 165, 90, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)"
                         }}
                     >
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                             <div style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: "50%",
-                                backgroundColor: pluginEnabled ? "var(--status-positive)" : "var(--status-danger)"
-                            }} />
-                            <span>{pluginEnabled ? t("Replacement Enabled") : t("Replacement Disabled (Discord Default)")}</span>
+                                width: 36,
+                                height: 36,
+                                borderRadius: 8,
+                                backgroundColor: pluginEnabled ? "rgba(35, 165, 90, 0.15)" : "rgba(255, 255, 255, 0.06)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                color: pluginEnabled ? "#23a55a" : "#949ba4",
+                                flexShrink: 0
+                            }}>
+                                <StreamIcon size={20} color="currentColor" />
+                            </div>
+                            <div>
+                                <h3 className="nc-custom-stream-card-title">
+                                    {t("Stream Preview Replacement")}
+                                </h3>
+                                <p className="nc-custom-stream-card-desc">
+                                    {t("Override Discord screen capture preview with custom image")}
+                                </p>
+                            </div>
                         </div>
-                        <span style={{
-                            fontSize: "11px",
-                            fontWeight: "700",
-                            letterSpacing: "0.5px",
-                            color: pluginEnabled ? "var(--status-positive)" : "var(--status-danger)",
-                            textTransform: "uppercase"
-                        }}>
-                            {pluginEnabled ? t("ON") : t("OFF")}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                            <span style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                letterSpacing: "0.5px",
+                                color: pluginEnabled ? "#23a55a" : "#949ba4"
+                            }}>
+                                {pluginEnabled ? t("ON") : t("OFF")}
+                            </span>
+                            <div className={`nc-custom-stream-switch-track ${pluginEnabled ? "active" : ""}`}>
+                                <div className="nc-custom-stream-switch-knob" />
+                            </div>
+                        </div>
                     </div>
 
                     {/* Profiles container */}
-                    <div style={{
-                        marginBottom: "14px",
-                        backgroundColor: "var(--background-secondary)",
-                        borderRadius: "10px",
-                        padding: "14px",
-                        border: "1px solid var(--background-modifier-accent)"
-                    }}>
+                    <div className="nc-custom-stream-card" style={{ padding: "16px" }}>
                         <div style={{
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
                             marginBottom: "12px",
                             paddingBottom: "10px",
-                            borderBottom: "1px solid var(--background-modifier-accent)"
+                            borderBottom: "1px solid rgba(255, 255, 255, 0.08)"
                         }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <FolderIcon size={18} color="var(--header-primary)" />
-                                <Text variant="text-md/semibold" style={{ color: "var(--header-primary)" }}>
+                                <FolderIcon size={18} color="#5865f2" />
+                                <span style={{ color: "#ffffff", fontSize: "13px", fontWeight: 700, letterSpacing: "0.4px", textTransform: "uppercase" }}>
                                     {t("Profiles")}
-                                </Text>
+                                </span>
                                 <span style={{
                                     fontSize: "11px",
-                                    fontWeight: "600",
+                                    fontWeight: 700,
                                     color: "#ffffff",
-                                    backgroundColor: "var(--brand-500)",
+                                    backgroundColor: "#5865f2",
                                     padding: "2px 8px",
                                     borderRadius: "10px"
                                 }}>
@@ -1338,9 +1373,9 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                     color={Button.Colors.BRAND}
                                     onClick={() => setIsCreatingProfile(true)}
                                 >
-                                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                        <PlusIcon size={12} color="white" />
-                                        <span>{t("New Profile")}</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                                        <PlusIcon size={12} color="#ffffff" />
+                                        <span style={{ color: "#ffffff", fontWeight: 600 }}>{t("New Profile")}</span>
                                     </div>
                                 </Button>
                             )}
@@ -1352,10 +1387,10 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                 display: "flex",
                                 gap: "8px",
                                 marginBottom: "12px",
-                                padding: "10px",
-                                backgroundColor: "var(--background-tertiary)",
+                                padding: "10px 12px",
+                                backgroundColor: "#1e1f22",
                                 borderRadius: "8px",
-                                border: "1px solid var(--brand-500)"
+                                border: "1px solid #5865f2"
                             }}>
                                 <input
                                     type="text"
@@ -1372,11 +1407,11 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                     autoFocus
                                     style={{
                                         flex: 1,
-                                        padding: "6px 10px",
+                                        padding: "6px 12px",
                                         borderRadius: "4px",
-                                        border: "1px solid var(--background-modifier-accent)",
-                                        backgroundColor: "var(--background-secondary)",
-                                        color: "var(--text-normal)",
+                                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                                        backgroundColor: "#2b2d31",
+                                        color: "#ffffff",
                                         fontSize: "13px",
                                         outline: "none"
                                     }}
@@ -1386,7 +1421,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                     color={Button.Colors.GREEN}
                                     onClick={handleCreateProfile}
                                 >
-                                    <CheckIcon size={12} color="white" />
+                                    <CheckIcon size={12} color="#ffffff" />
                                 </Button>
                                 <Button
                                     size={Button.Sizes.TINY}
@@ -1396,7 +1431,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                         setNewProfileName("");
                                     }}
                                 >
-                                    <CrossIcon size={12} color="white" />
+                                    <CrossIcon size={12} color="#ffffff" />
                                 </Button>
                             </div>
                         )}
@@ -1411,18 +1446,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                 return (
                                     <div
                                         key={profile.id}
-                                        style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            padding: "6px 10px",
-                                            borderRadius: "6px",
-                                            backgroundColor: isActive ? "var(--brand-500)" : "var(--background-tertiary)",
-                                            color: isActive ? "#ffffff" : "var(--text-normal)",
-                                            cursor: "pointer",
-                                            transition: "all 0.15s ease",
-                                            border: isActive ? "1px solid var(--brand-500)" : "1px solid var(--background-modifier-accent)"
-                                        }}
+                                        className={`nc-custom-stream-profile-tab ${isActive ? "active" : ""}`}
                                         onClick={() => !isEditing && handleProfileSwitch(profile.id)}
                                     >
                                         {isEditing ? (
@@ -1438,12 +1462,12 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                 autoFocus
                                                 onClick={e => e.stopPropagation()}
                                                 style={{
-                                                    width: "80px",
+                                                    width: "90px",
                                                     padding: "2px 6px",
                                                     borderRadius: "4px",
-                                                    border: "1px solid var(--brand-500)",
-                                                    backgroundColor: "var(--background-secondary)",
-                                                    color: "var(--text-normal)",
+                                                    border: "1px solid #5865f2",
+                                                    backgroundColor: "#1e1f22",
+                                                    color: "#ffffff",
                                                     fontSize: "12px",
                                                     outline: "none"
                                                 }}
@@ -1451,24 +1475,24 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                         ) : (
                                             <>
                                                 {isActive ? (
-                                                    <CheckIcon size={12} color="#ffffff" />
+                                                    <CheckIcon size={13} color="#ffffff" />
                                                 ) : (
-                                                    <FolderIcon size={12} color="var(--text-muted)" />
+                                                    <FolderIcon size={13} color="#949ba4" />
                                                 )}
                                                 <span style={{
-                                                    fontWeight: "600",
-                                                    fontSize: "12px",
-                                                    color: isActive ? "#ffffff" : "var(--text-normal)"
+                                                    fontWeight: 600,
+                                                    fontSize: "13px",
+                                                    color: isActive ? "#ffffff" : "#dbdee1"
                                                 }}>
                                                     {profile.name}
                                                 </span>
                                                 <span style={{
                                                     fontSize: "10px",
-                                                    fontWeight: "700",
-                                                    backgroundColor: isActive ? "rgba(255,255,255,0.25)" : "var(--background-modifier-accent)",
-                                                    color: "#ffffff",
-                                                    padding: "1px 5px",
-                                                    borderRadius: "4px",
+                                                    fontWeight: 700,
+                                                    backgroundColor: isActive ? "rgba(255, 255, 255, 0.25)" : "rgba(255, 255, 255, 0.08)",
+                                                    color: isActive ? "#ffffff" : "#949ba4",
+                                                    padding: "1px 6px",
+                                                    borderRadius: "10px",
                                                     minWidth: "16px",
                                                     textAlign: "center"
                                                 }}>
@@ -1483,7 +1507,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                 gap: "4px",
                                                 marginLeft: "4px",
                                                 paddingLeft: "6px",
-                                                borderLeft: "1px solid rgba(255,255,255,0.3)"
+                                                borderLeft: "1px solid rgba(255, 255, 255, 0.3)"
                                             }}>
                                                 <div
                                                     role="button"
@@ -1494,18 +1518,10 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                         setEditingProfileName(profile.name);
                                                     }}
                                                     title={t("Rename")}
-                                                    style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        width: 22,
-                                                        height: 22,
-                                                        borderRadius: 4,
-                                                        backgroundColor: "rgba(255,255,255,0.15)",
-                                                        cursor: "pointer"
-                                                    }}
+                                                    className="nc-custom-stream-action-btn"
+                                                    style={{ width: 22, height: 22, backgroundColor: "rgba(255, 255, 255, 0.2)" }}
                                                 >
-                                                    <EditIcon size={11} color="white" />
+                                                    <EditIcon size={11} color="#ffffff" />
                                                 </div>
                                                 {canDelete && (
                                                     <div
@@ -1516,18 +1532,10 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                             handleDeleteProfile(profile.id);
                                                         }}
                                                         title={t("Delete profile (only if empty)")}
-                                                        style={{
-                                                            display: "flex",
-                                                            alignItems: "center",
-                                                            justifyContent: "center",
-                                                            width: 22,
-                                                            height: 22,
-                                                            borderRadius: 4,
-                                                            backgroundColor: "rgba(237, 66, 69, 0.8)",
-                                                            cursor: "pointer"
-                                                        }}
+                                                        className="nc-custom-stream-action-btn"
+                                                        style={{ width: 22, height: 22, backgroundColor: "rgba(237, 66, 69, 0.8)" }}
                                                     >
-                                                        <TrashIcon size={11} color="white" />
+                                                        <TrashIcon size={11} color="#ffffff" />
                                                     </div>
                                                 )}
                                             </div>
@@ -1539,51 +1547,106 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                     </div>
 
                     {/* Slideshow toggles */}
-                    <div style={{ display: "flex", gap: "10px", marginBottom: "14px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
                         <div
+                            className="nc-custom-stream-card"
                             onClick={() => setSlideshowOn(!slideshowOn)}
                             style={{
-                                flex: 1,
-                                padding: "10px 14px",
-                                borderRadius: "8px",
+                                margin: 0,
                                 cursor: "pointer",
-                                backgroundColor: slideshowOn ? "rgba(88, 101, 242, 0.2)" : "var(--background-secondary)",
-                                border: slideshowOn ? "1px solid var(--brand-500)" : "1px solid var(--background-modifier-accent)",
-                                color: "#ffffff",
-                                fontWeight: "600",
-                                fontSize: "12px",
+                                userSelect: "none",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                gap: "8px",
-                                transition: "all 0.15s ease"
+                                justifyContent: "space-between",
+                                backgroundColor: slideshowOn ? "rgba(88, 101, 242, 0.12)" : "#2b2d31",
+                                border: slideshowOn ? "1px solid #5865f2" : "1px solid rgba(255, 255, 255, 0.08)"
                             }}
                         >
-                            <SlideshowIcon size={16} color={slideshowOn ? "var(--brand-500)" : "var(--text-muted)"} />
-                            <span>{t("Slideshow")}: {slideshowOn ? t("ON") : t("OFF")}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <div style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 6,
+                                    backgroundColor: slideshowOn ? "rgba(88, 101, 242, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: slideshowOn ? "#5865f2" : "#949ba4",
+                                    flexShrink: 0
+                                }}>
+                                    <SlideshowIcon size={16} color="currentColor" />
+                                </div>
+                                <div>
+                                    <h4 className="nc-custom-stream-card-title" style={{ fontSize: "13px" }}>
+                                        {t("Slideshow Rotation")}
+                                    </h4>
+                                    <p className="nc-custom-stream-card-desc" style={{ fontSize: "11px" }}>
+                                        {t("Cycles through profile images every ~5 min")}
+                                    </p>
+                                </div>
+                            </div>
+                            <span style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                borderRadius: "4px",
+                                color: slideshowOn ? "#23a55a" : "#949ba4",
+                                backgroundColor: slideshowOn ? "rgba(35, 165, 90, 0.15)" : "#1e1f22",
+                                border: slideshowOn ? "1px solid rgba(35, 165, 90, 0.3)" : "1px solid rgba(255, 255, 255, 0.06)"
+                            }}>
+                                {slideshowOn ? t("ON") : t("OFF")}
+                            </span>
                         </div>
+
                         <div
+                            className="nc-custom-stream-card"
                             onClick={slideshowOn ? () => setRandomOn(!randomOn) : undefined}
                             style={{
-                                flex: 1,
-                                padding: "10px 14px",
-                                borderRadius: "8px",
+                                margin: 0,
                                 cursor: slideshowOn ? "pointer" : "not-allowed",
-                                backgroundColor: slideshowOn && randomOn ? "rgba(88, 101, 242, 0.2)" : "var(--background-secondary)",
-                                border: slideshowOn && randomOn ? "1px solid var(--brand-500)" : "1px solid var(--background-modifier-accent)",
-                                color: "#ffffff",
-                                fontWeight: "600",
-                                fontSize: "12px",
+                                opacity: slideshowOn ? 1 : 0.45,
+                                userSelect: "none",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent: "center",
-                                gap: "8px",
-                                opacity: slideshowOn ? 1 : 0.45,
-                                transition: "all 0.15s ease"
+                                justifyContent: "space-between",
+                                backgroundColor: slideshowOn && randomOn ? "rgba(88, 101, 242, 0.12)" : "#2b2d31",
+                                border: slideshowOn && randomOn ? "1px solid #5865f2" : "1px solid rgba(255, 255, 255, 0.08)"
                             }}
                         >
-                            <DiceIcon size={16} color={slideshowOn && randomOn ? "var(--brand-500)" : "var(--text-muted)"} />
-                            <span>{t("Random")}: {randomOn ? t("YES") : t("NO")}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <div style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: 6,
+                                    backgroundColor: slideshowOn && randomOn ? "rgba(88, 101, 242, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: slideshowOn && randomOn ? "#5865f2" : "#949ba4",
+                                    flexShrink: 0
+                                }}>
+                                    <DiceIcon size={16} color="currentColor" />
+                                </div>
+                                <div>
+                                    <h4 className="nc-custom-stream-card-title" style={{ fontSize: "13px" }}>
+                                        {t("Random Order")}
+                                    </h4>
+                                    <p className="nc-custom-stream-card-desc" style={{ fontSize: "11px" }}>
+                                        {t("Picks next image at random without repeating")}
+                                    </p>
+                                </div>
+                            </div>
+                            <span style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                borderRadius: "4px",
+                                color: slideshowOn && randomOn ? "#23a55a" : "#949ba4",
+                                backgroundColor: slideshowOn && randomOn ? "rgba(35, 165, 90, 0.15)" : "#1e1f22",
+                                border: slideshowOn && randomOn ? "1px solid rgba(35, 165, 90, 0.3)" : "1px solid rgba(255, 255, 255, 0.06)"
+                            }}>
+                                {randomOn ? t("YES") : t("NO")}
+                            </span>
                         </div>
                     </div>
 
@@ -1591,46 +1654,46 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                     {settings.store.showInfoBadges && (
                         <div style={{
                             padding: "10px 14px",
-                            backgroundColor: "var(--background-secondary)",
+                            backgroundColor: "#2b2d31",
                             borderRadius: "8px",
                             marginBottom: "14px",
                             display: "flex",
                             alignItems: "center",
                             flexWrap: "wrap",
                             gap: "10px",
-                            border: "1px solid var(--background-modifier-accent)"
+                            border: "1px solid rgba(255, 255, 255, 0.08)"
                         }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <FolderIcon size={14} color="var(--brand-500)" />
-                                <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>{t("Profile")}:</span>
-                                <span style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff" }}>
+                            <div className="nc-custom-stream-stat-badge">
+                                <FolderIcon size={14} color="#5865f2" />
+                                <span className="nc-custom-stream-stat-label">{t("Profile")}:</span>
+                                <span className="nc-custom-stream-stat-value">
                                     {profiles.get(currentProfileId)?.name || "Default"}
                                 </span>
                             </div>
 
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <PictureIcon size={14} color="var(--brand-500)" />
-                                <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>{t("Images")}:</span>
-                                <span style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff" }}>
+                            <div className="nc-custom-stream-stat-badge">
+                                <PictureIcon size={14} color="#5865f2" />
+                                <span className="nc-custom-stream-stat-label">{t("Images")}:</span>
+                                <span className="nc-custom-stream-stat-value">
                                     {images.length} / {MAX_IMAGES_PER_PROFILE}
                                 </span>
                             </div>
 
                             {images.length > 0 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <CheckIcon size={14} color="var(--brand-500)" />
-                                    <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>{t("Selected")}:</span>
-                                    <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--status-positive)" }}>
+                                <div className="nc-custom-stream-stat-badge">
+                                    <CheckIcon size={14} color="#23a55a" />
+                                    <span className="nc-custom-stream-stat-label">{t("Selected")}:</span>
+                                    <span className="nc-custom-stream-stat-value" style={{ color: "#23a55a" }}>
                                         #{pendingIndex + 1}
                                     </span>
                                 </div>
                             )}
 
                             {images.length > 0 && pluginEnabled && streamActive && lastSlideChangeTime > 0 && (
-                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <ClockIcon size={14} color="var(--brand-500)" />
-                                    <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase" }}>{t("Timer")}:</span>
-                                    <span style={{ fontSize: "12px", fontWeight: "700", color: "#ffffff" }}>
+                                <div className="nc-custom-stream-stat-badge">
+                                    <ClockIcon size={14} color="#5865f2" />
+                                    <span className="nc-custom-stream-stat-label">{t("Timer")}:</span>
+                                    <span className="nc-custom-stream-stat-value">
                                         <SlideElapsed /> / ~5 min
                                     </span>
                                 </div>
@@ -1638,69 +1701,75 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                         </div>
                     )}
 
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-                        <Button
-                            size={Button.Sizes.SMALL}
-                            color={Button.Colors.BRAND}
-                            onClick={() => handleFileSelect(false)}
-                            disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
-                        >
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <PlusIcon size={14} color="white" />
-                                <span>{t("Add Image")}</span>
-                            </div>
-                        </Button>
-                        <Button
-                            size={Button.Sizes.SMALL}
-                            color={Button.Colors.PRIMARY}
-                            onClick={() => handleFileSelect(true)}
-                            disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
-                        >
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <UploadIcon size={14} color="white" />
-                                <span>{t("Multiple")}</span>
-                            </div>
-                        </Button>
-                        <Button
-                            size={Button.Sizes.SMALL}
-                            color={Button.Colors.RED}
-                            onClick={handleClearAll}
-                            disabled={images.length === 0}
-                        >
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                <TrashIcon size={14} color="white" />
-                                <span>{t("Delete All")}</span>
-                            </div>
-                        </Button>
-                        {selectedIndices.size > 0 && (
+                    {/* Action buttons toolbar */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                            <Button
+                                size={Button.Sizes.SMALL}
+                                color={Button.Colors.BRAND}
+                                onClick={() => handleFileSelect(false)}
+                                disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <PlusIcon size={14} color="#ffffff" />
+                                    <span style={{ color: "#ffffff", fontWeight: 600 }}>{t("Add Image")}</span>
+                                </div>
+                            </Button>
+                            <Button
+                                size={Button.Sizes.SMALL}
+                                color={Button.Colors.PRIMARY}
+                                onClick={() => handleFileSelect(true)}
+                                disabled={isLoading || images.length >= MAX_IMAGES_PER_PROFILE}
+                            >
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <UploadIcon size={14} color="#ffffff" />
+                                    <span style={{ color: "#ffffff", fontWeight: 600 }}>{t("Multiple")}</span>
+                                </div>
+                            </Button>
                             <Button
                                 size={Button.Sizes.SMALL}
                                 color={Button.Colors.RED}
-                                onClick={handleDeleteSelected}
+                                onClick={handleClearAll}
+                                disabled={images.length === 0}
                             >
                                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <TrashIcon size={14} color="white" />
-                                    <span>{t("Delete Selected")} ({selectedIndices.size})</span>
+                                    <TrashIcon size={14} color="#ffffff" />
+                                    <span style={{ color: "#ffffff", fontWeight: 600 }}>{t("Delete All")}</span>
                                 </div>
                             </Button>
-                        )}
+                            {selectedIndices.size > 0 && (
+                                <Button
+                                    size={Button.Sizes.SMALL}
+                                    color={Button.Colors.RED}
+                                    onClick={handleDeleteSelected}
+                                >
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                        <TrashIcon size={14} color="#ffffff" />
+                                        <span style={{ color: "#ffffff", fontWeight: 600 }}>{t("Delete Selected")} ({selectedIndices.size})</span>
+                                    </div>
+                                </Button>
+                            )}
+                        </div>
+                        <div style={{ color: "#949ba4", fontSize: "12px" }}>
+                            {t("Click to select active preview • Drag to reorder")}
+                        </div>
                     </div>
 
                     {error && (
                         <div style={{
-                            padding: "8px 12px",
-                            backgroundColor: "var(--status-danger-background)",
+                            padding: "10px 14px",
+                            backgroundColor: "rgba(237, 66, 69, 0.15)",
+                            border: "1px solid rgba(237, 66, 69, 0.4)",
                             borderRadius: "6px",
                             marginBottom: "14px",
-                            color: "var(--status-danger)",
+                            color: "#ed4245",
                             fontSize: "13px",
                             display: "flex",
                             alignItems: "center",
                             gap: "8px"
                         }}>
-                            <CrossIcon size={14} color="var(--status-danger)" />
-                            <span>{error}</span>
+                            <CrossIcon size={14} color="#ed4245" />
+                            <span style={{ color: "#ffffff", fontWeight: 600 }}>{error}</span>
                         </div>
                     )}
 
@@ -1708,13 +1777,14 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                     {images.length > 0 ? (
                         <div style={{
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))",
-                            gap: "10px",
+                            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+                            gap: "12px",
                             maxHeight: "360px",
                             overflowY: "auto",
-                            padding: "6px",
-                            backgroundColor: "var(--background-tertiary)",
-                            borderRadius: "8px"
+                            padding: "10px",
+                            backgroundColor: "#1e1f22",
+                            borderRadius: "8px",
+                            border: "1px solid rgba(255, 255, 255, 0.08)"
                         }}>
                             {images.map((src: string, index: number) => {
                                 const isCurrent = index === pendingIndex;
@@ -1733,23 +1803,18 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                         onDragLeave={e => handleImageDragLeave(e, index)}
                                         onDrop={e => handleImageDrop(e, index)}
                                         onDragEnd={handleImageDragEnd}
+                                        className={`nc-custom-stream-grid-item ${isCurrent ? "active" : ""} ${isNext ? "next" : ""} ${isSelected ? "selected" : ""}`}
                                         style={{
-                                            position: "relative",
-                                            borderRadius: "6px",
-                                            overflow: "hidden",
-                                            border: isDragTarget
-                                                ? "2px solid #faa61a"
+                                            borderColor: isDragTarget
+                                                ? "#faa61a"
                                                 : isSelected
-                                                    ? "2px solid var(--status-danger)"
+                                                    ? "#ed4245"
                                                     : isCurrent
-                                                        ? "2px solid var(--status-positive)"
+                                                        ? "#23a55a"
                                                         : isNext
-                                                            ? "2px solid var(--brand-500)"
-                                                            : "2px solid transparent",
-                                            backgroundColor: "var(--background-secondary)",
-                                            cursor: "grab",
-                                            opacity: isBeingDragged ? 0.5 : 1,
-                                            transition: "all 0.15s ease"
+                                                            ? "#5865f2"
+                                                            : "rgba(255, 255, 255, 0.08)",
+                                            opacity: isBeingDragged ? 0.5 : 1
                                         }}
                                     >
                                         <div style={{
@@ -1782,19 +1847,20 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                             top: "6px",
                                             left: "6px",
                                             backgroundColor: isSelected
-                                                ? "var(--status-danger)"
+                                                ? "#ed4245"
                                                 : isCurrent
-                                                    ? "var(--status-positive)"
+                                                    ? "#23a55a"
                                                     : isNext
-                                                        ? "var(--brand-500)"
-                                                        : "rgba(0,0,0,0.75)",
-                                            color: "white",
+                                                        ? "#5865f2"
+                                                        : "rgba(0, 0, 0, 0.75)",
+                                            color: "#ffffff",
                                             padding: "2px 6px",
                                             borderRadius: "4px",
                                             fontSize: "11px",
-                                            fontWeight: "700"
+                                            fontWeight: 700,
+                                            boxShadow: "0 2px 4px rgba(0, 0, 0, 0.4)"
                                         }}>
-                                            #{index + 1}
+                                            #{index + 1} {isCurrent && "• ACTIVE"}
                                         </div>
 
                                         {/* Action buttons on card */}
@@ -1813,18 +1879,9 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                     setPreviewIndex(index);
                                                 }}
                                                 title={t("Preview")}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    borderRadius: 4,
-                                                    width: 22,
-                                                    height: 22,
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    cursor: "pointer"
-                                                }}
+                                                className="nc-custom-stream-action-btn"
                                             >
-                                                <ZoomIcon size={12} color="white" />
+                                                <ZoomIcon size={12} color="#ffffff" />
                                             </div>
                                             <div
                                                 role="button"
@@ -1837,18 +1894,9 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                     a.click();
                                                 }}
                                                 title={t("Download")}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    borderRadius: 4,
-                                                    width: 22,
-                                                    height: 22,
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    cursor: "pointer"
-                                                }}
+                                                className="nc-custom-stream-action-btn"
                                             >
-                                                <DownloadIcon size={12} color="white" />
+                                                <DownloadIcon size={12} color="#ffffff" />
                                             </div>
                                             <div
                                                 role="button"
@@ -1858,18 +1906,9 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                     handleDelete(index);
                                                 }}
                                                 title={t("Delete")}
-                                                style={{
-                                                    backgroundColor: "rgba(0,0,0,0.75)",
-                                                    borderRadius: 4,
-                                                    width: 22,
-                                                    height: 22,
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    justifyContent: "center",
-                                                    cursor: "pointer"
-                                                }}
+                                                className="nc-custom-stream-action-btn"
                                             >
-                                                <TrashIcon size={12} color="white" />
+                                                <TrashIcon size={12} color="#ffffff" />
                                             </div>
                                         </div>
 
@@ -1881,7 +1920,7 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                 left: 0,
                                                 right: 0,
                                                 height: "3px",
-                                                backgroundColor: "var(--status-positive)"
+                                                backgroundColor: "#23a55a"
                                             }} />
                                         )}
 
@@ -1891,12 +1930,12 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                                                 position: "absolute",
                                                 bottom: "5px",
                                                 right: "6px",
-                                                backgroundColor: "rgba(0,0,0,0.8)",
-                                                color: "white",
+                                                backgroundColor: "rgba(0, 0, 0, 0.8)",
+                                                color: "#dbdee1",
                                                 padding: "2px 6px",
                                                 borderRadius: "4px",
                                                 fontSize: "10px",
-                                                fontWeight: "500",
+                                                fontWeight: 500,
                                                 whiteSpace: "nowrap"
                                             }}>
                                                 {formatFileSize(imageSizes[index])}
@@ -1908,56 +1947,79 @@ function ImagePickerModal({ rootProps }: { rootProps: RenderModalProps; }) {
                         </div>
                     ) : (
                         <div style={{
-                            padding: "36px 20px",
+                            padding: "48px 24px",
                             textAlign: "center",
-                            backgroundColor: "var(--background-secondary)",
+                            backgroundColor: "#2b2d31",
                             borderRadius: "8px",
-                            border: "1px dashed var(--background-modifier-accent)"
+                            border: "2px dashed rgba(255, 255, 255, 0.12)",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center"
                         }}>
-                            <PictureIcon size={36} color="var(--text-muted)" />
-                            <Text variant="text-md/semibold" style={{ color: "var(--text-normal)", marginTop: "8px", marginBottom: "4px" }}>
-                                {t("No images")}
-                            </Text>
-                            <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                            <PictureIcon size={44} color="#5865f2" />
+                            <h3 style={{
+                                color: "#ffffff",
+                                fontSize: "16px",
+                                fontWeight: 700,
+                                marginTop: "12px",
+                                marginBottom: "4px"
+                            }}>
+                                {t("No Preview Images")}
+                            </h3>
+                            <p style={{
+                                color: "#949ba4",
+                                fontSize: "13px",
+                                maxWidth: "420px",
+                                lineHeight: "1.4",
+                                margin: 0
+                            }}>
                                 {t("Drag images here, paste with Ctrl+V or click Add Image")}
-                            </Text>
+                            </p>
+                            <span style={{
+                                color: "#80848e",
+                                fontSize: "11px",
+                                marginTop: "8px"
+                            }}>
+                                {t("Supports PNG, JPEG, WebP up to 8 MB")}
+                            </span>
                         </div>
                     )}
 
                     {/* Footer storage info */}
                     <div style={{
-                        marginTop: "12px",
-                        padding: "8px 12px",
-                        backgroundColor: "var(--background-secondary)",
+                        marginTop: "14px",
+                        padding: "10px 14px",
+                        backgroundColor: "#2b2d31",
                         borderRadius: "6px",
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px"
+                        gap: "10px",
+                        border: "1px solid rgba(255, 255, 255, 0.08)"
                     }}>
-                        <StorageIcon size={14} color="var(--text-muted)" />
-                        <Text variant="text-xs/normal" style={{ color: "var(--text-muted)" }}>
+                        <StorageIcon size={16} color="#949ba4" />
+                        <span style={{ color: "#949ba4", fontSize: "12px" }}>
                             {t("Images stored locally • Limit: 50 images per profile • Ctrl+Click / Shift+Click for multi-select")}
-                        </Text>
+                        </span>
                     </div>
                 </div>
             </ModalContent>
 
-            <ModalFooter>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", width: "100%" }}>
-                    <Button
-                        color={Button.Colors.PRIMARY}
-                        look={Button.Looks.LINK}
-                        onClick={handleCancel}
-                    >
-                        {t("Cancel")}
-                    </Button>
-                    <Button
-                        color={Button.Colors.BRAND}
-                        onClick={handleSave}
-                    >
-                        {t("Save Changes")}
-                    </Button>
-                </div>
+            <ModalFooter className="nc-custom-stream-footer">
+                <Button
+                    color={Button.Colors.PRIMARY}
+                    look={Button.Looks.LINK}
+                    onClick={handleCancel}
+                    style={{ color: "#dbdee1" }}
+                >
+                    {t("Cancel")}
+                </Button>
+                <Button
+                    color={Button.Colors.BRAND}
+                    onClick={handleSave}
+                >
+                    {t("Save Changes")}
+                </Button>
             </ModalFooter>
         </ModalRoot>
     );
