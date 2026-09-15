@@ -283,15 +283,25 @@ function defaultState(): GhostState {
 
 // ─── State global réactif ─────────────────────────────────────────────────────
 const ghostStates = new Map<string, GhostState>();
+const _leavingUsers = new Set<string>();
+const _cachedGuildsMap = new Map<string, Set<string>>();
+let _cancelBatch = false;
 let ghostListeners: Array<() => void> = [];
 function notify() { ghostListeners.forEach(f => f()); }
 
 function syncGhostStateFromDiscord(userId: string) {
     try {
+        if (_leavingUsers.has(userId)) {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+            if (!vs || !vs.channelId) {
+                _leavingUsers.delete(userId);
+            }
+            return;
+        }
         const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
         const cur = ghostStates.get(userId) ?? defaultState();
         if (!vs || !vs.channelId) {
-            if (cur.active) {
+            if (cur.active || cur.connecting) {
                 ghostStates.set(userId, { ...cur, active: false, connecting: false, streaming: false, camera: false });
                 notify();
             }
@@ -524,6 +534,9 @@ async function ghostDeactivate(userId: string) {
 }
 
 async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: string[] }> {
+    _cancelBatch = true;
+    isConnectingBatch = false;
+
     const ids = targetIds && targetIds.length > 0
         ? targetIds
         : Array.from(new Set([...ghostStates.keys(), ...savedAccounts.map(a => a.userId)]));
@@ -533,14 +546,17 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
     const guildId = curVoice?.guildId;
 
     for (const userId of ids) {
-        ghostStates.delete(userId);
+        _leavingUsers.add(userId);
+        ghostStates.set(userId, defaultState());
     }
     notify();
 
     if (ghostJoinDelay === 0) {
-        Native.leaveVoiceAll(ids).catch(() => {
+        try {
+            await Native.leaveVoiceAll(ids);
+        } catch {
             ids.forEach(uid => Native.leaveVoice(uid, guildId).catch(() => {}));
-        });
+        }
     } else {
         for (let i = 0; i < ids.length; i++) {
             const userId = ids[i];
@@ -550,6 +566,17 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
             }
         }
     }
+
+    for (const userId of ids) {
+        ghostStates.set(userId, defaultState());
+    }
+    notify();
+
+    setTimeout(() => {
+        for (const userId of ids) {
+            _leavingUsers.delete(userId);
+        }
+    }, 2500);
 
     return { forcedIds: [] };
 }
@@ -569,6 +596,7 @@ function startFollowing() {
         if (_followDebounceTimer !== null) clearTimeout(_followDebounceTimer);
         _followDebounceTimer = setTimeout(async () => {
             _followDebounceTimer = null;
+            if (!globalAutoFollow) return;
             const curVoice = getMyVoiceState();
             const newCh: string | null = curVoice?.channelId ?? null;
             if (newCh === myLastChannelId) return;
@@ -577,7 +605,10 @@ function startFollowing() {
             const accounts: GhostAccount[] = savedAccounts.length > 0 ? savedAccounts : (await getAllSavedAccounts(false));
             if (savedAccounts.length === 0 && accounts.length > 0) savedAccounts = accounts;
 
-            const activeAccs = accounts.filter(a => ghostStates.get(a.userId)?.active === true || ghostStates.get(a.userId)?.connecting === true);
+            const activeAccs = accounts.filter(a =>
+                !_leavingUsers.has(a.userId) &&
+                (ghostStates.get(a.userId)?.active === true || ghostStates.get(a.userId)?.connecting === true)
+            );
             if (!activeAccs.length) return;
 
             const guild: string = curVoice?.guildId ?? (newCh ? ChannelStore?.getChannel?.(newCh)?.guild_id ?? "" : "");
@@ -585,6 +616,15 @@ function startFollowing() {
             if (ghostJoinDelay === 0) {
                 await Promise.all(activeAccs.map(async acc => {
                     if (newCh) {
+                        if (guild) {
+                            const known = _cachedGuildsMap.get(acc.userId);
+                            if (known && !known.has(guild)) {
+                                const cur = ghostStates.get(acc.userId) ?? defaultState();
+                                ghostStates.set(acc.userId, { ...cur, active: false, connecting: false, error: t("Not in server") });
+                                notify();
+                                return;
+                            }
+                        }
                         let realToken = acc.token;
                         try { realToken = await decryptToken(acc.token); } catch {}
                         const cur = ghostStates.get(acc.userId) ?? defaultState();
@@ -593,11 +633,12 @@ function startFollowing() {
                         try {
                             const result = await Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel);
                             const updated = ghostStates.get(acc.userId) ?? defaultState();
+                            const notInServer = result?.notInServer || result?.error === "Not in server";
                             ghostStates.set(acc.userId, {
                                 ...updated,
-                                active: result.ok,
+                                active: Boolean(result?.ok),
                                 connecting: false,
-                                error: result.ok ? null : (result.error ?? "Error")
+                                error: result?.ok ? null : (notInServer ? t("Not in server") : (result?.error ?? "Error"))
                             });
                         } catch (e) {
                             const updated = ghostStates.get(acc.userId) ?? defaultState();
@@ -615,6 +656,15 @@ function startFollowing() {
                 for (let i = 0; i < activeAccs.length; i++) {
                     const acc = activeAccs[i];
                     if (newCh) {
+                        if (guild) {
+                            const known = _cachedGuildsMap.get(acc.userId);
+                            if (known && !known.has(guild)) {
+                                const cur = ghostStates.get(acc.userId) ?? defaultState();
+                                ghostStates.set(acc.userId, { ...cur, active: false, connecting: false, error: t("Not in server") });
+                                notify();
+                                continue;
+                            }
+                        }
                         let realToken = acc.token;
                         try { realToken = await decryptToken(acc.token); } catch {}
                         const cur = ghostStates.get(acc.userId) ?? defaultState();
@@ -623,7 +673,13 @@ function startFollowing() {
                         Native.connectGhost(acc.userId, realToken, guild, newCh, ghostMicLabel)
                             .then(result => {
                                 const updated = ghostStates.get(acc.userId) ?? defaultState();
-                                ghostStates.set(acc.userId, { ...updated, active: result.ok, connecting: false, error: result.ok ? null : (result.error ?? "Error") });
+                                const notInServer = result?.notInServer || result?.error === "Not in server";
+                                ghostStates.set(acc.userId, {
+                                    ...updated,
+                                    active: Boolean(result?.ok),
+                                    connecting: false,
+                                    error: result?.ok ? null : (notInServer ? t("Not in server") : (result?.error ?? "Error"))
+                                });
                                 notify();
                             })
                             .catch(e => {
@@ -810,6 +866,10 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             fetch("http://127.0.0.1:47821/status").then(r => r.json()).then(d => {
                 if (d?.ok && d.sessionDetails) {
                     for (const [uid, det] of Object.entries(d.sessionDetails as Record<string, any>)) {
+                        if (Array.isArray(det.guilds)) {
+                            _cachedGuildsMap.set(uid, new Set(det.guilds));
+                        }
+                        if (_leavingUsers.has(uid)) continue;
                         const cur = ghostStates.get(uid) ?? defaultState();
                         ghostStates.set(uid, {
                             ...cur,
@@ -837,7 +897,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         }
 
         DataStore.get(DS_KEY_AUTO_FOLLOW).then((v: boolean | null) => {
-            const f = v ?? true;
+            const f = v ?? false;
             setAutoFollowState(f);
             if (f) startFollowing();
         });
@@ -1411,9 +1471,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                                         ? t("Camera on")
                                                         : isActive
                                                             ? t("Active in voice")
-                                                            : state.error
-                                                                ? `${t("Error: ")}${state.error.slice(0, 35)}`
-                                                                : t("Disconnected")}
+                                                            : (state.error === "Not in server" || state.error === t("Not in server"))
+                                                                ? t("Not in server")
+                                                                : state.error
+                                                                    ? `${t("Error: ")}${state.error.slice(0, 35)}`
+                                                                    : t("Disconnected")}
                                         </span>
                                     </div>
                                 </div>
@@ -1488,8 +1550,28 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         return () => { clearTimeout(timer); document.removeEventListener("mousedown", handler); };
     }, [showPopover]);
 
-    async function handleLeftClick() {
-        if (isConnectingBatch) return;
+    async function handleLeftClick(e?: any) {
+        if (e && e.button !== undefined && e.button !== 0) return;
+
+        if (isConnectingBatch) {
+            _cancelBatch = true;
+            isConnectingBatch = false;
+            await ghostDisableClean();
+            return;
+        }
+
+        const isAnyActive = Array.from(ghostStates.values()).some(s => s.active || s.connecting)
+            || savedAccounts.some(a => {
+                try { return Boolean(VoiceStateStore?.getVoiceStateForUser?.(a.userId)?.channelId); }
+                catch { return false; }
+            });
+
+        if (isAnyActive) {
+            await ghostDisableClean();
+            return;
+        }
+
+        _cancelBatch = false;
 
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
@@ -1524,60 +1606,73 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         }
 
         const vs = getMyVoiceState();
-        const anyActiveNow = targets.some(a => {
-            if (ghostStates.get(a.userId)?.active || ghostStates.get(a.userId)?.connecting) return true;
-            try {
-                const userVs = VoiceStateStore?.getVoiceStateForUser?.(a.userId);
-                if (userVs?.channelId) return true;
-            } catch {}
-            return false;
-        });
+        if (!vs?.channelId) {
+            Toasts.show({ message: t("Join a voice channel first"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
+            return;
+        }
 
-        if (anyActiveNow) {
-            await ghostDisableClean(targets.map(a => a.userId));
-        } else {
-            if (!vs?.channelId) {
-                Toasts.show({ message: t("Join a voice channel first"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
-                return;
+        const connectSingleAccount = async (acc: GhostAccount) => {
+            if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
+
+            if (vs.guildId) {
+                const known = _cachedGuildsMap.get(acc.userId);
+                if (known && !known.has(vs.guildId)) {
+                    const cur = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, {
+                        ...cur,
+                        active: false,
+                        connecting: false,
+                        error: t("Not in server")
+                    });
+                    notify();
+                    return;
+                }
             }
 
-            const connectSingleAccount = async (acc: GhostAccount) => {
-                let realToken = acc.token;
-                try { realToken = await decryptToken(acc.token); } catch {}
-                const cur = ghostStates.get(acc.userId) ?? defaultState();
-                ghostStates.set(acc.userId, { ...cur, connecting: true });
-                notify();
-                try {
-                    const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                    const updated = ghostStates.get(acc.userId) ?? defaultState();
-                    ghostStates.set(acc.userId, {
-                        ...updated,
-                        active: Boolean(result?.ok),
-                        connecting: false,
-                        error: result?.ok ? null : (result?.error ?? t("Connection error"))
-                    });
-                } catch (e) {
-                    const updated = ghostStates.get(acc.userId) ?? defaultState();
-                    ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
-                }
-                notify();
-            };
+            let realToken = acc.token;
+            try { realToken = await decryptToken(acc.token); } catch {}
+            if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
 
-            isConnectingBatch = true;
+            const cur = ghostStates.get(acc.userId) ?? defaultState();
+            ghostStates.set(acc.userId, { ...cur, connecting: true, error: null });
+            notify();
             try {
-                if (ghostJoinDelay === 0) {
-                    await Promise.all(targets.map(connectSingleAccount));
-                } else {
-                    for (let i = 0; i < targets.length; i++) {
-                        connectSingleAccount(targets[i]);
-                        if (i < targets.length - 1 && ghostJoinDelay > 0) {
-                            await new Promise(r => setTimeout(r, ghostJoinDelay));
-                        }
+                const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                if (_cancelBatch || _leavingUsers.has(acc.userId)) {
+                    Native.leaveVoice(acc.userId, vs.guildId).catch(() => {});
+                    return;
+                }
+                const updated = ghostStates.get(acc.userId) ?? defaultState();
+                const notInServer = result?.notInServer || result?.error === "Not in server";
+                ghostStates.set(acc.userId, {
+                    ...updated,
+                    active: Boolean(result?.ok),
+                    connecting: false,
+                    error: result?.ok ? null : (notInServer ? t("Not in server") : (result?.error ?? t("Connection error")))
+                });
+            } catch (e) {
+                if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
+                const updated = ghostStates.get(acc.userId) ?? defaultState();
+                ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
+            }
+            notify();
+        };
+
+        isConnectingBatch = true;
+        try {
+            if (ghostJoinDelay === 0) {
+                await Promise.all(targets.map(connectSingleAccount));
+            } else {
+                for (let i = 0; i < targets.length; i++) {
+                    if (_cancelBatch) break;
+                    connectSingleAccount(targets[i]);
+                    if (i < targets.length - 1 && ghostJoinDelay > 0) {
+                        await new Promise(r => setTimeout(r, ghostJoinDelay));
                     }
                 }
-            } finally {
-                isConnectingBatch = false;
             }
+        } finally {
+            isConnectingBatch = false;
         }
     }
 
@@ -1587,15 +1682,35 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         setShowPopover(v => !v);
     }
 
+    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        handleLeftClick(e);
+    };
+
+    const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPopover();
+    };
+
+    const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.button === 2) {
+            e.preventDefault();
+            e.stopPropagation();
+            openPopover();
+        }
+    };
+
     return (
-        <div ref={btnRef} style={{ position: "relative" }}>
+        <div ref={btnRef} style={{ position: "relative" }} onContextMenu={handleContextMenu}>
             <UserAreaButton
                 tooltipText={hideTooltips ? undefined : t("GhostClient — left-click: enable/disable | right-click: settings & controls")}
                 icon={<GhostIcon className={`${iconForeground} ${anyActive ? "gc-icon--active" : ""}`} />}
                 plated={nameplate != null}
                 redGlow={false}
-                onClick={handleLeftClick}
-                onContextMenu={(e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); openPopover(); }}
+                onClick={handleClick}
+                onContextMenu={handleContextMenu}
+                onMouseDown={handleMouseDown}
             />
             {showPopover && (ReactDOM as any).createPortal(
                 <GhostPopover onClose={() => setShowPopover(false)} anchorRect={anchorRect} />,

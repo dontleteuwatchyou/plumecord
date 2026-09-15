@@ -126,6 +126,7 @@ export const translations: TranslationMap = {
     "Source microphone": {"en":"Source microphone","fr":"Microphone source","ar":"ميكروفون المصدر","es":"Micrófono de origen","ru":"Исходный микрофон","zh":"源麦克风"},
     "Accounts (Native + Imported)": {"en":"Accounts (Native + Imported)","fr":"Comptes (Natif + Importés)","ar":"الحسابات (الأصلية + المستوردة)","es":"Cuentas (Nativas + Importadas)","ru":"Аккаунты (Нативные + Импортированные)","zh":"账户（原生 + 已导入）"},
     "Active in voice": {"en":"Active in voice","fr":"Actif dans le vocal","ar":"نشط في الصوت","es":"Activo en voz","ru":"Активен в голосовом канале","zh":"语音中活跃"},
+    "Not in server": {"en":"Not in server","fr":"Pas sur le serveur","ar":"ليس في الخادم","es":"No está en el servidor","ru":"Не на сервере","zh":"不在服务器中"},
     "Error: ": {"en":"Error: ","fr":"Erreur : ","ar":"خطأ: ","es":"Error: ","ru":"Ошибка: ","zh":"错误："},
     "Stop stream": {"en":"Stop stream","fr":"Arrêter le flux","ar":"إيقاف البث","es":"Detener transmisión","ru":"Остановить поток","zh":"停止流"},
     "Start video stream": {"en":"Start video stream","fr":"Démarrer le flux vidéo","ar":"بدء بث الفيديو","es":"Iniciar transmisión de video","ru":"Запустить видеопоток","zh":"启动视频流"},

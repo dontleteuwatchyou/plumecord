@@ -366,11 +366,13 @@ export async function listAudioInputDevices(_: any): Promise<{ label: string; ds
 
 export async function connectGhost(
     _: any, userId: string, token: string, guildId: string, channelId: string, micDevice: string,
-): Promise<{ ok: boolean; error?: string; }> {
-    // Le ghost-server attend DVS en interne (jusqu'à 60s) + login (20s) + joinVoice
-    // Timeout HTTP de 120s pour couvrir le pire cas sans stacker waitForDVS
-    try { return await api("/connect", { userId, token, guildId, channelId, micDevice }, 120000); }
-    catch (e: any) { return { ok: false, error: e?.message ?? String(e) }; }
+): Promise<{ ok: boolean; error?: string; notInServer?: boolean; }> {
+    try {
+        const res = await api("/connect", { userId, token, guildId, channelId, micDevice }, 120000);
+        return res ?? { ok: false, error: "Empty response" };
+    } catch (e: any) {
+        return { ok: false, error: e?.message ?? String(e) };
+    }
 }
 
 export async function preConnectGhost(
