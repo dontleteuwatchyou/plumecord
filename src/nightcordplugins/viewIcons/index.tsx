@@ -30,7 +30,7 @@ import { Devs } from "@utils/constants";
 import { openImageModal } from "@utils/discord";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Channel, Guild, User } from "@vencord/discord-types";
-import { ContextMenuApi, GuildMemberStore, IconUtils, Menu, Toasts } from "@webpack/common";
+import { ContextMenuApi, GuildMemberStore, IconUtils, Menu, Toasts, UserProfileStore } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 interface UserContextProps {
@@ -75,30 +75,52 @@ const settings = definePluginSettings({
 });
 
 const openAvatar = (url: string) => openImage(url, 512, 512);
-const openBanner = (url: string) => openImage(url, 1024);
+const openBanner = (url: string) => openImage(url, 1024, 410);
 
 function openImage(url: string, width: number, height?: number) {
-    const u = new URL(url, window.location.href);
+    if (!url) return;
 
-    const format = url.startsWith("/")
-        ? "png"
-        : u.searchParams.get("animated") === "true"
-            ? "gif"
-            : settings.store.format;
+    if (url.startsWith("data:")) {
+        openImageModal({
+            url,
+            original: url,
+            width,
+            height
+        });
+        return;
+    }
 
-    u.searchParams.set("size", settings.store.imgSize);
-    u.pathname = u.pathname.replace(/\.(png|jpe?g|webp)$/, `.${format}`);
-    url = u.toString();
+    try {
+        const u = new URL(url, window.location.href);
 
-    u.searchParams.set("size", "4096");
-    const original = u.toString();
+        const isAnimated = u.searchParams.get("animated") === "true" || u.pathname.includes("/a_");
+        const format = url.startsWith("/")
+            ? "png"
+            : isAnimated
+                ? "gif"
+                : settings.store.format;
 
-    openImageModal({
-        url,
-        original,
-        width,
-        height
-    });
+        u.searchParams.set("size", settings.store.imgSize);
+        u.pathname = u.pathname.replace(/\.(png|jpe?g|webp)$/, `.${format}`);
+        const finalUrl = u.toString();
+
+        u.searchParams.set("size", "4096");
+        const original = u.toString();
+
+        openImageModal({
+            url: finalUrl,
+            original,
+            width,
+            height
+        });
+    } catch {
+        openImageModal({
+            url,
+            original: url,
+            width,
+            height
+        });
+    }
 }
 
 function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElement | null }) {
@@ -181,9 +203,234 @@ function setupModalContextMenuListener() {
     window.addEventListener("contextmenu", onContextMenuListener, true);
 }
 
+// ── Banner Click & Hover Listeners ─────────────────────────────────────────────
+
+const BANNER_STYLE_ID = "nightcord-viewicons-banner-style";
+
+function injectBannerCursorStyle() {
+    if (document.getElementById(BANNER_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = BANNER_STYLE_ID;
+    style.textContent = `
+        [class*="userPopout"] [class*="banner"][style*="background-image"],
+        [class*="userProfile"] [class*="banner"][style*="background-image"],
+        [class*="profilePanel"] [class*="banner"][style*="background-image"],
+        [class*="bannerPremium"][style*="background-image"],
+        [class*="customBanner"][style*="background-image"],
+        [class*="profileBanner"][style*="background-image"],
+        [class*="popoutBanner"][style*="background-image"] {
+            cursor: pointer !important;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function removeBannerCursorStyle() {
+    document.getElementById(BANNER_STYLE_ID)?.remove();
+}
+
+function extractUrlFromBg(styleString: string | null | undefined): string | null {
+    if (!styleString || styleString === "none") return null;
+    const match = styleString.match(/url\(["']?(https?:\/\/[^"')]+|data:[^"')]+)["']?\)/i);
+    return match ? match[1] : null;
+}
+
+function getBannerUrlFromTarget(target: HTMLElement): string | null {
+    if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
+        return null;
+    }
+
+    const bannerEl = target.closest?.(
+        "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium'], [class*='customBanner'], [class*='popoutBanner'], [class*='bannerSVG']"
+    ) as HTMLElement | null;
+
+    const profileHeader = target.closest?.(
+        "header, [class*='userPopout'], [class*='userProfile'], [class*='profilePanel'], [class*='root-'], [class*='modal-'], [role='dialog'], [class*='header-']"
+    ) as HTMLElement | null;
+
+    if (!bannerEl && !profileHeader) return null;
+
+    const candidate = bannerEl || target;
+
+    // 1. Direct or computed background-image
+    let url = extractUrlFromBg(candidate.style?.backgroundImage);
+    if (url) return url;
+
+    url = extractUrlFromBg(window.getComputedStyle?.(candidate)?.backgroundImage);
+    if (url) return url;
+
+    // SVG image element
+    const svgImg = candidate.querySelector?.("image") || (candidate.tagName.toLowerCase() === "image" ? candidate : null);
+    if (svgImg) {
+        const href = svgImg.getAttribute("xlink:href") || svgImg.getAttribute("href");
+        if (href && (href.startsWith("http") || href.startsWith("data:"))) return href;
+    }
+
+    // img tag
+    const img = candidate.querySelector?.("img");
+    if (img?.src && (img.src.startsWith("http") || img.src.startsWith("data:"))) {
+        return img.src;
+    }
+
+    // Child elements with inline background-image
+    const childWithBg = candidate.querySelector?.("[style*='background-image']") as HTMLElement | null;
+    if (childWithBg) {
+        url = extractUrlFromBg(childWithBg.style?.backgroundImage) ||
+              extractUrlFromBg(window.getComputedStyle?.(childWithBg)?.backgroundImage);
+        if (url) return url;
+    }
+
+    // 2. React Fiber extraction for high-res banner URL or displayProfile / user
+    try {
+        const fiberKey = Object.keys(candidate).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (fiberKey) {
+            let fiber = (candidate as any)[fiberKey];
+            for (let i = 0; i < 20 && fiber; i++) {
+                const props = fiber.memoizedProps;
+                if (props) {
+                    if (props.bannerSrc && typeof props.bannerSrc === "string") {
+                        return props.bannerSrc;
+                    }
+                    if (props.banner && typeof props.banner === "string" && (props.banner.startsWith("http") || props.banner.startsWith("data:"))) {
+                        return props.banner;
+                    }
+                    if (props.displayProfile) {
+                        const dp = props.displayProfile;
+                        if (typeof dp.getBannerURL === "function") {
+                            const bUrl = dp.getBannerURL({ canAnimate: true, size: 2048 });
+                            if (bUrl) return bUrl;
+                        }
+                        if (dp.banner && dp.userId && IconUtils?.getUserBannerURL) {
+                            return IconUtils.getUserBannerURL({ id: dp.userId, banner: dp.banner, canAnimate: true, size: 2048 });
+                        }
+                    }
+                    if (props.user) {
+                        const u = props.user;
+                        if (u.banner && IconUtils?.getUserBannerURL) {
+                            return IconUtils.getUserBannerURL({ id: u.id, banner: u.banner, canAnimate: true, size: 2048 });
+                        }
+                        if (u.id && UserProfileStore?.getUserProfile) {
+                            const prof = UserProfileStore.getUserProfile(u.id);
+                            if (prof?.banner && IconUtils?.getUserBannerURL) {
+                                return IconUtils.getUserBannerURL({ id: u.id, banner: prof.banner, canAnimate: true, size: 2048 });
+                            }
+                        }
+                    }
+                    if (props.guild && props.guild.banner && IconUtils?.getGuildBannerURL) {
+                        return IconUtils.getGuildBannerURL(props.guild, true);
+                    }
+                }
+                fiber = fiber.return;
+            }
+        }
+    } catch {}
+
+    // 3. Fallback: Check header's banner element
+    if (profileHeader && !bannerEl) {
+        const innerBanner = profileHeader.querySelector?.(
+            "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium']"
+        ) as HTMLElement | null;
+        if (innerBanner && innerBanner.contains(target)) {
+            url = extractUrlFromBg(innerBanner.style?.backgroundImage) ||
+                  extractUrlFromBg(window.getComputedStyle?.(innerBanner)?.backgroundImage);
+            if (url) return url;
+        }
+    }
+
+    return null;
+}
+
+let onBannerClickListener: ((e: MouseEvent) => void) | null = null;
+let onBannerMouseOverListener: ((e: MouseEvent) => void) | null = null;
+
+function setupBannerListeners() {
+    injectBannerCursorStyle();
+
+    if (!onBannerClickListener) {
+        onBannerClickListener = (e: MouseEvent) => {
+            if (e.button !== 0) return;
+
+            const target = e.target as HTMLElement | null;
+            if (!target) return;
+
+            if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
+                return;
+            }
+
+            const bannerEl = target.closest?.(
+                "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium'], [class*='customBanner'], [class*='popoutBanner'], [class*='bannerSVG']"
+            ) as HTMLElement | null;
+
+            if (!bannerEl) return;
+
+            const bannerUrl = getBannerUrlFromTarget(target);
+            if (bannerUrl) {
+                e.preventDefault();
+                e.stopPropagation();
+                openBanner(bannerUrl);
+            }
+        };
+        window.addEventListener("click", onBannerClickListener, true);
+    }
+
+    if (!onBannerMouseOverListener) {
+        onBannerMouseOverListener = (e: MouseEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (!target) return;
+
+            if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
+                return;
+            }
+
+            const bannerEl = target.closest?.(
+                "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium'], [class*='customBanner'], [class*='popoutBanner'], [class*='bannerSVG']"
+            ) as HTMLElement | null;
+
+            if (bannerEl) {
+                const bannerUrl = getBannerUrlFromTarget(target);
+                if (bannerUrl) {
+                    bannerEl.style.cursor = "pointer";
+                }
+            }
+        };
+        window.addEventListener("mouseover", onBannerMouseOverListener, true);
+    }
+}
+
+function cleanupBannerListeners() {
+    removeBannerCursorStyle();
+
+    if (onBannerClickListener) {
+        window.removeEventListener("click", onBannerClickListener, true);
+        onBannerClickListener = null;
+    }
+    if (onBannerMouseOverListener) {
+        window.removeEventListener("mouseover", onBannerMouseOverListener, true);
+        onBannerMouseOverListener = null;
+    }
+}
+
 const UserContext: NavContextMenuPatchCallback = (children, { user, guildId }: UserContextProps) => {
     if (!user) return;
-    const memberAvatar = GuildMemberStore.getMember(guildId!, user.id)?.avatar || null;
+    const member = guildId ? GuildMemberStore.getMember(guildId, user.id) : null;
+    const memberAvatar = member?.avatar || null;
+
+    const userProfile = UserProfileStore?.getUserProfile?.(user.id);
+    const bannerHash = userProfile?.banner || user.banner;
+    const userBanner = bannerHash && IconUtils?.getUserBannerURL
+        ? IconUtils.getUserBannerURL({ id: user.id, banner: bannerHash, canAnimate: true, size: 2048 })
+        : null;
+
+    const memberBannerHash = member?.banner;
+    const serverBanner = memberBannerHash && guildId && (IconUtils as any)?.getGuildMemberBannerURL
+        ? (IconUtils as any).getGuildMemberBannerURL({
+            userId: user.id,
+            banner: memberBannerHash,
+            guildId,
+            canAnimate: true,
+            size: 2048
+        })
+        : null;
 
     children.splice(-1, 0, (
         <Menu.MenuGroup>
@@ -203,6 +450,22 @@ const UserContext: NavContextMenuPatchCallback = (children, { user, guildId }: U
                         guildId: guildId!,
                         canAnimate: true
                     }))}
+                    icon={ImageIcon}
+                />
+            )}
+            {userBanner && (
+                <Menu.MenuItem
+                    id="view-banner"
+                    label={t("View Banner")}
+                    action={() => openBanner(userBanner)}
+                    icon={ImageIcon}
+                />
+            )}
+            {serverBanner && (
+                <Menu.MenuItem
+                    id="view-server-banner"
+                    label={t("View Server Banner")}
+                    action={() => openBanner(serverBanner)}
                     icon={ImageIcon}
                 />
             )}
@@ -279,6 +542,7 @@ export default definePlugin({
 
     start() {
         setupModalContextMenuListener();
+        setupBannerListeners();
     },
 
     stop() {
@@ -286,6 +550,7 @@ export default definePlugin({
             window.removeEventListener("contextmenu", onContextMenuListener, true);
             onContextMenuListener = null;
         }
+        cleanupBannerListeners();
     },
 
     contextMenus: {
@@ -306,6 +571,7 @@ export default definePlugin({
         // Banners
         {
             find: 'backgroundColor:"COMPLETE"',
+            noWarn: true,
             replacement: {
                 match: /(overflow:"visible",.{0,125}?!1\),)style:{(?=.+?backgroundImage:null!=(\i)\?`url\(\$\{\2\}\))/,
                 replace: (_, rest, bannerSrc) => `${rest}onClick:()=>${bannerSrc}!=null&&$self.openBanner(${bannerSrc}),style:{cursor:${bannerSrc}!=null?"pointer":void 0,`

@@ -4194,6 +4194,7 @@ export const translations: TranslationMap = {
     "View Icon": {"en":"View Icon","fr":"Icône Afficher","ar":"عرض الأيقونة","es":"Icono Ver","ru":"Иконка Посмотреть","zh":"查看图标"},
     "View Notification Log": {"en":"View Notification Log","fr":"Afficher le journal des notifications","ar":"عرض سجل الإخطارات","es":"Ver registro de notificaciones","ru":"Просмотр журнала уведомлений","zh":"查看通知日志"},
     "View Server Avatar": {"en":"View Server Avatar","fr":"Afficher l'avatar du serveur","ar":"عرض الصورة الرمزية للخادم","es":"Ver avatar del servidor","ru":"Посмотреть аватар сервера","zh":"查看服务器头像"},
+    "View Server Banner": {"en":"View Server Banner","fr":"Voir la bannière du serveur","ar":"عرض لافتة السيرفر","es":"Ver banner del servidor","ru":"Посмотреть баннер сервера","zh":"查看服务器横幅"},
     "View Source": {"en":"View Source","fr":"Afficher la source","ar":"عرض المصدر","es":"Ver código fuente","ru":"Посмотреть исходный код","zh":"查看源代码"},
     "View Theme Source": {"en":"View Theme Source","fr":"Voir la source du thème","ar":"عرض مصدر الموضوع","es":"Ver fuente del tema","ru":"Посмотреть исходный код темы","zh":"查看主题源"},
     "View a list of all generated friend invites.": {"en":"View a list of all generated friend invites.","fr":"Afficher une liste de toutes les invitations d'amis générées.","ar":"عرض قائمة بجميع دعوات الأصدقاء التي تم إنشاؤها.","es":"Vea una lista de todas las invitaciones de amigos generadas.","ru":"Просмотрите список всех сгенерированных приглашений в друзья.","zh":"查看所有生成的好友邀请的列表。"},
