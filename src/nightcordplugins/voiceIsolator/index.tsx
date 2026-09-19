@@ -1,17 +1,16 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2026 Nightcord contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Avatar, Button, createRoot, Menu, React, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
-import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
+import { Button, Menu, React, SelectedChannelStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { Flex, FlexAlign, FlexJustify } from "@components/Flex";
 import { Card } from "@components/Card";
 import { voiceIsolatorEngine } from "./engine";
-import { VoiceIsolatorFloatingHud } from "./indicator";
 import { VoiceIsolatorState } from "./types";
 import { t } from "../autoTranslateNightcord";
 
@@ -24,7 +23,7 @@ const settings = definePluginSettings({
         restartNeeded: false
     },
     boostTarget: {
-        description: "Boost the isolated user's volume above 100% for maximum voice loudness and clarity.",
+        description: "Boost isolated users' volume above 100% for maximum voice loudness and clarity.",
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: false
@@ -36,38 +35,13 @@ const settings = definePluginSettings({
         default: 300,
         restartNeeded: false
     },
-    showFloatingHud: {
-        description: "Show a floating on-screen indicator when voice isolation is active.",
+    autoIsolateNewJoiners: {
+        description: "Automatically add users who join the voice channel to the isolated list.",
         type: OptionType.BOOLEAN,
         default: true,
         restartNeeded: false
     }
 });
-
-let hudContainer: HTMLDivElement | null = null;
-let hudRoot: ReturnType<typeof createRoot> | null = null;
-
-function mountHud() {
-    if (hudContainer || typeof document === "undefined") return;
-    hudContainer = document.createElement("div");
-    hudContainer.id = "nc-voice-isolator-hud-root";
-    document.body.appendChild(hudContainer);
-    if (createRoot) {
-        hudRoot = createRoot(hudContainer);
-        hudRoot.render(<VoiceIsolatorFloatingHud />);
-    }
-}
-
-function unmountHud() {
-    if (hudRoot) {
-        try { hudRoot.unmount(); } catch { }
-        hudRoot = null;
-    }
-    if (hudContainer) {
-        hudContainer.remove();
-        hudContainer = null;
-    }
-}
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) => {
     if (!user || user.bot) return;
@@ -85,9 +59,9 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) =
     if (!targetState || targetState.channelId !== activeVoiceChannelId) return;
 
     const state = voiceIsolatorEngine.getState();
-    const isCurrentlyIsolated = state.isolatedUserId === user.id;
+    const isCurrentlyIsolated = voiceIsolatorEngine.isUserIsolated(user.id);
 
-    const menuItem = (
+    const toggleItem = (
         <Menu.MenuItem
             id="voice-isolator-toggle"
             label={isCurrentlyIsolated ? t("Stop Voice Isolation") : t("Isolate Voice")}
@@ -96,11 +70,27 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) =
                 voiceIsolatorEngine.toggleIsolate(user.id, {
                     attenuationVolume: settings.store.attenuationVolume,
                     boostTarget: settings.store.boostTarget,
-                    targetVolume: settings.store.targetVolume
+                    targetVolume: settings.store.targetVolume,
+                    autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
                 });
             }}
         />
     );
+
+    const items = [toggleItem];
+
+    if (state.isolatedUserIds.length > 1) {
+        items.push(
+            <Menu.MenuItem
+                id="voice-isolator-restore-all"
+                label={t("Stop All Voice Isolations")}
+                color="danger"
+                action={() => {
+                    voiceIsolatorEngine.restoreAll();
+                }}
+            />
+        );
+    }
 
     const targetGroup = findGroupChildrenByChildId("user-volume", children)
         ?? findGroupChildrenByChildId("mute", children)
@@ -109,9 +99,9 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) =
         ?? findGroupChildrenByChildId("roles", children);
 
     if (targetGroup && Array.isArray(targetGroup)) {
-        targetGroup.push(menuItem);
+        targetGroup.push(...items);
     } else {
-        children.push(<Menu.MenuGroup>{menuItem}</Menu.MenuGroup>);
+        children.push(<Menu.MenuGroup>{items}</Menu.MenuGroup>);
     }
 };
 
@@ -123,6 +113,8 @@ function VoiceIsolatorSettingsComponent() {
         return () => unsub();
     }, []);
 
+    const count = state.isolatedUserIds.length;
+
     return (
         <div style={{ width: "100%", marginTop: "10px" }}>
             <Card
@@ -130,29 +122,24 @@ function VoiceIsolatorSettingsComponent() {
                 outline
                 style={{
                     padding: "16px",
-                    background: state.isolatedUserId ? "rgba(88, 101, 242, 0.15)" : "var(--background-secondary, #2b2d31)",
+                    background: count > 0 ? "rgba(88, 101, 242, 0.15)" : "var(--background-secondary, #2b2d31)",
                     borderRadius: "8px",
-                    border: state.isolatedUserId ? "1px solid var(--brand-500, #5865f2)" : undefined,
+                    border: count > 0 ? "1px solid var(--brand-500, #5865f2)" : undefined,
                     marginBottom: "16px"
                 }}
             >
                 <Flex alignItems={FlexAlign.CENTER} justifyContent={FlexJustify.BETWEEN} style={{ width: "100%" }}>
-                    <Flex alignItems={FlexAlign.CENTER} gap="12px">
-                        {state.isolatedUserAvatar && (
-                            <Avatar src={state.isolatedUserAvatar} size="SIZE_32" />
-                        )}
-                        <div>
-                            <span style={{ color: "#ffffff", fontWeight: 700, fontSize: "14px", display: "block" }}>
-                                {t("Voice Isolation Status")}
-                            </span>
-                            <span style={{ color: state.isolatedUserId ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)", fontSize: "12px", fontWeight: state.isolatedUserId ? 600 : 400 }}>
-                                {state.isolatedUserId
-                                    ? `● ${t("Active:")} ${state.isolatedUserName} (${t("Boosted to")} ${settings.store.targetVolume}% • ${t("Others lowered to")} ${settings.store.attenuationVolume}%)`
-                                    : `○ ${t("Inactive / Normal voice mixing")}`}
-                            </span>
-                        </div>
-                    </Flex>
-                    {state.isolatedUserId && (
+                    <div>
+                        <span style={{ color: "#ffffff", fontWeight: 700, fontSize: "14px", display: "block" }}>
+                            {t("Voice Isolation Status")}
+                        </span>
+                        <span style={{ color: count > 0 ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)", fontSize: "12px", fontWeight: count > 0 ? 600 : 400 }}>
+                            {count > 0
+                                ? `● ${t("Active:")} ${count} ${count > 1 ? t("users isolated") : t("user isolated")} (${t("Boosted to")} ${settings.store.targetVolume}% • ${t("Others lowered to")} ${settings.store.attenuationVolume}%)`
+                                : `○ ${t("Inactive / Normal voice mixing")}`}
+                        </span>
+                    </div>
+                    {count > 0 && (
                         <Button
                             variant="dangerPrimary"
                             onClick={() => voiceIsolatorEngine.restoreAll()}
@@ -168,7 +155,7 @@ function VoiceIsolatorSettingsComponent() {
 
 export default definePlugin({
     name: "VoiceIsolator",
-    description: "Allows you to select a single person in a noisy voice channel to automatically lower everyone else's volume and hear their voice clearly.",
+    description: "Allows you to isolate multiple people in a noisy voice channel to hear them clearly while lowering everyone else's volume.",
     authors: [
         { name: "Nightcord", id: 0n }
     ],
@@ -185,14 +172,20 @@ export default definePlugin({
             if (Array.isArray(voiceStates)) {
                 for (const st of voiceStates) {
                     voiceIsolatorEngine.handleVoiceStateUpdate(st, {
-                        attenuationVolume: settings.store.attenuationVolume
+                        attenuationVolume: settings.store.attenuationVolume,
+                        boostTarget: settings.store.boostTarget,
+                        targetVolume: settings.store.targetVolume,
+                        autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
                     });
                 }
             }
         },
         VOICE_STATE_UPDATE(st: any) {
             voiceIsolatorEngine.handleVoiceStateUpdate(st, {
-                attenuationVolume: settings.store.attenuationVolume
+                attenuationVolume: settings.store.attenuationVolume,
+                boostTarget: settings.store.boostTarget,
+                targetVolume: settings.store.targetVolume,
+                autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
             });
         },
         VOICE_CHANNEL_SELECT({ channelId }: { channelId: string | null; }) {
@@ -201,13 +194,9 @@ export default definePlugin({
     },
 
     start() {
-        if (settings.store.showFloatingHud !== false) {
-            mountHud();
-        }
     },
 
     stop() {
         voiceIsolatorEngine.restoreAll();
-        unmountHud();
     }
 });

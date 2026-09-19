@@ -1,10 +1,11 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2026 Nightcord contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 export interface VoiceIsolatorState {
+    isolatedUserIds: string[];
     isolatedUserId: string | null;
     isolatedUserName: string | null;
     isolatedUserAvatar: string | null;
