@@ -366,8 +366,11 @@ const COMPLETE_COMPOUNDS = new Set([
     "est ce"
 ]);
 
-const IDIOM_TRANSLATIONS: Record<string, string> = {
+export const IDIOM_TRANSLATIONS: Record<string, string> = {
     // Interrogatives & questions
+    "you do quoi": "what are you doing",
+    "you do what": "what are you doing",
+    "you make quoi": "what are you doing",
     "tu fais quoi": "what are you doing",
     "tu fait quoi": "what are you doing",
     "tu fais quoi aujourd'hui": "what are you doing today",
