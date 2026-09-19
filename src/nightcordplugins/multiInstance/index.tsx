@@ -236,9 +236,17 @@ function captureMasterAudioSettings(): Record<string, any> | null {
         let storeSettings: any = null;
         try {
             if (MediaEngineStore) {
+                // Read all voice settings — handle both boolean and string noiseSuppression
+                // (Discord stores it as boolean in older builds, string enum in newer builds)
+                const rawNoiseSuppression = MediaEngineStore.getNoiseSuppression?.();
+                const rawState = MediaEngineStore.getState?.()?.settingsByContext?.default ?? {};
                 storeSettings = {
+                    // 1. Spread rawState FIRST to pick up extra flags (vadSensitivity, inputProfile, soundshare, etc.)
+                    ...rawState,
+                    // 2. Override with live getter values — these are authoritative and always accurate
+                    noiseSuppression2: rawState.noiseSuppression2 ?? rawState.noiseSuppressionType ?? undefined,
                     noiseCancellation: MediaEngineStore.getNoiseCancellation?.(),
-                    noiseSuppression: MediaEngineStore.getNoiseSuppression?.(),
+                    noiseSuppression: rawNoiseSuppression,
                     echoCancellation: MediaEngineStore.getEchoCancellation?.(),
                     automaticGainControl: MediaEngineStore.getAutomaticGainControl?.(),
                     inputVolume: MediaEngineStore.getInputVolume?.(),
@@ -260,10 +268,21 @@ function captureMasterAudioSettings(): Record<string, any> | null {
             ...(storeSettings || {})
         };
 
+        // Always rebuild rawMediaEngineStore from the live-merged defaultSettings
+        // so the snapshot written to disk reflects the current voice settings exactly,
+        // not the potentially stale localStorage blob.
+        const mergedFullState = {
+            ...(parsedLs || {}),
+            default: {
+                ...(parsedLs?.default || {}),
+                ...(storeSettings || {})
+            }
+        };
+
         return {
-            rawMediaEngineStore: rawLs || (defaultSettings ? JSON.stringify({ default: defaultSettings }) : ""),
+            rawMediaEngineStore: JSON.stringify(mergedFullState),
             defaultSettings,
-            fullState: parsedLs || (defaultSettings ? { default: defaultSettings } : null)
+            fullState: mergedFullState
         };
     } catch {
         return null;
@@ -338,7 +357,8 @@ function applyAudioSettings(audio: any): void {
             MediaEngineStore?.getMediaEngine?.()?.setNoiseCancellation?.(def.noiseCancellation);
         } catch {}
     }
-    if (typeof def.noiseSuppression === "boolean") {
+    // noiseSuppression may be boolean (legacy) or string enum ("none","standard","krisp") in modern Discord
+    if (def.noiseSuppression !== undefined && def.noiseSuppression !== null) {
         try {
             meActions?.setNoiseSuppression?.(def.noiseSuppression);
         } catch {}
@@ -366,10 +386,11 @@ function applyAudioSettings(audio: any): void {
     }
 
     // 7. Voice Mode & Sensitivity / Options
-    if (def.mode && def.modeOptions) {
+    // Apply mode even when modeOptions is absent (voice activity vs push to talk)
+    if (def.mode) {
         try {
             const modeActions = findByProps("setMode") || meActions;
-            modeActions?.setMode?.(def.mode, def.modeOptions);
+            modeActions?.setMode?.(def.mode, def.modeOptions ?? {});
         } catch {}
     }
 
@@ -385,7 +406,14 @@ function applyAudioSettings(audio: any): void {
         } catch {}
     }
 
-    // 9. Direct MediaEngineStore state sync
+    // 8b. Quality of Service
+    if (typeof def.qos === "boolean") {
+        try {
+            meActions?.setQoS?.(def.qos);
+        } catch {}
+    }
+
+    // 9. Direct MediaEngineStore state sync — copies ALL captured fields at once
     try {
         if (MediaEngineStore) {
             const state = MediaEngineStore.getState?.();
@@ -451,7 +479,12 @@ function hookAudioSettingsWatcher(): void {
             "AUDIO_SET_MODE",
             "AUDIO_SET_NOISE_SUPPRESSION",
             "AUDIO_SET_NOISE_CANCELLATION",
-            "MEDIA_ENGINE_SET_AUDIO_SUB_SYSTEM"
+            "AUDIO_SET_ECHO_CANCELLATION",
+            "AUDIO_SET_AUTOMATIC_GAIN_CONTROL",
+            "AUDIO_SET_QOS",
+            "AUDIO_SET_ATTENUATION",
+            "MEDIA_ENGINE_SET_AUDIO_SUB_SYSTEM",
+            "MEDIA_ENGINE_SETTINGS_CHANGED",
         ];
         for (const evt of events) {
             try {
