@@ -589,25 +589,37 @@ function NameCard({ entry, index, isLatest, isOldest, search }: {
 
 // ─── Skeleton Loading ────────────────────────────────────────────────────────
 
-function SkeletonCard({ index }: { index: number }) {
+function LoadingState() {
     return (
-        <div className="vc-pn-card" style={{ animationDelay: `${index * 0.06}s`, opacity: 0.6 }}>
-            <div className="vc-pn-timeline-track">
-                <div className="vc-pn-timeline-dot" />
-                {index < 3 && <div className="vc-pn-timeline-line" />}
+        <div className="vc-pn-loading-state">
+            {/* Spinner */}
+            <div className="vc-pn-spinner-wrap">
+                <svg className="vc-pn-spinner" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="13" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
+                    <path
+                        d="M16 3 A13 13 0 0 1 29 16"
+                        stroke="rgba(255,255,255,0.55)"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                    />
+                </svg>
             </div>
-            <div className="vc-pn-card-body">
-                <div className="vc-pn-card-inner" style={{ gap: 10 }}>
-                    <div className="vc-pn-skeleton" style={{ width: 24, height: 24, borderRadius: "50%", flexShrink: 0 }} />
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                        <div className="vc-pn-skeleton" style={{ width: `${45 + index * 8}%`, height: 14, borderRadius: 6 }} />
-                        <div className="vc-pn-skeleton" style={{ width: "55%", height: 10, borderRadius: 4 }} />
+            {/* Shimmer rows */}
+            <div className="vc-pn-shimmer-rows">
+                {[72, 55, 64, 48].map((w, i) => (
+                    <div key={i} className="vc-pn-shimmer-row" style={{ animationDelay: `${i * 0.12}s` }}>
+                        <div className="vc-pn-shimmer-dot" style={{ animationDelay: `${i * 0.12}s` }} />
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>
+                            <div className="vc-pn-shimmer-bar" style={{ width: `${w}%`, height: 13, animationDelay: `${i * 0.12}s` }} />
+                            <div className="vc-pn-shimmer-bar" style={{ width: "40%", height: 9, animationDelay: `${i * 0.12 + 0.06}s` }} />
+                        </div>
                     </div>
-                </div>
+                ))}
             </div>
         </div>
     );
 }
+
 
 // ─── User Banner ──────────────────────────────────────────────────────────────
 
@@ -827,12 +839,7 @@ function PrevNamesModal({ modalProps, userId, username, avatarHash }: {
             <ModalContent className="vc-pn-content">
 
                 {/* Loading */}
-                {loading && (
-                    <div>
-                        <div className="vc-pn-section-label vc-pn-skeleton" style={{ width: 80, height: 12, borderRadius: 4, marginBottom: 16 }} />
-                        {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} index={i} />)}
-                    </div>
-                )}
+                {loading && <LoadingState />}
 
                 {/* Not in server */}
                 {!loading && error === "NOT_IN_SERVER" && (
@@ -1560,15 +1567,72 @@ export default definePlugin({
                 animation: vc-pn-fadeUp 0.25s ease both;
             }
 
-            /* ── Skeleton ── */
+            /* ── Skeleton (legacy, kept for backwards compat) ── */
             .vc-pn-skeleton {
                 background: linear-gradient(90deg,
-                    rgba(255,255,255,0.03) 25%,
-                    rgba(255,255,255,0.08) 50%,
-                    rgba(255,255,255,0.03) 75%);
+                    rgba(255,255,255,0.05) 25%,
+                    rgba(255,255,255,0.13) 50%,
+                    rgba(255,255,255,0.05) 75%);
                 background-size: 300% 100%;
                 animation: vc-pn-shimmer 1.6s infinite linear;
                 display: block;
+            }
+
+            /* ── Loading State ── */
+            .vc-pn-loading-state {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 24px 0 16px;
+                gap: 20px;
+            }
+            .vc-pn-spinner-wrap {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .vc-pn-spinner {
+                width: 32px;
+                height: 32px;
+                animation: vc-pn-spin 0.9s linear infinite;
+                flex-shrink: 0;
+            }
+            .vc-pn-shimmer-rows {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .vc-pn-shimmer-row {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 14px;
+                background: rgba(255,255,255,0.02);
+                border-radius: 10px;
+                border: 1px solid rgba(255,255,255,0.04);
+                animation: vc-pn-fadeUp 0.3s ease both;
+            }
+            .vc-pn-shimmer-dot {
+                width: 22px;
+                height: 22px;
+                border-radius: 50%;
+                flex-shrink: 0;
+                background: linear-gradient(90deg,
+                    rgba(255,255,255,0.06) 25%,
+                    rgba(255,255,255,0.14) 50%,
+                    rgba(255,255,255,0.06) 75%);
+                background-size: 300% 100%;
+                animation: vc-pn-shimmer 1.8s infinite linear;
+            }
+            .vc-pn-shimmer-bar {
+                border-radius: 6px;
+                background: linear-gradient(90deg,
+                    rgba(255,255,255,0.06) 25%,
+                    rgba(255,255,255,0.14) 50%,
+                    rgba(255,255,255,0.06) 75%);
+                background-size: 300% 100%;
+                animation: vc-pn-shimmer 1.8s infinite linear;
             }
         `;
         document.head.appendChild(style);
