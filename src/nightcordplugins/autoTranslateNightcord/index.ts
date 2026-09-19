@@ -4857,6 +4857,10 @@ export const translations: TranslationMap = {
     "Crow Bots Server": {"en":"Crow Bots Server","fr":"Serveur Crow Bots","ar":"خادم Crow Bots","es":"Servidor de Crow Bots","ru":"Сервер Crow Bots","zh":"Crow Bots 服务器"},
     "Join Server": {"en":"Join Server","fr":"Rejoindre le serveur","ar":"انضم إلى الخادم","es":"Unirse al servidor","ru":"Присоединиться к серверу","zh":"加入服务器"},
     "Capitalize translated text (disabled by default)": {"en":"Capitalize translated text (disabled by default)","fr":"Mettre des majuscules au texte traduit (désactivé par défaut)","ar":"تكبير النص المترجم (معطل افتراضياً)","es":"Poner en mayúsculas el texto traducido (desactivado por defecto)","ru":"Делать переведенный текст заглавным (по умолчанию отключено)","zh":"将翻译文本大写（默认禁用）"},
+    "ACCOUNTS": {"en":"ACCOUNTS","fr":"COMPTES","ar":"حسابات","es":"CUENTAS","ru":"АККАУНТЫ","zh":"账户"},
+    "ACCOUNT": {"en":"ACCOUNT","fr":"COMPTE","ar":"حساب","es":"CUENTA","ru":"АККАУНТ","zh":"账户"},
+    "No account found.": {"en":"No account found.","fr":"Aucun compte trouvé.","ar":"لم يتم العثور على أي حساب.","es":"No se encontró ninguna cuenta.","ru":"Аккаунтов не найдено.","zh":"未找到账户。"},
+    "Current active account": {"en":"Current active account","fr":"Compte actuellement actif","ar":"الحساب النشط حالياً","es":"Cuenta activa actual","ru":"Текущий активный аккаунт","zh":"当前活动账户"},
 };
 
 export default definePlugin({

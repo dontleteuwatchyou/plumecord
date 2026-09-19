@@ -57,13 +57,28 @@ let encryptHooked = false;
 
 async function loadTokenCache(): Promise<void> {
     if (tokenCacheLoaded) return;
-    tokenCache = (await DataStore.get<Record<string, string>>(MI_TOKEN_CACHE_KEY)) ?? {};
+    let local: Record<string, string> = {};
+    try {
+        local = (await DataStore.get<Record<string, string>>(MI_TOKEN_CACHE_KEY)) ?? {};
+    } catch {}
+
+    let shared: Record<string, string> = {};
+    try {
+        if (typeof Native?.getSharedTokenCache === "function") {
+            shared = (await Native.getSharedTokenCache()) ?? {};
+        }
+    } catch {}
+
+    tokenCache = { ...shared, ...local, ...tokenCache };
     tokenCacheLoaded = true;
 
     // Purge any corrupted or cross-account tokens
     const curUser = UserStore.getCurrentUser();
     const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
     const curTok = tokenMod?.getToken?.();
+    if (curUser?.id && curTok) {
+        tokenCache[curUser.id] = curTok;
+    }
 
     let dirty = false;
     for (const [id, tok] of Object.entries(tokenCache)) {
@@ -94,8 +109,8 @@ async function loadTokenCache(): Promise<void> {
             dirty = true;
         }
     }
-    if (dirty) {
-        await saveTokenCache();
+    if (dirty || Object.keys(tokenCache).length > Object.keys(local).length) {
+        saveTokenCache();
     }
 }
 
@@ -105,6 +120,9 @@ function saveTokenCache(): void {
     _saveTokenTimer = setTimeout(() => {
         _saveTokenTimer = undefined;
         DataStore.set(MI_TOKEN_CACHE_KEY, tokenCache).catch(() => {});
+        if (typeof Native?.saveSharedTokenCache === "function") {
+            Native.saveSharedTokenCache(tokenCache).catch(() => {});
+        }
     }, 1000);
 }
 
@@ -154,6 +172,9 @@ function captureCurrentToken(): void {
         if (token && user?.id && typeof token === "string") {
             const changed = cacheToken(user.id, token);
             if (changed) saveTokenCache();
+            if (typeof fetchAllAccounts === "function") {
+                fetchAllAccounts().catch(() => {});
+            }
         }
     } catch { }
 }
@@ -491,6 +512,76 @@ function getNativeAccounts(): SavedAccount[] {
     }
 }
 
+async function fetchAllAccounts(): Promise<SavedAccount[]> {
+    let local: SavedAccount[] = [];
+    try {
+        local = (await DataStore.get<SavedAccount[]>(STORE_KEY)) ?? [];
+    } catch {}
+
+    let shared: SavedAccount[] = [];
+    try {
+        if (typeof (Native as any)?.getSharedAccounts === "function") {
+            shared = (await (Native as any).getSharedAccounts()) ?? [];
+        }
+    } catch {}
+
+    const map = new Map<string, SavedAccount>();
+    for (const a of shared) {
+        if (a && a.id) map.set(a.id, a);
+    }
+    for (const a of local) {
+        if (!a || !a.id) continue;
+        const prev = map.get(a.id);
+        map.set(a.id, {
+            id: a.id,
+            username: a.username || prev?.username || "",
+            avatar: a.avatar || prev?.avatar || "",
+            token: a.token || prev?.token || "",
+        });
+    }
+
+    const nativeAccs = getNativeAccounts();
+    for (const a of nativeAccs) {
+        if (!a || !a.id) continue;
+        const prev = map.get(a.id);
+        map.set(a.id, {
+            id: a.id,
+            username: a.username || prev?.username || "",
+            avatar: a.avatar || prev?.avatar || "",
+            token: a.token || prev?.token || tokenCache[a.id] || "",
+        });
+    }
+
+    const curUser = UserStore.getCurrentUser();
+    if (curUser?.id) {
+        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const curTok = tokenMod?.getToken?.();
+        const prev = map.get(curUser.id);
+        map.set(curUser.id, {
+            id: curUser.id,
+            username: (curUser as any).globalName || curUser.username || prev?.username || "",
+            avatar: getAvatarUrl(curUser.id, curUser.avatar) || prev?.avatar || "",
+            token: curTok || prev?.token || tokenCache[curUser.id] || "",
+        });
+    }
+
+    const merged = Array.from(map.values());
+    for (const acc of merged) {
+        if (acc.token && acc.token.startsWith("dQw4w9WgXcQ:")) {
+            try {
+                const dec = await Native.decryptToken(acc.token);
+                if (dec) acc.token = dec;
+            } catch {}
+        }
+    }
+
+    if (typeof (Native as any)?.saveSharedAccounts === "function") {
+        (Native as any).saveSharedAccounts(merged).catch(() => {});
+    }
+    DataStore.set(STORE_KEY, merged).catch(() => {});
+    return merged;
+}
+
 /** Quick switch — token direct */
 function switchToQuick(token: string, userId?: string) {
     const cleanTok = token.trim().replace(/^"+|"+$/g, "");
@@ -620,9 +711,15 @@ function ContextMenuPortal(props: CtxMenuProps) {
                 </div>
             )}
 
-            <div className="mi-ctx-item" onClick={() => { onSwitch(); onClose(); }}>
-                <SwitchIcon /> {t("Quick switch")}
-            </div>
+            {acc.id !== UserStore.getCurrentUser()?.id ? (
+                <div className="mi-ctx-item" onClick={() => { onSwitch(); onClose(); }}>
+                    <SwitchIcon /> {t("Quick switch")}
+                </div>
+            ) : (
+                <div className="mi-ctx-hint" style={{ textAlign: "center", color: "var(--brand-500, #5865f2)", fontWeight: 600 }}>
+                    {t("Current active account")}
+                </div>
+            )}
 
             {isOpen && <>
                 <div className="mi-ctx-separator" />
@@ -655,23 +752,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     React.useEffect(() => {
         captureCurrentToken();
-        DataStore.get<SavedAccount[]>(STORE_KEY).then(async v => {
-            const raw = v ?? [];
-            const decrypted: SavedAccount[] = [];
-            for (const acc of raw) {
-                let tok = acc.token;
-                if (tok && tok.startsWith("dQw4w9WgXcQ:")) {
-                    try {
-                        const dec = await Native.decryptToken(tok);
-                        if (dec) tok = dec;
-                    } catch (e) {
-                        console.warn("[MultiInstance] Decryption failed for", acc.username, e);
-                    }
-                }
-                decrypted.push({ ...acc, token: tok });
-            }
-            setSavedAccounts(decrypted);
-        });
+        fetchAllAccounts().then(accs => {
+            setSavedAccounts(accs);
+        }).catch(() => {});
         setNativeAccounts(getNativeAccounts());
         Native.getOpenInstances().then(ids => setOpenInstances(ids ?? [])).catch(() => { });
     }, []);
@@ -682,8 +765,31 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
 
+        // 1. Current logged-in user (appears first among accounts)
+        if (currentUser) {
+            seen.add(currentUser.id);
+            const saved = savedAccounts.find(s => s.id === currentUser.id);
+            const native = nativeAccounts.find(n => n.id === currentUser.id);
+            let token = curTok || saved?.token || native?.token || tokenCache[currentUser.id] || "";
+            if (token) {
+                const owner = getUserIdFromToken(token);
+                if (owner && owner !== currentUser.id) {
+                    token = "";
+                }
+            }
+            result.push({
+                id: currentUser.id,
+                username: (currentUser as any).globalName || currentUser.username,
+                avatar: getAvatarUrl(currentUser.id, currentUser.avatar),
+                token,
+                hasToken: !!token,
+                isNative: true,
+            });
+        }
+
+        // 2. Native Discord accounts
         for (const acc of nativeAccounts) {
-            if (acc.id === currentUser?.id || seen.has(acc.id)) continue;
+            if (seen.has(acc.id)) continue;
             seen.add(acc.id);
             const saved = savedAccounts.find(s => s.id === acc.id);
             let token = saved?.token || acc.token || tokenCache[acc.id] || "";
@@ -698,10 +804,12 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
             }
             result.push({ ...acc, token, hasToken: !!token, isNative: true });
         }
+
+        // 3. Saved accounts from TokenImporter & Shared Accounts
         for (const acc of savedAccounts) {
-            if (acc.id === currentUser?.id || seen.has(acc.id)) continue;
+            if (seen.has(acc.id)) continue;
             seen.add(acc.id);
-            let token = acc.token;
+            let token = acc.token || tokenCache[acc.id] || "";
             if (token && curTok && token === curTok && acc.id !== currentUser?.id) {
                 token = "";
             }
@@ -813,46 +921,28 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     <strong>{t("Left click")}</strong> {t("or")} <strong>{t("right click")}</strong> → {t("options menu")}
                 </p>
 
-                {/* Active account */}
-                {currentUser && (
-                    <div className="mi-list">
-                        <div className="mi-section-label">{t("ACTIVE ACCOUNT")}</div>
-                        <div className="mi-account-row mi-account-row--current">
-                            <AccountAvatar
-                                url={getAvatarUrl(currentUser.id, currentUser.avatar)}
-                                name={currentUser.username}
-                            />
-                            <div className="mi-account-info">
-                                <span className="mi-account-name">
-                                    {(currentUser as any).globalName || currentUser.username}
-                                </span>
-                                <span className="mi-account-tag">@{currentUser.username}</span>
-                            </div>
-                            <span className="mi-badge-current">{t("Active")}</span>
-                        </div>
-                    </div>
-                )}
-
-                {/* Autres accounts */}
                 <div className="mi-list">
                     <div className="mi-section-label">
-                        {allAccounts.length} {t(allAccounts.length !== 1 ? "OTHER ACCOUNTS" : "OTHER ACCOUNT")}
+                        {allAccounts.length} {t(allAccounts.length !== 1 ? "ACCOUNTS" : "ACCOUNT")}
                     </div>
 
                     {allAccounts.length === 0 ? (
                         <div className="mi-empty">
-                            {t("No other account found.")}<br />
+                            {t("No account found.")}<br />
                             {t("Use")} "<strong>{t("Switch Account")}</strong>" {t("in Discord or add tokens via")} <strong>{t("TokenImporter")}</strong>.
                         </div>
                     ) : allAccounts.map(acc => {
+                        const isCurrent = acc.id === currentUser?.id;
                         const isOpen = openInstances.includes(acc.id);
-                        const tagText = acc.hasToken
-                            ? (acc.isNative ? t("Discord Account") : t("Token"))
-                            : t("Requires normal login to capture token");
+                        const tagText = isCurrent
+                            ? `@${currentUser?.username ?? acc.username}`
+                            : (acc.hasToken
+                                ? (acc.isNative ? t("Discord Account") : t("Token"))
+                                : t("Requires normal login to capture token"));
                         return (
                             <div
                                 key={acc.id}
-                                className={`mi-account-row${isOpen ? " mi-account-row--active" : ""}${!acc.hasToken ? " mi-account-row--no-token" : ""}`}
+                                className={`mi-account-row${isCurrent ? " mi-account-row--current" : ""}${isOpen ? " mi-account-row--active" : ""}${!acc.hasToken && !isCurrent ? " mi-account-row--no-token" : ""}`}
                                 onClick={e => openCtx(e, acc)}
                                 onContextMenu={e => openCtx(e, acc)}
                             >
@@ -863,7 +953,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                                         {tagText}
                                     </span>
                                 </div>
-                                {acc.hasToken ? (
+                                {isCurrent ? (
+                                    <span className="mi-badge-current">{t("Active")}</span>
+                                ) : acc.hasToken ? (
                                     isOpen
                                         ? <span className="mi-badge-open">{t("Open")}</span>
                                         : <span className="mi-badge-arrow">›</span>
@@ -1185,6 +1277,7 @@ export default definePlugin({
         hookEncryptAndStoreTokens();
         this._fluxUnsub = hookFluxDispatcher();
         captureCurrentToken();
+        fetchAllAccounts().catch(() => {});
         if (!isCurrentInstanceWindow()) {
             scheduleMasterAudioSave();
             hookAudioSettingsWatcher();

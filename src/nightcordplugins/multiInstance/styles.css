@@ -63,11 +63,11 @@
 .mi-account-row--current {
     border-color: rgba(88,101,242,0.4);
     background: rgba(88,101,242,0.07);
-    cursor: default;
+    cursor: pointer;
 }
 .mi-account-row--current:hover {
-    background: rgba(88,101,242,0.07);
-    border-color: rgba(88,101,242,0.4);
+    background: rgba(88,101,242,0.14);
+    border-color: rgba(88,101,242,0.6);
 }
 .mi-account-row--no-token {
     opacity: 0.65;

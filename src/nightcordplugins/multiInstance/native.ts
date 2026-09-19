@@ -215,6 +215,108 @@ export function getMasterAudioSettings(): any {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared Accounts & Token Cache Sync across all instances
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SHARED_ACCOUNTS_FILE = join(app.getPath("userData"), "nightcord-mi-accounts.json");
+const SHARED_TOKEN_CACHE_FILE = join(app.getPath("userData"), "nightcord-mi-tokencache.json");
+
+export interface SharedAccountData {
+    id: string;
+    token: string;
+    username: string;
+    avatar: string;
+}
+
+export async function getSharedAccounts(): Promise<SharedAccountData[]> {
+    try {
+        if (!existsSync(SHARED_ACCOUNTS_FILE)) return [];
+        const raw = readFileSync(SHARED_ACCOUNTS_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map((acc: any) => ({
+            id: String(acc.id || ""),
+            token: decryptTokenSync(acc.token || ""),
+            username: String(acc.username || ""),
+            avatar: String(acc.avatar || ""),
+        })).filter(acc => acc.id);
+    } catch (e) {
+        console.warn("[NightcordMI] getSharedAccounts error:", e);
+        return [];
+    }
+}
+
+export async function saveSharedAccounts(_: any, accounts: SharedAccountData[]): Promise<boolean> {
+    try {
+        if (!Array.isArray(accounts)) return false;
+        const existing = await getSharedAccounts();
+        const map = new Map<string, SharedAccountData>();
+        for (const a of existing) {
+            if (a.id) map.set(a.id, a);
+        }
+        for (const a of accounts) {
+            if (!a || !a.id) continue;
+            const prev = map.get(a.id);
+            map.set(a.id, {
+                id: a.id,
+                username: a.username || prev?.username || "",
+                avatar: a.avatar || prev?.avatar || "",
+                token: a.token || prev?.token || "",
+            });
+        }
+        const toSave = Array.from(map.values()).map(acc => ({
+            id: acc.id,
+            username: acc.username,
+            avatar: acc.avatar,
+            token: encryptTokenSync(acc.token),
+        }));
+        writeFileSync(SHARED_ACCOUNTS_FILE, JSON.stringify(toSave, null, 2), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] saveSharedAccounts error:", e);
+        return false;
+    }
+}
+
+export async function getSharedTokenCache(): Promise<Record<string, string>> {
+    try {
+        if (!existsSync(SHARED_TOKEN_CACHE_FILE)) return {};
+        const raw = readFileSync(SHARED_TOKEN_CACHE_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object") return {};
+        const decrypted: Record<string, string> = {};
+        for (const [id, tok] of Object.entries(parsed)) {
+            if (typeof tok === "string" && tok) {
+                decrypted[id] = decryptTokenSync(tok);
+            }
+        }
+        return decrypted;
+    } catch (e) {
+        console.warn("[NightcordMI] getSharedTokenCache error:", e);
+        return {};
+    }
+}
+
+export async function saveSharedTokenCache(_: any, cache: Record<string, string>): Promise<boolean> {
+    try {
+        if (!cache || typeof cache !== "object") return false;
+        const existing = await getSharedTokenCache();
+        const merged = { ...existing, ...cache };
+        const encrypted: Record<string, string> = {};
+        for (const [id, tok] of Object.entries(merged)) {
+            if (typeof tok === "string" && tok) {
+                encrypted[id] = encryptTokenSync(tok);
+            }
+        }
+        writeFileSync(SHARED_TOKEN_CACHE_FILE, JSON.stringify(encrypted, null, 2), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] saveSharedTokenCache error:", e);
+        return false;
+    }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Intercepte les IPC de contrôle de fenêtre pour une instance multi.
@@ -852,6 +954,10 @@ export async function openInstanceWindow(
         if (audioSettings) {
             saveMasterAudioSettings(null, audioSettings);
         }
+        if (userId && token) {
+            saveSharedAccounts(null, [{ id: userId, token, username: username || "", avatar: "" }]).catch(() => {});
+            saveSharedTokenCache(null, { [userId]: token }).catch(() => {});
+        }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
         const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio);
@@ -1117,6 +1223,10 @@ export async function openInstanceWindowGrouped(
 
         if (audioSettings) {
             saveMasterAudioSettings(null, audioSettings);
+        }
+        if (userId && token) {
+            saveSharedAccounts(null, [{ id: userId, token, username: username || "", avatar: "" }]).catch(() => {});
+            saveSharedTokenCache(null, { [userId]: token }).catch(() => {});
         }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
