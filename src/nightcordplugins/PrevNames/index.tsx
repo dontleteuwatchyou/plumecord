@@ -1,18 +1,45 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
-import { closeModal, ModalCloseButton, ModalContent, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
+import { definePluginSettings } from "@api/Settings";
+import { Button } from "@components/Button";
+import { Card } from "@components/Card";
+import { Heading } from "@components/Heading";
+import { Paragraph } from "@components/Paragraph";
+import { openInviteModal } from "@utils/discord";
+import { closeModal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin from "@utils/types";
-import { Menu, React, Text, useEffect, useState, IconUtils } from "@webpack/common";
+import { FluxDispatcher, IconUtils, Menu, React, RestAPI, Text, useEffect, useState, UserStore } from "@webpack/common";
 import { findByPropsLazy } from "@webpack";
-import {domain} from "../../../DOMAIN.json";
+import { t } from "../autoTranslateNightcord";
 
 const PresenceStore = findByPropsLazy("getStatus", "isMobileOnline");
-const AuthStore = findByPropsLazy("getToken");
+const AuthStore = findByPropsLazy("getToken", "getSessionId");
+const GuildStore = findByPropsLazy("getGuild", "getGuilds");
+const ChannelStore = findByPropsLazy("getChannel");
+const ApplicationCommandIndexStore = findByPropsLazy("getApplicationState", "query");
+
+const CROW_GUILD_ID = "585517467116371988";
+const CROW_CHANNEL_ID = "1227808357109465170";
+const CROW_INVITE_CODE = "crow-bots";
+const CROW_INVITE_URL = "https://discord.gg/crow-bots";
+const DISCORD_EPOCH = 1420070400000n;
+
+function generateNonce(): string {
+    return String((BigInt(Date.now()) - DISCORD_EPOCH) << 22n);
+}
+
+function isUserInCrowServer(): boolean {
+    try {
+        return Boolean(GuildStore?.getGuild(CROW_GUILD_ID));
+    } catch {
+        return false;
+    }
+}
 
 type UserStatus = "online" | "idle" | "dnd" | "invisible" | "offline";
 
@@ -25,9 +52,7 @@ function useUserStatus(userId: string): UserStatus {
         const update = () => {
             try { setStatus(PresenceStore.getStatus(userId) ?? "offline"); } catch {}
         };
-        // PresenceStore dispatches on flux — poll on mount is enough for a modal
         update();
-        // Optional: subscribe if PresenceStore exposes an addChangeListener
         if (typeof PresenceStore.addChangeListener === "function") {
             PresenceStore.addChangeListener(update);
             return () => PresenceStore.removeChangeListener?.(update);
@@ -45,9 +70,7 @@ const STATUS_COLOR: Record<UserStatus, string> = {
     offline:   "#80848e",
 };
 
-// ─── API ──────────────────────────────────────────────────────────────────────
-
-const API_BASE = `https://api.${domain}/api`;
+// ─── API & Bot Interaction Engine ─────────────────────────────────────────────
 
 interface PrevNameEntry {
     timestamp: number;
@@ -60,21 +83,315 @@ interface PrevNamesResponse {
     prevnames: PrevNameEntry[];
 }
 
-async function fetchPrevNames(userId: string): Promise<PrevNamesResponse> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000); // 15s timeout
+interface CachedCommandInfo {
+    id: string;
+    application_id: string;
+    version: string;
+    name: string;
+    options?: any[];
+}
+
+let cachedCommand: CachedCommandInfo | null = null;
+
+async function resolvePrevnamesCommand(): Promise<CachedCommandInfo> {
+    if (cachedCommand) return cachedCommand;
+
+    // 1. Try querying ApplicationCommandIndexStore
     try {
-        const res = await fetch(`${API_BASE}/prevnames/${userId}`, { signal: controller.signal });
-        if (res.status === 404) return { userId, prevnames: [] };
-        if (res.status === 429) throw new Error("RATE_LIMITED");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    } catch (e: any) {
-        if (e?.name === "AbortError") throw new Error("TIMEOUT");
-        throw e;
-    } finally {
-        clearTimeout(timeout);
+        const channel = ChannelStore?.getChannel(CROW_CHANNEL_ID);
+        if (channel && ApplicationCommandIndexStore?.query) {
+            const res = ApplicationCommandIndexStore.query(
+                { channel },
+                { commandType: 1, text: "prevnames" },
+                { placeholderCount: 0, scoreThreshold: 0 }
+            );
+            const cmd = res?.commands?.find((c: any) => c.name === "prevnames");
+            if (cmd) {
+                cachedCommand = {
+                    id: cmd.id,
+                    application_id: cmd.applicationId || cmd.application_id,
+                    version: cmd.version,
+                    name: cmd.name,
+                    options: cmd.options
+                };
+                return cachedCommand;
+            }
+        }
+    } catch {}
+
+    // 2. Fetch directly from Discord API channel search
+    try {
+        const res = await RestAPI.get({
+            url: `/channels/${CROW_CHANNEL_ID}/application-commands/search?query=prevnames&limit=5`
+        });
+        const commands = res?.body?.application_commands || res?.application_commands || [];
+        const cmd = commands.find((c: any) => c.name === "prevnames");
+        if (cmd) {
+            cachedCommand = {
+                id: cmd.id,
+                application_id: cmd.application_id,
+                version: cmd.version,
+                name: cmd.name,
+                options: cmd.options
+            };
+            return cachedCommand;
+        }
+    } catch (e) {
+        console.error("[PrevNames] Failed to fetch command via search API:", e);
     }
+
+    // 3. Fallback to guild application-command-index
+    try {
+        const res = await RestAPI.get({
+            url: `/guilds/${CROW_GUILD_ID}/application-command-index`
+        });
+        const commands = res?.body?.application_commands || res?.application_commands || [];
+        const cmd = commands.find((c: any) => c.name === "prevnames");
+        if (cmd) {
+            cachedCommand = {
+                id: cmd.id,
+                application_id: cmd.application_id,
+                version: cmd.version,
+                name: cmd.name,
+                options: cmd.options
+            };
+            return cachedCommand;
+        }
+    } catch (e) {
+        console.error("[PrevNames] Failed to fetch command via guild index:", e);
+    }
+
+    throw new Error("COMMAND_NOT_FOUND");
+}
+
+function parseEmbedData(embed: any): { entries: PrevNameEntry[]; currentPage: number; totalPages: number } {
+    const textParts = [
+        embed?.description || "",
+        ...(embed?.fields?.map((f: any) => `${f.name || ""}\n${f.value || ""}`) || [])
+    ];
+    const fullText = textParts.join("\n");
+    const lines = fullText.split("\n").map(l => l.trim()).filter(Boolean);
+    const entries: PrevNameEntry[] = [];
+
+    for (const line of lines) {
+        const m = line.match(/^([0-9\/\-\.]+)\s*[-–—:]\s*(.+)$/);
+        if (m) {
+            const rawDate = m[1].trim();
+            const name = m[2].trim();
+            const parsedTime = Date.parse(rawDate);
+            const timestamp = !isNaN(parsedTime) ? parsedTime : Date.now();
+            entries.push({
+                timestamp,
+                date: rawDate,
+                name
+            });
+        }
+    }
+
+    let currentPage = 1;
+    let totalPages = 1;
+    const footerText = embed?.footer?.text || "";
+    const pageMatch = footerText.match(/(\d+)\s*\/\s*(\d+)/);
+    if (pageMatch) {
+        currentPage = parseInt(pageMatch[1], 10);
+        totalPages = parseInt(pageMatch[2], 10);
+    }
+
+    return { entries, currentPage, totalPages };
+}
+
+async function tryClickTrashButton(msg: any) {
+    try {
+        const buttons = (msg.components?.[0]?.components || []);
+        const trashBtn = buttons[2] || buttons.find((b: any) => b.custom_id?.includes("delete") || b.custom_id?.includes("trash") || b.emoji?.name === "🗑️");
+        if (trashBtn && !trashBtn.disabled) {
+            const sessionId = AuthStore?.getSessionId?.() ?? "";
+            await RestAPI.post({
+                url: "/interactions",
+                body: {
+                    type: 3,
+                    channel_id: CROW_CHANNEL_ID,
+                    message_id: msg.id,
+                    application_id: msg.application_id ?? msg.author?.id,
+                    session_id: sessionId,
+                    message_flags: msg.flags ?? 0,
+                    data: {
+                        component_type: 2,
+                        custom_id: trashBtn.custom_id,
+                    },
+                    nonce: generateNonce(),
+                    guild_id: CROW_GUILD_ID
+                }
+            });
+        }
+    } catch {}
+}
+
+async function fetchPrevNames(userId: string): Promise<PrevNamesResponse> {
+    if (!isUserInCrowServer()) {
+        throw new Error("NOT_IN_SERVER");
+    }
+    const currentUserId = UserStore.getCurrentUser()?.id;
+    const sessionId = AuthStore?.getSessionId?.() ?? "";
+    const cmd = await resolvePrevnamesCommand();
+
+    const interactionNonce = generateNonce();
+
+    return new Promise((resolve, reject) => {
+        let isDone = false;
+        let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+        let targetMessageId: string | null = null;
+        let targetAppId: string = cmd.application_id;
+        let lastMessage: any = null;
+        let isPaging = false;
+
+        const allEntries: PrevNameEntry[] = [];
+        const seenKeys = new Set<string>();
+
+        function addEntries(entries: PrevNameEntry[]) {
+            for (const e of entries) {
+                const key = `${e.timestamp}_${e.name}`;
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    allEntries.push(e);
+                }
+            }
+        }
+
+        function finish(success = true) {
+            if (isDone) return;
+            isDone = true;
+            if (timeoutTimer) clearTimeout(timeoutTimer);
+            FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
+            FluxDispatcher.unsubscribe("MESSAGE_UPDATE", onMessageUpdate);
+
+            if (lastMessage?.components) {
+                tryClickTrashButton(lastMessage);
+            }
+
+            if (success) {
+                resolve({ userId, prevnames: allEntries });
+            } else {
+                reject(new Error("TIMEOUT"));
+            }
+        }
+
+        timeoutTimer = setTimeout(() => {
+            if (!isDone) {
+                if (allEntries.length > 0) {
+                    finish(true);
+                } else {
+                    finish(false);
+                }
+            }
+        }, 15000);
+
+        async function handleBotMessage(msg: any) {
+            if (msg?.channel_id !== CROW_CHANNEL_ID) return;
+
+            const isOurInteraction =
+                (msg.nonce === interactionNonce) ||
+                (msg.interaction?.user?.id === currentUserId && msg.interaction?.name === "prevnames") ||
+                (targetMessageId && msg.id === targetMessageId);
+
+            if (!isOurInteraction && !targetMessageId) {
+                const title = msg.embeds?.[0]?.title || "";
+                if (!title.toLowerCase().includes("pseudo") && !title.toLowerCase().includes("prevname")) {
+                    return;
+                }
+            }
+
+            targetMessageId = msg.id;
+            targetAppId = msg.application_id ?? msg.author?.id ?? cmd.application_id;
+            lastMessage = msg;
+
+            const embed = msg.embeds?.[0];
+            if (!embed) return;
+
+            const { entries, currentPage, totalPages } = parseEmbedData(embed);
+            addEntries(entries);
+
+            // If there are more pages, click button 2 (index 1) to navigate
+            if (currentPage < totalPages && !isPaging) {
+                isPaging = true;
+                const buttons = (msg.components?.[0]?.components || []);
+                const nextBtn = buttons[1] || buttons.find((b: any) => b.custom_id?.includes("next") || b.custom_id?.includes("right"));
+                if (nextBtn && !nextBtn.disabled) {
+                    await new Promise(r => setTimeout(r, 200));
+                    try {
+                        await RestAPI.post({
+                            url: "/interactions",
+                            body: {
+                                type: 3, // MESSAGE_COMPONENT
+                                channel_id: CROW_CHANNEL_ID,
+                                message_id: msg.id,
+                                application_id: targetAppId,
+                                session_id: sessionId,
+                                message_flags: msg.flags ?? 0,
+                                data: {
+                                    component_type: 2, // BUTTON
+                                    custom_id: nextBtn.custom_id,
+                                },
+                                nonce: generateNonce(),
+                                guild_id: CROW_GUILD_ID
+                            }
+                        });
+                        isPaging = false;
+                        return; // wait for next MESSAGE_UPDATE
+                    } catch (err) {
+                        console.error("[PrevNames] Failed to click next button:", err);
+                    }
+                }
+                isPaging = false;
+            }
+
+            if (currentPage >= totalPages) {
+                finish(true);
+            }
+        }
+
+        function onMessageCreate({ message }: { message: any }) {
+            handleBotMessage(message);
+        }
+
+        function onMessageUpdate({ message }: { message: any }) {
+            handleBotMessage(message);
+        }
+
+        FluxDispatcher.subscribe("MESSAGE_CREATE", onMessageCreate);
+        FluxDispatcher.subscribe("MESSAGE_UPDATE", onMessageUpdate);
+
+        const option = cmd.options?.[0] ?? { name: "membre", type: 6 };
+        RestAPI.post({
+            url: "/interactions",
+            body: {
+                type: 2, // APPLICATION_COMMAND
+                application_id: cmd.application_id,
+                guild_id: CROW_GUILD_ID,
+                channel_id: CROW_CHANNEL_ID,
+                session_id: sessionId,
+                data: {
+                    version: cmd.version,
+                    id: cmd.id,
+                    name: cmd.name,
+                    type: 1,
+                    options: [
+                        {
+                            type: option.type,
+                            name: option.name,
+                            value: userId
+                        }
+                    ],
+                    application_command: cmd,
+                    attachments: []
+                },
+                nonce: interactionNonce
+            }
+        }).catch(err => {
+            console.error("[PrevNames] Failed to send interaction:", err);
+            finish(false);
+        });
+    });
 }
 
 function getBannerUrl(userId: string, bannerHash: string | null | undefined, size = 480): string | null {
@@ -90,6 +407,7 @@ function getAvatarUrl(userId: string, avatarHash: string | null | undefined, siz
 }
 
 function formatRelativeDate(date: Date): string {
+    if (isNaN(date.getTime())) return "";
     const now = new Date();
     const isToday =
         date.getDate() === now.getDate() &&
@@ -214,7 +532,8 @@ function CopyBtn({ text, label }: { text: string; label?: string }) {
 function NameCard({ entry, index, isLatest, isOldest, search }: {
     entry: PrevNameEntry; index: number; isLatest: boolean; isOldest: boolean; search: string;
 }) {
-    const date = new Date(entry.date);
+    const date = new Date(entry.timestamp || entry.date);
+    const formattedDate = !isNaN(date.getTime()) ? formatRelativeDate(date) : entry.date;
 
     return (
         <div
@@ -250,7 +569,7 @@ function NameCard({ entry, index, isLatest, isOldest, search }: {
                         </div>
                         <div className="vc-pn-card-date">
                             <CalendarIcon size={11} color="var(--text-muted)" />
-                            <span>{formatRelativeDate(date)}</span>
+                            <span>{formattedDate || entry.date}</span>
                         </div>
                     </div>
 
@@ -488,7 +807,10 @@ function PrevNamesModal({ modalProps, userId, username, avatarHash }: {
                                 <span className="vc-pn-stat-label">Since</span>
                                 <span className="vc-pn-stat-value">
                                     {all.length > 0
-                                        ? new Date(all[all.length - 1].date).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                                        ? (() => {
+                                            const d = new Date(all[all.length - 1].timestamp || all[all.length - 1].date);
+                                            return !isNaN(d.getTime()) ? d.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : all[all.length - 1].date;
+                                          })()
                                         : "—"}
                                 </span>
                             </div>
@@ -508,13 +830,25 @@ function PrevNamesModal({ modalProps, userId, username, avatarHash }: {
                     </div>
                 )}
 
+                {/* Not in server */}
+                {!loading && error === "NOT_IN_SERVER" && (
+                    <div className="vc-pn-alert vc-pn-alert--warn">
+                        <div className="vc-pn-alert-icon"><AlertIcon size={20} color="#f0b232" /></div>
+                        <div className="vc-pn-alert-body">
+                            <span className="vc-pn-alert-title" style={{ color: "#f0b232" }}>{t("Crow Bots Server Required")}</span>
+                            <span className="vc-pn-alert-desc" style={{ color: "#ffffff" }}>{t("To view username history, you must join the official Crow Bots Discord server.")}</span>
+                        </div>
+                        <button onClick={() => openInviteModal(CROW_INVITE_CODE)} className="vc-pn-retry-btn">{t("Join Server")}</button>
+                    </div>
+                )}
+
                 {/* Timeout */}
                 {!loading && error === "TIMEOUT" && (
                     <div className="vc-pn-alert vc-pn-alert--warn">
                         <div className="vc-pn-alert-icon"><ClockIcon size={20} color="#f0b232" /></div>
                         <div className="vc-pn-alert-body">
-                            <span className="vc-pn-alert-title" style={{ color: "#f0b232" }}>Server waking up…</span>
-                            <span className="vc-pn-alert-desc" style={{ color: "#ffffff" }}>The API server was sleeping (Render free tier). It usually takes 30–60s to start. Please retry.</span>
+                            <span className="vc-pn-alert-title" style={{ color: "#f0b232" }}>Timeout</span>
+                            <span className="vc-pn-alert-desc" style={{ color: "#ffffff" }}>The bot took too long to respond in the channel. Please retry.</span>
                         </div>
                         <button onClick={load} className="vc-pn-retry-btn">Retry</button>
                     </div>
@@ -533,7 +867,7 @@ function PrevNamesModal({ modalProps, userId, username, avatarHash }: {
                 )}
 
                 {/* Error */}
-                {!loading && error && !isRateLimited && (
+                {!loading && error && error !== "NOT_IN_SERVER" && !isRateLimited && (
                     <div className="vc-pn-alert vc-pn-alert--error">
                         <div className="vc-pn-alert-icon"><AlertIcon size={20} color="#f23f42" /></div>
                         <div className="vc-pn-alert-body">
@@ -625,9 +959,70 @@ function PrevNamesModal({ modalProps, userId, username, avatarHash }: {
     );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Modals & Settings ────────────────────────────────────────────────────────
+
+function openJoinCrowServerModal() {
+    const key = openModal(props => (
+        <ModalRoot {...props} size={ModalSize.DYNAMIC} className="vc-pn-modal-root">
+            <ModalHeader separator={false} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px 0" }}>
+                <Heading variant="heading-lg/semibold" style={{ color: "var(--header-primary)" }}>
+                    {t("Crow Bots Server Required")}
+                </Heading>
+                <ModalCloseButton onClick={() => closeModal(key)} />
+            </ModalHeader>
+            <ModalContent style={{ padding: "16px 24px 20px" }}>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "12px" }}>
+                    {t("To view username history, you must join the official Crow Bots Discord server.")}
+                </Paragraph>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: "1.5", marginBottom: "16px" }}>
+                    {t("PrevNames queries the bot in the background within the dedicated channel. You must be a member of the Crow Bots server to use it.")}
+                </Paragraph>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <a
+                        href={CROW_INVITE_URL}
+                        onClick={e => {
+                            e.preventDefault();
+                            openInviteModal(CROW_INVITE_CODE);
+                        }}
+                        style={{
+                            color: "var(--text-link)",
+                            fontSize: "14px",
+                            fontWeight: 600,
+                            textDecoration: "underline",
+                            cursor: "pointer"
+                        }}
+                    >
+                        {CROW_INVITE_URL}
+                    </a>
+                </div>
+            </ModalContent>
+            <ModalFooter style={{ display: "flex", justifyContent: "flex-end", gap: "12px", padding: "16px 24px" }}>
+                <Button
+                    color={Button.Colors.PRIMARY}
+                    look={Button.Looks.LINK}
+                    onClick={() => closeModal(key)}
+                >
+                    {t("Cancel")}
+                </Button>
+                <Button
+                    color={Button.Colors.BRAND}
+                    onClick={() => {
+                        openInviteModal(CROW_INVITE_CODE);
+                        closeModal(key);
+                    }}
+                >
+                    {t("Join Server")}
+                </Button>
+            </ModalFooter>
+        </ModalRoot>
+    ));
+}
 
 function openPrevNamesModal(userId: string, username: string, avatarHash?: string | null) {
+    if (!isUserInCrowServer()) {
+        openJoinCrowServerModal();
+        return;
+    }
     const key = openModal(props => (
         <PrevNamesModal
             modalProps={{ ...props, onClose: () => closeModal(key) }}
@@ -637,6 +1032,60 @@ function openPrevNamesModal(userId: string, username: string, avatarHash?: strin
         />
     ));
 }
+
+function PrevNamesSettingsComponent() {
+    return (
+        <Card
+            variant="primary"
+            style={{
+                padding: "16px 20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                background: "var(--background-secondary)",
+                borderRadius: "12px",
+                border: "1px solid rgba(255, 255, 255, 0.06)",
+                marginTop: "8px"
+            }}
+        >
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <Heading variant="heading-md/semibold" style={{ color: "var(--header-primary)" }}>
+                    {t("Crow Bots Server")}
+                </Heading>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: "1.5", margin: 0 }}>
+                    {t("PrevNames queries the bot in the background within the dedicated channel. You must be a member of the Crow Bots server to use it.")}
+                </Paragraph>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px" }}>
+                <a
+                    href={CROW_INVITE_URL}
+                    onClick={e => {
+                        e.preventDefault();
+                        openInviteModal(CROW_INVITE_CODE);
+                    }}
+                    style={{
+                        color: "var(--text-link)",
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        textDecoration: "underline",
+                        cursor: "pointer"
+                    }}
+                >
+                    {CROW_INVITE_URL}
+                </a>
+                <Button
+                    color={Button.Colors.BRAND}
+                    size={Button.Sizes.SMALL}
+                    onClick={() => openInviteModal(CROW_INVITE_CODE)}
+                >
+                    {t("Join Server")}
+                </Button>
+            </div>
+        </Card>
+    );
+}
+
+const settings = definePluginSettings({});
 
 // ─── Context Menu Patch ───────────────────────────────────────────────────────
 
@@ -659,9 +1108,10 @@ const userCtxPatch: NavContextMenuPatchCallback = (children, props) => {
 export default definePlugin({
     name: "PrevNames",
     description: "Shows the username history of a user. Right-click → PrevNames.",
-    authors: [{ name: "you",
-     id: 0n }],
+    authors: [{ name: "you", id: 0n }],
     dependencies: ["ContextMenuAPI"],
+    settings,
+    settingsAboutComponent: PrevNamesSettingsComponent,
 
     start() {
         const style = document.createElement("style");
