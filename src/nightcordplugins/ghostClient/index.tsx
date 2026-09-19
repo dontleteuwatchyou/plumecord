@@ -12,6 +12,9 @@ import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
 import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select } from "@webpack/common";
+import { ModalRoot, ModalHeader, ModalContent, ModalFooter, ModalCloseButton, ModalSize, openModal } from "@utils/modal";
+import { FormSwitch } from "@components/FormSwitch";
+import { Button } from "@components/Button";
 import { t } from "../autoTranslateNightcord";
 import { openTokenImporterModal } from "../tokenImporter";
 
@@ -182,6 +185,16 @@ const Native = {
         if (n?.fakeStream) { try { await n.fakeStream(userIds, streaming); return; } catch {} }
         await sfetch("/fake-stream", { userIds, streaming });
     },
+    async streamVideo(userIds: string[], videoPath: string, loop = true, withAudio = true): Promise<{ ok: boolean; error?: string }> {
+        const n = getNative();
+        if (n?.streamVideo) { try { return await n.streamVideo(userIds, videoPath, loop, withAudio); } catch {} }
+        return await sfetch("/stream-video", { userIds, videoPath, loop, withAudio });
+    },
+    async selectVideoFile(): Promise<string | null> {
+        const n = getNative();
+        if (n?.selectVideoFile) { try { return await n.selectVideoFile(); } catch {} }
+        return null;
+    },
     async setCameraAll(userIds: string[], camera: boolean): Promise<void> {
         const n = getNative();
         if (n?.fakeCam) { try { await n.fakeCam(userIds, camera); return; } catch {} }
@@ -234,6 +247,38 @@ function StreamIcon() {
     return (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <path d="M4 2.5A2.5 2.5 0 0 0 1.5 5v10A2.5 2.5 0 0 0 4 17.5h6V19H7a1 1 0 1 0 0 2h10a1 1 0 0 0 0-2h-3v-1.5h6a2.5 2.5 0 0 0 2.5-2.5V5A2.5 2.5 0 0 0 20 2.5H4zm-0.5 3c0-.28.22-.5.5-.5h16c.28 0 .5.22.5.5v10c0 .28-.22.5-.5.5H4a.5.5 0 0 1-.5-.5V5.5z" />
+        </svg>
+    );
+}
+function VideoIcon({ width = 20, height = 20 }: { width?: number; height?: number }) {
+    return (
+        <svg width={width} height={height} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+            <line x1="7" y1="4" x2="7" y2="20" />
+            <line x1="17" y1="4" x2="17" y2="20" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <line x1="2" y1="8" x2="7" y2="8" />
+            <line x1="2" y1="16" x2="7" y2="16" />
+            <line x1="17" y1="16" x2="22" y2="16" />
+            <line x1="17" y1="8" x2="22" y2="8" />
+        </svg>
+    );
+}
+function UploadIcon({ width = 32, height = 32 }: { width?: number; height?: number }) {
+    return (
+        <svg width={width} height={height} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+    );
+}
+function MonitorIcon({ width = 20, height = 20 }: { width?: number; height?: number }) {
+    return (
+        <svg width={width} height={height} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
         </svg>
     );
 }
@@ -755,6 +800,228 @@ function stopFollowing() {
     voiceUnsub = null;
 }
 
+// ─── Modale de Sélection de Stream (Fake / Fichier Vidéo Drag & Drop) ───────
+interface StreamChoiceModalProps {
+    userIds: string[];
+    transitionState: any;
+    onClose: () => void;
+}
+
+function StreamChoiceModal({ userIds, transitionState, onClose }: StreamChoiceModalProps) {
+    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [selectedName, setSelectedName] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [loop, setLoop] = useState(true);
+    const [withAudio, setWithAudio] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const handleSelectFile = async () => {
+        try {
+            const path = await Native.selectVideoFile();
+            if (path) {
+                const name = path.split(/[/\\]/).pop() || path;
+                setSelectedPath(path);
+                setSelectedName(name);
+            }
+        } catch {}
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            const filePath = (file as any).path || file.name;
+            const isVideo = /\.(mp4|mkv|webm|avi|mov|flv|wmv|m4v)$/i.test(filePath) || file.type.startsWith("video/");
+            if (!isVideo) {
+                Toasts.show({
+                    message: t("Supported formats: MP4, MKV, WEBM, AVI, MOV"),
+                    id: Toasts.genId(),
+                    type: Toasts.Type.FAILURE
+                });
+                return;
+            }
+            setSelectedName(file.name);
+            setSelectedPath(filePath);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleFakeStream = async () => {
+        try {
+            await Native.setStreamAll(userIds, true);
+            for (const uid of userIds) {
+                const cur = ghostStates.get(uid) ?? defaultState();
+                ghostStates.set(uid, { ...cur, streaming: true });
+            }
+            notify();
+            Toasts.show({
+                message: t("Fake stream started"),
+                id: Toasts.genId(),
+                type: Toasts.Type.SUCCESS
+            });
+            onClose();
+        } catch (e: any) {
+            Toasts.show({
+                message: e?.message || t("Error"),
+                id: Toasts.genId(),
+                type: Toasts.Type.FAILURE
+            });
+        }
+    };
+
+    const handleStartVideoStream = async () => {
+        if (!selectedPath) return;
+        setLoading(true);
+        try {
+            const res = await Native.streamVideo(userIds, selectedPath, loop, withAudio);
+            if (res?.ok) {
+                for (const uid of userIds) {
+                    const cur = ghostStates.get(uid) ?? defaultState();
+                    ghostStates.set(uid, { ...cur, streaming: true });
+                }
+                notify();
+                Toasts.show({
+                    message: t("Video stream started"),
+                    id: Toasts.genId(),
+                    type: Toasts.Type.SUCCESS
+                });
+                onClose();
+            } else {
+                Toasts.show({
+                    message: res?.error || t("Error"),
+                    id: Toasts.genId(),
+                    type: Toasts.Type.FAILURE
+                });
+            }
+        } catch (e: any) {
+            Toasts.show({
+                message: e?.message || t("Error"),
+                id: Toasts.genId(),
+                type: Toasts.Type.FAILURE
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <ModalRoot transitionState={transitionState} size={ModalSize.MEDIUM} className="gc-stream-modal">
+            <ModalHeader className="gc-stream-modal-header" separator={false}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                    <div className="gc-stream-modal-title">{t("Stream options")}</div>
+                    <ModalCloseButton onClick={onClose} />
+                </div>
+                <div className="gc-stream-modal-subtitle">{t("Choose a stream type for ghost accounts")}</div>
+            </ModalHeader>
+
+            <ModalContent className="gc-stream-modal-content">
+                {/* Option 1 : Fake Stream */}
+                <div className="gc-fake-stream-card" onClick={handleFakeStream}>
+                    <div className="gc-fake-stream-info">
+                        <div className="gc-fake-stream-icon">
+                            <MonitorIcon />
+                        </div>
+                        <div className="gc-fake-stream-texts">
+                            <span className="gc-fake-stream-name">{t("Fake Stream (Black screen)")}</span>
+                            <span className="gc-fake-stream-desc">{t("Stream a black screen with no video content")}</span>
+                        </div>
+                    </div>
+                    <Button variant="secondary" size="small" onClick={(e: any) => { e.stopPropagation(); handleFakeStream(); }}>
+                        {t("Start")}
+                    </Button>
+                </div>
+
+                {/* Divider */}
+                <div className="gc-stream-divider">
+                    <span>{t("OR")}</span>
+                </div>
+
+                {/* Option 2 : Drag and drop video file */}
+                {!selectedPath ? (
+                    <div
+                        className={`gc-dropzone ${isDragging ? "gc-dropzone--active" : ""}`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        onClick={handleSelectFile}
+                    >
+                        <div className="gc-dropzone-icon">
+                            <UploadIcon />
+                        </div>
+                        <div className="gc-dropzone-title">{t("Drag and drop a video here or click to browse")}</div>
+                        <div className="gc-dropzone-subtitle">{t("Supported formats: MP4, MKV, WEBM, AVI, MOV")}</div>
+                    </div>
+                ) : (
+                    <div className="gc-video-file-card">
+                        <div className="gc-video-file-details">
+                            <div className="gc-video-file-icon">
+                                <VideoIcon />
+                            </div>
+                            <div className="gc-video-file-meta">
+                                <span className="gc-video-file-name">{selectedName}</span>
+                                <span className="gc-video-file-path" title={selectedPath}>{selectedPath}</span>
+                            </div>
+                        </div>
+                        <Button variant="secondary" size="small" onClick={handleSelectFile}>
+                            {t("Change video")}
+                        </Button>
+                    </div>
+                )}
+
+                {/* Switches */}
+                <div className="gc-video-switches">
+                    <FormSwitch
+                        title={t("Loop video")}
+                        description={t("Repeat video continuously")}
+                        value={loop}
+                        onChange={setLoop}
+                        hideBorder
+                    />
+                    <FormSwitch
+                        title={t("Stream with audio")}
+                        description={t("Play sound from the video track")}
+                        value={withAudio}
+                        onChange={setWithAudio}
+                        hideBorder
+                    />
+                </div>
+            </ModalContent>
+
+            <ModalFooter className="gc-stream-modal-footer">
+                <Button variant="secondary" onClick={onClose} disabled={loading}>
+                    {t("Cancel")}
+                </Button>
+                <Button variant="primary" onClick={handleStartVideoStream} disabled={!selectedPath || loading}>
+                    {loading ? t("Starting...") : t("Start streaming")}
+                </Button>
+            </ModalFooter>
+        </ModalRoot>
+    );
+}
+
+function openStreamChoiceModal(userIds: string[]) {
+    openModal(props => (
+        <StreamChoiceModal
+            userIds={userIds}
+            transitionState={props.transitionState}
+            onClose={props.onClose}
+        />
+    ));
+}
+
 // ─── Contrôles rapides par compte ─────────────────────────────────────────────
 function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState }) {
     const [busy, setBusy] = useState<string | null>(null);
@@ -773,9 +1040,12 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
                 await Native.setDeafen(acc.userId, next);
                 ghostStates.set(acc.userId, { ...cur, deafened: next });
             } else if (action === "stream") {
-                const next = !cur.streaming;
-                await Native.setStream(acc.userId, next);
-                ghostStates.set(acc.userId, { ...cur, streaming: next });
+                if (cur.streaming) {
+                    await Native.setStream(acc.userId, false);
+                    ghostStates.set(acc.userId, { ...cur, streaming: false });
+                } else {
+                    openStreamChoiceModal([acc.userId]);
+                }
             } else if (action === "camera") {
                 const next = !cur.camera;
                 await Native.setCamera(acc.userId, next);
@@ -1409,14 +1679,17 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             title={t("Start / Stop stream for all tokens")}
                             onClick={async () => {
                                 const anyStream = accounts.some(a => ghostStates.get(a.userId)?.streaming);
-                                const next = !anyStream;
                                 const ids = accounts.map(a => a.userId);
-                                Native.setStreamAll(ids, next).catch(() => {});
-                                for (const a of accounts) {
-                                    const cur = ghostStates.get(a.userId) ?? defaultState();
-                                    ghostStates.set(a.userId, { ...cur, streaming: next });
+                                if (anyStream) {
+                                    Native.setStreamAll(ids, false).catch(() => {});
+                                    for (const a of accounts) {
+                                        const cur = ghostStates.get(a.userId) ?? defaultState();
+                                        ghostStates.set(a.userId, { ...cur, streaming: false });
+                                    }
+                                    notify();
+                                } else {
+                                    openStreamChoiceModal(ids);
                                 }
-                                notify();
                             }}
                         >
                             {accounts.some(a => ghostStates.get(a.userId)?.streaming) ? t("Stop All") : t("Stream All")}
