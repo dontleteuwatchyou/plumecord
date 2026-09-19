@@ -969,16 +969,16 @@ function openJoinCrowServerModal() {
     const key = openModal(props => (
         <ModalRoot {...props} size={ModalSize.DYNAMIC} className="vc-pn-modal-root">
             <ModalHeader separator={false} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px 0" }}>
-                <Heading variant="heading-lg/semibold" style={{ color: "var(--header-primary)" }}>
+                <Heading variant="heading-lg/semibold" style={{ color: "#ffffff" }}>
                     {t("Crow Bots Server Required")}
                 </Heading>
                 <ModalCloseButton onClick={() => closeModal(key)} />
             </ModalHeader>
             <ModalContent style={{ padding: "16px 24px 20px" }}>
-                <Paragraph style={{ color: "var(--text-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "12px" }}>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: "15px", lineHeight: "1.5", marginBottom: "12px" }}>
                     {t("To view username history, you must join the official Crow Bots Discord server.")}
                 </Paragraph>
-                <Paragraph style={{ color: "var(--text-muted)", fontSize: "13px", lineHeight: "1.5", marginBottom: "16px" }}>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: "14px", lineHeight: "1.5", marginBottom: "16px" }}>
                     {t("PrevNames queries the bot in the background within the dedicated channel. You must be a member of the Crow Bots server to use it.")}
                 </Paragraph>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -1000,7 +1000,7 @@ function openJoinCrowServerModal() {
                     </a>
                 </div>
             </ModalContent>
-            <ModalFooter style={{ display: "flex", justifyContent: "flex-end", gap: "12px", padding: "16px 24px" }}>
+            <ModalFooter style={{ display: "flex", justifyContent: "flex-end", gap: "20px", padding: "16px 24px" }}>
                 <Button
                     color={Button.Colors.PRIMARY}
                     look={Button.Looks.LINK}
