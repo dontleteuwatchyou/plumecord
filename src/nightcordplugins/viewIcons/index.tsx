@@ -554,7 +554,6 @@ export default definePlugin({
     },
 
     contextMenus: {
-        "user-context": UserContext,
         "guild-context": GuildContext,
         "gdm-context": GroupDMContext
     },

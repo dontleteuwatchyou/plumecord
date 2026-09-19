@@ -622,7 +622,6 @@ export default definePlugin({
         message: patchMessageContextMenu,
         "channel-context": patchChannelContextMenu,
         "thread-context": patchChannelContextMenu,
-        "user-context": patchChannelContextMenu,
         "gdm-context": patchChannelContextMenu,
     },
 
