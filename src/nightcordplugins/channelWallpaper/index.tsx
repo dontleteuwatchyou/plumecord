@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
+import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexDirection, FlexJustify } from "@components/Flex";
@@ -500,6 +501,7 @@ function buildWallpaperMenu(channelId: string): React.ReactElement {
 }
 
 const userContextMenuPatch: NavContextMenuPatchCallback = (children, { user }: any) => {
+    if (!isPluginEnabled("ChannelWallpaper")) return;
     if (!user?.id) return;
     const channelId = (ChannelStore as any).getDMFromUserId?.(user.id);
     if (!channelId) return;
@@ -508,6 +510,7 @@ const userContextMenuPatch: NavContextMenuPatchCallback = (children, { user }: a
 };
 
 const channelContextMenuPatch: NavContextMenuPatchCallback = (children, { channel }: any) => {
+    if (!isPluginEnabled("ChannelWallpaper")) return;
     if (!channel?.id) return;
     children.push(buildWallpaperMenu(channel.id));
 };
@@ -598,7 +601,6 @@ export default definePlugin({
     settingsAboutComponent: ChannelWallpaperSettingsComponent,
 
     contextMenus: {
-        "user-context": userContextMenuPatch,
         "channel-context": channelContextMenuPatch,
         "gdm-context": channelContextMenuPatch,
     },
@@ -616,6 +618,7 @@ export default definePlugin({
     },
 
     start() {
+        removeContextMenuPatch("user-context", userContextMenuPatch);
         _cachedOpacity = settings.store.opacity ?? 0.3;
         _cachedBlur = settings.store.blur ?? 0;
 
@@ -636,6 +639,9 @@ export default definePlugin({
 
     stop() {
         removeWallpaperElements();
+        removeContextMenuPatch("channel-context", channelContextMenuPatch);
+        removeContextMenuPatch("gdm-context", channelContextMenuPatch);
+        removeContextMenuPatch("user-context", userContextMenuPatch);
         document.removeEventListener("visibilitychange", handleVisChange);
         window.removeEventListener("focus", handleFocusChange);
         window.removeEventListener("blur", handleFocusChange);
