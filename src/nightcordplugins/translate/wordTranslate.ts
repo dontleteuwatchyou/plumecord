@@ -91,6 +91,15 @@ export async function fetchWordTranslation(phrase: string, from: string, to: str
     if (wordCache.has(cacheKey)) return wordCache.get(cacheKey)!;
     if (pendingTranslations.has(cacheKey)) return pendingTranslations.get(cacheKey)!;
 
+    // Fast-path: Check high-priority colloquial idioms when target is English
+    const cleanLower = cleanPhrase.toLowerCase();
+    const cleanNoApos = cleanLower.replace(/['’]/g, "");
+    if ((to === "en" || to === "auto") && (IDIOM_TRANSLATIONS[cleanLower] || IDIOM_TRANSLATIONS[cleanNoApos])) {
+        const idiom = IDIOM_TRANSLATIONS[cleanLower] || IDIOM_TRANSLATIONS[cleanNoApos];
+        wordCache.set(cacheKey, idiom);
+        return idiom;
+    }
+
     const promise = (async () => {
         const sl = from || "auto";
         const tl = to || "en";
@@ -131,11 +140,125 @@ function isWordEligible(word: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Compound & Wait Words
+// Compound, Wait Words & Grammatical Phrase Structures
 // ---------------------------------------------------------------------------
 
+const SUBJECT_PRONOUNS = new Set([
+    // French subject pronouns & elisions
+    "je",
+    "j",
+    "tu",
+    "t",
+    "il",
+    "elle",
+    "on",
+    "nous",
+    "vous",
+    "ils",
+    "elles",
+    "c",
+    "ce",
+    // English pronouns
+    "i",
+    "you",
+    "he",
+    "she",
+    "it",
+    "we",
+    "they"
+]);
+
+const VERBS_WAIT_AFTER_PRONOUN = new Set([
+    // French verbs that often take questions/complements and should not be chopped in half
+    "fais",
+    "fait",
+    "font",
+    "faisons",
+    "faites",
+    "vas",
+    "va",
+    "vais",
+    "vont",
+    "allons",
+    "allez",
+    "es",
+    "est",
+    "suis",
+    "sommes",
+    "êtes",
+    "sont",
+    "as",
+    "a",
+    "ai",
+    "avons",
+    "avez",
+    "ont",
+    "dis",
+    "dit",
+    "disons",
+    "dites",
+    "disent",
+    "veux",
+    "veut",
+    "veu",
+    "voulons",
+    "voulez",
+    "veulent",
+    "peux",
+    "peut",
+    "peu",
+    "pouvons",
+    "pouvez",
+    "peuvent",
+    "sais",
+    "sait",
+    "sai",
+    "savons",
+    "savez",
+    "savent",
+    "pense",
+    "penses",
+    "pensons",
+    "pensez",
+    "pensent",
+    "vois",
+    "voit",
+    "voyons",
+    "voyez",
+    "voient",
+    "viens",
+    "vient",
+    "venons",
+    "venez",
+    "viennent",
+    "pars",
+    "part",
+    "partons",
+    "partez",
+    "partent",
+    "attends",
+    "attend",
+    "attendons",
+    "attendez",
+    "attendent",
+    "regarde",
+    "regardes",
+    "regardons",
+    "regardez",
+    "regardent",
+    "cherche",
+    "cherches",
+    "cherchons",
+    "cherchez",
+    "cherchent",
+    "mange",
+    "manges",
+    "bois",
+    "boit"
+]);
+
 const WAIT_WORDS = new Set([
-    // French incomplete words & compounds prefixes
+    // French incomplete words & compound prefixes
     "aujourd",
     "hui",
     "parce",
@@ -174,7 +297,7 @@ const WAIT_WORDS = new Set([
     "nos",
     "vos",
     "leurs",
-    // French pronouns & short linkers
+    // French pronouns & short linkers (notice "quoi" is intentionally omitted to trigger question translation)
     "tu",
     "je",
     "j",
@@ -194,7 +317,6 @@ const WAIT_WORDS = new Set([
     "qui",
     "que",
     "qu",
-    "quoi",
     "y",
     "si",
     "ne",
@@ -243,6 +365,109 @@ const COMPLETE_COMPOUNDS = new Set([
     "pourquoi pas",
     "est ce"
 ]);
+
+const IDIOM_TRANSLATIONS: Record<string, string> = {
+    // Interrogatives & questions
+    "tu fais quoi": "what are you doing",
+    "tu fait quoi": "what are you doing",
+    "tu fais quoi aujourd'hui": "what are you doing today",
+    "tu fait quoi aujourd'hui": "what are you doing today",
+    "tu fais quoi aujourd hui": "what are you doing today",
+    "tu fait quoi aujourd hui": "what are you doing today",
+    "tu fais quoi aujourdhui": "what are you doing today",
+    "tu fait quoi aujourdhui": "what are you doing today",
+    "tu fais quoi ce soir": "what are you doing tonight",
+    "tu fait quoi ce soir": "what are you doing tonight",
+    "tu fais quoi de beau": "what are you up to",
+    "tu fait quoi de beau": "what are you up to",
+    "tu vas où": "where are you going",
+    "tu va ou": "where are you going",
+    "tu vas bien": "are you doing well",
+    "tu va bien": "are you doing well",
+    "tu dis quoi": "what are you saying",
+    "tu dit quoi": "what are you saying",
+    "tu penses quoi": "what do you think",
+    "tu pense quoi": "what do you think",
+    "tu viens quand": "when are you coming",
+    "tu pars quand": "when are you leaving",
+    "c'est quoi": "what is it",
+    "c est quoi": "what is it",
+    "c quoi": "what is it",
+    "c'est quoi ça": "what is that",
+    "c est quoi ca": "what is that",
+    "c'est qui": "who is it",
+    "c est qui": "who is it",
+    "c qui": "who is it",
+    "c'est où": "where is it",
+    "c est ou": "where is it",
+    "c ou": "where is it",
+    "c'est quand": "when is it",
+    "c est quand": "when is it",
+    "c quand": "when is it",
+    "c'est comment": "how is it",
+    "c est comment": "how is it",
+    "c'est bon": "it's good",
+    "c est bon": "it's good",
+    "c'est pas grave": "it doesn't matter",
+    "c est pas grave": "it doesn't matter",
+    "t'es où": "where are you",
+    "t es où": "where are you",
+    "t es ou": "where are you",
+    "tu es où": "where are you",
+    "tu es ou": "where are you",
+    "t'es qui": "who are you",
+    "t es qui": "who are you",
+    "tu es qui": "who are you",
+    "qu'est ce que c'est": "what is that",
+    "qu est ce que c est": "what is that",
+    "qu'est ce que": "what",
+    "qu est ce que": "what",
+    "est ce que": "is it that",
+    // Greetings & Politeness
+    "salut": "hi",
+    "bonjour": "hello",
+    "bonsoir": "good evening",
+    "bonne nuit": "good night",
+    "bonne soiree": "have a good evening",
+    "bonne soirée": "have a good evening",
+    "bonne journee": "have a good day",
+    "bonne journée": "have a good day",
+    "a plus": "see you later",
+    "a plus tard": "see you later",
+    "a toute": "see you soon",
+    "a bientot": "see you soon",
+    "a bientôt": "see you soon",
+    "de rien": "you're welcome",
+    "merci beaucoup": "thank you very much",
+    "merci bien": "thank you",
+    "pas de souci": "no problem",
+    "pas de soucis": "no problem",
+    "pas de probleme": "no problem",
+    "pas de problème": "no problem",
+    "pas de pb": "no problem",
+    "s'il te plaît": "please",
+    "sil te plait": "please",
+    "s'il vous plaît": "please",
+    "sil vous plait": "please",
+    "stp": "please",
+    "svp": "please",
+    // Idioms & Conversational
+    "ca va": "how are you",
+    "ça va": "how are you",
+    "ca marche": "sounds good",
+    "ça marche": "sounds good",
+    "en fait": "actually",
+    "d'accord": "okay",
+    "d accord": "okay",
+    "bien sur": "of course",
+    "bien sûr": "of course",
+    "peut etre": "maybe",
+    "peut-être": "maybe",
+    "parce que": "because",
+    "tout a fait": "absolutely",
+    "tout à fait": "absolutely",
+    "il y a": "there is"
+};
 
 // ---------------------------------------------------------------------------
 // Slate Editor & DOM Bridge (Fixes Backspace deletion)
@@ -421,16 +646,19 @@ function getTextBeforeCursor(): { textBefore: string; target: HTMLElement } | nu
 interface PhraseAnalysis {
     shouldWait: boolean;
     phraseToTranslate: string;
+    phraseToReplace: string;
+    trailingPunct: string;
 }
 
 function analyzePhraseToTranslate(textBefore: string): PhraseAnalysis | null {
     if (!textBefore || textBefore.trim().length === 0) return null;
 
     const cleaned = textBefore.replace(/[\r\n]+/g, " ");
-    const match = cleaned.match(/([\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+)*)$/u);
+    const match = cleaned.match(/([\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+)*)([,.;:!?]*)$/u);
     if (!match) return null;
 
     const fullMatch = match[1];
+    const trailingPunct = match[2] || "";
     const words = fullMatch.split(/\s+/).filter(Boolean);
     if (words.length === 0) return null;
 
@@ -439,37 +667,72 @@ function analyzePhraseToTranslate(textBefore: string): PhraseAnalysis | null {
 
     const lastLower = lastWord.toLowerCase().replace(/['’]/g, "");
 
-    // Check if previous word + lastWord forms a complete compound (e.g. "aujourd hui")
-    if (words.length >= 2) {
-        const prevLower = words[words.length - 2].toLowerCase().replace(/['’]/g, "");
-        const twoWords = `${prevLower} ${lastLower}`;
-        if (COMPLETE_COMPOUNDS.has(twoWords)) {
+    // 1. Check if the last 4, 3, or 2 words match high-priority idioms directly (e.g. "tu fait quoi")
+    for (let count = Math.min(4, words.length); count >= 2; count--) {
+        const slice = words.slice(words.length - count);
+        const joined = slice.join(" ").toLowerCase();
+        const joinedNoApos = joined.replace(/['’]/g, "");
+        if (IDIOM_TRANSLATIONS[joined] || IDIOM_TRANSLATIONS[joinedNoApos]) {
+            const phraseToTranslate = slice.join(" ");
             return {
                 shouldWait: false,
-                phraseToTranslate: `${words[words.length - 2]} ${lastWord}`
+                phraseToTranslate,
+                phraseToReplace: phraseToTranslate + trailingPunct,
+                trailingPunct
             };
         }
     }
 
-    // If lastWord is in WAIT_WORDS, wait for user to finish expression
-    if (WAIT_WORDS.has(lastLower)) {
-        return { shouldWait: true, phraseToTranslate: "" };
+    // 2. Check if previous word + lastWord forms a complete compound (e.g. "aujourd hui")
+    if (words.length >= 2) {
+        const prevLower = words[words.length - 2].toLowerCase().replace(/['’]/g, "");
+        const twoWords = `${prevLower} ${lastLower}`;
+        if (COMPLETE_COMPOUNDS.has(twoWords)) {
+            const phraseToTranslate = `${words[words.length - 2]} ${lastWord}`;
+            return {
+                shouldWait: false,
+                phraseToTranslate,
+                phraseToReplace: phraseToTranslate + trailingPunct,
+                trailingPunct
+            };
+        }
     }
 
-    // Build the phrase backwards if preceded by wait words (e.g. "tu fait")
+    // 3. If lastWord is a verb preceded by a subject pronoun (e.g. "tu fait", "tu vas"), WAIT!
+    // Do NOT translate prematurely into "you do" before question particles (e.g. "quoi", "où") or complements are typed.
+    // Exception: If preceded by a subordinate conjunction (e.g. "si tu veux", "quand tu veux"), it is already complete.
+    if (words.length >= 2) {
+        const prevLower = words[words.length - 2].toLowerCase().replace(/['’]/g, "");
+        const prevPrevLower = words.length >= 3 ? words[words.length - 3].toLowerCase().replace(/['’]/g, "") : "";
+        const isSubordinate = ["si", "quand", "comme", "lorsque"].includes(prevPrevLower);
+
+        if (!isSubordinate && SUBJECT_PRONOUNS.has(prevLower) && VERBS_WAIT_AFTER_PRONOUN.has(lastLower)) {
+            return { shouldWait: true, phraseToTranslate: "", phraseToReplace: "", trailingPunct: "" };
+        }
+    }
+
+    // 4. If lastWord is in WAIT_WORDS, wait for user to finish expression
+    if (WAIT_WORDS.has(lastLower)) {
+        return { shouldWait: true, phraseToTranslate: "", phraseToReplace: "", trailingPunct: "" };
+    }
+
+    // 5. Build the phrase backwards if preceded by wait words, pronouns, or verbs
     const phraseWords = [lastWord];
-    for (let i = words.length - 2; i >= 0 && phraseWords.length < 4; i--) {
+    for (let i = words.length - 2; i >= 0 && phraseWords.length < 5; i--) {
         const prevLower = words[i].toLowerCase().replace(/['’]/g, "");
-        if (WAIT_WORDS.has(prevLower)) {
+        if (WAIT_WORDS.has(prevLower) || VERBS_WAIT_AFTER_PRONOUN.has(prevLower) || SUBJECT_PRONOUNS.has(prevLower)) {
             phraseWords.unshift(words[i]);
         } else {
             break;
         }
     }
 
+    const phraseToTranslate = phraseWords.join(" ");
     return {
         shouldWait: false,
-        phraseToTranslate: phraseWords.join(" ")
+        phraseToTranslate,
+        phraseToReplace: phraseToTranslate + trailingPunct,
+        trailingPunct
     };
 }
 
@@ -501,7 +764,7 @@ async function onKeyDown(e: KeyboardEvent) {
     const analysis = analyzePhraseToTranslate(textBefore);
     if (!analysis) return;
 
-    // If the word should wait (e.g. "tu", "aujourd", "c", "je"), do not translate yet!
+    // If the word should wait (e.g. "tu", "aujourd", "c", "je", "tu fait"), do not translate yet!
     if (analysis.shouldWait) {
         e.preventDefault();
         e.stopPropagation();
@@ -509,21 +772,21 @@ async function onKeyDown(e: KeyboardEvent) {
         return;
     }
 
-    const phrase = analysis.phraseToTranslate;
-    if (!phrase) return;
+    const { phraseToTranslate, phraseToReplace, trailingPunct } = analysis;
+    if (!phraseToTranslate) return;
 
     const from = getEffectiveSourceLang(settings.store.sentInput, settings.store.sentOutput || "en");
     const to = settings.store.sentOutput || "en";
     if (from !== "auto" && from === to) return;
 
     // Instant cache check
-    const cacheKey = `${from}:${to}:${phrase.toLowerCase()}`;
+    const cacheKey = `${from}:${to}:${phraseToTranslate.toLowerCase()}`;
     const cached = wordCache.get(cacheKey);
-    if (cached && cached.toLowerCase() !== phrase.toLowerCase()) {
+    if (cached && cached.toLowerCase() !== phraseToTranslate.toLowerCase()) {
         e.preventDefault();
         e.stopPropagation();
-        const replacement = matchCasing(phrase, cached) + " ";
-        replacePhraseInEditor(target, phrase, replacement);
+        const replacement = matchCasing(phraseToTranslate, cached) + trailingPunct + " ";
+        replacePhraseInEditor(target, phraseToReplace, replacement);
         return;
     }
 
@@ -534,16 +797,16 @@ async function onKeyDown(e: KeyboardEvent) {
 
     try {
         const translated = await Promise.race([
-            fetchWordTranslation(phrase, from, to),
+            fetchWordTranslation(phraseToTranslate, from, to),
             new Promise<null>(resolve => setTimeout(() => resolve(null), 400)),
         ]);
 
         // If user typed another key or deleted while waiting, abort!
         if (thisAbortId !== currentTranslationAbortId) return;
 
-        if (translated && translated.toLowerCase() !== phrase.toLowerCase()) {
-            const replacement = matchCasing(phrase, translated) + " ";
-            const ok = replacePhraseInEditor(target, phrase, replacement);
+        if (translated && translated.toLowerCase() !== phraseToTranslate.toLowerCase()) {
+            const replacement = matchCasing(phraseToTranslate, translated) + trailingPunct + " ";
+            const ok = replacePhraseInEditor(target, phraseToReplace, replacement);
             if (!ok) {
                 insertNormalSpace(target);
             }
