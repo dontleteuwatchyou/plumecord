@@ -4,24 +4,37 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { ComponentDispatch, DraftStore, SelectedChannelStore } from "@webpack/common";
 import { settings } from "./settings";
 
 const wordCache = new Map<string, string>();
 const pendingTranslations = new Map<string, Promise<string | null>>();
 let prefetchTimer: ReturnType<typeof setTimeout> | null = null;
+let isHandlingSpace = false;
+let currentTranslationAbortId = 0;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers & Casing
 // ---------------------------------------------------------------------------
 
 function matchCasing(original: string, translated: string): string {
     if (!original || !translated) return translated;
-    if (original === original.toUpperCase() && original !== original.toLowerCase())
+
+    // Preserve ALL CAPS if typed in ALL CAPS (e.g. SALUT -> HI)
+    if (original === original.toUpperCase() && original !== original.toLowerCase()) {
         return translated.toUpperCase();
+    }
+
     const first = original.charAt(0);
-    if (first === first.toUpperCase() && first !== first.toLowerCase())
+    const originalCapitalized = first === first.toUpperCase() && first !== first.toLowerCase();
+
+    // Capitalize only if the user explicitly capitalized the original word or enabled the setting
+    if (originalCapitalized || settings.store.capitalizeTranslated) {
         return translated.charAt(0).toUpperCase() + translated.slice(1);
-    return translated;
+    }
+
+    // Default: strictly lowercase
+    return translated.toLowerCase();
 }
 
 function getDiscordLocale(): string {
@@ -58,9 +71,9 @@ function extractTranslation(data: unknown): string | null {
     return null;
 }
 
-async function queryGoogleTranslate(word: string, sl: string, tl: string): Promise<string | null> {
+async function queryGoogleTranslate(phrase: string, sl: string, tl: string): Promise<string | null> {
     try {
-        const url = `https://clients5.google.com/translate_a/t?${new URLSearchParams({ client: "dict-chrome-ex", sl, tl, q: word })}`;
+        const url = `https://clients5.google.com/translate_a/t?${new URLSearchParams({ client: "dict-chrome-ex", sl, tl, q: phrase })}`;
         const res = await fetch(url);
         if (!res.ok) return null;
         const data = await res.json();
@@ -70,14 +83,10 @@ async function queryGoogleTranslate(word: string, sl: string, tl: string): Promi
     }
 }
 
-// ---------------------------------------------------------------------------
-// Public: fetch a translation for a single word with caching
-// ---------------------------------------------------------------------------
-
-export async function fetchWordTranslation(word: string, from: string, to: string): Promise<string | null> {
-    if (!word || word.trim().length === 0) return null;
-    const cleanWord = word.trim();
-    const cacheKey = `${from}:${to}:${cleanWord.toLowerCase()}`;
+export async function fetchWordTranslation(phrase: string, from: string, to: string): Promise<string | null> {
+    if (!phrase || phrase.trim().length === 0) return null;
+    const cleanPhrase = phrase.trim();
+    const cacheKey = `${from}:${to}:${cleanPhrase.toLowerCase()}`;
 
     if (wordCache.has(cacheKey)) return wordCache.get(cacheKey)!;
     if (pendingTranslations.has(cacheKey)) return pendingTranslations.get(cacheKey)!;
@@ -85,17 +94,17 @@ export async function fetchWordTranslation(word: string, from: string, to: strin
     const promise = (async () => {
         const sl = from || "auto";
         const tl = to || "en";
-        let translated = await queryGoogleTranslate(cleanWord, sl, tl);
+        let translated = await queryGoogleTranslate(cleanPhrase, sl, tl);
 
-        if (!translated || translated.toLowerCase() === cleanWord.toLowerCase()) {
+        if (!translated || translated.toLowerCase() === cleanPhrase.toLowerCase()) {
             const fallbackSl = getEffectiveSourceLang("auto", tl);
             if (fallbackSl !== "auto" && fallbackSl !== sl) {
-                const retry = await queryGoogleTranslate(cleanWord, fallbackSl, tl);
-                if (retry && retry.toLowerCase() !== cleanWord.toLowerCase()) translated = retry;
+                const retry = await queryGoogleTranslate(cleanPhrase, fallbackSl, tl);
+                if (retry && retry.toLowerCase() !== cleanPhrase.toLowerCase()) translated = retry;
             }
         }
 
-        if (translated && translated.trim() && translated.toLowerCase() !== cleanWord.toLowerCase()) {
+        if (translated && translated.trim() && translated.toLowerCase() !== cleanPhrase.toLowerCase()) {
             const result = translated.trim();
             wordCache.set(cacheKey, result);
             return result;
@@ -111,47 +120,6 @@ export async function fetchWordTranslation(word: string, from: string, to: strin
     }
 }
 
-// ---------------------------------------------------------------------------
-// Word detection
-// ---------------------------------------------------------------------------
-
-interface WordInfo {
-    word: string;
-    /** The text node where the word ends (for DOM range replacement) */
-    textNode: Text;
-    /** Character offset of the cursor in textNode */
-    cursorOffset: number;
-}
-
-/**
- * Finds the word immediately before the cursor inside a contenteditable / Slate node.
- * Returns null if the cursor isn't in a text node or there's no word before it.
- */
-function getWordBeforeCursor(): WordInfo | null {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
-
-    let node: Node | null = sel.anchorNode;
-    let offset = sel.anchorOffset;
-
-    // If we landed on an element node, try to descend into its previous text child
-    if (node && node.nodeType === Node.ELEMENT_NODE) {
-        if (offset > 0 && node.childNodes[offset - 1]?.nodeType === Node.TEXT_NODE) {
-            node = node.childNodes[offset - 1];
-            offset = node.textContent?.length ?? 0;
-        }
-    }
-
-    if (!node || node.nodeType !== Node.TEXT_NODE) return null;
-
-    const text = node.textContent ?? "";
-    const textBefore = text.slice(0, offset);
-    const match = textBefore.match(/([\p{L}\p{M}'-]+)$/u);
-    if (!match) return null;
-
-    return { word: match[1], textNode: node as Text, cursorOffset: offset };
-}
-
 function isWordEligible(word: string): boolean {
     if (!word || word.length < 1) return false;
     if (/^https?:\/\//i.test(word) || /^www\./i.test(word)) return false;
@@ -163,128 +131,455 @@ function isWordEligible(word: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Text replacement — using a DOM Range + execCommand("insertText")
-// This is the only reliable approach in Discord's Electron/Slate editor:
-// selecting via Range and firing execCommand integrates with Slate's history.
+// Compound & Wait Words
 // ---------------------------------------------------------------------------
 
-function replaceWordInEditor(info: WordInfo, replacement: string): boolean {
-    try {
-        const { textNode, cursorOffset, word } = info;
-        const wordStart = cursorOffset - word.length;
-        if (wordStart < 0) return false;
+const WAIT_WORDS = new Set([
+    // French incomplete words & compounds prefixes
+    "aujourd",
+    "hui",
+    "parce",
+    "peut",
+    "est",
+    "en",
+    "au",
+    "aux",
+    "du",
+    "des",
+    "de",
+    "d",
+    "le",
+    "la",
+    "les",
+    "l",
+    "un",
+    "une",
+    "ce",
+    "cet",
+    "cette",
+    "ces",
+    "c",
+    "mon",
+    "ton",
+    "son",
+    "ma",
+    "ta",
+    "sa",
+    "mes",
+    "tes",
+    "ses",
+    "notre",
+    "votre",
+    "leur",
+    "nos",
+    "vos",
+    "leurs",
+    // French pronouns & short linkers
+    "tu",
+    "je",
+    "j",
+    "il",
+    "elle",
+    "on",
+    "nous",
+    "vous",
+    "ils",
+    "elles",
+    "me",
+    "m",
+    "te",
+    "t",
+    "se",
+    "s",
+    "qui",
+    "que",
+    "qu",
+    "quoi",
+    "y",
+    "si",
+    "ne",
+    // English pronouns & connectors
+    "i",
+    "you",
+    "he",
+    "she",
+    "it",
+    "we",
+    "they",
+    "the",
+    "a",
+    "an",
+    "my",
+    "your",
+    "his",
+    "her",
+    "our",
+    "their",
+    "to",
+    "of",
+    "in",
+    "at",
+    "for",
+    "on",
+    "with",
+    "as",
+    "by"
+]);
 
-        // Verify the text node still has the word at the expected position
-        const currentText = textNode.textContent ?? "";
-        if (currentText.slice(wordStart, cursorOffset) !== word) return false;
+const COMPLETE_COMPOUNDS = new Set([
+    "aujourd hui",
+    "peut etre",
+    "parce que",
+    "c est",
+    "d accord",
+    "en fait",
+    "au revoir",
+    "tout monde",
+    "bien sur",
+    "de rien",
+    "pas probleme",
+    "pas souci",
+    "sil plait",
+    "pourquoi pas",
+    "est ce"
+]);
 
-        const range = document.createRange();
-        range.setStart(textNode, wordStart);
-        range.setEnd(textNode, cursorOffset);
+// ---------------------------------------------------------------------------
+// Slate Editor & DOM Bridge (Fixes Backspace deletion)
+// ---------------------------------------------------------------------------
 
-        const sel = window.getSelection();
-        if (!sel) return false;
-        sel.removeAllRanges();
-        sel.addRange(range);
+function getSlateEditor(target: HTMLElement | null): any {
+    if (!target) return null;
+    const slateEl = (
+        target.closest?.('[data-slate-editor="true"]') ||
+        target.closest?.('[role="textbox"]') ||
+        target
+    ) as HTMLElement | null;
+    if (!slateEl) return null;
 
-        // execCommand("insertText") fires the proper Slate onChange pipeline in Electron
-        return document.execCommand("insertText", false, replacement);
-    } catch {
-        return false;
+    let current: HTMLElement | null = slateEl;
+    while (current && current !== document.body) {
+        const keys = Object.keys(current);
+        const fiberKey = keys.find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (fiberKey) {
+            let fiber = (current as any)[fiberKey];
+            let depth = 0;
+            while (fiber && depth < 40) {
+                const editor =
+                    fiber.memoizedProps?.editor ||
+                    fiber.stateNode?.editor ||
+                    fiber.memoizedState?.editor ||
+                    fiber.stateNode?.props?.editor;
+
+                if (editor && typeof editor.insertText === "function") {
+                    return editor;
+                }
+                fiber = fiber.return;
+                depth++;
+            }
+        }
+        current = current.parentElement;
     }
+    return null;
+}
+
+function replacePhraseInEditor(target: HTMLElement, phrase: string, replacement: string): boolean {
+    // 1. Slate Editor instance directly (preserves Slate selection, cursor, and history)
+    const editor = getSlateEditor(target);
+    if (editor && typeof editor.deleteBackward === "function" && typeof editor.insertText === "function") {
+        try {
+            for (let i = 0; i < phrase.length; i++) {
+                editor.deleteBackward("character");
+            }
+            editor.insertText(replacement);
+            return true;
+        } catch (err) {
+            console.warn("[Translate] Slate editor replacement failed:", err);
+        }
+    }
+
+    // 2. ComponentDispatch (Discord official chat input bus)
+    try {
+        const channelId = SelectedChannelStore?.getChannelId?.();
+        if (channelId && DraftStore && ComponentDispatch) {
+            const draft = DraftStore.getDraft(channelId, 0);
+            if (typeof draft === "string" && draft.endsWith(phrase)) {
+                const newDraft = draft.slice(0, draft.length - phrase.length) + replacement;
+                ComponentDispatch.dispatchToLastSubscribed("CLEAR_TEXT");
+                ComponentDispatch.dispatchToLastSubscribed("INSERT_TEXT", {
+                    rawText: newDraft,
+                    plainText: newDraft
+                });
+                return true;
+            }
+        }
+    } catch (err) {
+        console.warn("[Translate] ComponentDispatch replacement failed:", err);
+    }
+
+    // 3. Fallback: DOM Range + execCommand + input event
+    try {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            const node = range.endContainer;
+            const offset = range.endOffset;
+            if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+                const start = offset - phrase.length;
+                if (start >= 0 && node.textContent.slice(start, offset) === phrase) {
+                    const replaceRange = document.createRange();
+                    replaceRange.setStart(node, start);
+                    replaceRange.setEnd(node, offset);
+                    sel.removeAllRanges();
+                    sel.addRange(replaceRange);
+                    const ok = document.execCommand("insertText", false, replacement);
+                    target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: replacement }));
+                    return ok;
+                }
+            }
+        }
+    } catch {}
+
+    return false;
+}
+
+function insertNormalSpace(target: HTMLElement): void {
+    const editor = getSlateEditor(target);
+    if (editor && typeof editor.insertText === "function") {
+        try {
+            editor.insertText(" ");
+            return;
+        } catch {}
+    }
+
+    try {
+        ComponentDispatch?.dispatchToLastSubscribed("INSERT_TEXT", {
+            rawText: " ",
+            plainText: " "
+        });
+        return;
+    } catch {}
+
+    try {
+        document.execCommand("insertText", false, " ");
+    } catch {}
 }
 
 // ---------------------------------------------------------------------------
-// Space key handler
+// Phrase Detection Before Cursor
 // ---------------------------------------------------------------------------
 
-let isHandlingSpace = false;
+function getTextBeforeCursor(): { textBefore: string; target: HTMLElement } | null {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return null;
+
+    let node: Node | null = sel.anchorNode;
+    let offset = sel.anchorOffset;
+    if (!node) return null;
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        if (offset > 0 && node.childNodes[offset - 1]) {
+            node = node.childNodes[offset - 1];
+            while (node && node.nodeType === Node.ELEMENT_NODE && node.lastChild) {
+                node = node.lastChild;
+            }
+            offset = node?.textContent?.length ?? 0;
+        }
+    }
+
+    const el = (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement) as HTMLElement | null;
+    const editorEl = (
+        el?.closest?.('[data-slate-editor="true"]') ||
+        el?.closest?.('[role="textbox"]') ||
+        el
+    ) as HTMLElement | null;
+    if (!editorEl) return null;
+
+    let textBefore = "";
+    if (node && node.nodeType === Node.TEXT_NODE) {
+        textBefore = (node.textContent ?? "").slice(0, offset);
+        let prev = node.previousSibling;
+        while (prev && prev.nodeType === Node.TEXT_NODE) {
+            textBefore = (prev.textContent ?? "") + textBefore;
+            prev = prev.previousSibling;
+        }
+    }
+
+    if (!textBefore) {
+        try {
+            const channelId = SelectedChannelStore?.getChannelId?.();
+            const draft = DraftStore?.getDraft?.(channelId, 0);
+            if (typeof draft === "string") {
+                textBefore = draft;
+            }
+        } catch {}
+    }
+
+    return { textBefore, target: editorEl };
+}
+
+interface PhraseAnalysis {
+    shouldWait: boolean;
+    phraseToTranslate: string;
+}
+
+function analyzePhraseToTranslate(textBefore: string): PhraseAnalysis | null {
+    if (!textBefore || textBefore.trim().length === 0) return null;
+
+    const cleaned = textBefore.replace(/[\r\n]+/g, " ");
+    const match = cleaned.match(/([\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+)*)$/u);
+    if (!match) return null;
+
+    const fullMatch = match[1];
+    const words = fullMatch.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return null;
+
+    const lastWord = words[words.length - 1];
+    if (!isWordEligible(lastWord)) return null;
+
+    const lastLower = lastWord.toLowerCase().replace(/['’]/g, "");
+
+    // Check if previous word + lastWord forms a complete compound (e.g. "aujourd hui")
+    if (words.length >= 2) {
+        const prevLower = words[words.length - 2].toLowerCase().replace(/['’]/g, "");
+        const twoWords = `${prevLower} ${lastLower}`;
+        if (COMPLETE_COMPOUNDS.has(twoWords)) {
+            return {
+                shouldWait: false,
+                phraseToTranslate: `${words[words.length - 2]} ${lastWord}`
+            };
+        }
+    }
+
+    // If lastWord is in WAIT_WORDS, wait for user to finish expression
+    if (WAIT_WORDS.has(lastLower)) {
+        return { shouldWait: true, phraseToTranslate: "" };
+    }
+
+    // Build the phrase backwards if preceded by wait words (e.g. "tu fait")
+    const phraseWords = [lastWord];
+    for (let i = words.length - 2; i >= 0 && phraseWords.length < 4; i--) {
+        const prevLower = words[i].toLowerCase().replace(/['’]/g, "");
+        if (WAIT_WORDS.has(prevLower)) {
+            phraseWords.unshift(words[i]);
+        } else {
+            break;
+        }
+    }
+
+    return {
+        shouldWait: false,
+        phraseToTranslate: phraseWords.join(" ")
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Space Key & Input Handlers
+// ---------------------------------------------------------------------------
 
 async function onKeyDown(e: KeyboardEvent) {
-    if (e.key !== " " && e.code !== "Space") return;
+    // If Backspace, Delete, Escape or Arrow keys are pressed, cancel any in-flight translation immediately
+    if (e.key === "Backspace" || e.key === "Delete" || e.key === "Escape" || e.key.startsWith("Arrow")) {
+        currentTranslationAbortId++;
+        isHandlingSpace = false;
+        return;
+    }
+
+    if (e.key !== " " && e.code !== "Space") {
+        currentTranslationAbortId++;
+        return;
+    }
+
     if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey || e.isComposing || e.repeat) return;
     if (!settings.store.translateOnSpace) return;
     if (isHandlingSpace) return;
 
-    // Only intercept inside Discord's chat input (contenteditable / Slate)
-    const target = e.target as HTMLElement | null;
-    if (!target) return;
-    const inChatbox =
-        target.getAttribute?.("role") === "textbox" ||
-        target.hasAttribute?.("data-slate-editor") ||
-        !!target.closest?.('[role="textbox"]') ||
-        !!target.closest?.('[data-slate-editor="true"]');
-    if (!inChatbox) return;
+    const info = getTextBeforeCursor();
+    if (!info) return;
+    const { textBefore, target } = info;
 
-    // Capture cursor state BEFORE any await
-    const wordInfo = getWordBeforeCursor();
-    if (!wordInfo || !isWordEligible(wordInfo.word)) return;
+    const analysis = analyzePhraseToTranslate(textBefore);
+    if (!analysis) return;
 
-    const word = wordInfo.word;
+    // If the word should wait (e.g. "tu", "aujourd", "c", "je"), do not translate yet!
+    if (analysis.shouldWait) {
+        e.preventDefault();
+        e.stopPropagation();
+        insertNormalSpace(target);
+        return;
+    }
+
+    const phrase = analysis.phraseToTranslate;
+    if (!phrase) return;
+
     const from = getEffectiveSourceLang(settings.store.sentInput, settings.store.sentOutput || "en");
     const to = settings.store.sentOutput || "en";
     if (from !== "auto" && from === to) return;
 
-    // --- Serve from cache instantly ---
-    const cacheKey = `${from}:${to}:${word.toLowerCase()}`;
+    // Instant cache check
+    const cacheKey = `${from}:${to}:${phrase.toLowerCase()}`;
     const cached = wordCache.get(cacheKey);
-    if (cached && cached.toLowerCase() !== word.toLowerCase()) {
+    if (cached && cached.toLowerCase() !== phrase.toLowerCase()) {
         e.preventDefault();
         e.stopPropagation();
-        const replacement = matchCasing(word, cached) + " ";
-        replaceWordInEditor(wordInfo, replacement);
+        const replacement = matchCasing(phrase, cached) + " ";
+        replacePhraseInEditor(target, phrase, replacement);
         return;
     }
 
-    // --- Not cached: block space, wait for translation (max 400 ms) ---
     e.preventDefault();
     e.stopPropagation();
     isHandlingSpace = true;
+    const thisAbortId = ++currentTranslationAbortId;
 
     try {
         const translated = await Promise.race([
-            fetchWordTranslation(word, from, to),
+            fetchWordTranslation(phrase, from, to),
             new Promise<null>(resolve => setTimeout(() => resolve(null), 400)),
         ]);
 
-        if (translated && translated.toLowerCase() !== word.toLowerCase()) {
-            const replacement = matchCasing(word, translated) + " ";
-            const ok = replaceWordInEditor(wordInfo, replacement);
+        // If user typed another key or deleted while waiting, abort!
+        if (thisAbortId !== currentTranslationAbortId) return;
+
+        if (translated && translated.toLowerCase() !== phrase.toLowerCase()) {
+            const replacement = matchCasing(phrase, translated) + " ";
+            const ok = replacePhraseInEditor(target, phrase, replacement);
             if (!ok) {
-                // Fallback: just insert a space after the (untranslated) word
-                document.execCommand("insertText", false, " ");
+                insertNormalSpace(target);
             }
         } else {
-            // No translation found → insert a normal space
-            document.execCommand("insertText", false, " ");
+            insertNormalSpace(target);
         }
     } catch {
-        document.execCommand("insertText", false, " ");
+        if (thisAbortId === currentTranslationAbortId) {
+            insertNormalSpace(target);
+        }
     } finally {
-        isHandlingSpace = false;
+        if (thisAbortId === currentTranslationAbortId) {
+            isHandlingSpace = false;
+        }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Pre-fetch as the user types (warms cache so space-key handler is instant)
-// ---------------------------------------------------------------------------
-
-function onInput(e: Event) {
+function onInput() {
     if (!settings.store.translateOnSpace) return;
     if (prefetchTimer !== null) clearTimeout(prefetchTimer);
     prefetchTimer = setTimeout(() => {
         prefetchTimer = null;
-        const wordInfo = getWordBeforeCursor();
-        if (wordInfo && wordInfo.word.length >= 2 && isWordEligible(wordInfo.word)) {
-            const from = getEffectiveSourceLang(settings.store.sentInput, settings.store.sentOutput || "en");
-            const to = settings.store.sentOutput || "en";
-            fetchWordTranslation(wordInfo.word, from, to).catch(() => {/* fire and forget */});
+        const info = getTextBeforeCursor();
+        if (info) {
+            const analysis = analyzePhraseToTranslate(info.textBefore);
+            if (analysis && !analysis.shouldWait && analysis.phraseToTranslate.length >= 2) {
+                const from = getEffectiveSourceLang(settings.store.sentInput, settings.store.sentOutput || "en");
+                const to = settings.store.sentOutput || "en";
+                fetchWordTranslation(analysis.phraseToTranslate, from, to).catch(() => {/* fire and forget */});
+            }
         }
-    }, 75);
+    }, 80);
 }
 
 // ---------------------------------------------------------------------------
-// Init / teardown
+// Init & Teardown
 // ---------------------------------------------------------------------------
 
 export function initTranslateOnSpace(): void {
@@ -302,4 +597,6 @@ export function stopTranslateOnSpace(): void {
     wordCache.clear();
     pendingTranslations.clear();
     isHandlingSpace = false;
+    currentTranslationAbortId++;
 }
+

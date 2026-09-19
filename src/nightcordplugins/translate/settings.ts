@@ -92,6 +92,11 @@ export const settings = definePluginSettings({
         description: "Translate each word automatically when pressing Space",
         default: false
     },
+    capitalizeTranslated: {
+        type: OptionType.BOOLEAN,
+        description: "Capitalize translated text (disabled by default)",
+        default: false
+    },
 }).withPrivateSettings<{
     showAutoTranslateAlert: boolean;
 }>();
