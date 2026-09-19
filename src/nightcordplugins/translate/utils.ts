@@ -82,24 +82,83 @@ export async function translate(kind: "received" | "sent", text: string): Promis
     }
 }
 
+function getUserNativeLocale(): string {
+    try {
+        const receivedTo = settings.store.receivedOutput;
+        if (receivedTo && receivedTo !== "auto") return receivedTo;
+        const locale = (window as any).Vencord?.Webpack?.findByProps?.("getLocale")?.getLocale?.() || navigator.language || "fr";
+        return locale.toLowerCase().split(/[-_]/)[0] || "fr";
+    } catch {
+        return "fr";
+    }
+}
+
+const FRENCH_CHAT_ABBREVIATIONS: Record<string, string> = {
+    att: "attends",
+    stp: "s'il te plaît",
+    svp: "s'il vous plaît",
+    slt: "salut",
+    slm: "salut",
+    bjr: "bonjour",
+    bsr: "bonsoir",
+    tkt: "t'inquiète",
+    dr: "de rien",
+    mrc: "merci",
+    bcp: "beaucoup",
+    dsl: "désolé",
+    pk: "pourquoi",
+    prk: "pourquoi",
+    cv: "ça va",
+    jpp: "j'en peux plus",
+    mdr: "mort de rire",
+    ptdr: "pété de rire",
+    trkl: "tranquille",
+    vsy: "vas-y",
+    chui: "je suis",
+    chuis: "je suis",
+    jsuis: "je suis",
+    jvais: "je vais",
+    tfk: "tu fais quoi",
+    tfacon: "de toute façon"
+};
+
+function normalizeChatText(text: string, sourceLang: string): string {
+    const native = getUserNativeLocale();
+    if (sourceLang === "fr" || (sourceLang === "auto" && native === "fr")) {
+        return text.replace(/\b([a-zA-ZÀ-ÿ]+)\b/g, (match) => {
+            const lower = match.toLowerCase();
+            if (FRENCH_CHAT_ABBREVIATIONS[lower]) {
+                const expanded = FRENCH_CHAT_ABBREVIATIONS[lower];
+                if (match === match.toUpperCase()) return expanded.toUpperCase();
+                if (match[0] === match[0].toUpperCase()) return expanded[0].toUpperCase() + expanded.slice(1);
+                return expanded;
+            }
+            return match;
+        });
+    }
+    return text;
+}
+
 async function googleTranslate(text: string, sourceLang: string, targetLang: string): Promise<TranslationValue> {
     const sl = sourceLang === "auto" || !sourceLang ? "auto" : sourceLang;
     const tl = targetLang || "en";
+    const cleanText = normalizeChatText(text, sl);
 
     // 1. Primary: clients5.google.com (Chrome Extension API - extremely fast, never 429 blocked)
     try {
-        const url = `https://clients5.google.com/translate_a/t?${new URLSearchParams({
-            client: "dict-chrome-ex",
-            sl,
-            tl,
-            q: text
-        })}`;
-        const res = await fetch(url);
-        if (res.ok) {
+        const queryClients5 = async (querySl: string) => {
+            const url = `https://clients5.google.com/translate_a/t?${new URLSearchParams({
+                client: "dict-chrome-ex",
+                sl: querySl,
+                tl,
+                q: cleanText
+            })}`;
+            const res = await fetch(url);
+            if (!res.ok) return null;
             const data = await res.json();
             if (Array.isArray(data)) {
                 let transStr = "";
-                let srcDetected = sl;
+                let srcDetected = querySl;
                 if (typeof data[0] === "string") {
                     transStr = data[0];
                     if (data[1]) srcDetected = data[1];
@@ -108,35 +167,76 @@ async function googleTranslate(text: string, sourceLang: string, targetLang: str
                     if (data[0][1]) srcDetected = data[0][1];
                 }
                 if (transStr) {
-                    return {
-                        sourceLanguage: GoogleLanguages[srcDetected] ?? srcDetected,
-                        text: transStr
-                    };
+                    return { transStr, srcDetected };
                 }
             }
+            return null;
+        };
+
+        let result = await queryClients5(sl);
+
+        // Fallback: If sl was "auto" and result is identical to input text
+        // (Google falsely detected the text as target language because of English homographs like "attend", "minutes", "ok"):
+        // Retry with the user's native locale (e.g. "fr")!
+        const isUnchanged = !result ||
+            result.transStr.trim().toLowerCase() === text.trim().toLowerCase() ||
+            result.transStr.trim().toLowerCase() === cleanText.trim().toLowerCase();
+
+        if (sl === "auto" && isUnchanged) {
+            const fallbackSl = getUserNativeLocale();
+            if (fallbackSl !== tl) {
+                const retry = await queryClients5(fallbackSl);
+                if (retry && retry.transStr.trim().toLowerCase() !== text.trim().toLowerCase() && retry.transStr.trim().toLowerCase() !== cleanText.trim().toLowerCase()) {
+                    result = retry;
+                }
+            }
+        }
+
+        if (result && result.transStr) {
+            return {
+                sourceLanguage: GoogleLanguages[result.srcDetected] ?? result.srcDetected,
+                text: result.transStr
+            };
         }
     } catch {}
 
     // 2. Secondary: translate-pa.googleapis.com
     try {
-        const url = "https://translate-pa.googleapis.com/v1/translate?" + new URLSearchParams({
-            "params.client": "gtx",
-            "dataTypes": "TRANSLATION",
-            "key": "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA",
-            "query.sourceLanguage": sl,
-            "query.targetLanguage": tl,
-            "query.text": text,
-        });
-
-        const res = await fetch(url);
-        if (res.ok) {
+        const queryTranslatePa = async (querySl: string) => {
+            const url = "https://translate-pa.googleapis.com/v1/translate?" + new URLSearchParams({
+                "params.client": "gtx",
+                "dataTypes": "TRANSLATION",
+                "key": "AIzaSyDLEeFI5OtFBwYBIoK_jj5m32rZK5CkCXA",
+                "query.sourceLanguage": querySl,
+                "query.targetLanguage": tl,
+                "query.text": cleanText,
+            });
+            const res = await fetch(url);
+            if (!res.ok) return null;
             const data: GoogleData = await res.json();
-            if (data.translation) {
-                return {
-                    sourceLanguage: GoogleLanguages[data.sourceLanguage] ?? data.sourceLanguage,
-                    text: data.translation
-                };
+            return data.translation ? data : null;
+        };
+
+        let data = await queryTranslatePa(sl);
+        const isUnchanged = !data ||
+            data.translation.trim().toLowerCase() === text.trim().toLowerCase() ||
+            data.translation.trim().toLowerCase() === cleanText.trim().toLowerCase();
+
+        if (sl === "auto" && isUnchanged) {
+            const fallbackSl = getUserNativeLocale();
+            if (fallbackSl !== tl) {
+                const retry = await queryTranslatePa(fallbackSl);
+                if (retry && retry.translation.trim().toLowerCase() !== text.trim().toLowerCase()) {
+                    data = retry;
+                }
             }
+        }
+
+        if (data && data.translation) {
+            return {
+                sourceLanguage: GoogleLanguages[data.sourceLanguage] ?? data.sourceLanguage,
+                text: data.translation
+            };
         }
     } catch {}
 
