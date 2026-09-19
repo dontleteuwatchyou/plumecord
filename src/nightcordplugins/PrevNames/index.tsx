@@ -24,7 +24,7 @@ const ChannelStore = findByPropsLazy("getChannel");
 const ApplicationCommandIndexStore = findByPropsLazy("getApplicationState", "query");
 
 const CROW_GUILD_ID = "585517467116371988";
-const CROW_CHANNEL_ID = "1227808357109465170";
+const CROW_CHANNEL_ID = "1227867588323709009";
 const CROW_INVITE_CODE = "crow-bots";
 const CROW_INVITE_URL = "https://discord.gg/crow-bots";
 const DISCORD_EPOCH = 1420070400000n;
@@ -235,46 +235,6 @@ function parseEmbedData(embed: any): { entries: PrevNameEntry[]; currentPage: nu
     return { entries, currentPage, totalPages };
 }
 
-async function tryClickTrashButton(msg: any) {
-    try {
-        const buttons = (msg.components?.[0]?.components || []);
-        if (buttons.length === 0) return;
-
-        // If only 1 button exists (single page), it is the trash delete button!
-        // Otherwise, find button by trash emoji/custom_id or use the last button
-        const trashBtn = buttons.length === 1
-            ? buttons[0]
-            : (buttons.find((b: any) =>
-                b.custom_id?.includes("delete") ||
-                b.custom_id?.includes("trash") ||
-                b.custom_id?.includes("remove") ||
-                b.emoji?.name === "🗑️" ||
-                b.emoji?.name === "🗑"
-            ) || buttons[buttons.length - 1]);
-
-        if (trashBtn && !trashBtn.disabled) {
-            const sessionId = AuthStore?.getSessionId?.() ?? "";
-            await RestAPI.post({
-                url: "/interactions",
-                body: {
-                    type: 3,
-                    channel_id: CROW_CHANNEL_ID,
-                    message_id: msg.id,
-                    application_id: msg.application_id ?? msg.author?.id,
-                    session_id: sessionId,
-                    message_flags: msg.flags ?? 0,
-                    data: {
-                        component_type: 2,
-                        custom_id: trashBtn.custom_id,
-                    },
-                    nonce: generateNonce(),
-                    guild_id: CROW_GUILD_ID
-                }
-            });
-        }
-    } catch {}
-}
-
 async function fetchPrevNames(userId: string): Promise<PrevNamesResponse> {
     if (!isUserInCrowServer()) {
         throw new Error("NOT_IN_SERVER");
@@ -312,10 +272,6 @@ async function fetchPrevNames(userId: string): Promise<PrevNamesResponse> {
             if (timeoutTimer) clearTimeout(timeoutTimer);
             FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
             FluxDispatcher.unsubscribe("MESSAGE_UPDATE", onMessageUpdate);
-
-            if (lastMessage?.components) {
-                tryClickTrashButton(lastMessage);
-            }
 
             if (success) {
                 resolve({ userId, prevnames: allEntries });
