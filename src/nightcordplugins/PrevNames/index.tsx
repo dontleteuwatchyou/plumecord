@@ -173,18 +173,53 @@ function parseEmbedData(embed: any): { entries: PrevNameEntry[]; currentPage: nu
     const lines = fullText.split("\n").map(l => l.trim()).filter(Boolean);
     const entries: PrevNameEntry[] = [];
 
-    for (const line of lines) {
-        const m = line.match(/^([0-9\/\-\.]+)\s*[-–—:]\s*(.+)$/);
+    for (const rawLine of lines) {
+        // Strip leading list bullet markers
+        const line = rawLine.replace(/^[•\-\*]\s*/, "").trim();
+
+        // 1. Discord timestamp format: <t:1726100000:d> - username
+        const tsMatch = line.match(/<t:(\d+)(?::[a-zA-Z])?>\s*[-–—:]\s*(.+)/);
+        if (tsMatch) {
+            const ts = parseInt(tsMatch[1], 10) * 1000;
+            const name = tsMatch[2].replace(/[*`_~]/g, "").trim();
+            if (name) {
+                const rawDate = new Date(ts).toLocaleDateString("en-US");
+                entries.push({ timestamp: ts, date: rawDate, name });
+                continue;
+            }
+        }
+
+        // 2. Date format with optional backticks, bold, etc.: `9/12/2026` - addictive
+        const m = line.match(/^[`*_\s]*([0-9]{1,4}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{1,4})[`*_\s]*\s*[-–—:]\s*(.+)$/);
         if (m) {
             const rawDate = m[1].trim();
-            const name = m[2].trim();
-            const parsedTime = Date.parse(rawDate);
-            const timestamp = !isNaN(parsedTime) ? parsedTime : Date.now();
-            entries.push({
-                timestamp,
-                date: rawDate,
-                name
-            });
+            const name = m[2].replace(/[*`_~]/g, "").trim();
+            if (name) {
+                const parsedTime = Date.parse(rawDate);
+                const timestamp = !isNaN(parsedTime) ? parsedTime : Date.now();
+                entries.push({
+                    timestamp,
+                    date: rawDate,
+                    name
+                });
+                continue;
+            }
+        }
+
+        // 3. Fallback: any line containing date and separator
+        const fallbackMatch = line.match(/([0-9]{1,4}[\/\-\.][0-9]{1,2}[\/\-\.][0-9]{1,4})\s*[-–—:]\s*(.+)/);
+        if (fallbackMatch) {
+            const rawDate = fallbackMatch[1].trim();
+            const name = fallbackMatch[2].replace(/[*`_~]/g, "").trim();
+            if (name) {
+                const parsedTime = Date.parse(rawDate);
+                const timestamp = !isNaN(parsedTime) ? parsedTime : Date.now();
+                entries.push({
+                    timestamp,
+                    date: rawDate,
+                    name
+                });
+            }
         }
     }
 
@@ -203,7 +238,20 @@ function parseEmbedData(embed: any): { entries: PrevNameEntry[]; currentPage: nu
 async function tryClickTrashButton(msg: any) {
     try {
         const buttons = (msg.components?.[0]?.components || []);
-        const trashBtn = buttons[2] || buttons.find((b: any) => b.custom_id?.includes("delete") || b.custom_id?.includes("trash") || b.emoji?.name === "🗑️");
+        if (buttons.length === 0) return;
+
+        // If only 1 button exists (single page), it is the trash delete button!
+        // Otherwise, find button by trash emoji/custom_id or use the last button
+        const trashBtn = buttons.length === 1
+            ? buttons[0]
+            : (buttons.find((b: any) =>
+                b.custom_id?.includes("delete") ||
+                b.custom_id?.includes("trash") ||
+                b.custom_id?.includes("remove") ||
+                b.emoji?.name === "🗑️" ||
+                b.emoji?.name === "🗑"
+            ) || buttons[buttons.length - 1]);
+
         if (trashBtn && !trashBtn.disabled) {
             const sessionId = AuthStore?.getSessionId?.() ?? "";
             await RestAPI.post({
