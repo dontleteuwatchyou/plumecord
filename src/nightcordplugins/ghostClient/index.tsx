@@ -11,7 +11,7 @@ import { DataStore } from "@api/index";
 import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select } from "@webpack/common";
+import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select, TextInput } from "@webpack/common";
 import { ModalRoot, ModalHeader, ModalContent, ModalFooter, ModalCloseButton, ModalSize, openModal } from "@utils/modal";
 import { FormSwitch } from "@components/FormSwitch";
 import { Button } from "@components/Button";
@@ -826,13 +826,27 @@ function StreamChoiceModal({ userIds, transitionState, onClose }: StreamChoiceMo
         } catch {}
     };
 
-    const handleDrop = (e: React.DragEvent) => {
+    const handleDrop = async (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
         if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
-            const filePath = (file as any).path || file.name;
+            // Electron 28+ sandboxes file.path — use webUtils.getPathForFile() via native bridge
+            let filePath: string = "";
+            try {
+                filePath = (VencordNative?.native as any)?.getPathForFile?.(file) ?? "";
+            } catch { /* ignore if not available */ }
+            if (!filePath) filePath = (file as any).path ?? "";
+            if (!filePath || filePath === file.name) {
+                // Can't get real path — ask user to paste manually
+                Toasts.show({
+                    message: t("Paste the full file path or use Browse"),
+                    id: Toasts.genId(),
+                    type: Toasts.Type.FAILURE
+                });
+                return;
+            }
             const isVideo = /\.(mp4|mkv|webm|avi|mov|flv|wmv|m4v)$/i.test(filePath) || file.type.startsWith("video/");
             if (!isVideo) {
                 Toasts.show({
@@ -980,6 +994,22 @@ function StreamChoiceModal({ userIds, transitionState, onClose }: StreamChoiceMo
                         </Button>
                     </div>
                 )}
+
+                {/* Paste path fallback */}
+                <div className="gc-paste-path-section">
+                    <div className="gc-paste-path-label">{t("Or paste video file path")}</div>
+                    <div className="gc-paste-path-row">
+                        <TextInput
+                            placeholder="C:\Users\...\video.mp4"
+                            value={selectedPath ?? ""}
+                            onChange={(v: string) => {
+                                if (!v) { setSelectedPath(null); setSelectedName(null); return; }
+                                setSelectedPath(v);
+                                setSelectedName(v.split(/[\\/]/).pop() ?? v);
+                            }}
+                        />
+                    </div>
+                </div>
 
                 {/* Switches */}
                 <div className="gc-video-switches">

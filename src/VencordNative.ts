@@ -9,7 +9,7 @@ import type { CspRequestResult } from "@main/csp/manager";
 import type { PluginIpcMappings } from "@main/ipcPlugins";
 import { IpcEvents } from "@shared/IpcEvents";
 import type { IpcRes } from "@utils/types";
-import { ipcRenderer } from "electron/renderer";
+import { ipcRenderer, webUtils } from "electron/renderer";
 
 export function invoke<T = any>(event: IpcEvents, ...args: any[]) {
     return ipcRenderer.invoke(event, ...args) as Promise<T>;
@@ -89,7 +89,13 @@ export default {
         onRendererCssUpdate: (cb: (newCss: string) => void) => {
             if (!IS_DEV) return;
             ipcRenderer.on(IpcEvents.RENDERER_CSS_UPDATE, (_e, newCss: string) => cb(newCss));
-        }
+        },
+        getPathForFile: (file: any): string => {
+            try {
+                if (webUtils?.getPathForFile) return webUtils.getPathForFile(file);
+            } catch { }
+            return file?.path || "";
+        },
     },
 
     csp: {
