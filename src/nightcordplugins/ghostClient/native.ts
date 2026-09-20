@@ -428,34 +428,6 @@ export async function fakeStream(_: any, userIds: string[], streaming: boolean):
     try { await api("/fake-stream", { userIds, streaming }); } catch { }
 }
 
-export async function streamVideo(_: any, userIds: string[], videoPath: string, loop = true, withAudio = true): Promise<{ ok: boolean; error?: string }> {
-    try {
-        return await api("/stream-video", { userIds, videoPath, loop, withAudio });
-    } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
-    }
-}
-
-export async function selectVideoFile(_: any): Promise<string | null> {
-    try {
-        const { dialog } = require("electron");
-        const res = await dialog.showOpenDialog({
-            title: "Sélectionner une vidéo",
-            properties: ["openFile"],
-            filters: [
-                { name: "Vidéos", extensions: ["mp4", "mkv", "webm", "avi", "mov", "flv", "wmv", "m4v"] },
-                { name: "Tous les fichiers", extensions: ["*"] }
-            ]
-        });
-        if (!res.canceled && res.filePaths.length > 0) {
-            return res.filePaths[0];
-        }
-    } catch (e) {
-        console.error("[GhostNative] selectVideoFile error:", e);
-    }
-    return null;
-}
-
 export async function fakeCam(_: any, userIds: string[], camera: boolean): Promise<void> {
     try { await api("/fake-cam", { userIds, camera }); } catch { }
 }
