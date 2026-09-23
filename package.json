@@ -38,7 +38,7 @@
         "generateTypes": "tspc --emitDeclarationOnly --declaration --outDir packages/vencord-types --allowJs false",
         "inject": "node scripts/inject.mjs",
         "uninject": "node scripts/uninject.mjs",
-        "repair": "node scripts/runInstaller.mjs -- --repair",
+        "repair": "node scripts/inject.mjs",
         "lint": "eslint",
         "lint-styles": "stylelint \"src/**/*.css\" --ignore-pattern src/userplugins",
         "lint:fix": "pnpm lint --fix",

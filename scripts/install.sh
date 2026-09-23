@@ -43,7 +43,7 @@ ARCH="$(uname -m)"
 
 log_info "Operating System: ${WHITE}$OS ($ARCH)${RESET}"
 
-DOWNLOAD_URL="https://source.nightcord.st/nightcord/nightcord/releases/download/latest"
+GITEA_API="https://source.nightcord.st/api/v1/repos/nightcord/nightcord"
 FALLBACK_URL="https://source.nightcord.st/nightcord/nightcord/raw/branch/master/dist"
 
 TMP_DIR="$(mktemp -d /tmp/nightcord-install-XXXXXX)"
@@ -53,10 +53,16 @@ cleanup() {
 trap cleanup EXIT
 
 download_nightcord_bundle() {
-    log_info "Downloading latest Nightcord bundle..."
+    log_info "Fetching latest release information..."
     mkdir -p "$TMP_DIR/extracted"
     
-    # 1. Try downloading nightcord-dist.zip
+    TAG="$(curl -sSL "$GITEA_API/releases/latest" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | cut -d'"' -f4 || echo "latest")"
+    if [ -z "$TAG" ]; then TAG="latest"; fi
+    log_info "Detected latest version: ${WHITE}$TAG${RESET}"
+
+    DOWNLOAD_URL="https://source.nightcord.st/nightcord/nightcord/releases/download/$TAG"
+
+    # 1. Try downloading nightcord-dist.zip from the release
     if curl -sSL "$DOWNLOAD_URL/nightcord-dist.zip" -o "$TMP_DIR/nightcord-dist.zip" 2>/dev/null && [ -s "$TMP_DIR/nightcord-dist.zip" ]; then
         unzip -q -o "$TMP_DIR/nightcord-dist.zip" -d "$TMP_DIR/extracted"
         log_success "Downloaded & extracted Nightcord bundle."
