@@ -1,3 +1,9 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import {progress, status} from "../stores/installation";
 import {promises as fs} from "fs";
 import path from "path";
@@ -16,7 +22,11 @@ const safeStat = async (p) => {
 };
 
 const safeDelete = async (p) => {
-    try { await fs.unlink(p); } catch {}
+    try {
+        await fs.rm(p, { recursive: true, force: true });
+    } catch {
+        try { await fs.unlink(p); } catch {}
+    }
 };
 
 async function shouldAutoRestart() {
@@ -105,11 +115,11 @@ async function deleteShims(paths) {
                 log("4. Skipping Discord restart (disabled in options).");
             }
 
-            log("✅ Uninstallation successful!");
+            log("[Success] Uninstallation successful!");
             progress.set(progress.value + progressPerLoop);
         } catch (err) {
-            log(`❌ Could not remove Nightcord from ${resPath}`);
-            log(`❌ ${err.message}`);
+            log(`[Error] Could not remove Nightcord from ${resPath}`);
+            log(`[Error] ${err.message}`);
             return err;
         }
     }
@@ -127,8 +137,8 @@ export default async function(paths) {
         lognewline("Uninstall complete!");
         return true;
     } catch (err) {
-        lognewline("❌ Uninstallation failed");
-        log(`❌ ${err.message}`);
+        lognewline("[Error] Uninstallation failed");
+        log(`[Error] ${err.message}`);
         return false;
     }
 }
