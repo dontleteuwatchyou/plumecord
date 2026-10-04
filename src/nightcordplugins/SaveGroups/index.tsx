@@ -33,6 +33,32 @@ const DATA_STORE_SAVED_KEY = "Nightcord_SaveGroups_SavedEntries";
 const DATA_STORE_KNOWN_KEY = "Nightcord_SaveGroups_KnownActiveEntries";
 const LS_SAVED_SUMMARY_KEY = "Nightcord_SaveGroups_Summary";
 
+let activeAccountUserId: string | null = null;
+
+function getActiveUserId(): string {
+    return UserStore?.getCurrentUser?.()?.id || "default";
+}
+
+function getSavedKey(userId?: string): string {
+    const uid = userId || getActiveUserId();
+    return `${DATA_STORE_SAVED_KEY}_${uid}`;
+}
+
+function getKnownKey(userId?: string): string {
+    const uid = userId || getActiveUserId();
+    return `${DATA_STORE_KNOWN_KEY}_${uid}`;
+}
+
+function getDeletedKey(userId?: string): string {
+    const uid = userId || getActiveUserId();
+    return `Nightcord_SaveGroups_DeletedIds_${uid}`;
+}
+
+function getSummaryKey(userId?: string): string {
+    const uid = userId || getActiveUserId();
+    return `${LS_SAVED_SUMMARY_KEY}_${uid}`;
+}
+
 const createChannelRecordFromServer = findByCodeLazy(".GUILD_TEXT]", "fromServer)");
 const createMessageRecord = findByCodeLazy(".createFromServer(", ".isBlockedForMessage", "messageReference:");
 
@@ -123,6 +149,20 @@ function sanitizeForStorage(data: any): any {
 function hydrateChannelRecord(data: SavedGroupData): any {
     let baseRecord: any = null;
 
+    let effectiveName = data.name;
+    if ((!effectiveName || effectiveName === "Group DM") && Array.isArray(data.rawRecipients) && data.rawRecipients.length > 0) {
+        const derived = data.rawRecipients.map((r: any) => r?.global_name || r?.globalName || r?.username).filter(Boolean).join(", ");
+        if (derived) effectiveName = derived;
+    }
+    if ((!effectiveName || effectiveName === "Group DM") && Array.isArray(data.recipients) && data.recipients.length > 0) {
+        const derived = data.recipients.map((r: any) => {
+            const u = typeof r === "object" ? r : UserStore?.getUser?.(String(r));
+            return u?.globalName || u?.global_name || u?.username;
+        }).filter(Boolean).join(", ");
+        if (derived) effectiveName = derived;
+    }
+    if (!effectiveName) effectiveName = "Group DM";
+
     try {
         if (typeof createChannelRecordFromServer === "function") {
             const rawRecipients = Array.isArray(data.rawRecipients) && data.rawRecipients.length > 0
@@ -131,7 +171,7 @@ function hydrateChannelRecord(data: SavedGroupData): any {
                     ? data.recipients.map(r => {
                         if (typeof r === "object" && r !== null) return r;
                         const uid = String(r);
-                        const user = UserStore.getUser(uid);
+                        const user = UserStore?.getUser?.(uid);
                         return {
                             id: uid,
                             username: user?.username || "User",
@@ -145,7 +185,7 @@ function hydrateChannelRecord(data: SavedGroupData): any {
             baseRecord = createChannelRecordFromServer({
                 id: data.id,
                 type: 3,
-                name: data.name || "Group DM",
+                name: effectiveName,
                 icon: data.icon || null,
                 owner_id: data.ownerId,
                 ownerId: data.ownerId,
@@ -165,7 +205,7 @@ function hydrateChannelRecord(data: SavedGroupData): any {
         baseRecord = {
             id: data.id,
             type: 3,
-            name: data.name || "Group DM",
+            name: effectiveName,
             icon: data.icon || null,
             ownerId: data.ownerId,
             topic: data.topic || "",
@@ -177,10 +217,18 @@ function hydrateChannelRecord(data: SavedGroupData): any {
     }
 
     baseRecord.isArchivedGroup = true;
+    baseRecord.name = effectiveName;
+    baseRecord.computeTitle = () => effectiveName;
 
     // Wrap in a defensive Proxy so that any Discord Channel method returns safe defaults without throwing
     return new Proxy(baseRecord, {
         get(target, prop, receiver) {
+            if (prop === "computeTitle") {
+                return () => target.name || effectiveName;
+            }
+            if (prop === "name") {
+                return target.name || effectiveName;
+            }
             if (prop in target) {
                 const val = Reflect.get(target, prop, receiver);
                 return typeof val === "function" ? val.bind(target) : val;
@@ -295,9 +343,24 @@ function getDescendingMessages(messages: any[]): any[] {
 
 function extractGroupSnapshot(ch: any): SavedGroupData {
     const messages = settings.store.saveMessages ? getChannelMessagesSnapshot(ch.id) : [];
+    let computedName = ch.name;
+    if (!computedName && typeof ch.computeTitle === "function") {
+        try { computedName = ch.computeTitle(); } catch {}
+    }
+    if (!computedName && Array.isArray(ch.rawRecipients) && ch.rawRecipients.length > 0) {
+        computedName = ch.rawRecipients.map((r: any) => r?.global_name || r?.globalName || r?.username).filter(Boolean).join(", ");
+    }
+    if (!computedName && Array.isArray(ch.recipients) && ch.recipients.length > 0) {
+        computedName = ch.recipients.map((r: any) => {
+            const u = typeof r === "object" ? r : UserStore?.getUser?.(String(r));
+            return u?.globalName || u?.global_name || u?.username;
+        }).filter(Boolean).join(", ");
+    }
+    if (!computedName) computedName = "Group DM";
+
     return {
         id: ch.id,
-        name: ch.name || "Group DM",
+        name: computedName,
         icon: ch.icon || null,
         ownerId: ch.ownerId,
         topic: ch.topic || "",
@@ -310,14 +373,28 @@ function extractGroupSnapshot(ch: any): SavedGroupData {
     };
 }
 
+async function persistDeletedIds() {
+    try {
+        const uid = getActiveUserId();
+        await DataStore.set(getDeletedKey(uid), Array.from(manuallyDeletedGroupIds));
+    } catch (e) {
+        console.error("[SaveGroups] Failed to persist deleted group IDs:", e);
+    }
+}
+
+async function persistKnownGroupsImmediate() {
+    try {
+        const uid = getActiveUserId();
+        const clean = sanitizeForStorage(Array.from(knownActiveGroups.values()));
+        await DataStore.set(getKnownKey(uid), clean);
+    } catch {}
+}
+
 function debouncedPersistKnownGroups() {
     if (_persistKnownTimer) return;
     _persistKnownTimer = setTimeout(async () => {
         _persistKnownTimer = undefined;
-        try {
-            const clean = sanitizeForStorage(Array.from(knownActiveGroups.values()));
-            await DataStore.set(DATA_STORE_KNOWN_KEY, clean);
-        } catch {}
+        await persistKnownGroupsImmediate();
     }, 2000);
 }
 
@@ -333,7 +410,7 @@ function updateKnownActiveGroups() {
 
         let changed = false;
         for (const ch of allCandidates) {
-            if (ch && (ch.type === 3 || ch.isGroupDM?.()) && !savedGroups.has(ch.id)) {
+            if (ch && (ch.type === 3 || ch.isGroupDM?.()) && !savedGroups.has(ch.id) && !manuallyDeletedGroupIds.has(ch.id)) {
                 if (!knownActiveGroups.has(ch.id)) {
                     knownActiveGroups.set(ch.id, extractGroupSnapshot(ch));
                     changed = true;
@@ -370,8 +447,9 @@ function updateKnownActiveGroups() {
 
 async function persistSavedGroups() {
     try {
+        const uid = getActiveUserId();
         const clean = sanitizeForStorage(Array.from(savedGroups.values()));
-        await DataStore.set(DATA_STORE_SAVED_KEY, clean);
+        await DataStore.set(getSavedKey(uid), clean);
 
         // Fallback summary in localStorage for channel existence
         try {
@@ -383,10 +461,110 @@ async function persistSavedGroups() {
                 kickedAt: g.kickedAt,
                 msgCount: g.savedMessages?.length || 0
             }));
-            localStorage.setItem(LS_SAVED_SUMMARY_KEY, JSON.stringify(summary));
+            localStorage.setItem(getSummaryKey(uid), JSON.stringify(summary));
         } catch {}
     } catch (e) {
         console.error("[SaveGroups] Failed to save groups to DataStore:", e);
+    }
+}
+
+async function loadAccountData(userId: string) {
+    activeAccountUserId = userId;
+    savedGroups.clear();
+    hydratedChannels.clear();
+    knownActiveGroups.clear();
+    manuallyDeletedGroupIds.clear();
+
+    // 1. Load deleted IDs first so we never re-load deleted groups
+    try {
+        const deleted = await DataStore.get<string[]>(getDeletedKey(userId));
+        if (Array.isArray(deleted)) {
+            for (const id of deleted) {
+                if (id) manuallyDeletedGroupIds.add(id);
+            }
+        }
+    } catch {}
+
+    // 2. Load saved groups
+    try {
+        let entries = await DataStore.get<SavedGroupData[]>(getSavedKey(userId));
+        // Migration from global key if account-scoped key is empty
+        if ((!entries || entries.length === 0) && userId !== "default") {
+            const legacy = await DataStore.get<SavedGroupData[]>(DATA_STORE_SAVED_KEY);
+            if (Array.isArray(legacy) && legacy.length > 0) {
+                entries = legacy;
+                await DataStore.set(getSavedKey(userId), entries);
+            }
+        }
+
+        if (Array.isArray(entries)) {
+            for (const data of entries) {
+                if (data?.id && !manuallyDeletedGroupIds.has(data.id)) {
+                    savedGroups.set(data.id, data);
+                    hydratedChannels.set(data.id, hydrateChannelRecord(data));
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[SaveGroups] Failed to load saved groups:", e);
+    }
+
+    // Fallback summary in localStorage if savedGroups was empty
+    if (savedGroups.size === 0) {
+        try {
+            const rawSummary = localStorage.getItem(getSummaryKey(userId)) || localStorage.getItem(LS_SAVED_SUMMARY_KEY);
+            if (rawSummary) {
+                const parsed = JSON.parse(rawSummary);
+                if (Array.isArray(parsed)) {
+                    for (const item of parsed) {
+                        if (item?.id && !savedGroups.has(item.id) && !manuallyDeletedGroupIds.has(item.id)) {
+                            const newGroup: SavedGroupData = {
+                                id: item.id,
+                                name: item.name || "Group DM",
+                                icon: item.icon,
+                                type: 3,
+                                kickedAt: item.kickedAt || 0,
+                                savedMessages: []
+                            };
+                            savedGroups.set(item.id, newGroup);
+                            hydratedChannels.set(item.id, hydrateChannelRecord(newGroup));
+                        }
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    // 3. Load known active groups
+    try {
+        const known = await DataStore.get<SavedGroupData[]>(getKnownKey(userId));
+        if (Array.isArray(known)) {
+            for (const data of known) {
+                if (data?.id && !savedGroups.has(data.id) && !manuallyDeletedGroupIds.has(data.id)) {
+                    knownActiveGroups.set(data.id, data);
+                }
+            }
+        }
+    } catch {}
+}
+
+async function switchAccountContext(newUserId: string | null) {
+    if (newUserId === activeAccountUserId) return;
+    activeAccountUserId = newUserId;
+    savedGroups.clear();
+    hydratedChannels.clear();
+    knownActiveGroups.clear();
+    manuallyDeletedGroupIds.clear();
+    removeArchivedNoticeBanner();
+    updateStyles();
+    scanAndTagSidebarElements();
+
+    if (newUserId) {
+        await loadAccountData(newUserId);
+        updateStyles();
+        scanAndTagSidebarElements();
+        try { (ChannelStore as any)?.emitChange?.(); } catch {}
+        try { (PrivateChannelSortStore as any)?.emitChange?.(); } catch {}
     }
 }
 
@@ -413,9 +591,24 @@ async function archiveGroup(channelId: string, channelHint?: any) {
     }
 
     if (!snapshot) {
+        let computedName = existing?.name || channelHint?.name;
+        if (!computedName && typeof existing?.computeTitle === "function") {
+            try { computedName = existing.computeTitle(); } catch {}
+        }
+        if (!computedName && Array.isArray(existing?.rawRecipients) && existing.rawRecipients.length > 0) {
+            computedName = existing.rawRecipients.map((r: any) => r?.global_name || r?.globalName || r?.username).filter(Boolean).join(", ");
+        }
+        if (!computedName && Array.isArray(existing?.recipients) && existing.recipients.length > 0) {
+            computedName = existing.recipients.map((r: any) => {
+                const u = typeof r === "object" ? r : UserStore?.getUser?.(String(r));
+                return u?.globalName || u?.global_name || u?.username;
+            }).filter(Boolean).join(", ");
+        }
+        if (!computedName) computedName = "Group DM";
+
         snapshot = {
             id: channelId,
-            name: existing?.name || channelHint?.name || "Group DM",
+            name: computedName,
             icon: existing?.icon || channelHint?.icon || null,
             ownerId: existing?.ownerId || channelHint?.ownerId,
             topic: existing?.topic || channelHint?.topic || "",
@@ -525,7 +718,11 @@ function checkOfflineKicks() {
 
         if (knownActiveGroups.size === 0) return;
         for (const [id, knownData] of Array.from(knownActiveGroups.entries())) {
-            if (!currentIds.has(id) && !savedGroups.has(id) && !manuallyDeletedGroupIds.has(id)) {
+            if (manuallyDeletedGroupIds.has(id)) {
+                knownActiveGroups.delete(id);
+                continue;
+            }
+            if (!currentIds.has(id) && !savedGroups.has(id)) {
                 archiveGroup(id, knownData);
             }
         }
@@ -740,8 +937,9 @@ async function deleteSavedGroup(channelId: string) {
     hydratedChannels.delete(channelId);
     knownActiveGroups.delete(channelId);
 
+    await persistDeletedIds();
     await persistSavedGroups();
-    debouncedPersistKnownGroups();
+    await persistKnownGroupsImmediate();
 
     updateStyles();
     removeArchivedNoticeBanner();
@@ -861,6 +1059,10 @@ function patchFluxDispatcher() {
         }
 
         if (type === "CONNECTION_OPEN") {
+            const newUserId = action?.user?.id || UserStore?.getCurrentUser?.()?.id;
+            if (newUserId && newUserId !== activeAccountUserId) {
+                switchAccountContext(newUserId);
+            }
             const privateChannels = action.privateChannels || action.initialGuildChannels || [];
             if (Array.isArray(privateChannels)) {
                 for (const pc of privateChannels) {
@@ -871,6 +1073,10 @@ function patchFluxDispatcher() {
             }
             updateKnownActiveGroups();
             checkOfflineKicks();
+        }
+
+        if (type === "LOGOUT") {
+            switchAccountContext(null);
         }
 
         if (type === "MESSAGE_CREATE") {
@@ -1362,6 +1568,10 @@ export default definePlugin({
             updateKnownActiveGroups();
         },
         CONNECTION_OPEN(action: any) {
+            const newUserId = action?.user?.id || UserStore?.getCurrentUser?.()?.id;
+            if (newUserId && newUserId !== activeAccountUserId) {
+                switchAccountContext(newUserId);
+            }
             const privateChannels = action?.privateChannels || action?.initialGuildChannels || [];
             if (Array.isArray(privateChannels)) {
                 for (const pc of privateChannels) {
@@ -1372,6 +1582,9 @@ export default definePlugin({
             }
             updateKnownActiveGroups();
             checkOfflineKicks();
+        },
+        LOGOUT() {
+            switchAccountContext(null);
         },
         CHANNEL_SELECT(event: { channelId: string; }) {
             const cid = event?.channelId;
@@ -1411,55 +1624,8 @@ export default definePlugin({
     },
 
     async start() {
-        try {
-            const entries = await DataStore.get<SavedGroupData[]>(DATA_STORE_SAVED_KEY);
-            if (Array.isArray(entries)) {
-                for (const data of entries) {
-                    if (data?.id) {
-                        savedGroups.set(data.id, data);
-                        hydratedChannels.set(data.id, hydrateChannelRecord(data));
-                    }
-                }
-            }
-        } catch (e) {
-            console.error("[SaveGroups] Failed to load saved groups from DataStore:", e);
-        }
-
-        // Check fallback summary if savedGroups was empty
-        if (savedGroups.size === 0) {
-            try {
-                const rawSummary = localStorage.getItem(LS_SAVED_SUMMARY_KEY);
-                if (rawSummary) {
-                    const parsed = JSON.parse(rawSummary);
-                    if (Array.isArray(parsed)) {
-                        for (const item of parsed) {
-                            if (item?.id && !savedGroups.has(item.id)) {
-                                savedGroups.set(item.id, {
-                                    id: item.id,
-                                    name: item.name || "Group DM",
-                                    icon: item.icon,
-                                    type: 3,
-                                    kickedAt: item.kickedAt || 0,
-                                    savedMessages: []
-                                });
-                                hydratedChannels.set(item.id, hydrateChannelRecord(savedGroups.get(item.id)!));
-                            }
-                        }
-                    }
-                }
-            } catch {}
-        }
-
-        try {
-            const known = await DataStore.get<SavedGroupData[]>(DATA_STORE_KNOWN_KEY);
-            if (Array.isArray(known)) {
-                for (const data of known) {
-                    if (data?.id && !savedGroups.has(data.id)) {
-                        knownActiveGroups.set(data.id, data);
-                    }
-                }
-            }
-        } catch {}
+        const uid = getActiveUserId();
+        await loadAccountData(uid);
 
         patchFluxDispatcher();
         patchManualLeaveTracking();

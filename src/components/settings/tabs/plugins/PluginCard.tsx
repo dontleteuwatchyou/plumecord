@@ -379,13 +379,13 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
         </Tooltip>
     );
 
-    const isNightcord = !PluginMeta[plugin.name]?.userPlugin;
+    const isNightcord = !PluginMeta[plugin.name]?.userPlugin && !(plugin as any).isUserPlugin && (PluginMeta[plugin.name]?.folderName?.startsWith("src/nightcordplugins/") ?? false);
     const iconType = isNightcord ? "nightcord" : "other";
 
     // Le système de like ne s'applique qu'aux plugins Nightcord (pas Vencord/Equicord,
     // pas User Plugins), et jamais aux plugins required (y compris ceux affichés comme
     // required parce qu'une dépendance active en a besoin, d'où le check sur `disabled`).
-    const isNightcordFolderPlugin = PluginMeta[plugin.name]?.folderName?.startsWith("src/nightcordplugins/") ?? false;
+    const isNightcordFolderPlugin = (PluginMeta[plugin.name]?.folderName?.startsWith("src/nightcordplugins/") ?? false) && !PluginMeta[plugin.name]?.userPlugin && !(plugin as any).isUserPlugin;
     const canShowLikeBadge = isNightcordFolderPlugin && !plugin.required && !disabled;
 
     function openCreditsModal() {
@@ -403,12 +403,13 @@ export function PluginCard({ plugin, disabled, onRestartNeeded, onMouseEnter, on
                         </a>
                     ) : (
                         plugin.authors?.map(a => {
-                            const user = UserStore.getUser(a.id.toString());
-                            const avatarUrl = user ? user.getAvatarURL(undefined, 128) : `https://cdn.discordapp.com/avatars/${a.id}/${a.id}.png`;
+                            const authorId = a?.id ? a.id.toString() : "0";
+                            const user = a?.id ? UserStore.getUser(authorId) : null;
+                            const avatarUrl = user ? user.getAvatarURL(undefined, 128) : (a?.id ? `https://cdn.discordapp.com/avatars/${authorId}/${authorId}.png` : "");
                             return (
-                                <div key={a.id.toString()} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "20px", fontWeight: 600, color: "var(--text-normal)" }}>
-                                    <img src={avatarUrl} alt={a.name} style={{ width: 64, height: 64, borderRadius: "50%" }} />
-                                    <span>{a.name}</span>
+                                <div key={authorId || (a?.name ?? "user")} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "20px", fontWeight: 600, color: "var(--text-normal)" }}>
+                                    {avatarUrl ? <img src={avatarUrl} alt={a?.name ?? "User"} style={{ width: 64, height: 64, borderRadius: "50%" }} /> : null}
+                                    <span>{a?.name ?? "User"}</span>
                                 </div>
                             );
                         })

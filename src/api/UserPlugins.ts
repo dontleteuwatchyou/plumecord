@@ -18,6 +18,7 @@ import * as Notifications from "./Notifications";
 import { plugins, startPlugin, stopPlugin } from "./PluginManager";
 import { definePluginSettings, Settings, SettingsStore } from "./Settings";
 import * as Styles from "./Styles";
+import { PluginMeta } from "~plugins";
 
 const logger = new Logger("UserPlugins", "#e5c07b");
 
@@ -137,6 +138,9 @@ export function loadAndRegisterPlugin(result: DynamicCompileResult): boolean {
             return false;
         }
 
+        pluginDef.description ??= "";
+        pluginDef.authors ??= [{ name: "User", id: 0n }];
+
         // Tag as user plugin
         (pluginDef as any).isUserPlugin = true;
         (pluginDef as any).isDynamic = true;
@@ -158,6 +162,14 @@ export function loadAndRegisterPlugin(result: DynamicCompileResult): boolean {
         // Register into global PluginManager
         plugins[pluginDef.name] = pluginDef;
         loadedDynamicPlugins.set(pluginDef.name, pluginDef);
+
+        // Update or register in PluginMeta so settings tab never crashes
+        PluginMeta[pluginDef.name] = {
+            folderName: `userplugins/${pluginDef.name}`,
+            userPlugin: true,
+            ...(PluginMeta[pluginDef.name] ?? {})
+        };
+        PluginMeta[pluginDef.name].userPlugin = true;
 
         logger.info(`Registered dynamic user plugin: "${pluginDef.name}"`);
 

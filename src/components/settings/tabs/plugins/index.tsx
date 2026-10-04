@@ -405,7 +405,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                 if (!newPluginsSet?.has(plugin.name)) return false;
                 break;
             case SearchStatus.USER_PLUGINS:
-                if (!pluginMeta?.userPlugin) return false;
+                if (!pluginMeta?.userPlugin && !(plugin as any)?.isUserPlugin) return false;
                 break;
             case SearchStatus.API_PLUGINS:
                 if (!plugin.name.endsWith("API")) return false;
@@ -436,7 +436,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
         return (
             plugin.name.toLowerCase().includes(search.replace(/\s+/g, "")) ||
-            plugin.description.toLowerCase().includes(search) ||
+            (plugin.description ?? "").toLowerCase().includes(search) ||
             plugin.tags?.some(t => t.toLowerCase().includes(search))
         );
     }, [searchValue, search, ratings]);
@@ -629,15 +629,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
     // Code directly taken from supportHelper.tsx
     const { totalStockPlugins, totalUserPlugins, enabledStockPlugins, enabledUserPlugins, enabledPlugins } = useMemo(() => {
-        const isApiPlugin = (plugin: string) => plugin.endsWith("API") || Plugins[plugin].required;
+        const isApiPlugin = (plugin: string) => plugin.endsWith("API") || Plugins[plugin]?.required;
 
         const totalPlugins = Object.keys(Plugins).filter(p => !isApiPlugin(p));
         const enabledPlugins = Object.keys(Plugins).filter(p => isPluginEnabled(p) && !isApiPlugin(p));
 
-        const totalStockPlugins = totalPlugins.filter(p => !PluginMeta[p].userPlugin && !Plugins[p].hidden).length;
-        const totalUserPlugins = totalPlugins.filter(p => PluginMeta[p].userPlugin).length;
-        const enabledStockPlugins = enabledPlugins.filter(p => !PluginMeta[p].userPlugin).length;
-        const enabledUserPlugins = enabledPlugins.filter(p => PluginMeta[p].userPlugin).length;
+        const totalStockPlugins = totalPlugins.filter(p => !PluginMeta[p]?.userPlugin && !(Plugins[p] as any)?.isUserPlugin && !Plugins[p]?.hidden).length;
+        const totalUserPlugins = totalPlugins.filter(p => PluginMeta[p]?.userPlugin || (Plugins[p] as any)?.isUserPlugin).length;
+        const enabledStockPlugins = enabledPlugins.filter(p => !PluginMeta[p]?.userPlugin && !(Plugins[p] as any)?.isUserPlugin).length;
+        const enabledUserPlugins = enabledPlugins.filter(p => PluginMeta[p]?.userPlugin || (Plugins[p] as any)?.isUserPlugin).length;
         return { totalStockPlugins, totalUserPlugins, enabledStockPlugins, enabledUserPlugins, enabledPlugins };
     }, [settings.plugins]);
 
@@ -646,7 +646,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
     const othersVisibleData = othersData.slice(0, Math.max(0, visibleCount - nightcordData.length));
 
     const makeCard = (p: typeof sortedPlugins[number]) => (
-        <ErrorBoundary fallback={<div style={{ color: "red", padding: 8 }}>Failed to render {p.name}.</div>} key={p.name}>
+        <ErrorBoundary fallback={<div style={{ color: "red", padding: 8 }}>Failed to render {p.name}.</div>} key={`${p.name}_${(p as any)?.isUserPlugin ? "user" : "stock"}`}>
             <PluginCard
                 onRestartNeeded={handleRestartNeeded}
                 disabled={false}
@@ -662,7 +662,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
             ? "This plugin is required for Nightcord to function."
             : <PluginDependencyList deps={depMap[p.name]?.filter(d => isPluginEnabled(d))} />;
         return (
-            <ErrorBoundary fallback={<div style={{ color: "red", padding: 8 }}>Failed to render {p.name}.</div>} key={p.name}>
+            <ErrorBoundary fallback={<div style={{ color: "red", padding: 8 }}>Failed to render {p.name}.</div>} key={`${p.name}_${(p as any)?.isUserPlugin ? "user" : "stock"}`}>
                 <Tooltip text={tooltipText}>
                     {({ onMouseLeave, onMouseEnter }) => (
                         <PluginCard
@@ -696,16 +696,16 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
     // Category-aware stats for the "ENABLED PLUGINS" card: reflects whichever tab
     // (NIGHTCORD / OTHERS / all) is currently selected, instead of always being global.
     const categoryStats = useMemo(() => {
-        const isApiPlugin = (plugin: string) => plugin.endsWith("API") || Plugins[plugin].required;
-        const isNightcordPlugin = (p: string) => PluginMeta[p]?.folderName?.startsWith("src/nightcordplugins/");
-        const isUserPlugin = (p: string) => PluginMeta[p]?.userPlugin === true;
+        const isApiPlugin = (plugin: string) => plugin.endsWith("API") || Plugins[plugin]?.required;
+        const isNightcordPlugin = (p: string) => PluginMeta[p]?.folderName?.startsWith("src/nightcordplugins/") && !PluginMeta[p]?.userPlugin && !(Plugins[p] as any)?.isUserPlugin;
+        const isUserPlugin = (p: string) => PluginMeta[p]?.userPlugin === true || (Plugins[p] as any)?.isUserPlugin;
 
-        let plugins = Object.keys(Plugins).filter(p => !isApiPlugin(p) && !Plugins[p].hidden);
+        let plugins = Object.keys(Plugins).filter(p => !isApiPlugin(p) && !Plugins[p]?.hidden);
 
         if (searchValue.status === SearchStatus.NIGHTCORD) {
             plugins = plugins.filter(isNightcordPlugin);
         } else if (searchValue.status === SearchStatus.OTHERS) {
-            plugins = plugins.filter(p => !isNightcordPlugin(p));
+            plugins = plugins.filter(p => !isNightcordPlugin(p) && !isUserPlugin(p));
         } else if (searchValue.status === SearchStatus.USER_PLUGINS) {
             plugins = plugins.filter(isUserPlugin);
         } else if (searchValue.status === SearchStatus.LIKED_PLUGINS) {

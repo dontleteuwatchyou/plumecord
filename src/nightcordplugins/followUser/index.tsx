@@ -26,6 +26,7 @@ export const settings = definePluginSettings({
         name: "AFK Timeout",
         description: "Inactivity timeout before stopping follow (AFK)",
         options: [
+            { label: "No timeout", value: 0 },
             { label: "10 minutes", value: 10 * 60 * 1000 },
             { label: "1 hour", value: 60 * 60 * 1000, default: true },
             { label: "3 hours", value: 3 * 60 * 60 * 1000 }
@@ -89,6 +90,7 @@ function resetInactivityTimer() {
     if (inactivityTimer) clearTimeout(inactivityTimer);
     lastActivity = Date.now();
     const timeout = settings.store.afkTimeout ?? (60 * 60 * 1000);
+    if (!timeout || timeout <= 0) return;
     inactivityTimer = setTimeout(() => {
         if (followedId) {
             Toasts.show({ 

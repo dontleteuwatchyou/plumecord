@@ -120,8 +120,8 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
         );
     }
 
-    const pluginMeta = PluginMeta[plugin.name];
-    const isEquicordPlugin = pluginMeta.folderName.startsWith("src/equicordplugins/") ?? false;
+    const pluginMeta = PluginMeta[plugin.name] ?? { folderName: "", userPlugin: (plugin as any).isUserPlugin ?? false };
+    const isEquicordPlugin = pluginMeta.folderName?.startsWith("src/equicordplugins/") ?? false;
 
     const modalSize = plugin.settingsAboutComponent ? ModalSize.LARGE : ModalSize.MEDIUM;
 
@@ -130,7 +130,7 @@ export default function PluginModal({ plugin, onRestartNeeded, onClose, transiti
             <ModalHeader separator={false} className={cl("header")}>
                 <div className={cl("header-content")}>
                     <BaseText size="lg" weight="semibold" className={cl("title")}>{removeEmojis(tPlugin(plugin.name))}</BaseText>
-                    <BaseText size="sm" className={cl("description")}>{removeEmojis(tPlugin(plugin.description))}</BaseText>
+                    <BaseText size="sm" className={cl("description")}>{removeEmojis(tPlugin(plugin.description ?? ""))}</BaseText>
                     {!!plugin.settingsAboutComponent && (
                         <div className={Margins.top8}>
                             <ErrorBoundary message="An error occurred while rendering this plugin's custom Info Component">
