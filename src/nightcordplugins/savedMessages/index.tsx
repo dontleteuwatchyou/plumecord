@@ -325,6 +325,28 @@ function injectDecryptedMessages() {
     } catch { }
 }
 
+function resolveEmptyMessages() {
+    try {
+        FluxDispatcher.dispatch({
+            type: "CHANNEL_CREATE",
+            channel: SAVED_MESSAGES_CHANNEL,
+        });
+    } catch { }
+
+    try {
+        FluxDispatcher.dispatch({
+            type: "LOAD_MESSAGES_SUCCESS",
+            channelId: SAVED_MESSAGES_CHANNEL_ID,
+            messages: [],
+            isBefore: false,
+            isAfter: false,
+            hasMoreBefore: false,
+            hasMoreAfter: false,
+            limit: 100,
+        });
+    } catch { }
+}
+
 function reinjectSavedMessages() {
     if (isDmClosedSafe()) return;
     try {
@@ -357,7 +379,10 @@ function handleChannelSelect(e: any) {
             if (isVaultUnlocked()) {
                 injectDecryptedMessages();
             } else {
-                openSavedMessagesUnlockModal(() => injectDecryptedMessages());
+                resolveEmptyMessages();
+                setTimeout(() => {
+                    openSavedMessagesUnlockModal(() => injectDecryptedMessages());
+                }, 50);
             }
         });
     }
@@ -886,9 +911,16 @@ export default definePlugin({
                     const origFetchMessages = MessageActions.fetchMessages;
                     MessageActions.fetchMessages = function(opts: any) {
                         if (opts?.channelId === SAVED_MESSAGES_CHANNEL_ID) {
-                            if (isVaultUnlocked()) {
-                                injectDecryptedMessages();
-                            }
+                            checkVaultStatus().then(() => {
+                                if (isVaultUnlocked()) {
+                                    injectDecryptedMessages();
+                                } else {
+                                    resolveEmptyMessages();
+                                    setTimeout(() => {
+                                        openSavedMessagesUnlockModal(() => injectDecryptedMessages());
+                                    }, 50);
+                                }
+                            });
                             return Promise.resolve();
                         }
                         return origFetchMessages.apply(this, arguments as any);
@@ -1021,6 +1053,16 @@ export default definePlugin({
                     HTTP.get = function(opts: any) {
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
+                            if (url.includes("messages")) {
+                                const msgs = isVaultUnlocked() ? getDecryptedMessages().map(convertSavedMessageToDiscordMessage) : [];
+                                return Promise.resolve({
+                                    ok: true,
+                                    status: 200,
+                                    body: msgs,
+                                    text: JSON.stringify(msgs),
+                                    headers: {},
+                                });
+                            }
                             return Promise.resolve({
                                 ok: true,
                                 status: 200,
@@ -1089,6 +1131,12 @@ export default definePlugin({
             setTimeout(reinjectSavedMessages, 100);
             setTimeout(reinjectSavedMessages, 500);
             setTimeout(reinjectSavedMessages, 1500);
+        }
+
+        if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
+            setTimeout(() => {
+                handleChannelSelect({ channelId: SAVED_MESSAGES_CHANNEL_ID });
+            }, 200);
         }
     },
 
