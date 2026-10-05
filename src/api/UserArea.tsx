@@ -142,12 +142,14 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                         display: flex;
                         flex-wrap: wrap;
                         align-items: center;
-                        gap: 4px;
-                        max-width: 240px;
-                        padding: 8px;
-                        border-radius: 8px;
-                        background: var(--background-floating);
-                        box-shadow: var(--elevation-high);
+                        gap: 8px;
+                        max-width: 260px;
+                        padding: 12px 14px;
+                        border-radius: 12px;
+                        background-color: var(--background-floating, #111214) !important;
+                        background: var(--background-floating, #111214) !important;
+                        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+                        backdrop-filter: blur(16px);
                     }
                     .vc-user-area-toggle-btn {
                         order: 9999 !important;
