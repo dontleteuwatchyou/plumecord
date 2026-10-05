@@ -89,7 +89,7 @@ function CompactUserAreaToggle({ props }: { props: UserAreaRenderProps; }) {
     if (buttons.size === 0) return null;
 
     return (
-        <div ref={ref} className="vc-user-area-toggle-btn" style={{ order: 9999, display: "flex", flexShrink: 0 }}>
+        <div ref={ref} className="vc-user-area-toggle-btn" style={{ order: 2, display: "flex", flexShrink: 0 }}>
             <Popout
                 targetElementRef={ref}
                 renderPopout={() => (
@@ -152,7 +152,7 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                         backdrop-filter: blur(16px);
                     }
                     .vc-user-area-toggle-btn {
-                        order: 9999 !important;
+                        order: 2 !important;
                         display: flex !important;
                         flex-shrink: 0 !important;
                     }
@@ -162,6 +162,13 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                         flex-direction: row !important;
                         flex-shrink: 0 !important;
                         align-items: center !important;
+                    }
+                    div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > [class*="audioButtonParent_"] {
+                        order: 1 !important;
+                    }
+                    div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > button,
+                    div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > [class*="button_"]:not(.vc-user-area-toggle-btn) {
+                        order: 3 !important;
                     }
                 `}</style>
                 <CompactUserAreaToggle props={props} />

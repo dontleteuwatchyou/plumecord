@@ -69,13 +69,26 @@
 }
 
 .vc-user-area-toggle-btn {
-    order: 9999 !important;
+    order: 2 !important;
+    display: flex !important;
+    flex-shrink: 0 !important;
 }
 
 div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) {
     display: flex !important;
     flex-wrap: nowrap !important;
     flex-direction: row !important;
+    flex-shrink: 0 !important;
+    align-items: center !important;
+}
+
+div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > [class*="audioButtonParent_"] {
+    order: 1 !important;
+}
+
+div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > button,
+div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) > [class*="button_"]:not(.vc-user-area-toggle-btn) {
+    order: 3 !important;
 }
 
 /* ── Nightcord Quick Settings Popout ── */
