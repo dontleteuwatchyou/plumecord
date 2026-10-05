@@ -24,9 +24,10 @@ function LockIcon() {
 let activeModalKey: string | null = null;
 
 export function closeSavedMessagesUnlockModal(): void {
-    if (!activeModalKey) return;
-    closeModal(activeModalKey);
-    activeModalKey = null;
+    if (activeModalKey) {
+        try { closeModal(activeModalKey); } catch { }
+        activeModalKey = null;
+    }
 }
 
 interface UnlockModalProps {
@@ -182,10 +183,15 @@ export function openSavedMessagesUnlockModal(onSuccess?: () => void): void {
     checkVaultStatus().then(() => {
         const key = openModal(props => (
             <UnlockModalComponent
-                modalProps={props}
+                modalProps={{
+                    ...props,
+                    onClose: () => {
+                        activeModalKey = null;
+                        try { props.onClose(); } catch { }
+                    }
+                }}
                 onSuccess={() => {
-                    closeModal(key);
-                    activeModalKey = null;
+                    closeSavedMessagesUnlockModal();
                     if (onSuccess) onSuccess();
                 }}
             />

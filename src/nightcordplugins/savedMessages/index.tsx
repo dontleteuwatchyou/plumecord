@@ -96,9 +96,14 @@ const rawSavedMessagesUser = {
     globalName: "Saved Messages",
     global_name: "Saved Messages",
     avatar: "saved_messages_avatar",
+    accentColor: 5793266,
+    accent_color: 5793266,
+    bannerColor: "#5865f2",
+    banner_color: "#5865f2",
+    bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
     bot: false,
     system: false,
-    verified: false,
+    verified: true,
     public_flags: 0,
     flags: 0,
     createdAt: new Date("2020-01-01T00:00:00.000Z"),
@@ -110,6 +115,9 @@ const rawSavedMessagesUser = {
     isNonUserBot: () => false,
     getAvatarURL: () => SAVED_MESSAGES_AVATAR,
     getAvatarSource: () => ({ uri: SAVED_MESSAGES_AVATAR }),
+    getBannerURL: () => null,
+    getAvatarDecorationURL: () => null,
+    hasUniqueUsername: () => true,
     toString: () => `<@${SAVED_MESSAGES_USER_ID}>`,
 };
 
@@ -140,12 +148,15 @@ export const SAVED_MESSAGES_USER = proxyLazy(() => {
                 global_name: "Saved Messages",
                 avatar: "saved_messages_avatar",
                 accent_color: 5793266,
+                accentColor: 5793266,
                 banner_color: "#5865f2",
+                bannerColor: "#5865f2",
+                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
                 bot: false,
                 system: false,
                 public_flags: 0,
                 flags: 0,
-                verified: false,
+                verified: true,
             });
             u.isSystemUser = () => false;
             u.isVerifiedBot = () => false;
@@ -153,7 +164,13 @@ export const SAVED_MESSAGES_USER = proxyLazy(() => {
             u.isBot = () => false;
             u.getAvatarURL = () => SAVED_MESSAGES_AVATAR;
             u.getAvatarSource = () => ({ uri: SAVED_MESSAGES_AVATAR });
+            u.getBannerURL = () => null;
+            u.getAvatarDecorationURL = () => null;
+            u.hasUniqueUsername = () => true;
             u.createdAt = new Date("2020-01-01T00:00:00.000Z");
+            u.getCreatedAt = () => new Date("2020-01-01T00:00:00.000Z");
+            u.accentColor = 5793266;
+            u.bannerColor = "#5865f2";
             return u;
         }
     } catch { }
@@ -227,6 +244,7 @@ export const SAVED_MESSAGES_CHANNEL = proxyLazy(() => {
     return rawSavedMessagesChannelProxy;
 });
 
+let unpatchUserProfileStore: (() => void) | null = null;
 let unpatchUserStore: (() => void) | null = null;
 let unpatchUserStoreGetUsers: (() => void) | null = null;
 let unpatchChannelStore: (() => void) | null = null;
@@ -358,6 +376,17 @@ function reinjectSavedMessages() {
     try { (findStore("ChannelStore") as any)?.emitChange(); } catch { }
     try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
     try { (findStore("UserStore") as any)?.emitChange(); } catch { }
+}
+
+function handleGlobalClick(e: MouseEvent) {
+    if (SelectedChannelStore.getChannelId() !== SAVED_MESSAGES_CHANNEL_ID) return;
+    if (!isVaultUnlocked()) {
+        const target = e.target as HTMLElement;
+        if (!target) return;
+        if (target.closest('[role="textbox"]') || target.closest(".nc-saved-messages-banner") || target.closest('[data-list-id="chat-messages"]')) {
+            openSavedMessagesUnlockModal(() => injectDecryptedMessages());
+        }
+    }
 }
 
 function handleConnectionEvents() {
@@ -995,6 +1024,25 @@ export default definePlugin({
                         if (targetId === SAVED_MESSAGES_USER_ID || targetId === SAVED_MESSAGES_CHANNEL_ID) {
                             setDmClosedSafe(false);
                             reinjectSavedMessages();
+                            setTimeout(() => {
+                                try {
+                                    FluxDispatcher.dispatch({
+                                        type: "CHANNEL_CREATE",
+                                        channel: SAVED_MESSAGES_CHANNEL,
+                                    });
+                                } catch { }
+                                try {
+                                    FluxDispatcher.dispatch({
+                                        type: "CHANNEL_SELECT",
+                                        channelId: SAVED_MESSAGES_CHANNEL_ID,
+                                        guildId: null,
+                                    });
+                                } catch { }
+                                try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
+                                try { (findStore("ChannelStore") as any)?.emitChange(); } catch { }
+                                handleChannelSelect({ channelId: SAVED_MESSAGES_CHANNEL_ID });
+                            }, 0);
+                            return Promise.resolve(SAVED_MESSAGES_CHANNEL_ID);
                         }
                         return origOpen.apply(this, args);
                     };
@@ -1044,6 +1092,80 @@ export default definePlugin({
         if (existingSortStore) patchSortStore(existingSortStore);
         waitFor(["getPrivateChannelIds"], (store: any) => patchSortStore(store));
 
+        // Patch UserProfileStore to return Saved Messages profile for sidebars and modals
+        try {
+            const UserProfileStore = (findStore("UserProfileStore") || findByProps("getUserProfile")) as any;
+            if (UserProfileStore) {
+                const origGetProfile = UserProfileStore.getUserProfile;
+                UserProfileStore.getUserProfile = function(userId: string) {
+                    if (userId === SAVED_MESSAGES_USER_ID) {
+                        const createdAt = new Date("2020-01-01T00:00:00.000Z");
+                        return {
+                            user: SAVED_MESSAGES_USER,
+                            connectedAccounts: [],
+                            connected_accounts: [],
+                            premiumSince: null,
+                            premiumType: null,
+                            accentColor: 5793266,
+                            accent_color: 5793266,
+                            banner: null,
+                            banner_color: "#5865f2",
+                            bannerColor: "#5865f2",
+                            themeColors: [5793266, 5793266],
+                            theme_colors: [5793266, 5793266],
+                            profileSince: createdAt,
+                            memberSince: createdAt,
+                            createdAt: createdAt,
+                            badges: [
+                                {
+                                    id: "saved_messages",
+                                    description: "Saved Messages Vault",
+                                    icon: "5e74e9b61934fc1f67c65515d1f7e60d",
+                                }
+                            ],
+                            bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                            userProfile: {
+                                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                accentColor: 5793266,
+                                banner: null,
+                                themeColors: [5793266, 5793266],
+                                profileSince: createdAt,
+                                memberSince: createdAt,
+                                createdAt: createdAt,
+                            },
+                            user_profile: {
+                                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                accent_color: 5793266,
+                                banner: null,
+                                theme_colors: [5793266, 5793266],
+                                profile_since: createdAt.toISOString(),
+                                member_since: createdAt.toISOString(),
+                                created_at: createdAt.toISOString(),
+                            }
+                        };
+                    }
+                    return origGetProfile.apply(this, arguments as any);
+                };
+                unpatchUserProfileStore = () => { UserProfileStore.getUserProfile = origGetProfile; };
+
+                if (typeof UserProfileStore.isFetchingProfile === "function") {
+                    const origFetch = UserProfileStore.isFetchingProfile;
+                    UserProfileStore.isFetchingProfile = function(userId: string) {
+                        if (userId === SAVED_MESSAGES_USER_ID) return false;
+                        return origFetch.apply(this, arguments as any);
+                    };
+                }
+
+                if (typeof UserProfileStore.getUserProfileFetchStatus === "function") {
+                    const origStat = UserProfileStore.getUserProfileFetchStatus;
+                    UserProfileStore.getUserProfileFetchStatus = function(userId: string) {
+                        if (userId === SAVED_MESSAGES_USER_ID) return "SUCCESS";
+                        return origStat.apply(this, arguments as any);
+                    };
+                }
+            }
+        } catch { }
+
         // Intercept HTTP calls for SavedMessages channel/user
         try {
             const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
@@ -1060,6 +1182,43 @@ export default definePlugin({
                                     status: 200,
                                     body: msgs,
                                     text: JSON.stringify(msgs),
+                                    headers: {},
+                                });
+                            }
+                            if (url.includes("profile") || url.includes("users")) {
+                                const createdAt = new Date("2020-01-01T00:00:00.000Z");
+                                const profileBody = {
+                                    user: SAVED_MESSAGES_USER,
+                                    user_profile: {
+                                        bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                        accent_color: 5793266,
+                                        banner: null,
+                                        theme_colors: [5793266, 5793266],
+                                        profile_since: createdAt.toISOString(),
+                                        member_since: createdAt.toISOString(),
+                                        created_at: createdAt.toISOString(),
+                                    },
+                                    connected_accounts: [],
+                                    premium_since: null,
+                                    premium_type: null,
+                                    accent_color: 5793266,
+                                    banner_color: "#5865f2",
+                                    theme_colors: [5793266, 5793266],
+                                    badges: [
+                                        {
+                                            id: "saved_messages",
+                                            description: "Saved Messages Vault",
+                                            icon: "5e74e9b61934fc1f67c65515d1f7e60d",
+                                        }
+                                    ],
+                                    mutual_guilds: [],
+                                    mutual_friends_count: 0
+                                };
+                                return Promise.resolve({
+                                    ok: true,
+                                    status: 200,
+                                    body: profileBody,
+                                    text: JSON.stringify(profileBody),
                                     headers: {},
                                 });
                             }
@@ -1126,6 +1285,8 @@ export default definePlugin({
             }
         } catch { }
 
+        window.addEventListener("click", handleGlobalClick, true);
+
         if (!isDmClosedSafe()) {
             reinjectSavedMessages();
             setTimeout(reinjectSavedMessages, 100);
@@ -1142,7 +1303,9 @@ export default definePlugin({
 
     stop() {
         lockVault();
+        window.removeEventListener("click", handleGlobalClick, true);
 
+        if (unpatchUserProfileStore) unpatchUserProfileStore();
         if (unpatchUserStore) unpatchUserStore();
         if (unpatchUserStoreGetUsers) unpatchUserStoreGetUsers();
         if (unpatchChannelStore) unpatchChannelStore();
