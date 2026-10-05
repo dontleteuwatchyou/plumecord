@@ -15,6 +15,7 @@ import { findAll, filters, findByCodeLazy, findByProps, findStore, waitFor } fro
 import {
     ChannelActionCreators,
     ChannelStore,
+    ComponentDispatch,
     DraftStore,
     DraftType,
     FluxDispatcher,
@@ -34,6 +35,7 @@ import {
     addSavedMessage,
     checkVaultStatus,
     clearAllSavedMessages,
+    deleteSavedMessage,
     getDecryptedMessages,
     isVaultUnlocked,
     lockVault,
@@ -214,6 +216,7 @@ let unpatchChannelStore: (() => void) | null = null;
 let unpatchChannelStoreGetPrivate: (() => void) | null = null;
 let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
+let unpatchDeleteMessage: (() => void) | null = null;
 let unpatchHTTPGet: (() => void) | null = null;
 let unpatchHTTPPost: (() => void) | null = null;
 let unpatchPermissionStore: (() => void) | null = null;
@@ -532,7 +535,11 @@ export default definePlugin({
             }
         } catch { }
 
-        // Clear chat input text and attached drafts
+        // Clear chat input text and attached drafts immediately
+        try {
+            ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
+        } catch { }
+
         try {
             UploadManager?.clearAll?.(channelId, DraftType.Channel);
         } catch { }
@@ -542,6 +549,41 @@ export default definePlugin({
                 DraftStore.clearDraft(channelId, DraftType.Channel);
             }
         } catch { }
+
+        try {
+            const uploadStore = findStore("UploadStore") as any;
+            if (uploadStore?.clearUploads) {
+                uploadStore.clearUploads(channelId, DraftType.Channel);
+            }
+        } catch { }
+
+        // Defer extra clear passes to ensure Discord's Slate editor clears after this handler returns
+        setTimeout(() => {
+            try {
+                ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
+            } catch { }
+            try {
+                UploadManager?.clearAll?.(channelId, DraftType.Channel);
+            } catch { }
+            try {
+                if (DraftStore?.clearDraft) {
+                    DraftStore.clearDraft(channelId, DraftType.Channel);
+                }
+            } catch { }
+            try {
+                const slateEl = document.querySelector('[role="textbox"]') as HTMLElement;
+                if (slateEl && SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
+                    slateEl.innerText = "";
+                    slateEl.textContent = "";
+                }
+            } catch { }
+        }, 0);
+
+        setTimeout(() => {
+            try {
+                ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
+            } catch { }
+        }, 50);
 
         // Save locally and encrypt
         try {
@@ -661,7 +703,7 @@ export default definePlugin({
             };
         }
 
-        // Patch PermissionStore.can to always allow sending messages and attachments
+        // Patch PermissionStore.can to always allow sending, managing, and deleting messages
         try {
             const PermissionStore = findStore("PermissionStore") as any;
             if (PermissionStore && typeof PermissionStore.can === "function") {
@@ -686,6 +728,38 @@ export default definePlugin({
                         return origIsBlocked.apply(this, arguments as any);
                     };
                     unpatchRelationshipStore = () => { RelationshipStore.isBlocked = origIsBlocked; };
+                }
+            }
+        } catch { }
+
+        // Patch MessageActions.deleteMessage and fetchMessages
+        try {
+            const MessageActions = (findByProps("fetchMessages", "deleteMessage") || findByProps("deleteMessage")) as any;
+            if (MessageActions) {
+                if (MessageActions.fetchMessages) {
+                    const origFetchMessages = MessageActions.fetchMessages;
+                    MessageActions.fetchMessages = function(opts: any) {
+                        if (opts?.channelId === SAVED_MESSAGES_CHANNEL_ID) {
+                            if (isVaultUnlocked()) {
+                                injectDecryptedMessages();
+                            }
+                            return Promise.resolve();
+                        }
+                        return origFetchMessages.apply(this, arguments as any);
+                    };
+                    unpatchFetchMessages = () => { MessageActions.fetchMessages = origFetchMessages; };
+                }
+
+                if (MessageActions.deleteMessage) {
+                    const origDeleteMessage = MessageActions.deleteMessage;
+                    MessageActions.deleteMessage = function(channelId: string, messageId: string, ...args: any[]) {
+                        if (channelId === SAVED_MESSAGES_CHANNEL_ID) {
+                            deleteSavedMessage(messageId);
+                            return Promise.resolve();
+                        }
+                        return origDeleteMessage.apply(this, [channelId, messageId, ...args]);
+                    };
+                    unpatchDeleteMessage = () => { MessageActions.deleteMessage = origDeleteMessage; };
                 }
             }
         } catch { }
@@ -800,24 +874,6 @@ export default definePlugin({
         if (existingSortStore) patchSortStore(existingSortStore);
         waitFor(["getPrivateChannelIds"], (store: any) => patchSortStore(store));
 
-        // Intercept MessageActions.fetchMessages
-        try {
-            const MessageActions = findByProps("fetchMessages", "sendMessage") as any;
-            if (MessageActions?.fetchMessages) {
-                const origFetchMessages = MessageActions.fetchMessages;
-                MessageActions.fetchMessages = function(opts: any) {
-                    if (opts?.channelId === SAVED_MESSAGES_CHANNEL_ID) {
-                        if (isVaultUnlocked()) {
-                            injectDecryptedMessages();
-                        }
-                        return Promise.resolve();
-                    }
-                    return origFetchMessages.apply(this, arguments as any);
-                };
-                unpatchFetchMessages = () => { MessageActions.fetchMessages = origFetchMessages; };
-            }
-        } catch { }
-
         // Intercept HTTP calls for SavedMessages channel/user
         try {
             const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
@@ -864,23 +920,29 @@ export default definePlugin({
                 }
 
                 const httpAny = HTTP as any;
-                if (httpAny.del || httpAny.delete) {
-                    const fnName = httpAny.del ? "del" : "delete";
-                    const origDel = httpAny[fnName];
-                    httpAny[fnName] = function(opts: any) {
-                        const url = typeof opts === "string" ? opts : opts?.url;
-                        if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
-                            return Promise.resolve({
-                                ok: true,
-                                status: 200,
-                                body: {},
-                                text: "{}",
-                                headers: {},
-                            });
-                        }
-                        return origDel.apply(this, arguments as any);
-                    };
-                }
+                const delMethods = ["del", "delete"];
+                delMethods.forEach(methodName => {
+                    if (typeof httpAny[methodName] === "function") {
+                        const origDel = httpAny[methodName];
+                        httpAny[methodName] = function(opts: any) {
+                            const url = typeof opts === "string" ? opts : opts?.url;
+                            if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
+                                const match = url.match(/messages\/(\d+)/);
+                                if (match?.[1]) {
+                                    deleteSavedMessage(match[1]);
+                                }
+                                return Promise.resolve({
+                                    ok: true,
+                                    status: 200,
+                                    body: {},
+                                    text: "{}",
+                                    headers: {},
+                                });
+                            }
+                            return origDel.apply(this, arguments as any);
+                        };
+                    }
+                });
             }
         } catch { }
 
@@ -907,6 +969,7 @@ export default definePlugin({
         if (unpatchChannelStoreGetPrivate) unpatchChannelStoreGetPrivate();
         if (unpatchPrivateChannelSortStore) unpatchPrivateChannelSortStore();
         if (unpatchFetchMessages) unpatchFetchMessages();
+        if (unpatchDeleteMessage) unpatchDeleteMessage();
         if (unpatchHTTPGet) unpatchHTTPGet();
         if (unpatchHTTPPost) unpatchHTTPPost();
         if (unpatchPermissionStore) unpatchPermissionStore();
