@@ -265,27 +265,48 @@ export function WordBombOverlay() {
             setDefinition("");
         }
 
+        const cleanWord = (word || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/œ/g, "oe")
+            .replace(/æ/g, "ae")
+            .replace(/[^a-z0-9\- ]/gi, "")
+            .toLowerCase();
+
         const wbNative = (window as any).VencordNative?.wordBomb || (window as any).VencordNative?.worldBomb;
 
         try {
             if (wbNative?.sequence) {
-                await wbNative.sequence(word, lps, humanChance, -1, -1);
+                await wbNative.sequence(cleanWord, lps, humanChance, -1, -1);
             } else {
                 // Fallback ComponentDispatch : tape lettre par lettre puis SUBMIT (Entrée)
                 if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-                const delay = Math.round(1000 / lps);
-                for (const char of word) {
+                const delay = Math.max(25, Math.round(1000 / lps));
+                for (const char of cleanWord) {
                     ComponentDispatch?.dispatchToLastSubscribed("INSERT_TEXT", { rawText: char, plainText: char });
                     await new Promise(r => setTimeout(r, delay));
                 }
                 // Entrée pour valider le mot
-                await new Promise(r => setTimeout(r, 50));
+                await new Promise(r => setTimeout(r, 60));
                 ComponentDispatch?.dispatchToLastSubscribed("SUBMIT", {});
             }
             setStatus(t("Ready!"));
         } catch (e) {
-            console.error("[WordBomb] Erreur saisie:", e);
-            setStatus(t("Input error"));
+            console.error("[WordBomb] Erreur saisie native, basculement sur ComponentDispatch:", e);
+            try {
+                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                const delay = Math.max(25, Math.round(1000 / lps));
+                for (const char of cleanWord) {
+                    ComponentDispatch?.dispatchToLastSubscribed("INSERT_TEXT", { rawText: char, plainText: char });
+                    await new Promise(r => setTimeout(r, delay));
+                }
+                await new Promise(r => setTimeout(r, 60));
+                ComponentDispatch?.dispatchToLastSubscribed("SUBMIT", {});
+                setStatus(t("Ready!"));
+            } catch (fallbackErr) {
+                console.error("[WordBomb] Erreur fallback:", fallbackErr);
+                setStatus(t("Input error"));
+            }
         } finally {
             isTypingRef.current = false;
             setIsTyping(false);

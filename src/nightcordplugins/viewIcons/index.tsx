@@ -212,13 +212,13 @@ function injectBannerCursorStyle() {
     const style = document.createElement("style");
     style.id = BANNER_STYLE_ID;
     style.textContent = `
-        [class*="userPopout"] [class*="banner"][style*="background-image"],
-        [class*="userProfile"] [class*="banner"][style*="background-image"],
-        [class*="profilePanel"] [class*="banner"][style*="background-image"],
-        [class*="bannerPremium"][style*="background-image"],
-        [class*="customBanner"][style*="background-image"],
-        [class*="profileBanner"][style*="background-image"],
-        [class*="popoutBanner"][style*="background-image"] {
+        [class*="userPopout"] [class*="banner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="userProfile"] [class*="banner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="profilePanel"] [class*="banner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="bannerPremium"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="customBanner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="profileBanner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]),
+        [class*="popoutBanner"][style*="background-image"]:not([class*="tab"]):not([class*="item"]):not([role="tab"]) {
             cursor: pointer !important;
         }
     `;
@@ -235,8 +235,36 @@ function extractUrlFromBg(styleString: string | null | undefined): string | null
     return match ? match[1] : null;
 }
 
+const EXCLUDED_BANNER_TARGETS = [
+    "button",
+    "[role='button']",
+    "[role='tab']",
+    "[role='tablist']",
+    "a",
+    "input",
+    "textarea",
+    "select",
+    "[class*='avatar']",
+    "[class*='badge']",
+    "[class*='tabBar']",
+    "[class*='tab_']",
+    "[class*='tabItem']",
+    "[class*='mutual']",
+    "[class*='listRow']",
+    "[class*='scroller']",
+    "[class*='body']",
+    "[class*='content']",
+    "[role='listitem']",
+    "[class*='userInfo']"
+].join(", ");
+
+function isExcludedBannerTarget(target: HTMLElement | null): boolean {
+    if (!target) return true;
+    return !!target.closest(EXCLUDED_BANNER_TARGETS);
+}
+
 function getBannerUrlFromTarget(target: HTMLElement): string | null {
-    if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
+    if (isExcludedBannerTarget(target)) {
         return null;
     }
 
@@ -351,11 +379,7 @@ function setupBannerListeners() {
             if (e.button !== 0) return;
 
             const target = e.target as HTMLElement | null;
-            if (!target) return;
-
-            if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
-                return;
-            }
+            if (!target || isExcludedBannerTarget(target)) return;
 
             const bannerEl = target.closest?.(
                 "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium'], [class*='customBanner'], [class*='popoutBanner'], [class*='bannerSVG']"
@@ -376,11 +400,7 @@ function setupBannerListeners() {
     if (!onBannerMouseOverListener) {
         onBannerMouseOverListener = (e: MouseEvent) => {
             const target = e.target as HTMLElement | null;
-            if (!target) return;
-
-            if (target.closest("button, [role='button'], a, input, [class*='avatar'], [class*='badge']")) {
-                return;
-            }
+            if (!target || isExcludedBannerTarget(target)) return;
 
             const bannerEl = target.closest?.(
                 "[class*='banner'], [class*='profileBanner'], [class*='bannerPremium'], [class*='customBanner'], [class*='popoutBanner'], [class*='bannerSVG']"

@@ -1,5 +1,5 @@
 /*
- * Vencord, a Discord client mod
+ * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -223,7 +223,14 @@ ipcMain.handle(IpcEvents.WORLD_BOMB_SEQUENCE, async (
     const { join } = require("path");
     const { tmpdir } = require("os");
 
-    if (!/^[\x20-\x7E]+$/.test(word)) {
+    const cleanWord = (word || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/œ/g, "oe")
+        .replace(/æ/g, "ae")
+        .toLowerCase();
+
+    if (!cleanWord || !/^[a-z0-9\- ]+$/i.test(cleanWord)) {
         throw new Error("WorldBombSequence: disallowed characters");
     }
     const safeLps = Math.max(1, Math.min(100, lps));
@@ -256,13 +263,8 @@ ipcMain.handle(IpcEvents.WORLD_BOMB_SEQUENCE, async (
         }
     }
 
-    const bounds = targetWindow?.getBounds() ?? { x: 0, y: 0, width: 1280, height: 720 };
-    const centerX = targetX >= 0 ? Math.round(targetX) : Math.round(bounds.x + bounds.width / 2);
-    const centerY = targetY >= 0 ? Math.round(targetY) : Math.round(bounds.y + bounds.height / 2);
-
-    const minMs = Math.max(10, Math.round(1000 / (safeLps * 1.5)));
-    const maxMs = Math.max(minMs + 1, Math.round(1000 / safeLps));
-    const baseMs = Math.round((minMs + maxMs) / 2);
+    const minMs = Math.max(20, Math.round(1000 / (safeLps * 1.5)));
+    const maxMs = Math.max(minMs + 5, Math.round(1000 / safeLps));
 
     const lines: string[] = [
         "$ErrorActionPreference = \"Stop\"",
@@ -284,29 +286,43 @@ ipcMain.handle(IpcEvents.WORLD_BOMB_SEQUENCE, async (
     lines.push(
         "  if ($handle -ne [IntPtr]::Zero) {",
         "    [NC.WinAPI]::SetForegroundWindow($handle) | Out-Null",
-        "    Start-Sleep -Milliseconds 10",
-        "  }",
-        `  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${centerX}, ${centerY})`,
-        "  [NC.WinAPI]::mouse_event(2, 0, 0, 0, 0)",
-        "  [NC.WinAPI]::mouse_event(4, 0, 0, 0, 0)",
-        "  Start-Sleep -Milliseconds 10"
+        "    Start-Sleep -Milliseconds 15",
+        "  }"
     );
 
-    for (const char of word) {
+    // Only move mouse and click if explicit non-negative coordinates were specified
+    if (targetX >= 0 && targetY >= 0) {
+        const clickX = Math.round(targetX);
+        const clickY = Math.round(targetY);
+        lines.push(
+            `  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${clickX}, ${clickY})`,
+            "  [NC.WinAPI]::mouse_event(2, 0, 0, 0, 0)",
+            "  [NC.WinAPI]::mouse_event(4, 0, 0, 0, 0)",
+            "  Start-Sleep -Milliseconds 30"
+        );
+    }
+
+    const sendKeysEscaped = (ch: string) => {
+        if ("+^%~(){}[]".includes(ch)) return `{${ch}}`;
+        if (ch === " ") return " ";
+        return ch.replace(/'/g, "''");
+    };
+
+    for (const char of cleanWord) {
         if (safeHumanChance > 0) {
             lines.push(`  if ((Get-Random -Minimum 1 -Maximum 101) -le ${safeHumanChance}) {`);
             lines.push("    [System.Windows.Forms.SendKeys]::SendWait('x')");
-            lines.push(`    Start-Sleep -Milliseconds ${baseMs}`);
+            lines.push("    Start-Sleep -Milliseconds 60");
             lines.push("    [System.Windows.Forms.SendKeys]::SendWait('{BACKSPACE}')");
-            lines.push(`    Start-Sleep -Milliseconds ${baseMs}`);
+            lines.push("    Start-Sleep -Milliseconds 60");
             lines.push("  }");
         }
-        lines.push(`  [System.Windows.Forms.SendKeys]::SendWait('${char.replace(/'/g, "''")}')`);
+        lines.push(`  [System.Windows.Forms.SendKeys]::SendWait('${sendKeysEscaped(char)}')`);
         lines.push(`  Start-Sleep -Milliseconds (Get-Random -Minimum ${minMs} -Maximum ${maxMs})`);
     }
 
     lines.push("  [NC.WinAPI]::keybd_event(0x0D, 0x1C, 0, [UIntPtr]::Zero)");
-    lines.push("  Start-Sleep -Milliseconds 20");
+    lines.push("  Start-Sleep -Milliseconds 25");
     lines.push("  [NC.WinAPI]::keybd_event(0x0D, 0x1C, 2, [UIntPtr]::Zero)");
     lines.push("} catch { exit 1 }");
 

@@ -1305,6 +1305,7 @@ export const translations: TranslationMap = {
     "Clear Log": {"en":"Clear Log","fr":"Effacer le journal","ar":"مسح السجل","es":"Borrar registro","ru":"Очистить журнал","zh":"清除日志"},
     "Clear Logs": {"en":"Clear Logs","fr":"Effacer les journaux","ar":"مسح السجلات","es":"Borrar registros","ru":"Очистить журналы","zh":"清除日志"},
     "Clear Message Log": {"en":"Clear Message Log","fr":"Effacer le journal des messages","ar":"مسح سجل الرسائل","es":"Borrar registro de mensajes","ru":"Очистить журнал сообщений","zh":"清除消息日志"},
+    "Clear Message Logs": {"en":"Clear Message Logs","fr":"Effacer les logs de messages","ar":"مسح سجلات الرسائل","es":"Borrar registros de mensajes","ru":"Очистить логи сообщений","zh":"清除消息日志"},
     "Clear Mutual Scanner history?": {"en":"Clear Mutual Scanner history?","fr":"Effacer l'historique de Mutual Scanner ?","ar":"هل تريد مسح سجل الماسح الضوئي المتبادل؟","es":"¿Borrar el historial de Mutual Scanner?","ru":"Очистить историю взаимного сканера?","zh":"清除相互扫描仪历史记录？"},
     "Clear SecureBookmarks": {"en":"Clear SecureBookmarks","fr":"Effacer les favoris sécurisés","ar":"مسح الإشارات المرجعية الآمنة","es":"Borrar marcadores seguros","ru":"Очистить безопасные закладки","zh":"清除安全书签"},
     "Clear Server Events": {"en":"Clear Server Events","fr":"Effacer les événements du serveur","ar":"مسح أحداث الخادم","es":"Borrar eventos del servidor","ru":"Очистить события сервера","zh":"清除服务器事件"},

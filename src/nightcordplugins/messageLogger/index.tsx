@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -162,6 +162,16 @@ const patchMessageContextMenu: NavContextMenuPatchCallback = (
     );
 };
 
+function getChannelMessages(channelId: string): MLMessage[] {
+    const raw = MessageStore.getMessages(channelId);
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof (raw as any).toArray === "function") return (raw as any).toArray();
+    if (Array.isArray((raw as any)._array)) return (raw as any)._array;
+    if ((raw as any)._map && typeof (raw as any)._map === "object") return Object.values((raw as any)._map);
+    return [];
+}
+
 const patchChannelContextMenu: NavContextMenuPatchCallback = (
     children,
     ctx: { channel?: any; user?: any; } = {},
@@ -170,19 +180,19 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
     const targetChannelId = channel?.id || (user ? ChannelStore.getDMFromUserId(user.id) : null) || SelectedChannelStore.getChannelId();
     if (!targetChannelId) return;
 
-    const messages = MessageStore.getMessages(targetChannelId) as MLMessage[];
-    if (!messages?.some(msg => msg.deleted || msg.editHistory?.length)) return;
+    const messages = getChannelMessages(targetChannelId);
+    if (!messages?.some(msg => msg?.deleted || msg?.editHistory?.length)) return;
 
     const clearMenuItem = (
         <Menu.MenuItem
             id="vc-ml-clear-channel"
             key="vc-ml-clear-channel"
-            label={t("Clear Message Log")}
+            label={t("Clear Message Logs") || t("Clear Message Log")}
             color="danger"
             action={() => {
                 const affectedIds = new Set<string>();
                 messages.forEach(msg => {
-                    if (msg.deleted) {
+                    if (msg?.deleted) {
                         affectedIds.add(msg.id);
                         FluxDispatcher.dispatch({
                             type: "MESSAGE_DELETE",
@@ -190,7 +200,7 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
                             id: msg.id,
                             mlDeleted: true,
                         });
-                    } else if (msg.editHistory?.length) {
+                    } else if (msg?.editHistory?.length) {
                         affectedIds.add(msg.id);
                         const cached = msg as any;
                         delete cached.__messageloggerAggregated;
@@ -623,6 +633,7 @@ export default definePlugin({
         "channel-context": patchChannelContextMenu,
         "thread-context": patchChannelContextMenu,
         "gdm-context": patchChannelContextMenu,
+        "user-context": patchChannelContextMenu,
     },
 
     start() {
