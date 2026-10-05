@@ -390,6 +390,7 @@ function handleGlobalClick(e: MouseEvent) {
 }
 
 function handleConnectionEvents() {
+    lockVault();
     if (!isDmClosedSafe()) {
         reinjectSavedMessages();
         setTimeout(reinjectSavedMessages, 150);
@@ -414,6 +415,9 @@ function handleChannelSelect(e: any) {
                 }, 50);
             }
         });
+    } else {
+        // Immediately lock vault upon leaving Saved Messages channel
+        lockVault();
     }
 }
 
@@ -1024,6 +1028,9 @@ export default definePlugin({
                         if (targetId === SAVED_MESSAGES_USER_ID || targetId === SAVED_MESSAGES_CHANNEL_ID) {
                             setDmClosedSafe(false);
                             reinjectSavedMessages();
+                            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID && isVaultUnlocked()) {
+                                lockVault();
+                            }
                             setTimeout(() => {
                                 try {
                                     FluxDispatcher.dispatch({
