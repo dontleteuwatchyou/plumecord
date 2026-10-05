@@ -334,8 +334,17 @@ export function removeStealthListener(fn: () => void) { stealthListeners.delete(
 // COMPACT MODE
 // ══════════════════════════════════════════════════════════════════
 
+function readPersistedCompact(): boolean {
+    try {
+        const fromSettings = (Settings?.plugins as Record<string, { active?: boolean; }> | undefined)?.CompactMode?.active;
+        if (typeof fromSettings === "boolean") return fromSettings;
+    } catch { }
+    try { return localStorage.getItem("Nightcord_compactMode") === "1"; } catch { }
+    return false;
+}
+
 let _compactActive = false;
-try { _compactActive = localStorage.getItem("Nightcord_compactMode") === "1"; } catch { }
+try { _compactActive = readPersistedCompact(); } catch { }
 
 export function isCompactModeEnabled(): boolean {
     return _compactActive;
@@ -343,17 +352,15 @@ export function isCompactModeEnabled(): boolean {
 
 function persistCompact(v: boolean) {
     try { v ? localStorage.setItem("Nightcord_compactMode", "1") : localStorage.removeItem("Nightcord_compactMode"); } catch { }
+    try {
+        const plugins = Settings?.plugins as Record<string, { active?: boolean; }> | undefined;
+        if (plugins?.CompactMode) plugins.CompactMode.active = v;
+    } catch { }
 }
 
 export function syncCompactBodyClass() {
-    try {
-        const stored = localStorage.getItem("Nightcord_compactMode");
-        if (stored === "1" && !_compactActive) {
-            _compactActive = true;
-        } else if (stored !== "1" && _compactActive) {
-            _compactActive = false;
-        }
-    } catch { }
+    _compactActive = readPersistedCompact();
+    persistCompact(_compactActive);
 
     try {
         if (_compactActive) {
@@ -534,13 +541,6 @@ function CompactHeaderBarToggle() {
                     </div>
                 )}
             </Popout>
-            <HeaderBarButton
-                icon={GearIcon}
-                tooltip="Nightcord Settings"
-                onClick={() => {
-                    import("@nightcordplugins/compactMode/NightcordModal").then(m => m.openNightcordModal());
-                }}
-            />
         </div>
     );
 }
