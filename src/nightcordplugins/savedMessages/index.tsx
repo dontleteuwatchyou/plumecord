@@ -212,8 +212,17 @@ export const SAVED_MESSAGES_CHANNEL = proxyLazy(() => {
 });
 
 let unpatchUserStore: (() => void) | null = null;
+let unpatchUserStoreGetUsers: (() => void) | null = null;
 let unpatchChannelStore: (() => void) | null = null;
+let unpatchChannelStoreGetBasic: (() => void) | null = null;
+let unpatchChannelStoreHasChannel: (() => void) | null = null;
 let unpatchChannelStoreGetPrivate: (() => void) | null = null;
+let unpatchChannelStoreGetMutablePrivate: (() => void) | null = null;
+let unpatchChannelStoreGetSortedPrivate: (() => void) | null = null;
+let unpatchChannelStoreGetDMFromUserId: (() => void) | null = null;
+let unpatchChannelStoreGetDMChannelFromUserId: (() => void) | null = null;
+let unpatchChannelStoreGetDMUserIds: (() => void) | null = null;
+let unpatchChannelStoreGetMutableDMsByUserIds: (() => void) | null = null;
 let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
 let unpatchDeleteMessage: (() => void) | null = null;
@@ -300,17 +309,33 @@ function injectDecryptedMessages() {
     } catch { }
 }
 
+function reinjectSavedMessages() {
+    if (settings.store.isDmClosed) return;
+    try {
+        FluxDispatcher.dispatch({
+            type: "CHANNEL_CREATE",
+            channel: SAVED_MESSAGES_CHANNEL,
+        });
+    } catch { }
+    try { (findStore("ChannelStore") as any)?.emitChange(); } catch { }
+    try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
+    try { (findStore("UserStore") as any)?.emitChange(); } catch { }
+}
+
+function handleConnectionEvents() {
+    if (!settings.store.isDmClosed) {
+        reinjectSavedMessages();
+        setTimeout(reinjectSavedMessages, 150);
+        setTimeout(reinjectSavedMessages, 600);
+        setTimeout(reinjectSavedMessages, 1500);
+    }
+}
+
 function handleChannelSelect(e: any) {
     const id = typeof e === "string" ? e : (e?.channelId || e?.channel_id || e?.channel?.id || e?.id);
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
         settings.store.isDmClosed = false;
-        try {
-            FluxDispatcher.dispatch({
-                type: "CHANNEL_CREATE",
-                channel: SAVED_MESSAGES_CHANNEL,
-            });
-        } catch { }
-        try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
+        reinjectSavedMessages();
 
         checkVaultStatus().then(() => {
             if (isVaultUnlocked()) {
@@ -461,6 +486,15 @@ export default definePlugin({
 
     flux: {
         CHANNEL_SELECT: handleChannelSelect,
+        CONNECTION_OPEN: handleConnectionEvents,
+        POST_CONNECTION_OPEN: handleConnectionEvents,
+        CONNECTION_RESUMED: handleConnectionEvents,
+        CURRENT_USER_UPDATE: handleConnectionEvents,
+        LOGOUT: handleConnectionEvents,
+        ACCOUNT_SWITCH: handleConnectionEvents,
+        OVERLAY_INITIALIZE: handleConnectionEvents,
+        PASSIVE_UPDATE_V2: handleConnectionEvents,
+        CHANNEL_UPDATES: handleConnectionEvents,
     },
 
     patches: [
@@ -672,7 +706,19 @@ export default definePlugin({
         };
         unpatchUserStore = () => { UserStore.getUser = origGetUser; };
 
+        const userStoreAny = UserStore as any;
+        if (typeof userStoreAny.getUsers === "function") {
+            const origGetUsers = userStoreAny.getUsers;
+            userStoreAny.getUsers = function() {
+                const res = origGetUsers.apply(this, arguments as any) || {};
+                return { ...res, [SAVED_MESSAGES_USER_ID]: SAVED_MESSAGES_USER };
+            };
+            unpatchUserStoreGetUsers = () => { userStoreAny.getUsers = origGetUsers; };
+        }
+
         // Patch ChannelStore
+        const channelStoreAny = ChannelStore as any;
+
         const origGetChannel = ChannelStore.getChannel;
         ChannelStore.getChannel = function(id: string) {
             if (id === SAVED_MESSAGES_CHANNEL_ID) return SAVED_MESSAGES_CHANNEL;
@@ -680,27 +726,110 @@ export default definePlugin({
         };
         unpatchChannelStore = () => { ChannelStore.getChannel = origGetChannel; };
 
+        if (typeof channelStoreAny.getBasicChannel === "function") {
+            const origGetBasicChannel = channelStoreAny.getBasicChannel;
+            channelStoreAny.getBasicChannel = function(id: string) {
+                if (id === SAVED_MESSAGES_CHANNEL_ID) return SAVED_MESSAGES_CHANNEL;
+                return origGetBasicChannel.apply(this, arguments as any);
+            };
+            unpatchChannelStoreGetBasic = () => { channelStoreAny.getBasicChannel = origGetBasicChannel; };
+        }
+
+        if (typeof channelStoreAny.hasChannel === "function") {
+            const origHasChannel = channelStoreAny.hasChannel;
+            channelStoreAny.hasChannel = function(id: string) {
+                if (id === SAVED_MESSAGES_CHANNEL_ID) return !settings.store.isDmClosed;
+                return origHasChannel.apply(this, arguments as any);
+            };
+            unpatchChannelStoreHasChannel = () => { channelStoreAny.hasChannel = origHasChannel; };
+        }
+
         // Patch ChannelStore.getPrivateChannels
-        const origGetPrivate = (ChannelStore as any).getPrivateChannels;
-        if (typeof origGetPrivate === "function") {
-            (ChannelStore as any).getPrivateChannels = function() {
+        if (typeof channelStoreAny.getPrivateChannels === "function") {
+            const origGetPrivate = channelStoreAny.getPrivateChannels;
+            channelStoreAny.getPrivateChannels = function() {
                 const res = origGetPrivate.apply(this, arguments as any) || {};
                 if (!settings.store.isDmClosed) {
                     return { ...res, [SAVED_MESSAGES_CHANNEL_ID]: SAVED_MESSAGES_CHANNEL };
                 }
                 return res;
             };
-            unpatchChannelStoreGetPrivate = () => { (ChannelStore as any).getPrivateChannels = origGetPrivate; };
+            unpatchChannelStoreGetPrivate = () => { channelStoreAny.getPrivateChannels = origGetPrivate; };
+        }
+
+        // Patch ChannelStore.getMutablePrivateChannels
+        if (typeof channelStoreAny.getMutablePrivateChannels === "function") {
+            const origGetMutablePrivate = channelStoreAny.getMutablePrivateChannels;
+            channelStoreAny.getMutablePrivateChannels = function() {
+                const res = origGetMutablePrivate.apply(this, arguments as any) || {};
+                if (!settings.store.isDmClosed) {
+                    return { ...res, [SAVED_MESSAGES_CHANNEL_ID]: SAVED_MESSAGES_CHANNEL };
+                }
+                return res;
+            };
+            unpatchChannelStoreGetMutablePrivate = () => { channelStoreAny.getMutablePrivateChannels = origGetMutablePrivate; };
+        }
+
+        // Patch ChannelStore.getSortedPrivateChannels
+        if (typeof channelStoreAny.getSortedPrivateChannels === "function") {
+            const origGetSortedPrivate = channelStoreAny.getSortedPrivateChannels;
+            channelStoreAny.getSortedPrivateChannels = function() {
+                const res = origGetSortedPrivate.apply(this, arguments as any) || [];
+                if (!Array.isArray(res)) return res;
+                const filtered = res.filter((c: any) => (typeof c === "string" ? c : (c?.id || c?.channelId)) !== SAVED_MESSAGES_CHANNEL_ID);
+                if (!settings.store.isDmClosed) {
+                    return [SAVED_MESSAGES_CHANNEL, ...filtered];
+                }
+                return filtered;
+            };
+            unpatchChannelStoreGetSortedPrivate = () => { channelStoreAny.getSortedPrivateChannels = origGetSortedPrivate; };
         }
 
         // Patch ChannelStore.getDMFromUserId
-        const channelStoreAny = ChannelStore as any;
         if (typeof channelStoreAny.getDMFromUserId === "function") {
             const origGetDM = channelStoreAny.getDMFromUserId;
             channelStoreAny.getDMFromUserId = function(userId: string) {
                 if (userId === SAVED_MESSAGES_USER_ID) return SAVED_MESSAGES_CHANNEL_ID;
                 return origGetDM.apply(this, arguments as any);
             };
+            unpatchChannelStoreGetDMFromUserId = () => { channelStoreAny.getDMFromUserId = origGetDM; };
+        }
+
+        // Patch ChannelStore.getDMChannelFromUserId
+        if (typeof channelStoreAny.getDMChannelFromUserId === "function") {
+            const origGetDMChannel = channelStoreAny.getDMChannelFromUserId;
+            channelStoreAny.getDMChannelFromUserId = function(userId: string) {
+                if (userId === SAVED_MESSAGES_USER_ID) return SAVED_MESSAGES_CHANNEL;
+                return origGetDMChannel.apply(this, arguments as any);
+            };
+            unpatchChannelStoreGetDMChannelFromUserId = () => { channelStoreAny.getDMChannelFromUserId = origGetDMChannel; };
+        }
+
+        // Patch ChannelStore.getDMUserIds
+        if (typeof channelStoreAny.getDMUserIds === "function") {
+            const origGetDMUserIds = channelStoreAny.getDMUserIds;
+            channelStoreAny.getDMUserIds = function() {
+                const res = origGetDMUserIds.apply(this, arguments as any) || [];
+                if (!Array.isArray(res)) return res;
+                if (!settings.store.isDmClosed && !res.includes(SAVED_MESSAGES_USER_ID)) {
+                    return [SAVED_MESSAGES_USER_ID, ...res];
+                }
+                return res;
+            };
+            unpatchChannelStoreGetDMUserIds = () => { channelStoreAny.getDMUserIds = origGetDMUserIds; };
+        }
+
+        // Patch ChannelStore.getMutableDMsByUserIds
+        if (typeof channelStoreAny.getMutableDMsByUserIds === "function") {
+            const origGetMutableDMs = channelStoreAny.getMutableDMsByUserIds;
+            channelStoreAny.getMutableDMsByUserIds = function() {
+                const res = origGetMutableDMs.apply(this, arguments as any) || {};
+                if (!settings.store.isDmClosed) {
+                    return { ...res, [SAVED_MESSAGES_USER_ID]: SAVED_MESSAGES_CHANNEL_ID };
+                }
+                return res;
+            };
+            unpatchChannelStoreGetMutableDMsByUserIds = () => { channelStoreAny.getMutableDMsByUserIds = origGetMutableDMs; };
         }
 
         // Patch PermissionStore.can to always allow sending, managing, and deleting messages
@@ -816,15 +945,7 @@ export default definePlugin({
                         const targetId = typeof arg === "string" ? arg : (arg?.recipientId || arg?.userId || arg?.id || arg?.channelId);
                         if (targetId === SAVED_MESSAGES_USER_ID || targetId === SAVED_MESSAGES_CHANNEL_ID) {
                             settings.store.isDmClosed = false;
-                            setTimeout(() => {
-                                try {
-                                    FluxDispatcher.dispatch({
-                                        type: "CHANNEL_CREATE",
-                                        channel: SAVED_MESSAGES_CHANNEL,
-                                    });
-                                } catch { }
-                                try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
-                            }, 0);
+                            reinjectSavedMessages();
                         }
                         return origOpen.apply(this, args);
                     };
@@ -946,18 +1067,11 @@ export default definePlugin({
             }
         } catch { }
 
-        FluxDispatcher.subscribe("CHANNEL_SELECT", handleChannelSelect);
-
         if (!settings.store.isDmClosed) {
-            setTimeout(() => {
-                try {
-                    FluxDispatcher.dispatch({
-                        type: "CHANNEL_CREATE",
-                        channel: SAVED_MESSAGES_CHANNEL,
-                    });
-                } catch { }
-                try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
-            }, 500);
+            reinjectSavedMessages();
+            setTimeout(reinjectSavedMessages, 100);
+            setTimeout(reinjectSavedMessages, 500);
+            setTimeout(reinjectSavedMessages, 1500);
         }
     },
 
@@ -965,8 +1079,17 @@ export default definePlugin({
         lockVault();
 
         if (unpatchUserStore) unpatchUserStore();
+        if (unpatchUserStoreGetUsers) unpatchUserStoreGetUsers();
         if (unpatchChannelStore) unpatchChannelStore();
+        if (unpatchChannelStoreGetBasic) unpatchChannelStoreGetBasic();
+        if (unpatchChannelStoreHasChannel) unpatchChannelStoreHasChannel();
         if (unpatchChannelStoreGetPrivate) unpatchChannelStoreGetPrivate();
+        if (unpatchChannelStoreGetMutablePrivate) unpatchChannelStoreGetMutablePrivate();
+        if (unpatchChannelStoreGetSortedPrivate) unpatchChannelStoreGetSortedPrivate();
+        if (unpatchChannelStoreGetDMFromUserId) unpatchChannelStoreGetDMFromUserId();
+        if (unpatchChannelStoreGetDMChannelFromUserId) unpatchChannelStoreGetDMChannelFromUserId();
+        if (unpatchChannelStoreGetDMUserIds) unpatchChannelStoreGetDMUserIds();
+        if (unpatchChannelStoreGetMutableDMsByUserIds) unpatchChannelStoreGetMutableDMsByUserIds();
         if (unpatchPrivateChannelSortStore) unpatchPrivateChannelSortStore();
         if (unpatchFetchMessages) unpatchFetchMessages();
         if (unpatchDeleteMessage) unpatchDeleteMessage();
@@ -977,7 +1100,5 @@ export default definePlugin({
 
         unpatchAvatarFns.forEach(fn => { try { fn(); } catch { } });
         unpatchAvatarFns = [];
-
-        FluxDispatcher.unsubscribe("CHANNEL_SELECT", handleChannelSelect);
     }
 });
