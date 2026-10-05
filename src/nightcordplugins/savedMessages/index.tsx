@@ -57,6 +57,22 @@ export const settings = definePluginSettings({
     }
 });
 
+export function isDmClosedSafe(): boolean {
+    try {
+        return Boolean(settings?.store?.isDmClosed);
+    } catch {
+        return false;
+    }
+}
+
+export function setDmClosedSafe(val: boolean): void {
+    try {
+        if (settings?.store) {
+            settings.store.isDmClosed = val;
+        }
+    } catch { }
+}
+
 const SAVED_MESSAGES_AVATAR = "data:image/svg+xml;utf8," + encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
@@ -310,7 +326,7 @@ function injectDecryptedMessages() {
 }
 
 function reinjectSavedMessages() {
-    if (settings.store.isDmClosed) return;
+    if (isDmClosedSafe()) return;
     try {
         FluxDispatcher.dispatch({
             type: "CHANNEL_CREATE",
@@ -323,7 +339,7 @@ function reinjectSavedMessages() {
 }
 
 function handleConnectionEvents() {
-    if (!settings.store.isDmClosed) {
+    if (!isDmClosedSafe()) {
         reinjectSavedMessages();
         setTimeout(reinjectSavedMessages, 150);
         setTimeout(reinjectSavedMessages, 600);
@@ -334,7 +350,7 @@ function handleConnectionEvents() {
 function handleChannelSelect(e: any) {
     const id = typeof e === "string" ? e : (e?.channelId || e?.channel_id || e?.channel?.id || e?.id);
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
-        settings.store.isDmClosed = false;
+        setDmClosedSafe(false);
         reinjectSavedMessages();
 
         checkVaultStatus().then(() => {
@@ -482,6 +498,7 @@ export default definePlugin({
     startAt: StartAt.WebpackReady,
     authors: [{ name: "Nightcord", id: 0n }],
     dependencies: ["MessageEventsAPI"],
+    settings,
     settingsAboutComponent: SavedMessagesSettingsPanel,
 
     flux: {
@@ -517,7 +534,7 @@ export default definePlugin({
 
     injectSavedMessagesDm(channelIds: any) {
         if (!Array.isArray(channelIds)) return channelIds;
-        if (settings.store.isDmClosed) {
+        if (isDmClosedSafe()) {
             return channelIds.filter((id: string) => id !== SAVED_MESSAGES_CHANNEL_ID);
         }
         const filtered = channelIds.filter((id: string) => id !== SAVED_MESSAGES_CHANNEL_ID);
@@ -624,7 +641,7 @@ export default definePlugin({
             const savedMsg = await addSavedMessage(text, files);
             const discordRecord = convertSavedMessageToDiscordMessage(savedMsg);
 
-            settings.store.isDmClosed = false;
+            setDmClosedSafe(false);
 
             FluxDispatcher.dispatch({
                 type: "MESSAGE_CREATE",
@@ -738,7 +755,7 @@ export default definePlugin({
         if (typeof channelStoreAny.hasChannel === "function") {
             const origHasChannel = channelStoreAny.hasChannel;
             channelStoreAny.hasChannel = function(id: string) {
-                if (id === SAVED_MESSAGES_CHANNEL_ID) return !settings.store.isDmClosed;
+                if (id === SAVED_MESSAGES_CHANNEL_ID) return !isDmClosedSafe();
                 return origHasChannel.apply(this, arguments as any);
             };
             unpatchChannelStoreHasChannel = () => { channelStoreAny.hasChannel = origHasChannel; };
@@ -749,7 +766,7 @@ export default definePlugin({
             const origGetPrivate = channelStoreAny.getPrivateChannels;
             channelStoreAny.getPrivateChannels = function() {
                 const res = origGetPrivate.apply(this, arguments as any) || {};
-                if (!settings.store.isDmClosed) {
+                if (!isDmClosedSafe()) {
                     return { ...res, [SAVED_MESSAGES_CHANNEL_ID]: SAVED_MESSAGES_CHANNEL };
                 }
                 return res;
@@ -762,7 +779,7 @@ export default definePlugin({
             const origGetMutablePrivate = channelStoreAny.getMutablePrivateChannels;
             channelStoreAny.getMutablePrivateChannels = function() {
                 const res = origGetMutablePrivate.apply(this, arguments as any) || {};
-                if (!settings.store.isDmClosed) {
+                if (!isDmClosedSafe()) {
                     return { ...res, [SAVED_MESSAGES_CHANNEL_ID]: SAVED_MESSAGES_CHANNEL };
                 }
                 return res;
@@ -777,7 +794,7 @@ export default definePlugin({
                 const res = origGetSortedPrivate.apply(this, arguments as any) || [];
                 if (!Array.isArray(res)) return res;
                 const filtered = res.filter((c: any) => (typeof c === "string" ? c : (c?.id || c?.channelId)) !== SAVED_MESSAGES_CHANNEL_ID);
-                if (!settings.store.isDmClosed) {
+                if (!isDmClosedSafe()) {
                     return [SAVED_MESSAGES_CHANNEL, ...filtered];
                 }
                 return filtered;
@@ -811,7 +828,7 @@ export default definePlugin({
             channelStoreAny.getDMUserIds = function() {
                 const res = origGetDMUserIds.apply(this, arguments as any) || [];
                 if (!Array.isArray(res)) return res;
-                if (!settings.store.isDmClosed && !res.includes(SAVED_MESSAGES_USER_ID)) {
+                if (!isDmClosedSafe() && !res.includes(SAVED_MESSAGES_USER_ID)) {
                     return [SAVED_MESSAGES_USER_ID, ...res];
                 }
                 return res;
@@ -824,7 +841,7 @@ export default definePlugin({
             const origGetMutableDMs = channelStoreAny.getMutableDMsByUserIds;
             channelStoreAny.getMutableDMsByUserIds = function() {
                 const res = origGetMutableDMs.apply(this, arguments as any) || {};
-                if (!settings.store.isDmClosed) {
+                if (!isDmClosedSafe()) {
                     return { ...res, [SAVED_MESSAGES_USER_ID]: SAVED_MESSAGES_CHANNEL_ID };
                 }
                 return res;
@@ -905,7 +922,7 @@ export default definePlugin({
                             const arg = args[0];
                             const targetId = typeof arg === "string" ? arg : (arg?.channelId || arg?.id || arg?.channel_id || arg?.userId || arg?.recipientId);
                             if (targetId === SAVED_MESSAGES_CHANNEL_ID || targetId === SAVED_MESSAGES_USER_ID) {
-                                settings.store.isDmClosed = true;
+                                setDmClosedSafe(true);
                                 try {
                                     FluxDispatcher.dispatch({
                                         type: "CHANNEL_CLOSE",
@@ -944,7 +961,7 @@ export default definePlugin({
                         const arg = args[0];
                         const targetId = typeof arg === "string" ? arg : (arg?.recipientId || arg?.userId || arg?.id || arg?.channelId);
                         if (targetId === SAVED_MESSAGES_USER_ID || targetId === SAVED_MESSAGES_CHANNEL_ID) {
-                            settings.store.isDmClosed = false;
+                            setDmClosedSafe(false);
                             reinjectSavedMessages();
                         }
                         return origOpen.apply(this, args);
@@ -975,7 +992,7 @@ export default definePlugin({
                             return id !== SAVED_MESSAGES_CHANNEL_ID;
                         });
 
-                        if (!settings.store.isDmClosed) {
+                        if (!isDmClosedSafe()) {
                             filtered.unshift(entryToInsert);
                         }
                         return filtered;
@@ -1067,7 +1084,7 @@ export default definePlugin({
             }
         } catch { }
 
-        if (!settings.store.isDmClosed) {
+        if (!isDmClosedSafe()) {
             reinjectSavedMessages();
             setTimeout(reinjectSavedMessages, 100);
             setTimeout(reinjectSavedMessages, 500);
