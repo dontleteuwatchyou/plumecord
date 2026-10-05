@@ -243,10 +243,6 @@ function CompactChatPopout({ chatBarProps, closePopout }: any) {
                         </div>
                     ))}
             </div>
-            <div className="compact-popout-divider" />
-            <div className="compact-popout-disable" onClick={() => { toggleCompactMode(); closePopout(); }}>
-                Disable Compact Mode
-            </div>
         </div>
     );
 }

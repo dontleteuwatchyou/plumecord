@@ -89,7 +89,7 @@ function CompactUserAreaToggle({ props }: { props: UserAreaRenderProps; }) {
     if (buttons.size === 0) return null;
 
     return (
-        <div ref={ref} style={{ order: 99, display: "flex", flexShrink: 0 }}>
+        <div ref={ref} className="vc-user-area-toggle-btn" style={{ order: 9999, display: "flex", flexShrink: 0 }}>
             <Popout
                 targetElementRef={ref}
                 renderPopout={() => (
@@ -148,6 +148,18 @@ function UserAreaButtons({ props }: { props: UserAreaRenderProps; }) {
                         border-radius: 8px;
                         background: var(--background-floating);
                         box-shadow: var(--elevation-high);
+                    }
+                    .vc-user-area-toggle-btn {
+                        order: 9999 !important;
+                        display: flex !important;
+                        flex-shrink: 0 !important;
+                    }
+                    div[class*="buttons_"]:has(> .vc-user-area-toggle-btn) {
+                        display: flex !important;
+                        flex-wrap: nowrap !important;
+                        flex-direction: row !important;
+                        flex-shrink: 0 !important;
+                        align-items: center !important;
                     }
                 `}</style>
                 <CompactUserAreaToggle props={props} />
