@@ -27,6 +27,8 @@ import {
 } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
+import { openSavedMessagesChangePasswordModal } from "./ChangePasswordModal";
+import { SavedMessagesSettingsPanel } from "./SettingsPanel";
 import {
     addSavedMessage,
     checkVaultStatus,
@@ -66,18 +68,18 @@ const rawSavedMessagesUser = {
     globalName: "Saved Messages",
     global_name: "Saved Messages",
     avatar: "saved_messages_avatar",
-    bot: true,
-    system: true,
-    verified: true,
-    public_flags: 1,
-    flags: 1,
+    bot: false,
+    system: false,
+    verified: false,
+    public_flags: 0,
+    flags: 0,
     createdAt: new Date("2020-01-01T00:00:00.000Z"),
     getCreatedAt: () => new Date("2020-01-01T00:00:00.000Z"),
-    isSystemUser: () => true,
-    isVerifiedBot: () => true,
-    isOfficialSystem: () => true,
-    isBot: () => true,
-    isNonUserBot: () => true,
+    isSystemUser: () => false,
+    isVerifiedBot: () => false,
+    isOfficialSystem: () => false,
+    isBot: () => false,
+    isNonUserBot: () => false,
     getAvatarURL: () => SAVED_MESSAGES_AVATAR,
     getAvatarSource: () => ({ uri: SAVED_MESSAGES_AVATAR }),
     toString: () => `<@${SAVED_MESSAGES_USER_ID}>`,
@@ -111,15 +113,16 @@ export const SAVED_MESSAGES_USER = proxyLazy(() => {
                 avatar: "saved_messages_avatar",
                 accent_color: 5793266,
                 banner_color: "#5865f2",
-                bot: true,
-                system: true,
-                public_flags: 1,
-                flags: 1,
-                verified: true,
+                bot: false,
+                system: false,
+                public_flags: 0,
+                flags: 0,
+                verified: false,
             });
-            u.isSystemUser = () => true;
-            u.isVerifiedBot = () => true;
-            u.isOfficialSystem = () => true;
+            u.isSystemUser = () => false;
+            u.isVerifiedBot = () => false;
+            u.isOfficialSystem = () => false;
+            u.isBot = () => false;
             u.getAvatarURL = () => SAVED_MESSAGES_AVATAR;
             u.getAvatarSource = () => ({ uri: SAVED_MESSAGES_AVATAR });
             u.createdAt = new Date("2020-01-01T00:00:00.000Z");
@@ -139,9 +142,9 @@ const rawSavedMessagesChannel = {
     getRecipientId: () => SAVED_MESSAGES_USER_ID,
     recipients: [SAVED_MESSAGES_USER_ID],
     rawRecipients: [SAVED_MESSAGES_USER],
-    isSystem: () => true,
-    isOfficialSystem: () => true,
-    isSystemDM: () => true,
+    isSystem: () => false,
+    isOfficialSystem: () => false,
+    isSystemDM: () => false,
     isDM: () => true,
     isGroupDM: () => false,
     isMultiUserDM: () => false,
@@ -183,9 +186,11 @@ export const SAVED_MESSAGES_CHANNEL = proxyLazy(() => {
                 is_message_request: false,
             });
             if (ch) {
-                ch.isSystem = () => true;
-                ch.isOfficialSystem = () => true;
-                ch.isSystemDM = () => true;
+                ch.isSystem = () => false;
+                ch.isOfficialSystem = () => false;
+                ch.isSystemDM = () => false;
+                ch.isDM = () => true;
+                ch.isPrivate = () => true;
                 ch.getRecipientId = () => SAVED_MESSAGES_USER_ID;
                 return ch;
             }
@@ -200,6 +205,8 @@ let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
 let unpatchHTTPGet: (() => void) | null = null;
 let unpatchHTTPPost: (() => void) | null = null;
+let unpatchPermissionStore: (() => void) | null = null;
+let unpatchRelationshipStore: (() => void) | null = null;
 let unpatchAvatarFns: (() => void)[] = [];
 
 function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
@@ -228,8 +235,8 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
             discriminator: "0",
             global_name: "Saved Messages",
             avatar: "saved_messages_avatar",
-            bot: true,
-            system: true
+            bot: false,
+            system: false
         },
         content: msg.content || "",
         timestamp: msg.timestamp,
@@ -282,7 +289,7 @@ function injectDecryptedMessages() {
 function handleChannelSelect(e: any) {
     const id = typeof e === "string" ? e : (e?.channelId || e?.channel_id || e?.channel?.id || e?.id);
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
-        checkVaultStatus().then(status => {
+        checkVaultStatus().then(() => {
             if (isVaultUnlocked()) {
                 injectDecryptedMessages();
             } else {
@@ -335,6 +342,22 @@ export function SavedMessagesBanner() {
                         fontSize: 12,
                         fontWeight: 600
                     }}
+                    onClick={() => openSavedMessagesChangePasswordModal()}
+                >
+                    {t("Change Password")}
+                </button>
+                <button
+                    className="nc-saved-messages-banner-btn"
+                    style={{
+                        padding: "6px 12px",
+                        background: "var(--background-modifier-accent)",
+                        color: "var(--header-primary)",
+                        border: "none",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600
+                    }}
                     onClick={() => {
                         try { Native?.openStorageFolder?.(); } catch { }
                     }}
@@ -355,7 +378,7 @@ export function SavedMessagesBanner() {
                                 fontWeight: 600
                             }}
                             onClick={() => {
-                                if (confirm(t("Are you sure you want to clear all saved messages?"))) {
+                                if (confirm(t("Are you sure you want to permanently clear all saved messages and media files?"))) {
                                     clearAllSavedMessages();
                                     showToast(t("All saved messages cleared."), Toasts.Type.SUCCESS);
                                 }
@@ -411,6 +434,7 @@ export default definePlugin({
     startAt: StartAt.WebpackReady,
     authors: [{ name: "Nightcord", id: 0n }],
     dependencies: ["MessageEventsAPI"],
+    settingsAboutComponent: SavedMessagesSettingsPanel,
 
     flux: {
         CHANNEL_SELECT: handleChannelSelect,
@@ -599,6 +623,35 @@ export default definePlugin({
             };
         }
 
+        // Patch PermissionStore.can to always allow sending messages and attachments
+        try {
+            const PermissionStore = findStore("PermissionStore") as any;
+            if (PermissionStore && typeof PermissionStore.can === "function") {
+                const origCan = PermissionStore.can;
+                PermissionStore.can = function(permission: any, channel: any, ...args: any[]) {
+                    const id = typeof channel === "string" ? channel : channel?.id;
+                    if (id === SAVED_MESSAGES_CHANNEL_ID) return true;
+                    return origCan.apply(this, [permission, channel, ...args]);
+                };
+                unpatchPermissionStore = () => { PermissionStore.can = origCan; };
+            }
+        } catch { }
+
+        // Patch RelationshipStore to never block SAVED_MESSAGES_USER_ID
+        try {
+            const RelationshipStore = findStore("RelationshipStore") as any;
+            if (RelationshipStore) {
+                const origIsBlocked = RelationshipStore.isBlocked;
+                if (typeof origIsBlocked === "function") {
+                    RelationshipStore.isBlocked = function(userId: string) {
+                        if (userId === SAVED_MESSAGES_USER_ID) return false;
+                        return origIsBlocked.apply(this, arguments as any);
+                    };
+                    unpatchRelationshipStore = () => { RelationshipStore.isBlocked = origIsBlocked; };
+                }
+            }
+        } catch { }
+
         // Patch PrivateChannelSortStore to pin Saved Messages at the top
         const patchSortStore = (SortStore: any) => {
             if (!SortStore || (SortStore as any).__savedMessagesPatched) return;
@@ -724,6 +777,8 @@ export default definePlugin({
         if (unpatchFetchMessages) unpatchFetchMessages();
         if (unpatchHTTPGet) unpatchHTTPGet();
         if (unpatchHTTPPost) unpatchHTTPPost();
+        if (unpatchPermissionStore) unpatchPermissionStore();
+        if (unpatchRelationshipStore) unpatchRelationshipStore();
 
         unpatchAvatarFns.forEach(fn => { try { fn(); } catch { } });
         unpatchAvatarFns = [];
