@@ -427,6 +427,11 @@ export function SavedMessagesBanner() {
     React.useEffect(() => {
         const listener = () => forceUpdate(n => n + 1);
         storeListeners.add(listener);
+
+        if (!isVaultUnlocked()) {
+            openSavedMessagesUnlockModal(() => injectDecryptedMessages());
+        }
+
         return () => { storeListeners.delete(listener); };
     }, []);
 

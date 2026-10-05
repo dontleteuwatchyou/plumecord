@@ -179,8 +179,9 @@ function UnlockModalInner({ modalProps, onSuccess }: UnlockModalProps) {
 const UnlockModalComponent = ErrorBoundary.wrap(UnlockModalInner, { noop: true });
 
 export function openSavedMessagesUnlockModal(onSuccess?: () => void): void {
-    closeSavedMessagesUnlockModal();
+    if (activeModalKey) return;
     checkVaultStatus().then(() => {
+        if (activeModalKey) return;
         const key = openModal(props => (
             <UnlockModalComponent
                 modalProps={{
