@@ -6,7 +6,6 @@
 
 import "./styles.css";
 
-import { BaseText } from "@components/BaseText";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { definePluginSettings } from "@api/Settings";
 import { proxyLazy } from "@utils/lazy";
@@ -29,24 +28,19 @@ import {
 } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
-import { openSavedMessagesChangePasswordModal } from "./ChangePasswordModal";
 import { SavedMessagesSettingsPanel } from "./SettingsPanel";
 import {
     addSavedMessage,
-    checkVaultStatus,
     clearAllSavedMessages,
     deleteSavedMessage,
-    getDecryptedMessages,
-    isVaultUnlocked,
-    lockVault,
+    getSavedMessages,
+    loadSavedMessages,
     Native,
     SAVED_MESSAGES_CHANNEL_ID,
     SAVED_MESSAGES_USER_ID,
     SavedMessage,
-    storeListeners,
-    unlockVault
+    storeListeners
 } from "./store";
-import { openSavedMessagesUnlockModal } from "./UnlockModal";
 
 export const settings = definePluginSettings({
     isDmClosed: {
@@ -100,7 +94,7 @@ const rawSavedMessagesUser = {
     accent_color: 5793266,
     bannerColor: "#5865f2",
     banner_color: "#5865f2",
-    bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+    bio: "Local storage on your PC. Zero server transit.",
     bot: false,
     system: false,
     verified: true,
@@ -151,7 +145,7 @@ export const SAVED_MESSAGES_USER = proxyLazy(() => {
                 accentColor: 5793266,
                 banner_color: "#5865f2",
                 bannerColor: "#5865f2",
-                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                bio: "Local storage on your PC. Zero server transit.",
                 bot: false,
                 system: false,
                 public_flags: 0,
@@ -318,8 +312,8 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
     return rawMsg;
 }
 
-function injectDecryptedMessages() {
-    const messages = getDecryptedMessages();
+async function injectMessages() {
+    const messages = await loadSavedMessages();
     const discordRecords = messages.map(convertSavedMessageToDiscordMessage);
 
     try {
@@ -343,28 +337,6 @@ function injectDecryptedMessages() {
     } catch { }
 }
 
-function resolveEmptyMessages() {
-    try {
-        FluxDispatcher.dispatch({
-            type: "CHANNEL_CREATE",
-            channel: SAVED_MESSAGES_CHANNEL,
-        });
-    } catch { }
-
-    try {
-        FluxDispatcher.dispatch({
-            type: "LOAD_MESSAGES_SUCCESS",
-            channelId: SAVED_MESSAGES_CHANNEL_ID,
-            messages: [],
-            isBefore: false,
-            isAfter: false,
-            hasMoreBefore: false,
-            hasMoreAfter: false,
-            limit: 100,
-        });
-    } catch { }
-}
-
 function reinjectSavedMessages() {
     if (isDmClosedSafe()) return;
     try {
@@ -378,19 +350,7 @@ function reinjectSavedMessages() {
     try { (findStore("UserStore") as any)?.emitChange(); } catch { }
 }
 
-function handleGlobalClick(e: MouseEvent) {
-    if (SelectedChannelStore.getChannelId() !== SAVED_MESSAGES_CHANNEL_ID) return;
-    if (!isVaultUnlocked()) {
-        const target = e.target as HTMLElement;
-        if (!target) return;
-        if (target.closest('[role="textbox"]') || target.closest(".nc-saved-messages-banner") || target.closest('[data-list-id="chat-messages"]')) {
-            openSavedMessagesUnlockModal(() => injectDecryptedMessages());
-        }
-    }
-}
-
 function handleConnectionEvents() {
-    lockVault();
     if (!isDmClosedSafe()) {
         reinjectSavedMessages();
         setTimeout(reinjectSavedMessages, 150);
@@ -404,20 +364,7 @@ function handleChannelSelect(e: any) {
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
         setDmClosedSafe(false);
         reinjectSavedMessages();
-
-        checkVaultStatus().then(() => {
-            if (isVaultUnlocked()) {
-                injectDecryptedMessages();
-            } else {
-                resolveEmptyMessages();
-                setTimeout(() => {
-                    openSavedMessagesUnlockModal(() => injectDecryptedMessages());
-                }, 50);
-            }
-        });
-    } else {
-        // Immediately lock vault upon leaving Saved Messages channel
-        lockVault();
+        injectMessages();
     }
 }
 
@@ -427,52 +374,28 @@ export function SavedMessagesBanner() {
     React.useEffect(() => {
         const listener = () => forceUpdate(n => n + 1);
         storeListeners.add(listener);
-
-        if (!isVaultUnlocked()) {
-            openSavedMessagesUnlockModal(() => injectDecryptedMessages());
-        }
-
+        loadSavedMessages();
         return () => { storeListeners.delete(listener); };
     }, []);
-
-    const unlocked = isVaultUnlocked();
 
     return (
         <div className="nc-saved-messages-banner">
             <div className="nc-saved-messages-banner-left">
                 <div className="nc-saved-messages-banner-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M18 2H6a2 2 0 0 0-2 2v18l8-4 8 4V4a2 2 0 0 0-2-2Zm-3 6H9V6h6v2Zm0 4H9v-2h6v2Z" />
+                        <path fill="currentColor" fillRule="evenodd" clipRule="evenodd" d="M19 21L12 16L5 21V5C5 3.89543 5.89543 3 7 3H17C18.1046 3 19 3.89543 19 5V21Z" />
                     </svg>
                 </div>
                 <div>
                     <div className="nc-saved-messages-banner-title">
-                        {t("Saved Messages — Local Encrypted Storage")}
+                        {t("Saved Messages — Local Storage")}
                     </div>
                     <div className="nc-saved-messages-banner-desc">
-                        {unlocked
-                            ? t("Vault unlocked. Messages & media are encrypted with AES-256 + ChaCha20 locally on your disk.")
-                            : t("Vault locked. Enter your master password to view saved messages.")}
+                        {t("Messages and media are stored locally on your PC. Zero server transit.")}
                     </div>
                 </div>
             </div>
             <div className="nc-saved-messages-banner-actions">
-                <button
-                    className="nc-saved-messages-banner-btn"
-                    style={{
-                        padding: "6px 12px",
-                        background: "var(--background-modifier-accent)",
-                        color: "var(--header-primary)",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        fontWeight: 600
-                    }}
-                    onClick={() => openSavedMessagesChangePasswordModal()}
-                >
-                    {t("Change Password")}
-                </button>
                 <button
                     className="nc-saved-messages-banner-btn"
                     style={{
@@ -491,64 +414,26 @@ export function SavedMessagesBanner() {
                 >
                     {t("Open Folder")}
                 </button>
-                {unlocked ? (
-                    <>
-                        <button
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--status-danger-background)",
-                                color: "var(--text-danger)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                if (confirm(t("Are you sure you want to permanently clear all saved messages and media files?"))) {
-                                    clearAllSavedMessages();
-                                    showToast(t("All saved messages cleared."), Toasts.Type.SUCCESS);
-                                }
-                            }}
-                        >
-                            {t("Clear All")}
-                        </button>
-                        <button
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--brand-500)",
-                                color: "#ffffff",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                lockVault();
-                                showToast(t("Saved Messages locked."), Toasts.Type.INFO);
-                            }}
-                        >
-                            {t("Lock Vault")}
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        style={{
-                            padding: "6px 12px",
-                            background: "var(--brand-500)",
-                            color: "#ffffff",
-                            border: "none",
-                            borderRadius: 4,
-                            cursor: "pointer",
-                            fontSize: 12,
-                            fontWeight: 600
-                        }}
-                        onClick={() => openSavedMessagesUnlockModal(() => injectDecryptedMessages())}
-                    >
-                        {t("Unlock")}
-                    </button>
-                )}
+                <button
+                    style={{
+                        padding: "6px 12px",
+                        background: "var(--status-danger-background)",
+                        color: "var(--text-danger)",
+                        border: "none",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600
+                    }}
+                    onClick={() => {
+                        if (confirm(t("Are you sure you want to permanently clear all saved messages and media files?"))) {
+                            clearAllSavedMessages();
+                            showToast(t("All saved messages cleared."), Toasts.Type.SUCCESS);
+                        }
+                    }}
+                >
+                    {t("Clear All")}
+                </button>
             </div>
         </div>
     );
@@ -556,7 +441,7 @@ export function SavedMessagesBanner() {
 
 export default definePlugin({
     name: "SavedMessages",
-    description: "Telegram-style Saved Messages DM with local military-grade encryption (AES-256 + ChaCha20). Zero transit with Discord servers.",
+    description: "Telegram-style Saved Messages DM with fast local storage. Zero transit with Discord servers.",
     enabledByDefault: false,
     startAt: StartAt.WebpackReady,
     authors: [{ name: "Nightcord", id: 0n }],
@@ -622,11 +507,6 @@ export default definePlugin({
 
     async onBeforeMessageSend(channelId, messageObj, options, props) {
         if (channelId !== SAVED_MESSAGES_CHANNEL_ID) return;
-
-        if (!isVaultUnlocked()) {
-            openSavedMessagesUnlockModal();
-            return { cancel: true };
-        }
 
         const text = messageObj?.content || options?.content || "";
         const files: (File | any)[] = [];
@@ -699,7 +579,7 @@ export default definePlugin({
             } catch { }
         }, 50);
 
-        // Save locally and encrypt
+        // Save locally
         try {
             const savedMsg = await addSavedMessage(text, files);
             const discordRecord = convertSavedMessageToDiscordMessage(savedMsg);
@@ -723,7 +603,7 @@ export default definePlugin({
     },
 
     start() {
-        checkVaultStatus();
+        loadSavedMessages();
 
         // Patch SnowflakeUtils
         waitFor(["fromTimestamp", "extractTimestamp"], (m: any) => {
@@ -949,16 +829,7 @@ export default definePlugin({
                     const origFetchMessages = MessageActions.fetchMessages;
                     MessageActions.fetchMessages = function(opts: any) {
                         if (opts?.channelId === SAVED_MESSAGES_CHANNEL_ID) {
-                            checkVaultStatus().then(() => {
-                                if (isVaultUnlocked()) {
-                                    injectDecryptedMessages();
-                                } else {
-                                    resolveEmptyMessages();
-                                    setTimeout(() => {
-                                        openSavedMessagesUnlockModal(() => injectDecryptedMessages());
-                                    }, 50);
-                                }
-                            });
+                            injectMessages();
                             return Promise.resolve();
                         }
                         return origFetchMessages.apply(this, arguments as any);
@@ -1033,9 +904,6 @@ export default definePlugin({
                         if (targetId === SAVED_MESSAGES_USER_ID || targetId === SAVED_MESSAGES_CHANNEL_ID) {
                             setDmClosedSafe(false);
                             reinjectSavedMessages();
-                            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID && isVaultUnlocked()) {
-                                lockVault();
-                            }
                             setTimeout(() => {
                                 try {
                                     FluxDispatcher.dispatch({
@@ -1052,7 +920,7 @@ export default definePlugin({
                                 } catch { }
                                 try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch { }
                                 try { (findStore("ChannelStore") as any)?.emitChange(); } catch { }
-                                handleChannelSelect({ channelId: SAVED_MESSAGES_CHANNEL_ID });
+                                injectMessages();
                             }, 0);
                             return Promise.resolve(SAVED_MESSAGES_CHANNEL_ID);
                         }
@@ -1131,13 +999,13 @@ export default definePlugin({
                             badges: [
                                 {
                                     id: "saved_messages",
-                                    description: "Saved Messages Vault",
+                                    description: "Saved Messages",
                                     icon: "5e74e9b61934fc1f67c65515d1f7e60d",
                                 }
                             ],
-                            bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                            bio: "Local storage on your PC. Zero server transit.",
                             userProfile: {
-                                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                bio: "Local storage on your PC. Zero server transit.",
                                 accentColor: 5793266,
                                 banner: null,
                                 themeColors: [5793266, 5793266],
@@ -1146,7 +1014,7 @@ export default definePlugin({
                                 createdAt: createdAt,
                             },
                             user_profile: {
-                                bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                bio: "Local storage on your PC. Zero server transit.",
                                 accent_color: 5793266,
                                 banner: null,
                                 theme_colors: [5793266, 5793266],
@@ -1188,7 +1056,7 @@ export default definePlugin({
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
                             if (url.includes("messages")) {
-                                const msgs = isVaultUnlocked() ? getDecryptedMessages().map(convertSavedMessageToDiscordMessage) : [];
+                                const msgs = getSavedMessages().map(convertSavedMessageToDiscordMessage);
                                 return Promise.resolve({
                                     ok: true,
                                     status: 200,
@@ -1202,7 +1070,7 @@ export default definePlugin({
                                 const profileBody = {
                                     user: SAVED_MESSAGES_USER,
                                     user_profile: {
-                                        bio: "End-to-end local encrypted storage (AES-256 + ChaCha20). Zero server transit.",
+                                        bio: "Local storage on your PC. Zero server transit.",
                                         accent_color: 5793266,
                                         banner: null,
                                         theme_colors: [5793266, 5793266],
@@ -1219,7 +1087,7 @@ export default definePlugin({
                                     badges: [
                                         {
                                             id: "saved_messages",
-                                            description: "Saved Messages Vault",
+                                            description: "Saved Messages",
                                             icon: "5e74e9b61934fc1f67c65515d1f7e60d",
                                         }
                                     ],
@@ -1297,8 +1165,6 @@ export default definePlugin({
             }
         } catch { }
 
-        window.addEventListener("click", handleGlobalClick, true);
-
         if (!isDmClosedSafe()) {
             reinjectSavedMessages();
             setTimeout(reinjectSavedMessages, 100);
@@ -1314,9 +1180,6 @@ export default definePlugin({
     },
 
     stop() {
-        lockVault();
-        window.removeEventListener("click", handleGlobalClick, true);
-
         if (unpatchUserProfileStore) unpatchUserProfileStore();
         if (unpatchUserStore) unpatchUserStore();
         if (unpatchUserStoreGetUsers) unpatchUserStoreGetUsers();
