@@ -294,35 +294,35 @@ const _pendingDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>(
 
 function syncGhostStateFromDiscord(userId: string) {
     try {
+        const cur = ghostStates.get(userId) ?? defaultState();
         if (_leavingUsers.has(userId)) {
             const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
             if (!vs || !vs.channelId) {
                 _leavingUsers.delete(userId);
+                ghostStates.set(userId, { ...cur, active: false, connecting: false });
+                notify();
             }
             return;
         }
-        const cur = ghostStates.get(userId) ?? defaultState();
-        // Ne JAMAIS écraser active ou connecting pendant qu'un compte se connecte
-        if (cur.connecting) return;
+        // Ne bloquer que si un batch est véritablement en cours d'exécution
+        if (cur.connecting && isConnectingBatch) return;
 
         const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
         if (!vs || !vs.channelId) {
-            if (cur.active) {
-                // Debounce de 2.5s pour absorber les micro-déconnexions / glissades de salon vocal Discord
-                if (!_pendingDisconnectTimers.has(userId)) {
-                    const timer = setTimeout(() => {
-                        _pendingDisconnectTimers.delete(userId);
-                        const freshVs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-                        if (!freshVs || !freshVs.channelId) {
-                            const freshCur = ghostStates.get(userId) ?? defaultState();
-                            if (!freshCur.connecting && !_leavingUsers.has(userId)) {
-                                ghostStates.set(userId, { ...freshCur, active: false, connecting: false, streaming: false, camera: false });
-                                notify();
-                            }
-                        }
-                    }, 2500);
-                    _pendingDisconnectTimers.set(userId, timer);
+            if (cur.active || cur.connecting) {
+                if (_pendingDisconnectTimers.has(userId)) {
+                    clearTimeout(_pendingDisconnectTimers.get(userId)!);
                 }
+                const timer = setTimeout(() => {
+                    _pendingDisconnectTimers.delete(userId);
+                    const freshVs = VoiceStateStore?.getVoiceStateForUser?.(userId);
+                    if (!freshVs || !freshVs.channelId) {
+                        const freshCur = ghostStates.get(userId) ?? defaultState();
+                        ghostStates.set(userId, { ...freshCur, active: false, connecting: false, streaming: false, camera: false });
+                        notify();
+                    }
+                }, 800);
+                _pendingDisconnectTimers.set(userId, timer);
             }
             return;
         }
@@ -339,7 +339,7 @@ function syncGhostStateFromDiscord(userId: string) {
         const camera = Boolean(vs.selfVideo);
         const streaming = Boolean(vs.selfStream);
 
-        if (cur.active !== active || cur.muted !== muted || cur.deafened !== deafened || cur.camera !== camera || cur.streaming !== streaming) {
+        if (cur.active !== active || cur.connecting || cur.muted !== muted || cur.deafened !== deafened || cur.camera !== camera || cur.streaming !== streaming) {
             ghostStates.set(userId, {
                 ...cur,
                 active,
@@ -1569,7 +1569,18 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
     const [showPopover, setShowPopover] = useState(false);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const btnRef = useRef<HTMLDivElement>(null);
-    const anyActive = Array.from(states.values()).some(s => s.active || s.connecting);
+
+    // Précis: actif UNIQUEMENT si une connexion est activement en cours ou si le compte est véritablement présent dans un salon vocal
+    const anyActive = Array.from(states.entries()).some(([uid, s]) => {
+        if (s.connecting && isConnectingBatch) return true;
+        if (!s.active) return false;
+        try {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(uid);
+            return Boolean(vs?.channelId);
+        } catch {
+            return false;
+        }
+    });
 
     useEffect(() => {
         if (!showPopover) return;
@@ -1601,11 +1612,21 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        const isAnyActive = Array.from(ghostStates.values()).some(s => s.active || s.connecting)
-            || savedAccounts.some(a => {
-                try { return Boolean(VoiceStateStore?.getVoiceStateForUser?.(a.userId)?.channelId); }
-                catch { return false; }
-            });
+        const isAnyActive = Array.from(ghostStates.entries()).some(([uid, s]) => {
+            if (s.connecting && isConnectingBatch) return true;
+            if (s.active) {
+                try {
+                    const vs = VoiceStateStore?.getVoiceStateForUser?.(uid);
+                    return Boolean(vs?.channelId);
+                } catch {
+                    return false;
+                }
+            }
+            return false;
+        }) || savedAccounts.some(a => {
+            try { return Boolean(VoiceStateStore?.getVoiceStateForUser?.(a.userId)?.channelId); }
+            catch { return false; }
+        });
 
         if (isAnyActive) {
             await ghostDisableClean();
@@ -1681,6 +1702,9 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
                 if (_cancelBatch || _leavingUsers.has(acc.userId)) {
                     Native.leaveVoice(acc.userId, vs.guildId).catch(() => {});
+                    const updated = ghostStates.get(acc.userId) ?? defaultState();
+                    ghostStates.set(acc.userId, { ...updated, active: false, connecting: false });
+                    notify();
                     return;
                 }
                 const updated = ghostStates.get(acc.userId) ?? defaultState();
@@ -1695,8 +1719,13 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
                 const updated = ghostStates.get(acc.userId) ?? defaultState();
                 ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
+            } finally {
+                const fresh = ghostStates.get(acc.userId);
+                if (fresh?.connecting) {
+                    ghostStates.set(acc.userId, { ...fresh, connecting: false });
+                }
+                notify();
             }
-            notify();
         };
 
         isConnectingBatch = true;
@@ -1821,6 +1850,17 @@ export default definePlugin({
 
         const onVoiceUpdate = (data: any) => {
             if (!data) return;
+            const myId = getMyId();
+            if (myId && data.userId === myId) {
+                const myVs = getMyVoiceState();
+                if (!myVs || !myVs.channelId) {
+                    for (const [uid, st] of ghostStates.entries()) {
+                        if (st.active || st.connecting) {
+                            syncGhostStateFromDiscord(uid);
+                        }
+                    }
+                }
+            }
             if (data.userId && ghostStates.has(data.userId)) {
                 syncGhostStateFromDiscord(data.userId);
             }

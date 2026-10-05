@@ -295,10 +295,12 @@ ipcMain.handle(IpcEvents.WORLD_BOMB_SEQUENCE, async (
         const clickX = Math.round(targetX);
         const clickY = Math.round(targetY);
         lines.push(
+            "  $origPos = [System.Windows.Forms.Cursor]::Position",
             `  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${clickX}, ${clickY})`,
             "  [NC.WinAPI]::mouse_event(2, 0, 0, 0, 0)",
             "  [NC.WinAPI]::mouse_event(4, 0, 0, 0, 0)",
-            "  Start-Sleep -Milliseconds 30"
+            "  Start-Sleep -Milliseconds 40",
+            "  [System.Windows.Forms.Cursor]::Position = $origPos"
         );
     }
 

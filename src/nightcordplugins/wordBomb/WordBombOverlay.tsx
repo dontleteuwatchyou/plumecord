@@ -7,7 +7,6 @@
 import { t } from "../autoTranslateNightcord";
 import { React, useState, useEffect, useRef, ReactDOM, createRoot } from "@webpack/common";
 import { findByPropsLazy } from "@webpack";
-import { tPlugin as t } from "@api/pluginI18n";
 import { getGroqKey } from "../nightcordAI/groqManager";
 
 const ComponentDispatch = findByPropsLazy("dispatchToLastSubscribed");
@@ -273,14 +272,50 @@ export function WordBombOverlay() {
             .replace(/[^a-z0-9\- ]/gi, "")
             .toLowerCase();
 
+        // 1. Unfocus/blur overlay inputs immediately so keystrokes never type into the overlay
+        if (inputRef.current) inputRef.current.blur();
+        if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+        }
+
+        // 2. Find game target (Activity iframe or Discord chat input)
+        let targetX = -1;
+        let targetY = -1;
+
+        const iframe = document.querySelector<HTMLIFrameElement>(
+            "iframe[src*='discordsays.com'], iframe[src*='activity'], iframe[class*='activity'], div[class*='activity'] iframe, iframe"
+        );
+        const chatInput = document.querySelector<HTMLElement>(
+            "[role='textbox'][data-slate-editor='true'], [role='textbox'], textarea[class*='textArea']"
+        );
+
+        if (iframe) {
+            const rect = iframe.getBoundingClientRect();
+            if (rect.width > 50 && rect.height > 50) {
+                targetX = Math.round(window.screenX + rect.left + rect.width / 2);
+                targetY = Math.round(window.screenY + rect.top + rect.height * 0.7);
+            }
+            try { iframe.focus(); } catch {}
+            try { iframe.contentWindow?.focus(); } catch {}
+        } else if (chatInput) {
+            const rect = chatInput.getBoundingClientRect();
+            if (rect.width > 20 && rect.height > 10) {
+                targetX = Math.round(window.screenX + rect.left + rect.width / 2);
+                targetY = Math.round(window.screenY + rect.top + rect.height / 2);
+            }
+            try { chatInput.focus(); } catch {}
+        }
+
         const wbNative = (window as any).VencordNative?.wordBomb || (window as any).VencordNative?.worldBomb;
 
         try {
             if (wbNative?.sequence) {
-                await wbNative.sequence(cleanWord, lps, humanChance, -1, -1);
+                await wbNative.sequence(cleanWord, lps, humanChance, targetX, targetY);
             } else {
                 // Fallback ComponentDispatch : tape lettre par lettre puis SUBMIT (Entrée)
-                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                if (chatInput) {
+                    try { chatInput.focus(); } catch {}
+                }
                 const delay = Math.max(25, Math.round(1000 / lps));
                 for (const char of cleanWord) {
                     ComponentDispatch?.dispatchToLastSubscribed("INSERT_TEXT", { rawText: char, plainText: char });
@@ -294,7 +329,9 @@ export function WordBombOverlay() {
         } catch (e) {
             console.error("[WordBomb] Erreur saisie native, basculement sur ComponentDispatch:", e);
             try {
-                if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+                if (chatInput) {
+                    try { chatInput.focus(); } catch {}
+                }
                 const delay = Math.max(25, Math.round(1000 / lps));
                 for (const char of cleanWord) {
                     ComponentDispatch?.dispatchToLastSubscribed("INSERT_TEXT", { rawText: char, plainText: char });
@@ -310,7 +347,9 @@ export function WordBombOverlay() {
         } finally {
             isTypingRef.current = false;
             setIsTyping(false);
-            setTimeout(() => inputRef.current?.focus(), 50);
+            setTimeout(() => {
+                inputRef.current?.focus();
+            }, 100);
         }
     };
 
@@ -321,8 +360,18 @@ export function WordBombOverlay() {
             onClick={e => e.stopPropagation()}
         >
             <div className="nc-wb-header" onMouseDown={handleMouseDown}>
-                <h3 style={{ margin: 0, fontSize: "14px" }}>🎯 WordBomb Helper</h3>
-                <div className="nc-wb-close" onClick={unmountOverlay}>✕</div>
+                <h3 style={{ margin: 0, fontSize: "14px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 4H18V2.5C18 2.22386 17.7761 2 17.5 2H6.5C6.22386 2 6 2.22386 6 2.5V4H5C3.89543 4 3 4.89543 3 6V8.33333C3 10.158 4.32623 11.6661 6.0825 11.8845C6.44988 14.2372 8.51945 16 11 16H11.5V18.5H9C8.44772 18.5 8 18.9477 8 19.5V21C8 21.5523 8.44772 22 9 22H15C15.5523 22 16 21.5523 16 21V19.5C16 18.9477 15.5523 18.5 15 18.5H12.5V16H13C15.4805 16 17.5501 14.2372 17.9175 11.8845C19.6738 11.6661 21 10.158 21 8.33333V6C21 4.89543 20.1046 4 19 4ZM5 8.33333V6H6V10.1197C5.41908 9.94827 5 9.17646 5 8.33333ZM19 8.33333C19 9.17646 18.5809 9.94827 18 10.1197V6H19V8.33333Z" />
+                    </svg>
+                    WordBomb Helper
+                </h3>
+                <div className="nc-wb-close" onClick={unmountOverlay} role="button" aria-label={t("Close")}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </div>
             </div>
 
             <div className="nc-wb-content">
@@ -348,9 +397,11 @@ export function WordBombOverlay() {
                         </div>
 
                         <div style={{ display: "flex", gap: "8px" }}>
-                            <button onClick={() => processSearch(syllable)} style={{ flex: 1, padding: "10px", background: "#7c3aed", border: "none", borderRadius: "8px", color: "white", cursor: "pointer" }}>{t("FIND")}</button>
-                            <button onClick={handleReroll} title={t("Reroll")} style={{ width: "45px", height: "45px", background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "12px", color: "#fff", cursor: "pointer", fontSize: "18px" }}>
-                                🔄
+                            <button onClick={() => processSearch(syllable)} style={{ flex: 1, padding: "10px", background: "#7c3aed", border: "none", borderRadius: "8px", color: "white", cursor: "pointer", fontWeight: 600 }}>{t("FIND")}</button>
+                            <button onClick={handleReroll} title={t("Reroll")} style={{ width: "45px", height: "45px", background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "12px", color: "#fff", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" />
+                                </svg>
                             </button>
                         </div>
 
@@ -383,11 +434,11 @@ export function WordBombOverlay() {
                             </select>
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", borderTop: "1px solid #4b5563", paddingTop: "10px" }}>
-                            <label style={{ fontSize: "13px", color: "#ef4444", fontWeight: "bold" }}>{t("🚫 No Spaces or Dashes")}</label>
+                            <label style={{ fontSize: "13px", color: "#ef4444", fontWeight: "bold" }}>{t("No Spaces or Dashes")}</label>
                             <input type="checkbox" checked={noSpace} onChange={e => { setNoSpace(e.target.checked); setSetting("wb_noSpace", String(e.target.checked)); }} style={{ transform: "scale(1.2)" }} />
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", borderTop: "1px solid #4b5563", paddingTop: "10px" }}>
-                            <label style={{ fontSize: "13px", color: "#60a5fa", fontWeight: "bold" }}>{t("📚 Safe Mode (Def.)")}</label>
+                            <label style={{ fontSize: "13px", color: "#60a5fa", fontWeight: "bold" }}>{t("Safe Mode (Def.)")}</label>
                             <input type="checkbox" checked={safeMode} onChange={e => { setSafeMode(e.target.checked); setSetting("wb_safeMode", String(e.target.checked)); }} style={{ transform: "scale(1.2)" }} />
                         </div>
                         <div style={{ fontSize: "10px", opacity: 0.6, marginTop: "4px", marginBottom: "15px" }}>
@@ -399,8 +450,17 @@ export function WordBombOverlay() {
             </div>
 
             <div className="nc-wb-footer">
-                <div className="nc-wb-settings-btn" onClick={() => setIsSettingsOpen(!isSettingsOpen)}>
-                    {isSettingsOpen ? "✕" : "⚙"}
+                <div className="nc-wb-settings-btn" onClick={() => setIsSettingsOpen(!isSettingsOpen)} role="button" aria-label={t("Settings")}>
+                    {isSettingsOpen ? (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+                        </svg>
+                    )}
                 </div>
                 <div className="nc-wb-status">
                     {status} | LPS: {lps} | Human: {humanChance}%
