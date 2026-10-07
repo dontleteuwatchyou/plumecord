@@ -20,6 +20,8 @@ import type * as t from "@vencord/discord-types";
 import { _resolveReady, filters, findByCodeLazy, findByPropsLazy, findLazy, mapMangledModuleLazy, waitFor } from "@webpack";
 import type * as TSPattern from "ts-pattern";
 
+import { React } from "./react";
+
 export let FluxDispatcher: t.FluxDispatcher;
 waitFor(["dispatch", "subscribe"], m => {
     FluxDispatcher = m;
@@ -84,12 +86,16 @@ const ToastPosition = {
 };
 
 export interface ToastData {
-    message: string,
-    id: string,
+    message: string;
+    content?: string;
+    text?: string;
+    title?: string;
+    children?: React.ReactNode;
+    id: string;
     /**
      * Toasts.Type
      */
-    type: string,
+    type: string | number;
     options?: ToastOptions;
 }
 
@@ -98,7 +104,7 @@ export interface ToastOptions {
      * Toasts.Position
      */
     position?: number;
-    component?: React.ReactNode,
+    component?: React.ReactNode;
     duration?: number;
 }
 
@@ -112,13 +118,99 @@ const ToastsExports = mapMangledModuleLazy(".currentToastMap.has(", {
     popToast: filters.byCode(".delete(")
 });
 
-export function createToast(message: string, type: string, options?: ToastOptions): ToastData {
+export function createToast(
+    message: any,
+    type: string | number = ToastType.MESSAGE,
+    options?: ToastOptions
+): ToastData {
+    let text = "";
+    let comp = options?.component;
+
+    if (typeof message === "string") {
+        text = message;
+    } else if (message instanceof Error) {
+        text = message.message || String(message);
+    } else if (message && typeof message === "object") {
+        if (React?.isValidElement?.(message)) {
+            comp = message;
+        } else if (typeof message.content === "string") {
+            text = message.content;
+        } else if (typeof message.message === "string") {
+            text = message.message;
+        } else if (typeof message.text === "string") {
+            text = message.text;
+        } else if (typeof message.title === "string") {
+            text = message.title;
+        } else if (typeof message.error === "string") {
+            text = message.error;
+        } else if (message.component && React?.isValidElement?.(message.component)) {
+            comp = message.component;
+        } else {
+            try {
+                const str = String(message);
+                text = str === "[object Object]" ? "" : str;
+            } catch {
+                text = "";
+            }
+        }
+
+        if ((type === ToastType.MESSAGE || !type) && message.type) {
+            type = message.type;
+        }
+        if (!options && message.options) {
+            options = message.options;
+        }
+    } else if (message != null) {
+        text = String(message);
+    }
+
+    const toastId = (options as any)?.id || (message as any)?.id || Toasts.genId();
+
     return {
-        message,
-        id: Toasts.genId(),
+        id: toastId,
+        message: text,
+        content: text,
+        text,
+        title: text,
+        children: comp || text,
         type,
-        options
+        options: {
+            ...options,
+            ...(comp ? { component: comp } : {})
+        }
     };
+}
+
+function safeShowToast(toast: any): void {
+    if (!toast) return;
+
+    let data: ToastData;
+    if (typeof toast === "string" || toast instanceof Error) {
+        data = createToast(toast);
+    } else if (typeof toast === "object") {
+        data = createToast(
+            toast.content ?? toast.message ?? toast.text ?? toast.title ?? toast.children ?? toast,
+            toast.type,
+            toast.options ?? toast
+        );
+        if (toast.id) data.id = toast.id;
+    } else {
+        data = createToast(String(toast));
+    }
+
+    // Safety guard: if there is no text AND no custom React component, do NOT show an empty black bubble!
+    const hasText = Boolean(data.message && data.message.trim());
+    const hasComponent = Boolean(data.options?.component || (data.children && React?.isValidElement?.(data.children)));
+
+    if (!hasText && !hasComponent) {
+        return;
+    }
+
+    try {
+        ToastsExports.showToast(data);
+    } catch (e) {
+        console.warn("[Nightcord:Toasts] Failed to show toast:", e);
+    }
 }
 
 export const Toasts = {
@@ -126,7 +218,7 @@ export const Toasts = {
     Position: ToastPosition,
     genId: () => (Math.random() || Math.random()).toString(36).slice(2),
 
-    show: ToastsExports.showToast,
+    show: safeShowToast,
     pop: ToastsExports.popToast,
     create: createToast,
 };
@@ -134,8 +226,10 @@ export const Toasts = {
 /**
  * Show a simple toast. If you need more options, use Toasts.show manually
  */
-export function showToast(message: string, type = ToastType.MESSAGE, options?: ToastOptions) {
-    Toasts.show(Toasts.create(message, type, options));
+export function showToast(message: any, type: string | number = ToastType.MESSAGE, options?: ToastOptions) {
+    if (message == null || message === "") return;
+    const toast = createToast(message, type, options);
+    Toasts.show(toast);
 }
 
 export const UserUtils = {
@@ -240,7 +334,6 @@ export const useDrag = findByCodeLazy("useDrag", "DragSourceMonitor");
 export const useDrop = findByCodeLazy("useDrop", "DropTargetMonitor");
 
 // Safe ConfirmModal that won't break when Discord changes it
-import { React } from "./react";
 export function ConfirmModal(props: any) {
     const { ModalRoot, ModalHeader, ModalContent, ModalFooter } = require("@utils/modal");
     const { ButtonCompat } = require("@components/Button");
