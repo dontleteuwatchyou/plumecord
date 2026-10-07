@@ -12,12 +12,29 @@ import definePlugin, { OptionType } from "@utils/types";
 import { React } from "@webpack/common";
 import plugins from "~plugins";
 
-import { getGroqKey,groqChat } from "../nightcordAI/groqManager";
 import { t } from "../autoTranslateNightcord";
+import { getGroqKey, groqChat, registerSettingsFallback, setGroqKey } from "../nightcordAI/groqManager";
+
+// ── In-Memory Fast Cache ────────────────────────────────────────────────────────
+
+const correctionCache = new Map<string, string>();
+const MAX_CACHE_ENTRIES = 120;
+
+function getCachedCorrection(key: string): string | undefined {
+    return correctionCache.get(key);
+}
+
+function setCachedCorrection(key: string, value: string): void {
+    if (correctionCache.size >= MAX_CACHE_ENTRIES) {
+        const first = correctionCache.keys().next().value;
+        if (first) correctionCache.delete(first);
+    }
+    correctionCache.set(key, value);
+}
 
 // ── Settings ───────────────────────────────────────────────────────────────────
 
-const settings = definePluginSettings({
+export const settings = definePluginSettings({
     isActive: {
         type: OptionType.BOOLEAN,
         description: "Enable automatic correction",
@@ -27,87 +44,165 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "Correction language",
         options: [
-            { label: "English", value: "en", default: true },
+            { label: "Auto-detect language", value: "auto", default: true },
             { label: "French", value: "fr" },
+            { label: "English", value: "en" },
             { label: "Spanish", value: "es" },
             { label: "German", value: "de" },
             { label: "Italian", value: "it" },
             { label: "Portuguese", value: "pt" },
+            { label: "Russian", value: "ru" },
         ],
+        default: "auto",
     },
     aggressiveness: {
         type: OptionType.SELECT,
         description: "Correction level",
         options: [
             { label: "Soft — obvious mistakes only", value: "low", default: true },
-            { label: "Normal — mistakes + style", value: "medium" },
-            { label: "Aggressive — full rewrite", value: "high" },
+            { label: "Normal — mistakes & style", value: "medium" },
+            { label: "Aggressive — full rewrite & polish", value: "high" },
         ],
         default: "low",
     },
+    customApiKey: {
+        type: OptionType.STRING,
+        description: "Groq API Key (console.groq.com/keys) — shared with NightcordAI & VoiceDictation",
+        placeholder: "gsk_...",
+        default: "",
+        onChange(val: string) {
+            if (typeof val === "string" && val.trim()) {
+                setGroqKey(val.trim()).catch(() => { });
+            }
+        },
+    }
 });
 
-// ── Correction via groqManager ────────────────────────────────────────────────
+registerSettingsFallback(() => settings.store.customApiKey ?? "");
+
+// ── Prompt Engineering & LLM Orchestration ────────────────────────────────────
 
 const LANG_PROMPTS: Record<string, string> = {
-    fr: "Tu es un correcteur orthographique. Corrige UNIQUEMENT les fautes d'orthographe et de grammaire. Retourne le texte corrigé sans explication ni guillemets. INTERDIT: ajouter des mots, changer le sens, reformuler. Si le texte est correct, retourne-le identique.",
-    en: "You are a spell-checker. Fix ONLY spelling and grammar mistakes. Return the corrected text without explanation or quotes. FORBIDDEN: adding words, changing meaning, rephrasing. If already correct, return as-is.",
-    es: "Eres un corrector ortográfico. Corrige SOLO errores ortográficos y gramaticales. Devuelve el texte corrigé sans explication. PROHIBIDO: añadir palabras, cambiar el sentido.",
-    de: "Du bist ein Rechtschreibprüfer. Korrigiere NUR Rechtschreib- und Grammatikfehler. Gib den korrigierten Text ohne Erklärung zurück. VERBOTEN: Wörter hinzufügen, Bedeutung ändern.",
-    it: "Sei un correttore ortografico. Correggi SOLO errori ortografici e grammaticali. Restituisci il testo corretto senza spiegazioni. VIETATO: aggiungere parole, cambiare il significato.",
-    pt: "Você é um corretor ortográfico. Corrija SOMENTE erros ortográficos e gramaticais. Retorne o texto corrigido sem explicação. PROIBIDO: adicionar palavras, mudar o sentido.",
+    auto: "You are an ultra-fast, high-accuracy spelling and grammar corrector. Automatically detect the language of the user text and correct all typos, spelling, conjugation, punctuation, and grammar mistakes in that exact language. DO NOT translate to another language. Strict rules: 1) Preserve Discord mentions (<@id>, <#id>, <@&id>), custom emojis (<:name:id>, <a:name:id>), standard emojis, URLs, formatting, and common chat slang (e.g. mdr, lol, idk, gg, tkt, jsp, wesh, brb). 2) Do not change words unnecessarily. 3) Return ONLY the raw corrected text with zero explanation, zero preamble, and zero quotes.",
+    fr: "Tu es un correcteur orthographique et grammatical ultra-rapide. Corrige les fautes d'orthographe, d'accord, de conjugaison et de grammaire en français. Règles strictes : 1) Conserve impérativement les mentions Discord (<@id>, <#id>), les émojis personnalisés (<:nom:id>, <a:nom:id>), les émojis standards, les liens URL, le formatage markdown, et l'argot courant (ex : mdr, ptdr, tkt, jsp, slt, cv, frr, wesh). 2) Ne reformule pas inutilement le texte. 3) Ne retourne AUCUNE explication ni guillemets : retourne uniquement le texte corrigé brut.",
+    en: "You are an ultra-fast spell-checker and grammar corrector. Correct spelling, punctuation, capitalization, and grammatical mistakes in English. Strict rules: 1) Preserve Discord mentions (<@id>, <#id>), custom emojis (<:name:id>, <a:name:id>), standard emojis, URLs, code blocks, and casual gaming/internet slang (e.g. lol, idk, tbh, imo, rn, gg, brb). 2) Do not rephrase unnecessarily. 3) Return ONLY the raw corrected text without explanation or quotes.",
+    es: "Eres un corrector ortográfico y gramatical ultra rápido. Corrige los errores ortográficos y gramaticales en español. Conserva menciones de Discord, emojis, URLs, código y jerga común. Devuelve ÚNICAMENTE el texto corregido sin explicaciones ni comillas.",
+    de: "Du bist ein ultraschneller Rechtschreib- und Grammatikprüfer. Korrigiere Rechtschreib- und Grammatikfehler auf Deutsch. Behalte Discord-Erwähnungen, Emojis, URLs und Chat-Slang bei. Gib NUR den korrigierten Text ohne Erklärungen oder Anführungszeichen zurück.",
+    it: "Sei un correttore ortografico e grammaticale ultra rapido. Correggi errori di ortografia e grammatica in italiano. Mantieni menzioni Discord, emoji, URL e gergo comune. Restituisci SOLO il testo corretto senza spiegazioni o virgolette.",
+    pt: "Você é um corretor ortográfico e gramatical ultra rápido. Corrija erros ortográficos e gramaticais em português. Mantenha menções do Discord, emojis, URLs e gírias comuns. Retorne APENAS o texto corrigido sem explicações ou aspas.",
+    ru: "Ты сверхбыстрый корректор орфографии и грамматики. Исправляй орфографические и грамматические ошибки на русском языке. Сохраняй упоминания Discord, эмодзи, URL-адреса и сленг. Возвращай ТОЛЬКО исправленный текст без пояснений и кавычек.",
 };
 
 const AGGR_SUFFIX: Record<string, string> = {
-    low: " STRICT INSTRUCTION: DO NOT FIX STYLE. ONLY fix obvious typos and basic grammar. DO NOT change the choice of words. KEEP THE TEXT AS IDENTICAL AS POSSIBLE. Return ONLY the text.",
-    medium: " Fix mistakes and slightly improve clarity if necessary, but don't change the meaning.",
-    high: " Fix everything and rewrite for perfect, fluid, and professional text.",
+    low: " STRICT CONSTRAINT: ONLY fix obvious typos, misspellings, and major grammar errors. DO NOT change words, style, or sentence structure. Keep the text as identical as possible.",
+    medium: " Fix mistakes and slightly improve grammar and clarity while strictly preserving the original voice and intent.",
+    high: " Fix all errors and refine phrasing for natural, fluid, and clean expression.",
 };
 
-async function correctText(text: string): Promise<string> {
-    if (text.trim().length < 3) return text;
+function shouldSkipCorrection(text: string): boolean {
+    const trimmed = text.trim();
+    if (trimmed.length < 3) return true;
 
-    const lang = settings.store.language ?? "en";
+    // Skip bot commands and command prefixes
+    if (/^[!/.?$#%^&*~+->;]/.test(trimmed) && !trimmed.startsWith("...")) {
+        return true;
+    }
+
+    // Skip messages that are pure URLs or code
+    if (/^https?:\/\/\S+$/i.test(trimmed)) return true;
+    if (trimmed.startsWith("```") && trimmed.endsWith("```")) return true;
+
+    return false;
+}
+
+export async function correctText(text: string): Promise<string> {
+    if (shouldSkipCorrection(text)) return text;
+
+    const lang = settings.store.language ?? "auto";
     const aggr = settings.store.aggressiveness ?? "low";
-    const systemPrompt = (LANG_PROMPTS[lang] ?? LANG_PROMPTS.en) + (AGGR_SUFFIX[aggr] ?? "");
+    const cacheKey = `${lang}:${aggr}:${text}`;
+
+    const cached = getCachedCorrection(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const basePrompt = LANG_PROMPTS[lang] ?? LANG_PROMPTS.auto;
+    const aggrPrompt = AGGR_SUFFIX[aggr] ?? AGGR_SUFFIX.low;
+    const systemPrompt = `${basePrompt} ${aggrPrompt}`;
 
     try {
-        const corrected = await groqChat({
+        const rawResult = await groqChat({
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: text },
             ],
-            temperature: 0,
-            maxTokens: 512,
-            // Forcer un modèle léger pour la correction — économise le quota du 70B pour l'IA
+            temperature: 0.1,
+            maxTokens: Math.max(256, Math.min(1024, text.length * 2)),
             forceModel: "llama-3.1-8b-instant",
+            timeoutMs: 3500,
+            immediate: true,
         });
 
-        if (!corrected || corrected.trim() === "" || corrected === text) return text;
+        if (!rawResult || typeof rawResult !== "string") {
+            setCachedCorrection(cacheKey, text);
+            return text;
+        }
 
-        // Sécurité contre les répétitions infinies ou les hallucinations
-        if (corrected.toLowerCase().includes("correction:") || corrected.toLowerCase().includes("text:")) return text;
+        let clean = rawResult.trim();
 
-        // Sécurité : réponse trop différente → on n'applique pas
-        if (corrected.length > text.length * 1.5 || corrected.length < text.length * 0.4) return text;
+        // Strip markdown code blocks if the LLM wrapped output in them
+        if (clean.startsWith("```") && clean.endsWith("```")) {
+            clean = clean.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```$/, "").trim();
+        }
 
-        // En mode low : vérification plus stricte du nombre de mots
+        // Strip surrounding quotes
+        if (
+            (clean.startsWith('"') && clean.endsWith('"')) ||
+            (clean.startsWith("«") && clean.endsWith("»")) ||
+            (clean.startsWith("'") && clean.endsWith("'"))
+        ) {
+            clean = clean.slice(1, -1).trim();
+        }
+
+        // Strip conversational prefixes that some LLMs might output
+        const prefixes = [
+            /^(?:Here is the corrected text|Corrected text|Correction|Texte corrigé|Voici le texte corrigé)\s*:\s*/i,
+            /^(?:Output|Result|Texte)\s*:\s*/i
+        ];
+        for (const p of prefixes) {
+            clean = clean.replace(p, "").trim();
+        }
+
+        // Safety check: identical or empty
+        if (!clean || clean === text) {
+            setCachedCorrection(cacheKey, text);
+            return text;
+        }
+
+        // Safety check: length explosion or collapse
+        if (clean.length > text.length * 2.5 || clean.length < text.length * 0.35) {
+            setCachedCorrection(cacheKey, text);
+            return text;
+        }
+
+        // In soft mode: strict word count check to prevent unwanted expansions
         if (aggr === "low") {
             const srcWords = text.trim().split(/\s+/).filter(w => w.length > 0).length;
-            const corrWords = corrected.trim().split(/\s+/).filter(w => w.length > 0).length;
-            // Mode soft ne doit pas ajouter/enlever plus d'un mot sur des phrases courtes
-            if (Math.abs(corrWords - srcWords) > Math.max(1, Math.floor(srcWords * 0.15))) {
+            const corrWords = clean.trim().split(/\s+/).filter(w => w.length > 0).length;
+            if (Math.abs(corrWords - srcWords) > Math.max(1, Math.floor(srcWords * 0.2))) {
+                setCachedCorrection(cacheKey, text);
                 return text;
             }
         }
-        return corrected.replace(/^"(.*)"$/, "$1").trim(); // Nettoie les guillemets éventuels
+
+        setCachedCorrection(cacheKey, clean);
+        return clean;
     } catch (e: any) {
-        console.warn("[AutoCorrect] Error correction:", e.message);
-        return text; // En cas d'error, envoyer le texte original
+        console.warn("[AutoCorrect] Fast correction fallback:", e?.message || e);
+        return text;
     }
 }
 
-// ── Chat Bar Button ────────────────────────────────────────────────────────────
+// ── Chat Bar Button Component ──────────────────────────────────────────────────
 
 function AutoCorrectIcon({ enabled }: { enabled: boolean; }) {
     return (
@@ -138,7 +233,6 @@ const AutoCorrectChatBarButton: ChatBarButtonFactory = ({ type }) => {
 
     const toggle = async () => {
         if (!isActive) {
-            // Vérifie que la clé API est configurée avant d'activer
             const key = await getGroqKey();
             if (!key) {
                 showApiKeyWarning("AutoCorrect");
@@ -166,17 +260,23 @@ const AutoCorrectChatBarButton: ChatBarButtonFactory = ({ type }) => {
     );
 };
 
-// ── Plugin ─────────────────────────────────────────────────────────────────────
+// ── Plugin Definition ──────────────────────────────────────────────────────────
 
 export default definePlugin({
     name: "AutoCorrect",
-    enabledByDefault: true,
-    description: "Automatically corrects spelling and grammar before sending. Requires a free Groq API key configured in NightcordAI.",
+    enabledByDefault: false,
+    description: "Automatically corrects spelling and grammar before sending messages with ultra-low latency.",
     dependencies: ["MessageEventsAPI", "ChatInputButtonAPI"],
     authors: [{ name: "Nightcord", id: 0n }],
     settings,
 
-    start() { },
+    start() {
+        getGroqKey().then(k => {
+            if (k && !settings.store.customApiKey) {
+                settings.store.customApiKey = k;
+            }
+        }).catch(() => { });
+    },
 
     chatBarButton: {
         icon: () => <AutoCorrectIcon enabled={settings.store.isActive} />,

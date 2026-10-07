@@ -13,7 +13,6 @@ const DS_API_KEY = "groq-shared-api-key";
 
 const GROQ_MODELS = [
     "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
     "llama-3.1-8b-instant",
     "gemma2-9b-it",
 ] as const;
@@ -106,6 +105,8 @@ export interface GroqCallOptions {
     maxTokens?: number;
     forceModel?: string;
     maxRetries?: number;
+    timeoutMs?: number;
+    immediate?: boolean;
 }
 
 export async function groqChat(opts: GroqCallOptions): Promise<string> {
@@ -126,11 +127,14 @@ export async function groqChat(opts: GroqCallOptions): Promise<string> {
             throw new Error("Message content must be a string or array");
         }
     }
+    if (opts.immediate) {
+        return _groqChat(opts);
+    }
     return enqueue(() => _groqChat(opts));
 }
 
 async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 3 } = opts;
+    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 3, timeoutMs = 30_000 } = opts;
 
     const apiKey = await getGroqKey();
     if (!apiKey) {
@@ -139,7 +143,7 @@ async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
 
     const model = forceModel ?? getAvailableModel();
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
         const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
