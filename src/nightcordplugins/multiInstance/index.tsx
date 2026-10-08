@@ -858,7 +858,6 @@ function AccountActionsMenu({
     acc,
     isOpen,
     isCurrent,
-    onNewDetached,
     onNewGrouped,
     onSwitch,
     onLogout,
@@ -869,7 +868,6 @@ function AccountActionsMenu({
     acc: AccountEntry;
     isOpen: boolean;
     isCurrent: boolean;
-    onNewDetached(): void;
     onNewGrouped(): void;
     onSwitch(): void;
     onLogout(): void;
@@ -888,18 +886,11 @@ function AccountActionsMenu({
                     />
                 )}
                 {acc.hasToken && (
-                    <>
-                        <Menu.MenuItem
-                            id="mi-detached"
-                            label={t("New detached instance")}
-                            action={onNewDetached}
-                        />
-                        <Menu.MenuItem
-                            id="mi-grouped"
-                            label={t("New grouped instance")}
-                            action={onNewGrouped}
-                        />
-                    </>
+                    <Menu.MenuItem
+                        id="mi-grouped"
+                        label={t("New grouped instance")}
+                        action={onNewGrouped}
+                    />
                 )}
             </Menu.MenuGroup>
             <Menu.MenuGroup>
@@ -1165,7 +1156,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                 acc={acc}
                 isOpen={isOpen}
                 isCurrent={isCurrent}
-                onNewDetached={() => handleNewDetached(acc)}
                 onNewGrouped={() => handleNewGrouped(acc)}
                 onSwitch={() => {
                     ContextMenuApi.closeContextMenu();

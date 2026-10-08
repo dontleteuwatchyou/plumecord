@@ -88,7 +88,7 @@
 }
 
 .nc-mi-list {
-    background: var(--card-primary-bg, #383a40);
+    background: var(--background-secondary, #2e3035);
     border-radius: 8px;
     overflow: hidden;
     display: flex;
