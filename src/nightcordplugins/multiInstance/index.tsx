@@ -913,7 +913,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     };
 
     const handleNewDetached = async (acc: AccountEntry) => {
-        if (!acc.hasToken || !acc.token) return;
+        if (!acc.hasToken || !acc.token) {
+            switchNativeAccount(acc.id);
+            return;
+        }
         const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
@@ -1001,7 +1004,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     <div className="headerLayout__8a031 nc-mi-header-layout">
                         <div className="headerMain__8a031">
                             <h1 className="heading-lg/semibold_cf4812 defaultColor__5345c headerTitle__8a031 nc-mi-title" style={{ color: "var(--text-strong, #f2f3f5)" }}>
-                                {t("Manage Accounts")}
+                                {t("Multi Accounts")}
                             </h1>
                         </div>
                         <div className="headerTrailing__8a031">
@@ -1099,10 +1102,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                                                     <button
                                                         className="button_a22cb0 md_a22cb0 secondary_a22cb0 hasText_a22cb0 nc-mi-switch-btn"
                                                         type="button"
-                                                        onClick={() => {
-                                                            if (acc.token) switchToQuick(acc.token, acc.id);
-                                                            else switchNativeAccount(acc.id);
-                                                        }}
+                                                        onClick={() => handleNewDetached(acc)}
                                                     >
                                                         <div className="buttonChildrenWrapper_a22cb0">
                                                             <div className="buttonChildren_a22cb0">
