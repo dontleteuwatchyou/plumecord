@@ -285,3 +285,26 @@ export function openResetDefaultsModal(reset: () => void) {
         </ConfirmModal>
     ));
 }
+
+export function openApplyBasicConfigModal(apply: () => void) {
+    openModal(props => (
+        <ConfirmModal
+            {...props}
+            className={cl("confirm")}
+            header={t("Apply Basic Config")}
+            confirmText={t("Apply")}
+            cancelText={t("Cancel")}
+            onConfirm={apply}
+            onCancel={props.onClose}
+        >
+            <Paragraph>
+                {t("This will disable all plugins and enable only the basic configuration.")} 
+            </Paragraph>
+            <div className={classes(Margins.top16, cl("warning"))}>
+                <WarningIcon color="var(--text-feedback-critical)" />
+                <span>{t("All your current plugin toggles will be replaced.")}</span>
+            </div>
+        </ConfirmModal>
+    ));
+}
+
