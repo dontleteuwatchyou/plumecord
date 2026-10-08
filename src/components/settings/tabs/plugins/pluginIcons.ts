@@ -52,6 +52,7 @@ const PLUGIN_ICON_NAMES: Record<string, string[]> = {
     SpotifyControls: ["MusicIcon", "PlayIcon", "HeadphonesIcon"],
     SpotifyShare: ["MusicIcon", "ShareIcon", "LinkIcon"],
     CompactMode: ["WindowIcon", "CompressIcon", "LayoutIcon"],
+    FollowMe: ["UserPlusIcon", "GroupIcon", "UserIcon"],
     DMBomb: ["BombIcon", "ChatPlusIcon", "ChatIcon"],
     DMPinnedMessages: ["PinIcon", "PushpinIcon", "ChatIcon"],
     GameActivity: ["GameControllerIcon", "PlayIcon", "GamepadIcon"],

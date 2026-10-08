@@ -115,12 +115,14 @@ function unfollowMe() {
 }
 
 // ── Icone ──
-function FollowMeIcon({ filled = false }: { filled?: boolean; }) {
+function FollowMeIcon({ color = "currentColor" }: { color?: string; }) {
     return (
-        <svg width="20" height="20" viewBox="0 0 24 24">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
-                fill={filled ? "#3ba55d" : "currentColor"}
-                d="M15,10V5H13V10.5C13,10.78 13.22,11 13.5,11H18V9H15.5L18.41,6.09L17,4.68L14.09,7.59V5H12V11A1,1 0 0,0 13,12H19A1,1 0 0,0 20,11V5A1,1 0 0,0 19,4H13V2H19A3,3 0 0,1 22,5V11A3,3 0 0,1 19,14H13.81L14.41,15.79L12.5,16.41L11.5,13.5C11.31,12.92 10.77,12.5 10.16,12.5H6.5A1,1 0 0,0 5.5,13.5V20.5A1,1 0 0,0 6.5,21.5H9.5V23.5H6.5A3,3 0 0,1 3.5,20.5V13.5A3,3 0 0,1 6.5,10.5H9.5V7A3,3 0 0,1 12.5,4H13V2H12.5A5,5 0 0,0 7.5,7V10.5H6.5A5,5 0 0,0 1.5,15.5V20.5A5,5 0 0,0 6.5,25.5H9.5V23.5H6.5A3,3 0 0,1 3.5,20.5V15.5A3,3 0 0,1 6.5,12.5H7.5V15.5A1,1 0 0,0 8.5,16.5H11.5L12.5,19.41L14.41,17.5L12,15.09V13.41L15.09,16.5L17,14.59L13.91,11.5H15V10Z"
+                fill={color}
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M12 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm-2 4a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm-6.5 11c0-2.5 3.5-4 6.5-4 1.45 0 3.03.35 4.3 1.05a1 1 0 1 1-.9 1.78C12.18 15.44 11 15 10 15c-2.37 0-4.5 1.09-4.5 2v1h9a1 1 0 1 1 0 2h-10a1 1 0 0 1-1-1v-2Zm13.2-1.7a1 1 0 0 1 1.42 0l3 3a1 1 0 0 1 0 1.4l-3 3a1 1 0 0 1-1.42-1.4l1.3-1.3H15a1 1 0 1 1 0-2h3.08l-1.3-1.3a1 1 0 0 1 0-1.4Z"
             />
         </svg>
     );
@@ -134,9 +136,7 @@ function FollowMeHeaderButton() {
     return (
         <HeaderBarButton
             icon={() => (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="#3ba55d">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z" />
-                </svg>
+                <FollowMeIcon color="#b5bac1" />
             )}
             tooltip={t("Stop Follow Me: {name}").replace("{name}", targetName)}
             onClick={() => unfollowMe()}
@@ -174,7 +174,7 @@ export default definePlugin({
     authors: [{ name: "Nightcord", id: 0n }],
 
     headerBarButton: {
-        icon: () => <FollowMeIcon filled={true} />,
+        icon: () => <FollowMeIcon color="#949ba4" />,
         render: FollowMeHeaderButton,
         priority: 6,
     },
