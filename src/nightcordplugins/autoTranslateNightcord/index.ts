@@ -3262,6 +3262,8 @@ export const translations: TranslationMap = {
     "Reroll": {"en":"Reroll","fr":"Relancer","ar":"إعادة التدوير","es":"Volver a tirar","ru":"Переролл","zh":"重新滚动"},
     "Reschedule an existing queued message.": {"en":"Reschedule an existing queued message.","fr":"Replanifiez un message existant en file d’attente.","ar":"إعادة جدولة رسالة موجودة في قائمة الانتظار.","es":"Reprogramar un mensaje en cola existente.","ru":"Перепланировать существующее сообщение в очереди.","zh":"重新安排现有的排队消息。"},
     "Reset": {"en":"Reset","fr":"Réinitialiser","ar":"إعادة ضبط","es":"Restablecer","ru":"Сбросить","zh":"重置"},
+    "RESET": {"en":"RESET","fr":"RÉINITIALISER","ar":"إعادة ضبط","es":"RESTABLECER","ru":"СБРОСИТЬ","zh":"重置"},
+
     "Reset Emojis": {"en":"Reset Emojis","fr":"Réinitialiser les émojis","ar":"إعادة تعيين الرموز التعبيرية","es":"Restablecer emojis","ru":"Сбросить смайлы","zh":"重置表情符号"},
     "Reset Settings": {"en":"Reset Settings","fr":"Réinitialiser les paramètres","ar":"إعادة ضبط الإعدادات","es":"Restablecer configuración","ru":"Сбросить настройки","zh":"重置设置"},
     "Reset all settings for": {"en":"Reset all settings for","fr":"Réinitialiser tous les paramètres pour","ar":"إعادة تعيين كافة الإعدادات ل","es":"Restablecer todas las configuraciones para","ru":"Сбросьте все настройки для","zh":"重置所有设置"},

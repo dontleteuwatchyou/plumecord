@@ -271,6 +271,7 @@ const translations: Record<string, Partial<Record<Language, string>>> = {
     "Plugin Ecosystem Management": { fr: "Gestion de l'écosystème de plugins", es: "Gestión del ecosistema de plugins", ru: "Управление экосистемой плагинов", zh: "插件生态系统管理" },
     "Manage your Nightcord and community plugins here. Enable, disable, and configure them to your liking.": { fr: "Gérez ici vos plugins Nightcord et communautaires. Activez, désactivez et configurez-les à votre goût.", es: "Gestiona aquí tus plugins de Nightcord y de la comunidad. Actívalos, desactívalos y configúralos a tu gusto.", ru: "Управляйте здесь своими плагинами Nightcord и сообщества. Включайте, отключайте и настраивайте их по своему усмотрению.", zh: "在此管理您的 Nightcord 和社区插件。根据您的喜好启用、禁用和配置它们。" },
     "DISABLE ALL PLUGINS": { fr: "DÉSACTIVER TOUS LES PLUGINS", es: "DESACTIVAR TODOS LOS PLUGINS", ru: "ОТКЛЮЧИТЬ ВСЕ ПЛАГИНЫ", zh: "禁用所有插件" },
+    "RESET": { fr: "RÉINITIALISER", es: "RESTABLECER", ru: "СБРОСИТЬ", zh: "重置" },
     "APPLY DEFAULT CONFIG": { fr: "APPLIQUER LA CONFIG PAR DÉFAUT", es: "APLICAR CONFIGURACIÓN PREDETERMINADA", ru: "ПРИМЕНИТЬ КОНФИГУРАЦИЮ ПО УМОЛЧАНИЮ", zh: "应用默认配置" },
     "APPLY BASIC CONFIG": { fr: "APPLIQUER LA CONFIG DE BASE", es: "APLICAR CONFIGURACIÓN BÁSICA", ru: "ПРИМЕНИТЬ БАЗОВЫЙ КОНФИГ", zh: "应用基本配置" },
     "TOTAL PLUGINS": { fr: "TOTAL PLUGINS", es: "PLUGINS TOTALES", ru: "ВСЕГО ПЛАГИНОВ", zh: "插件总数" },

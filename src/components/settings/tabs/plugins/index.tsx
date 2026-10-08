@@ -850,6 +850,14 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                         <div className={cl("ecosystem-banner-text")}>
                             <HeadingTertiary>{t("Plugin Ecosystem Management")}</HeadingTertiary>
                             <Paragraph>{t("Manage your Nightcord and community plugins here. Enable, disable, and configure them to your liking.")}</Paragraph>
+                            <Button
+                                variant="dangerPrimary"
+                                size="small"
+                                style={{ marginTop: 10, width: "fit-content" }}
+                                onClick={() => openWarningModal(null, undefined, false, enabledPlugins.length, resetCheckAndDo)}
+                            >
+                                {t("RESET")}
+                            </Button>
                         </div>
                         <div className={cl("ecosystem-banner-buttons")}>
                             {!isLikeLoggedIn && (
@@ -865,13 +873,6 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                             <Button
                                 variant="secondary"
                                 size="small"
-                                onClick={() => openWarningModal(null, undefined, false, enabledPlugins.length, resetCheckAndDo)}
-                            >
-                                {t("DISABLE ALL PLUGINS")}
-                            </Button>
-                            <Button
-                                variant="secondary"
-                                size="small"
                                 onClick={() => openResetDefaultsModal(applyDefaultConfigCheckAndDo)}
                             >
                                 {t("APPLY DEFAULT CONFIG")}
@@ -884,6 +885,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                                 {t("APPLY BASIC CONFIG")}
                             </Button>
                         </div>
+
 
                     </div>
                 )}
