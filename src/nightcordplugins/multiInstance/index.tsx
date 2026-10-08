@@ -9,10 +9,11 @@ import "./styles.css";
 import { addHeaderBarButton, HeaderBarButton, removeHeaderBarButton } from "@api/HeaderBar";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
-import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
+import { Button } from "@components/Button";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps, waitFor } from "@webpack";
-import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, MediaEngineStore, React, ReactDOM, showToast, Toasts, UserStore } from "@webpack/common";
+import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, TextInput, Toasts, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 
@@ -685,116 +686,252 @@ function switchNativeAccount(userId: string) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Context menu — monté dans document.body via portal pour éviter l'overflow
+// Modales d'édition de compte (Token & Nom d'affichage)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface CtxState {
-    x: number;
-    y: number;
+function ChangeTokenModal({
+    acc,
+    rootProps,
+    onSuccess
+}: {
     acc: AccountEntry;
+    rootProps: any;
+    onSuccess(): void;
+}) {
+    const [token, setToken] = React.useState(acc.token || "");
+    const [error, setError] = React.useState<string | null>(null);
+
+    const handleSave = async () => {
+        const cleanTok = token.trim().replace(/^"+|"+$/g, "");
+        if (!cleanTok) {
+            setError(t("Token cannot be empty."));
+            return;
+        }
+        const owner = getUserIdFromToken(cleanTok);
+        if (owner && owner !== acc.id) {
+            setError(`${t("Token belongs to user ID")} ${owner}, ${t("expected")} ${acc.id}`);
+            return;
+        }
+        cacheToken(acc.id, cleanTok);
+        saveTokenCache();
+
+        try {
+            const saved = await fetchAllAccounts();
+            const target = saved.find(s => s.id === acc.id);
+            if (target) {
+                target.token = cleanTok;
+            } else {
+                saved.push({ id: acc.id, username: acc.username, token: cleanTok, avatar: acc.avatar });
+            }
+            await DataStore.set(STORE_KEY, saved);
+            if (typeof (Native as any)?.saveSharedAccounts === "function") {
+                (Native as any).saveSharedAccounts(saved).catch(() => {});
+            }
+        } catch {}
+
+        try {
+            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+            if (tokenMod?.encryptAndStoreTokens) {
+                const tokensJson = window.localStorage.getItem("tokens");
+                const parsed = tokensJson ? JSON.parse(tokensJson) : {};
+                parsed[acc.id] = cleanTok;
+                tokenMod.encryptAndStoreTokens(parsed).catch(() => {});
+            }
+        } catch {}
+
+        showToast(t("Token updated successfully"), Toasts.Type.SUCCESS);
+        rootProps.onClose();
+        onSuccess();
+    };
+
+    return (
+        <ModalRoot {...rootProps} size="small">
+            <ModalHeader separator={false}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                    <h2 style={{ color: "var(--header-primary, #ffffff)", fontSize: 18, fontWeight: 600, margin: 0 }}>
+                        {t("Change Token")}
+                    </h2>
+                    <ModalCloseButton onClick={rootProps.onClose} />
+                </div>
+            </ModalHeader>
+            <ModalContent style={{ padding: "0 16px 16px" }}>
+                <p style={{ color: "var(--text-muted, #949ba4)", fontSize: 14, margin: "0 0 12px" }}>
+                    {t("Enter a new token for")} <strong style={{ color: "var(--header-primary, #ffffff)" }}>{acc.username}</strong> :
+                </p>
+                <TextInput
+                    value={token}
+                    placeholder="mfa.xxx..."
+                    type="password"
+                    onChange={(val: string) => { setToken(val); setError(null); }}
+                    autoFocus
+                />
+                {error && (
+                    <p style={{ color: "var(--text-danger, #ed4245)", fontSize: 12, margin: "8px 0 0" }}>
+                        {error}
+                    </p>
+                )}
+            </ModalContent>
+            <ModalFooter>
+                <Button variant="secondary" onClick={rootProps.onClose} style={{ marginRight: 8 }}>
+                    {t("Cancel")}
+                </Button>
+                <Button variant="primary" onClick={handleSave}>
+                    {t("Save")}
+                </Button>
+            </ModalFooter>
+        </ModalRoot>
+    );
 }
 
-interface CtxMenuProps extends CtxState {
+function ChangeUsernameModal({
+    acc,
+    rootProps,
+    onSuccess
+}: {
+    acc: AccountEntry;
+    rootProps: any;
+    onSuccess(): void;
+}) {
+    const [name, setName] = React.useState(acc.username || "");
+
+    const handleSave = async () => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+
+        try {
+            const saved = await fetchAllAccounts();
+            const target = saved.find(s => s.id === acc.id);
+            if (target) {
+                target.username = trimmed;
+            } else {
+                saved.push({ id: acc.id, username: trimmed, token: acc.token, avatar: acc.avatar });
+            }
+            await DataStore.set(STORE_KEY, saved);
+            if (typeof (Native as any)?.saveSharedAccounts === "function") {
+                (Native as any).saveSharedAccounts(saved).catch(() => {});
+            }
+        } catch {}
+
+        showToast(t("Display name updated"), Toasts.Type.SUCCESS);
+        rootProps.onClose();
+        onSuccess();
+    };
+
+    return (
+        <ModalRoot {...rootProps} size="small">
+            <ModalHeader separator={false}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                    <h2 style={{ color: "var(--header-primary, #ffffff)", fontSize: 18, fontWeight: 600, margin: 0 }}>
+                        {t("Change Display Name")}
+                    </h2>
+                    <ModalCloseButton onClick={rootProps.onClose} />
+                </div>
+            </ModalHeader>
+            <ModalContent style={{ padding: "0 16px 16px" }}>
+                <p style={{ color: "var(--text-muted, #949ba4)", fontSize: 14, margin: "0 0 12px" }}>
+                    {t("Enter a custom display name for")} <strong style={{ color: "var(--header-primary, #ffffff)" }}>{acc.username}</strong> :
+                </p>
+                <TextInput
+                    value={name}
+                    placeholder={acc.username}
+                    onChange={(val: string) => setName(val)}
+                    autoFocus
+                />
+            </ModalContent>
+            <ModalFooter>
+                <Button variant="secondary" onClick={rootProps.onClose} style={{ marginRight: 8 }}>
+                    {t("Cancel")}
+                </Button>
+                <Button variant="primary" onClick={handleSave}>
+                    {t("Save")}
+                </Button>
+            </ModalFooter>
+        </ModalRoot>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Menu contextuel natif Discord (via ContextMenuApi)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AccountActionsMenu({
+    acc,
+    isOpen,
+    isCurrent,
+    onNewDetached,
+    onNewGrouped,
+    onSwitch,
+    onLogout,
+    onChangeToken,
+    onChangeUsername,
+    onCloseInstance
+}: {
+    acc: AccountEntry;
     isOpen: boolean;
-    onClose(): void;
-    onNewWindow(): void;
+    isCurrent: boolean;
     onNewDetached(): void;
     onNewGrouped(): void;
     onSwitch(): void;
-}
-
-function ContextMenuPortal(props: CtxMenuProps) {
-    const { x, y, acc, isOpen, onClose, onNewWindow, onNewDetached, onNewGrouped, onSwitch } = props;
-    const ref = React.useRef<HTMLDivElement>(null);
-    const [pos, setPos] = React.useState({ left: x, top: y });
-
-    // Crée le container portal une seule fois
-    const [container] = React.useState(() => {
-        const el = document.getElementById("nightcord-mi-ctx-root") ?? document.createElement("div");
-        el.id = "nightcord-mi-ctx-root";
-        if (!el.parentNode) document.body.appendChild(el);
-        return el;
-    });
-
-    // Nettoie le container à l'unmount
-    React.useEffect(() => {
-        return () => {
-            try { container.remove(); } catch { }
-        };
-    }, [container]);
-
-    // Ferme si clic en dehors ou Escape
-    React.useEffect(() => {
-        const onDown = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-        };
-        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-        document.addEventListener("mousedown", onDown, true);
-        document.addEventListener("keydown", onKey, true);
-        return () => {
-            document.removeEventListener("mousedown", onDown, true);
-            document.removeEventListener("keydown", onKey, true);
-        };
-    }, [onClose]);
-
-    // Ajuste la position pour rester dans le viewport
-    React.useLayoutEffect(() => {
-        if (!ref.current) return;
-        const rect = ref.current.getBoundingClientRect();
-        setPos({
-            left: Math.min(x, window.innerWidth - rect.width - 8),
-            top: Math.min(y, window.innerHeight - rect.height - 8),
-        });
-    }, [x, y]);
-
-    const menu = (
-        <div ref={ref} className="mi-ctx-menu" style={{ left: pos.left, top: pos.top, position: "fixed" }}>
-            <div className="mi-ctx-header">
-                <span className="mi-ctx-username">{acc.username}</span>
-            </div>
-            <div className="mi-ctx-separator" />
-
-            {acc.hasToken ? (
-                <>
-                    <div className="mi-ctx-item" onClick={() => { onNewWindow(); onClose(); }}>
-                        <WindowIcon /> {t("New detached instance")}
-                    </div>
-                    <div className="mi-ctx-item" onClick={() => { onNewGrouped(); onClose(); }}>
-                        <GroupedIcon /> {t("New grouped instance")}
-                    </div>
-                    <div className="mi-ctx-separator" />
-                </>
-            ) : (
-                <div className="mi-ctx-hint">
-                    {t("Switch to this account once to capture its session token.")}
-                </div>
-            )}
-
-            {acc.id !== UserStore.getCurrentUser()?.id ? (
-                <div className="mi-ctx-item" onClick={() => { onSwitch(); onClose(); }}>
-                    <SwitchIcon /> {t("Quick switch")}
-                </div>
-            ) : (
-                <div className="mi-ctx-hint" style={{ textAlign: "center", color: "var(--brand-500, #5865f2)", fontWeight: 600 }}>
-                    {t("Current active account")}
-                </div>
-            )}
-
-            {isOpen && <>
-                <div className="mi-ctx-separator" />
-                <div className="mi-ctx-item mi-ctx-item--danger" onClick={async () => {
-                    await Native.closeInstance(acc.id).catch(() => { });
-                    onClose();
-                }}>
-                    <CloseIcon /> {t("Close instance")}
-                </div>
-            </>}
-        </div>
+    onLogout(): void;
+    onChangeToken(): void;
+    onChangeUsername(): void;
+    onCloseInstance(): void;
+}) {
+    return (
+        <Menu.Menu navId="nc-mi-account-actions" onClose={ContextMenuApi.closeContextMenu} aria-label={acc.username}>
+            <Menu.MenuGroup>
+                {!isCurrent && (
+                    <Menu.MenuItem
+                        id="mi-switch"
+                        label={t("Switch Account")}
+                        action={onSwitch}
+                    />
+                )}
+                {acc.hasToken && (
+                    <>
+                        <Menu.MenuItem
+                            id="mi-detached"
+                            label={t("New detached instance")}
+                            action={onNewDetached}
+                        />
+                        <Menu.MenuItem
+                            id="mi-grouped"
+                            label={t("New grouped instance")}
+                            action={onNewGrouped}
+                        />
+                    </>
+                )}
+            </Menu.MenuGroup>
+            <Menu.MenuGroup>
+                <Menu.MenuItem
+                    id="mi-change-username"
+                    label={t("Change Display Name")}
+                    action={onChangeUsername}
+                />
+                <Menu.MenuItem
+                    id="mi-change-token"
+                    label={t("Change Token")}
+                    action={onChangeToken}
+                />
+            </Menu.MenuGroup>
+            <Menu.MenuGroup>
+                {isOpen && (
+                    <Menu.MenuItem
+                        id="mi-close-instance"
+                        label={t("Close instance")}
+                        color="danger"
+                        action={onCloseInstance}
+                    />
+                )}
+                <Menu.MenuItem
+                    id="mi-logout"
+                    label={t("Log out")}
+                    color="danger"
+                    action={onLogout}
+                />
+            </Menu.MenuGroup>
+        </Menu.Menu>
     );
-
-    // createPortal monte le menu dans document.body — hors du DOM du modal
-    // ce qui contourne le z-index et l'overflow du ModalRoot
-    return ReactDOM.createPortal(menu, container) as any;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -806,16 +943,19 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     const [savedAccounts, setSavedAccounts] = React.useState<SavedAccount[]>([]);
     const [nativeAccounts, setNativeAccounts] = React.useState<SavedAccount[]>([]);
     const [openInstances, setOpenInstances] = React.useState<string[]>([]);
-    const [ctx, setCtx] = React.useState<CtxState | null>(null);
     const [status, setStatus] = React.useState<string | null>(null);
 
-    React.useEffect(() => {
+    const refreshAccounts = async () => {
         captureCurrentToken();
-        fetchAllAccounts().then(accs => {
-            setSavedAccounts(accs);
-        }).catch(() => {});
+        const accs = await fetchAllAccounts().catch(() => []);
+        setSavedAccounts(accs);
         setNativeAccounts(getNativeAccounts());
-        Native.getOpenInstances().then(ids => setOpenInstances(ids ?? [])).catch(() => { });
+        const ids = await Native.getOpenInstances().catch(() => []);
+        setOpenInstances(ids ?? []);
+    };
+
+    React.useEffect(() => {
+        refreshAccounts();
     }, []);
 
     const allAccounts = React.useMemo<AccountEntry[]>(() => {
@@ -836,9 +976,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     token = "";
                 }
             }
+            const displayUsername = saved?.username || (currentUser as any).globalName || currentUser.username;
             result.push({
                 id: currentUser.id,
-                username: (currentUser as any).globalName || currentUser.username,
+                username: displayUsername,
                 avatar: getAvatarUrl(currentUser.id, currentUser.avatar),
                 token,
                 hasToken: !!token,
@@ -861,7 +1002,8 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     token = "";
                 }
             }
-            result.push({ ...acc, token, hasToken: !!token, isNative: true });
+            const displayUsername = saved?.username || acc.username;
+            result.push({ ...acc, username: displayUsername, token, hasToken: !!token, isNative: true });
         }
 
         // 3. Saved accounts from TokenImporter & Shared Accounts
@@ -897,7 +1039,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
             setTimeout(() => setStatus(null), 4000);
             return;
         }
-        setCtx(null);
         setStatus(t("Opening window…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
@@ -924,7 +1065,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
             setTimeout(() => setStatus(null), 4000);
             return;
         }
-        setCtx(null);
         setStatus(t("Opening detached instance…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
@@ -948,7 +1088,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
             setTimeout(() => setStatus(null), 4000);
             return;
         }
-        setCtx(null);
         setStatus(t("Opening grouped instance…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
@@ -963,10 +1102,92 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         setTimeout(() => setStatus(null), 3000);
     };
 
+    const handleLogout = async (acc: AccountEntry) => {
+        ContextMenuApi.closeContextMenu();
+        if (acc.id === currentUser?.id) {
+            try {
+                const authMod = findByProps("logout");
+                if (typeof authMod?.logout === "function") {
+                    authMod.logout();
+                    return;
+                }
+            } catch {}
+        }
+
+        try {
+            delete tokenCache[acc.id];
+            saveTokenCache();
+
+            const saved = await fetchAllAccounts();
+            const filtered = saved.filter(s => s.id !== acc.id);
+            await DataStore.set(STORE_KEY, filtered);
+            if (typeof (Native as any)?.saveSharedAccounts === "function") {
+                (Native as any).saveSharedAccounts(filtered).catch(() => {});
+            }
+
+            if (FluxDispatcher?.dispatch) {
+                FluxDispatcher.dispatch({ type: "MULTI_ACCOUNT_REMOVE_ACCOUNT", userId: acc.id });
+            }
+
+            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+            if (tokenMod?.encryptAndStoreTokens) {
+                const tokensJson = window.localStorage.getItem("tokens");
+                if (tokensJson) {
+                    try {
+                        const parsed = JSON.parse(tokensJson);
+                        delete parsed[acc.id];
+                        window.localStorage.setItem("tokens", JSON.stringify(parsed));
+                        window.localStorage.setItem("multiaccount_tokens", JSON.stringify(parsed));
+                        tokenMod.encryptAndStoreTokens(parsed).catch(() => {});
+                    } catch {}
+                }
+            }
+
+            if (openInstances.includes(acc.id)) {
+                await Native.closeInstance(acc.id).catch(() => {});
+            }
+
+            showToast(t("Account removed"), Toasts.Type.SUCCESS);
+            await refreshAccounts();
+        } catch (e) {
+            console.error("[MultiInstance] Logout error:", e);
+        }
+    };
+
     const openCtx = (e: React.MouseEvent, acc: AccountEntry) => {
         e.preventDefault();
         e.stopPropagation();
-        setCtx({ x: e.clientX, y: e.clientY, acc });
+        const isCurrent = acc.id === currentUser?.id;
+        const isOpen = openInstances.includes(acc.id);
+
+        ContextMenuApi.openContextMenu(e, () => (
+            <AccountActionsMenu
+                acc={acc}
+                isOpen={isOpen}
+                isCurrent={isCurrent}
+                onNewDetached={() => handleNewDetached(acc)}
+                onNewGrouped={() => handleNewGrouped(acc)}
+                onSwitch={() => {
+                    ContextMenuApi.closeContextMenu();
+                    if (acc.token) switchToQuick(acc.token, acc.id);
+                    else switchNativeAccount(acc.id);
+                }}
+                onLogout={() => handleLogout(acc)}
+                onChangeToken={() => {
+                    ContextMenuApi.closeContextMenu();
+                    openModal(modalProps => <ChangeTokenModal acc={acc} rootProps={modalProps} onSuccess={refreshAccounts} />);
+                }}
+                onChangeUsername={() => {
+                    ContextMenuApi.closeContextMenu();
+                    openModal(modalProps => <ChangeUsernameModal acc={acc} rootProps={modalProps} onSuccess={refreshAccounts} />);
+                }}
+                onCloseInstance={async () => {
+                    ContextMenuApi.closeContextMenu();
+                    await Native.closeInstance(acc.id).catch(() => {});
+                    await refreshInstances();
+                }}
+            />
+        ));
     };
 
     const handleAddAccount = () => {
@@ -1143,25 +1364,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     {status}
                 </p>
             )}
-
-            {/* Context menu via portal */}
-            {ctx && (() => {
-                const acc = allAccounts.find(a => a.id === ctx.acc.id);
-                if (!acc) return null;
-                return (
-                    <ContextMenuPortal
-                        x={ctx.x}
-                        y={ctx.y}
-                        acc={acc}
-                        isOpen={openInstances.includes(acc.id)}
-                        onClose={() => setCtx(null)}
-                        onNewWindow={() => handleNewWindow(acc)}
-                        onNewDetached={() => handleNewDetached(acc)}
-                        onNewGrouped={() => handleNewGrouped(acc)}
-                        onSwitch={() => acc.token ? switchToQuick(acc.token, acc.id) : switchNativeAccount(acc.id)}
-                    />
-                );
-            })()}
         </ModalRoot>
     );
 }
@@ -1174,68 +1376,6 @@ function AccountAvatar({ url, name }: { url: string; name: string; }) {
     const [err, setErr] = React.useState(false);
     if (err || !url) return <div className="nc-mi-avatar-ph">{name?.[0]?.toUpperCase() ?? "?"}</div>;
     return <img src={url} className="nc-mi-avatar" alt="" onError={() => setErr(true)} />;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Icônes
-// ─────────────────────────────────────────────────────────────────────────────
-
-function LockIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z" />
-        </svg>
-    );
-}
-
-function DiscordIcon() {
-    return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19.73 4.87a18.2 18.2 0 0 0-4.6-1.44c-.21.4-.4.8-.58 1.21-1.69-.25-3.4-.25-5.1 0-.18-.41-.37-.82-.59-1.2-1.6.27-3.14.75-4.6 1.43A19.04 19.04 0 0 0 .96 17.7a18.43 18.43 0 0 0 5.63 2.87c.46-.62.86-1.28 1.2-1.98-.65-.25-1.29-.55-1.9-.92.17-.12.32-.24.47-.37 3.58 1.7 7.7 1.7 11.28 0l.46.37c-.6.36-1.25.67-1.9.92.35.7.75 1.35 1.2 1.98 2.03-.63 3.94-1.6 5.64-2.87.47-4.87-.78-9.09-3.3-12.83ZM8.3 15.12c-1.1 0-2-1.02-2-2.27 0-1.24.88-2.26 2-2.26s2.02 1.02 2 2.26c0 1.25-.89 2.27-2 2.27Zm7.4 0c-1.1 0-2-1.02-2-2.27 0-1.24.88-2.26 2-2.26s2.02 1.02 2 2.26c0 1.25-.88 2.27-2 2.27Z" />
-        </svg>
-    );
-}
-
-function WindowIcon() {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z" />
-        </svg>
-    );
-}
-
-function ExternalIcon() {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-        </svg>
-    );
-}
-
-function SwitchIcon() {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M16 17v-3H9v-4h7V7l5 5-5 5zm-9 2H5V5h2V3H5C3.9 3 3 3.9 3 5v14c0 1.1.9 2 2 2h2v-2z" />
-        </svg>
-    );
-}
-
-function GroupedIcon() {
-    return (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M2 7h20v2H2zm0 4h20v2H2zm0 4h20v2H2z" />
-        </svg>
-    );
-}
-
-function CloseIcon() {
-    return (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-        </svg>
-    );
 }
 
 function MultiInstanceIcon({ width = 20, height = 20, className = "" }: { width?: number; height?: number; className?: string; }) {

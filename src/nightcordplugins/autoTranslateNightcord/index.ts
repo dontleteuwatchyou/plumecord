@@ -11,6 +11,19 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Log out": {"en":"Log out","fr":"Se déconnecter","ar":"تسجيل الخروج","es":"Cerrar sesión","ru":"Выйти из аккаунта","zh":"退出登录"},
+    "Change Token": {"en":"Change Token","fr":"Modifier le token","ar":"تغيير التوكن","es":"Cambiar token","ru":"Изменить токен","zh":"更改令牌"},
+    "Change Display Name": {"en":"Change Display Name","fr":"Modifier le nom d'affichage","ar":"تغيير اسم العرض","es":"Cambiar nombre para mostrar","ru":"Изменить отображаемое имя","zh":"更改显示名称"},
+    "Enter a new token for": {"en":"Enter a new token for","fr":"Entrez un nouveau token pour","ar":"أدخل توكن جديد لـ","es":"Introduce un nuevo token para","ru":"Введите новый токен для","zh":"输入新令牌："},
+    "Enter a custom display name for": {"en":"Enter a custom display name for","fr":"Entrez un nom d'affichage personnalisé pour","ar":"أدخل اسماً مخصصاً لـ","es":"Introduce un nombre personalizado para","ru":"Введите отображаемое имя для","zh":"输入自定义显示名称："},
+    "Token updated successfully": {"en":"Token updated successfully","fr":"Token mis à jour avec succès","ar":"تم تحديث التوكن بنجاح","es":"Token actualizado con éxito","ru":"Токен успешно обновлен","zh":"令牌更新成功"},
+    "Display name updated": {"en":"Display name updated","fr":"Nom d'affichage mis à jour","ar":"تم تحديث اسم العرض","es":"Nombre para mostrar actualizado","ru":"Отображаемое имя обновлено","zh":"显示名称已更新"},
+    "Account removed": {"en":"Account removed","fr":"Compte déconnecté","ar":"تمت إزالة الحساب","es":"Cuenta eliminada","ru":"Аккаунт удален","zh":"账户已移除"},
+    "Token cannot be empty.": {"en":"Token cannot be empty.","fr":"Le token ne peut pas être vide.","ar":"لا يمكن أن يكون التوكن فارغاً.","es":"El token no puede estar vacío.","ru":"Токен не может быть пустым.","zh":"令牌不能为空。"},
+    "Token belongs to user ID": {"en":"Token belongs to user ID","fr":"Le token appartient à l'ID","ar":"التوكن ينتمي إلى معرف المستخدم","es":"El token pertenece al ID de usuario","ru":"Токен принадлежит пользователю с ID","zh":"令牌属于用户 ID"},
+    "expected": {"en":"expected","fr":"attendu","ar":"المتوقع","es":"esperado","ru":"ожидался","zh":"预期为"},
+    "Are you sure you want to log out of": {"en":"Are you sure you want to log out of","fr":"Voulez-vous vraiment vous déconnecter de","ar":"هل أنت متأكد من تسجيل الخروج من","es":"¿Estás seguro de que quieres cerrar sesión en","ru":"Вы уверены, что хотите выйти из","zh":"您确定要退出登录吗"},
+    "Display Name": {"en":"Display Name","fr":"Nom d'affichage","ar":"اسم العرض","es":"Nombre para mostrar","ru":"Отображаемое имя","zh":"显示名称"},
     "Stream options": {"en":"Stream options","fr":"Options de diffusion","ar":"خيارات البث","es":"Opciones de transmisión","ru":"Параметры стрима","zh":"直播选项"},
     "Choose a stream type for ghost accounts": {"en":"Choose a stream type for ghost accounts","fr":"Choisissez un type de diffusion pour les comptes fantômes","ar":"اختر نوع البث للحسابات الوهمية","es":"Elige un tipo de transmisión para las cuentas fantasma","ru":"Выберите тип трансляции для фантомных аккаунтов","zh":"为幽灵账户选择直播类型"},
     "Fake Stream (Black screen)": {"en":"Fake Stream (Black screen)","fr":"Fake Stream (Écran noir)","ar":"بث وهمي (شاشة سوداء)","es":"Fake Stream (Pantalla negra)","ru":"Фейковый стрим (Чёрный экран)","zh":"假直播（黑屏）"},
