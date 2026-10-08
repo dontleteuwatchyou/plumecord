@@ -98,11 +98,38 @@
     color: var(--text-muted);
 }
 
+.vc-plugins-reset-btn {
+    background: rgba(237, 66, 69, 0.12) !important;
+    border: 1px solid rgba(237, 66, 69, 0.5) !important;
+    color: #ff7b7b !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.5px !important;
+    padding: 2px 10px !important;
+    min-height: unset !important;
+    height: 24px !important;
+    border-radius: 4px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: pointer !important;
+    width: fit-content !important;
+    margin-top: 10px !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+
+.vc-plugins-reset-btn:hover {
+    background: rgba(237, 66, 69, 0.22) !important;
+    border-color: rgba(237, 66, 69, 0.85) !important;
+    color: #ff9b9b !important;
+}
+
 .vc-plugins-ecosystem-banner-buttons {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
+
 
 .vc-plugins-stats-banner {
     display: grid;

@@ -18,7 +18,8 @@ import { Divider } from "@components/Divider";
 import { Flex } from "@components/Flex";
 import { FormSwitch } from "@components/FormSwitch";
 import { Heading } from "@components/Heading";
-import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, DiscordIcon, RestartIcon } from "@components/Icons";
+import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, DiscordIcon, RestartIcon, WebsiteIcon } from "@components/Icons";
+
 import { Notice } from "@components/Notice";
 import { Paragraph } from "@components/Paragraph";
 import { openPluginModal, SettingsTab, wrapTab } from "@components/settings";
@@ -115,11 +116,12 @@ function DevTeamSection() {
                     action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://source.nightcord.st/nightcord/nightcord") : window.open("https://source.nightcord.st/nightcord/nightcord", "_blank")}
                 />
                 <QuickAction
-                    Icon={PaintbrushIcon}
-                    text="Edit QuickCSS"
-                    action={() => typeof VencordNative !== "undefined" && VencordNative?.quickCss?.openEditor?.()}
+                    Icon={WebsiteIcon}
+                    text="Website"
+                    action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://nightcord.st") : window.open("https://nightcord.st", "_blank")}
                 />
                 {!IS_WEB && (
+
                     <QuickAction
                         Icon={RestartIcon}
                         text="Relaunch Discord"

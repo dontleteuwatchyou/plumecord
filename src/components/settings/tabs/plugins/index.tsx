@@ -850,15 +850,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                         <div className={cl("ecosystem-banner-text")}>
                             <HeadingTertiary>{t("Plugin Ecosystem Management")}</HeadingTertiary>
                             <Paragraph>{t("Manage your Nightcord and community plugins here. Enable, disable, and configure them to your liking.")}</Paragraph>
-                            <Button
-                                variant="dangerPrimary"
-                                size="small"
-                                style={{ marginTop: 10, width: "fit-content" }}
+                            <button
+                                type="button"
+                                className={cl("reset-btn")}
                                 onClick={() => openWarningModal(null, undefined, false, enabledPlugins.length, resetCheckAndDo)}
                             >
                                 {t("RESET")}
-                            </Button>
+                            </button>
                         </div>
+
                         <div className={cl("ecosystem-banner-buttons")}>
                             {!isLikeLoggedIn && (
                                 <Button
