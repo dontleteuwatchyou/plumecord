@@ -27,18 +27,25 @@ function copyIfExists(src, dst) {
 
 
 // ── multi-instance icons ────────────────────────────────────────────────────
-const lolllSrc    = path.join(process.env.USERPROFILE || "", "Desktop", "lolll");
-const outMIIcons  = path.join(distDir, "multi-instance-icons");
+const iconsSrc         = path.join(rootDir, "assets", "multi-instance-icons");
+const outMIIcons       = path.join(distDir, "multi-instance-icons");
+const outNightcordIcons = path.join(rootDir, "dist", "nightcord", "multi-instance-icons");
+
 fs.mkdirSync(outMIIcons, { recursive: true });
-if (fs.existsSync(lolllSrc)) {
+fs.mkdirSync(outNightcordIcons, { recursive: true });
+
+if (fs.existsSync(iconsSrc)) {
     let copied = 0;
-    for (let i = 1; i <= 5; i++) {
-        const src = path.join(lolllSrc, `${i}.ico`);
-        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(outMIIcons, `${i}.ico`)); copied++; }
+    const files = fs.readdirSync(iconsSrc).filter(f => f.endsWith('.ico'));
+    for (const file of files) {
+        const src = path.join(iconsSrc, file);
+        fs.copyFileSync(src, path.join(outMIIcons, file));
+        fs.copyFileSync(src, path.join(outNightcordIcons, file));
+        copied++;
     }
-    console.log(`[collect] ✅ ${copied} multi-instance icons copied`);
+    console.log(`[collect] ✅ ${copied} multi-instance icons copied from assets/multi-instance-icons`);
 } else {
-    console.warn("[collect] ⚠️ Desktop/lolll NOT FOUND — multi-instance icons missing");
+    console.warn("[collect] ⚠️ assets/multi-instance-icons NOT FOUND");
 }
 
 // ── mac folder ──────────────────────────────────────────────────────────────

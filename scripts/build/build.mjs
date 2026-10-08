@@ -239,6 +239,18 @@ await Promise.all([
     }))
 ]);
 
+// Copy multi-instance icons from assets to dist
+try {
+    const { cp } = await import("fs/promises");
+    const iconsSrc = join(dirname(fileURLToPath(import.meta.url)), "../../assets/multi-instance-icons");
+    if (await exists(iconsSrc)) {
+        await Promise.all([
+            cp(iconsSrc, "dist/desktop/multi-instance-icons", { recursive: true }),
+            cp(iconsSrc, "dist/nightcord/multi-instance-icons", { recursive: true })
+        ]);
+    }
+} catch { }
+
 await Promise.all([
     createPackage("dist/desktop", "dist/desktop.asar"),
     createPackage("dist/nightcord", "dist/nightcord.asar"),

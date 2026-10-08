@@ -903,20 +903,42 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
 // Ouvre une nouvelle fenêtre Discord isolée
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Compteur d'icones detached : tourne de 1 a 5
+// Compteur d'icones detached : tourne de 1 à N (9 icones disponibles)
 let iconCounter = 1;
 
-// Chemin vers le dossier d'icones detached (multi-instance-icons/ dans le dist)
+// Chemin vers le dossier d'icones detached (multi-instance-icons/ dans assets ou dist)
 function getDetachedIconDir(): string {
-    // En production : {app_dir}/multi-instance-icons/
-    // En dev : Desktop/lolll/
+    // 1. Dossier assets du code source
+    const sourceDir = join(__dirname, "..", "..", "assets", "multi-instance-icons");
+    if (existsSync(sourceDir)) return sourceDir;
+
+    // 2. Dossier dist aux côtés du patcher
+    const distDir = join(__dirname, "multi-instance-icons");
+    if (existsSync(distDir)) return distDir;
+
+    // 3. Dossier de l'exécutable Discord / resources
     const exeDir = join(process.execPath, "..");
     const prodDir = join(exeDir, "multi-instance-icons");
     if (existsSync(prodDir)) return prodDir;
-    // Fallback dev : Desktop/lolll
-    const desktopDir = join(app.getPath("desktop"), "lolll");
-    if (existsSync(desktopDir)) return desktopDir;
-    return prodDir;
+    const resDir = join(exeDir, "resources", "multi-instance-icons");
+    if (existsSync(resDir)) return resDir;
+
+    // 4. Dossier racine de travail
+    const cwdDir = join(process.cwd(), "assets", "multi-instance-icons");
+    if (existsSync(cwdDir)) return cwdDir;
+
+    return distDir;
+}
+
+function getAvailableIconCount(): number {
+    try {
+        const dir = getDetachedIconDir();
+        if (existsSync(dir)) {
+            const files = readdirSync(dir).filter(f => /^\d+\.ico$/i.test(f));
+            if (files.length > 0) return files.length;
+        }
+    } catch {}
+    return 9;
 }
 
 export async function openInstanceWindow(
@@ -945,12 +967,13 @@ export async function openInstanceWindow(
         // En donnant un ID different a chaque fenetre, elles ne se regroupent pas
         const uniqueAppId = `nightcord.instance.${userId}.${Date.now()}`;
 
-        // Icone : rotation 1→2→3→4→5→1→... depuis multi-instance-icons/
+        // Icone : rotation 1→2→...→N→1 depuis multi-instance-icons/
         let currentIconPath = "";
         const iconDir = getDetachedIconDir();
+        const maxIcons = getAvailableIconCount();
         currentIconPath = join(iconDir, `${iconCounter}.ico`);
         if (!existsSync(currentIconPath)) currentIconPath = "";
-        iconCounter = iconCounter >= 5 ? 1 : iconCounter + 1;
+        iconCounter = iconCounter >= maxIcons ? 1 : iconCounter + 1;
 
         // Session Electron isolee par userId
         const savedPartition = `persist:nightcord-mi-${userId}`;
