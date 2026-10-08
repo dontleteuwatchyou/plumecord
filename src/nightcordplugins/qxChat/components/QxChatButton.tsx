@@ -10,6 +10,7 @@ import { plugins, stopPlugin } from "@api/PluginManager";
 import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import { Settings } from "Vencord";
 import { setQxChatOpen } from "../index";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 export function QxChatIcon(height: number, width: number, className?: string) {
     // Extracted from qxchat.svg - removed the background rect and adjusted viewBox
@@ -36,9 +37,15 @@ export function QxChatButton() {
     const [isOpen, setIsOpen] = React.useState(false);
     
     React.useEffect(() => {
-        const handleToggle = (e: any) => setIsOpen(e.isOpen);
+        const handleToggle = (e: any) => {
+            setIsOpen(e.isOpen);
+            setOverlayActive("qxchat", e.isOpen);
+        };
         FluxDispatcher.subscribe("QXCHAT_TOGGLE", handleToggle);
-        return () => FluxDispatcher.unsubscribe("QXCHAT_TOGGLE", handleToggle);
+        return () => {
+            FluxDispatcher.unsubscribe("QXCHAT_TOGGLE", handleToggle);
+            setOverlayActive("qxchat", false);
+        };
     }, []);
 
     const stopPropagation = (e: React.SyntheticEvent) => {

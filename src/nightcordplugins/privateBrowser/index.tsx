@@ -13,6 +13,7 @@ import { FluxDispatcher } from "@webpack/common";
 import { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
 import { forceServerListRerender } from "@nightcordplugins/_utils/serverListRefresh";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 export const Native = VencordNative.pluginHelpers.PrivateBrowser as PluginNative<any>;
 
@@ -67,6 +68,7 @@ export function setBrowserOpen(open: boolean) {
             savedPath = window.location.pathname + window.location.search + window.location.hash;
         }
         isBrowserOpen = open;
+        setOverlayActive("browser", open);
         updateButtonState();
         FluxDispatcher.dispatch({ type: "BROWSER_TOGGLE", isOpen: open });
         if (!open) {
@@ -115,6 +117,8 @@ export default definePlugin({
     },
 
     stop() {
+        setBrowserOpen(false);
+        setOverlayActive("browser", false);
         removeServerListElement(ServerListRenderPosition.Above, RenderElement);
         forceServerListRerender();
         

@@ -11,6 +11,7 @@ import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import { Settings } from "Vencord";
 import { Native, setBrowserOpen, settings } from "../index";
 import { browserBase64 } from "../icon";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 type ExtensionInfo = { id: string; name: string; version: string; description: string; iconUrl: string; dir: string; };
 
@@ -450,17 +451,18 @@ export function BrowserButton() {
             
             if (e.isOpen) {
                 container.style.display = "flex";
-                document.body.classList.add("browser-is-open");
+                setOverlayActive("browser", true);
                 switchWebviewTab(activeTabId);
             } else {
                 container.style.display = "none";
-                document.body.classList.remove("browser-is-open");
+                setOverlayActive("browser", false);
             }
         };
         
         FluxDispatcher.subscribe("BROWSER_TOGGLE", handleToggle);
         return () => {
             FluxDispatcher.unsubscribe("BROWSER_TOGGLE", handleToggle);
+            setOverlayActive("browser", false);
             delete (window as any).__privateBrowserNavigate;
             delete (window as any).__privateBrowserOnNavigate;
         };

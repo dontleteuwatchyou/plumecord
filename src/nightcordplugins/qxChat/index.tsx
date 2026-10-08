@@ -9,6 +9,7 @@ import { addServerListElement, removeServerListElement, ServerListRenderPosition
 import { ErrorBoundary } from "@components/index";
 import { FluxDispatcher, React } from "@webpack/common";
 import { forceServerListRerender } from "@nightcordplugins/_utils/serverListRefresh";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 import { QxChatButton } from "./components/QxChatButton";
 
@@ -39,6 +40,7 @@ export function setQxChatOpen(open: boolean) {
             savedPath = window.location.pathname + window.location.search + window.location.hash;
         }
         isQxChatOpen = open;
+        setOverlayActive("qxchat", open);
         updateButtonState();
         
         // Dispatch an event so the view can update
@@ -90,6 +92,8 @@ export default definePlugin({
     },
 
     stop() {
+        setQxChatOpen(false);
+        setOverlayActive("qxchat", false);
         removeServerListElement(ServerListRenderPosition.Above, RenderElement);
         forceServerListRerender();
         

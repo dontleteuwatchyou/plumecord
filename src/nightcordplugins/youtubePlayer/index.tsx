@@ -9,6 +9,7 @@ import { addServerListElement, removeServerListElement, ServerListRenderPosition
 import { ErrorBoundary } from "@components/index";
 import { FluxDispatcher, ThemeStore, React } from "@webpack/common";
 import { forceServerListRerender } from "@nightcordplugins/_utils/serverListRefresh";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 const Native = VencordNative.pluginHelpers.youtubePlayer as PluginNative<any>;
 
@@ -41,6 +42,7 @@ export function setYoutubeOpen(open: boolean) {
             savedPath = window.location.pathname + window.location.search + window.location.hash;
         }
         isYoutubeOpen = open;
+        setOverlayActive("ytd", open);
         updateButtonState();
         
         // Dispatch an event so the view can update
@@ -92,6 +94,8 @@ export default definePlugin({
     },
 
     stop() {
+        setYoutubeOpen(false);
+        setOverlayActive("ytd", false);
         removeServerListElement(ServerListRenderPosition.Above, RenderElement);
         forceServerListRerender();
         

@@ -11,6 +11,7 @@ import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import { Settings } from "Vencord";
 import { setYoutubeOpen } from "../index";
 import { youtubeBase64 } from "./icon";
+import { setOverlayActive } from "@nightcordplugins/_utils/fullscreenOverlayHelper";
 
 export function YoutubeButton() {
     const [hovered, setHovered] = React.useState(false);
@@ -32,16 +33,19 @@ export function YoutubeButton() {
                 iframeContainer.style.opacity = "1";
                 iframeContainer.style.visibility = "visible";
                 iframeContainer.style.pointerEvents = "auto";
-                document.body.classList.add("ytd-is-open");
+                setOverlayActive("ytd", true);
             } else {
                 iframeContainer.style.opacity = "0";
                 iframeContainer.style.visibility = "hidden";
                 iframeContainer.style.pointerEvents = "none";
-                document.body.classList.remove("ytd-is-open");
+                setOverlayActive("ytd", false);
             }
         };
         FluxDispatcher.subscribe("YOUTUBE_TOGGLE", handleToggle);
-        return () => FluxDispatcher.unsubscribe("YOUTUBE_TOGGLE", handleToggle);
+        return () => {
+            FluxDispatcher.unsubscribe("YOUTUBE_TOGGLE", handleToggle);
+            setOverlayActive("ytd", false);
+        };
     }, []);
 
     const stopPropagation = (e: React.SyntheticEvent) => {
