@@ -112,35 +112,35 @@ function DevTeamSection() {
             <QuickActionCard>
                 <QuickAction
                     Icon={GithubIcon}
-                    text="Source Code"
+                    text={t("Source Code")}
                     action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://source.nightcord.st/nightcord/nightcord") : window.open("https://source.nightcord.st/nightcord/nightcord", "_blank")}
                 />
                 <QuickAction
                     Icon={WebsiteIcon}
-                    text="Website"
+                    text={t("Website")}
                     action={() => (typeof VencordNative !== "undefined" && VencordNative?.native?.openExternal) ? VencordNative.native.openExternal("https://nightcord.st") : window.open("https://nightcord.st", "_blank")}
                 />
                 {!IS_WEB && (
 
                     <QuickAction
                         Icon={RestartIcon}
-                        text="Relaunch Discord"
+                        text={t("Quick Reload")}
                         action={relaunch}
                     />
                 )}
                 <QuickAction
                     Icon={HeartIcon}
-                    text="Contribute"
+                    text={t("Contribute")}
                     action={() => openModal(props => <ContributeModal {...props} />)}
                 />
                 <QuickAction
                     Icon={OwnerCrownIcon}
-                    text="DEV Team"
+                    text={t("DEV Team")}
                     action={() => setShowDevs(!showDevs)}
                 />
                 <QuickAction
                     Icon={DiscordIcon}
-                    text="Discord Server"
+                    text={t("Discord Server")}
                     disabled
                 />
             </QuickActionCard>

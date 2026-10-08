@@ -146,12 +146,12 @@ function ReloadRequiredCard({ required, enabledPlugins, openWarningModal, resetC
         <Card className={classes(cl("info-card"), required && "vc-warning-card")}>
             {required ? (
                 <>
-                    <HeadingTertiary>{t("Restart required!")}</HeadingTertiary>
+                    <HeadingTertiary>{t("Quick Reload Required")}</HeadingTertiary>
                     <Paragraph className={cl("dep-text")}>
-                        {t("Restart now to apply new plugins and their settings")}
+                        {t("Reload now to apply new plugins and their settings in 1 second")}
                     </Paragraph>
                     <Button variant="primary" className={cl("restart-button")} onClick={() => relaunch()}>
-                        {t("Restart")}
+                        {t("Quick Reload")}
                     </Button>
                 </>
             ) : (
@@ -298,7 +298,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
             const remainingCount = pluginNames.length - displayed.length;
 
             Alerts.show({
-                title: "Restart required",
+                title: t("Quick Reload Required"),
                 body: (
                     <div>
                         {displayed.map((s, i) => (
@@ -310,8 +310,8 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                         {remainingCount > 0 && <span> and {remainingCount} more</span>}
                     </div>
                 ),
-                confirmText: "Restart now",
-                cancelText: "Later!",
+                confirmText: t("Quick Reload Now"),
+                cancelText: t("Later"),
                 onConfirm: () => relaunch()
             });
         };
@@ -576,15 +576,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
         if (restartNeeded) {
             Alerts.show({
-                title: "Restart Required",
+                title: t("Quick Reload Required"),
                 body: (
                     <>
-                        <p style={{ textAlign: "center" }}>Some plugins require a restart to fully disable.</p>
-                        <p style={{ textAlign: "center" }}>Would you like to restart now?</p>
+                        <p style={{ textAlign: "center" }}>{t("Some plugins require a quick reload to fully disable.")}</p>
+                        <p style={{ textAlign: "center" }}>{t("Would you like to reload now?")}</p>
                     </>
                 ),
-                confirmText: "Restart Now",
-                cancelText: "Later",
+                confirmText: t("Quick Reload Now"),
+                cancelText: t("Later"),
                 onConfirm: () => relaunch()
             });
         }
@@ -639,15 +639,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
             if (restartNeeded) {
                 Alerts.show({
-                    title: "Restart Required",
+                    title: t("Quick Reload Required"),
                     body: (
                         <>
-                            <p style={{ textAlign: "center" }}>Some plugins require a restart to apply their default configuration.</p>
-                            <p style={{ textAlign: "center" }}>Would you like to restart now?</p>
+                            <p style={{ textAlign: "center" }}>{t("Some plugins require a quick reload to apply their default configuration.")}</p>
+                            <p style={{ textAlign: "center" }}>{t("Would you like to reload now?")}</p>
                         </>
                     ),
-                    confirmText: "Restart Now",
-                    cancelText: "Later",
+                    confirmText: t("Quick Reload Now"),
+                    cancelText: t("Later"),
                     onConfirm: () => relaunch()
                 });
             } else {
@@ -718,15 +718,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
             if (restartNeeded) {
                 Alerts.show({
-                    title: "Restart Required",
+                    title: t("Quick Reload Required"),
                     body: (
                         <>
-                            <p style={{ textAlign: "center" }}>Some plugins require a restart to apply the basic configuration.</p>
-                            <p style={{ textAlign: "center" }}>Would you like to restart now?</p>
+                            <p style={{ textAlign: "center" }}>{t("Some plugins require a quick reload to apply the basic configuration.")}</p>
+                            <p style={{ textAlign: "center" }}>{t("Would you like to reload now?")}</p>
                         </>
                     ),
-                    confirmText: "Restart Now",
-                    cancelText: "Later",
+                    confirmText: t("Quick Reload Now"),
+                    cancelText: t("Later"),
                     onConfirm: () => relaunch()
                 });
             } else {
