@@ -12,7 +12,7 @@ import { plugins } from "@api/PluginManager";
 import { useSettings } from "@api/Settings";
 import { t } from "@api/i18n";
 
-import { Button } from "@components/Button";
+import { Button, LinkButton } from "@components/Button";
 import { Card } from "@components/Card";
 import { Divider } from "@components/Divider";
 import { Flex } from "@components/Flex";
@@ -29,7 +29,9 @@ import { Margins } from "@utils/margins";
 import { identity } from "@utils/misc";
 import { openModal } from "@utils/modal";
 import { relaunch } from "@utils/native";
-import { Avatar, OAuth2AuthorizeModal, React, Select, UserStore, showToast, Toasts } from "@webpack/common";
+import { Avatar, OAuth2AuthorizeModal, React, Select, UserStore, showToast, Toasts, TextInput } from "@webpack/common";
+import { Settings } from "Vencord";
+import { getGroqKey, setGroqKey } from "@nightcordplugins/nightcordAI/groqManager";
 
 
 import { ContributeModal } from "../../../../nightcord/renderer/components/ContributeModal";
@@ -215,6 +217,59 @@ function StealthModeButton() {
         </Button>
     );
 }
+
+function GroqApiKeySection() {
+    const [key, setKey] = React.useState("");
+
+    React.useEffect(() => {
+        getGroqKey().then(stored => {
+            if (stored) setKey(stored);
+        });
+    }, []);
+
+    const handleChange = (val: string) => {
+        setKey(val);
+        setGroqKey(val);
+        try {
+            if (Settings.plugins.NightcordAI) {
+                Settings.plugins.NightcordAI.apiKey = val.trim();
+            }
+            if (Settings.plugins.AutoCorrect) {
+                Settings.plugins.AutoCorrect.apiKey = val.trim();
+            }
+        } catch {}
+    };
+
+    return (
+        <>
+            <Card className={Margins.top20}>
+                <Heading tag="h5">{t("How to get a Groq API key")}</Heading>
+                <Paragraph>
+                    {t("Create a free account on console.groq.com, then go to API Keys and click Create API Key. Copy the key and paste it in the Api Key field above.")}
+                </Paragraph>
+                <Paragraph style={{ marginTop: 6 }}>
+                    {t("The Groq API is free and gives access to fast LLMs (Llama, Mixtral…).")}
+                </Paragraph>
+                <LinkButton size="small" href="https://console.groq.com/keys" className={Margins.top8}>
+                    {t("Create API Key")}
+                </LinkButton>
+            </Card>
+
+            <Heading className={Margins.top20}>{t("Settings")}</Heading>
+            <Heading tag="h5" className={Margins.top8}>{t("Api Key")}</Heading>
+            <Paragraph className={Margins.bottom8}>
+                {t("Groq API Key (console.groq.com/keys) — shared with AutoCorrect and VoiceDictation")}
+            </Paragraph>
+            <TextInput
+                value={key}
+                placeholder="gsk_••••••••••••••••••••••••••••••••••"
+                type="password"
+                onChange={handleChange}
+            />
+        </>
+    );
+}
+
 function EquicordSettings() {
     const settings = useSettings();
     const stealthActive = useStealthActive();
@@ -497,7 +552,6 @@ function EquicordSettings() {
             >
                 {compactActive ? t("✓ Compact Mode Enabled — Click to disable") : t("Enable Compact Mode")}
             </Button>
-
             <Divider className={Margins.top20} />
 
             <Heading className={Margins.top20}>{t("Stealth Mode")}</Heading>
@@ -505,6 +559,10 @@ function EquicordSettings() {
                 {t("Hides all Nightcord visual elements without disabling plugins. Shortcut: Ctrl+Shift+H")}
             </Paragraph>
             <StealthModeButton />
+
+            <Divider className={Margins.top20} />
+
+            <GroqApiKeySection />
 
         </SettingsTab>
     );
