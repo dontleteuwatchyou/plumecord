@@ -48,8 +48,8 @@ export async function getStoragePath(_: any): Promise<string> {
 export async function writeVaultFile(_: any, content: string): Promise<boolean> {
     try {
         const dir = getStorageDirectory();
-        const targetPath = path.join(dir, "vault.enc");
-        const tmpPath = path.join(dir, "vault.enc.tmp");
+        const targetPath = path.join(dir, "vault.json");
+        const tmpPath = path.join(dir, "vault.json.tmp");
 
         fs.writeFileSync(tmpPath, content, "utf8");
         fs.renameSync(tmpPath, targetPath);
@@ -63,9 +63,13 @@ export async function writeVaultFile(_: any, content: string): Promise<boolean> 
 export async function readVaultFile(_: any): Promise<string | null> {
     try {
         const dir = getStorageDirectory();
-        const targetPath = path.join(dir, "vault.enc");
-        if (fs.existsSync(targetPath)) {
-            return fs.readFileSync(targetPath, "utf8");
+        const jsonPath = path.join(dir, "vault.json");
+        if (fs.existsSync(jsonPath)) {
+            return fs.readFileSync(jsonPath, "utf8");
+        }
+        const encPath = path.join(dir, "vault.enc");
+        if (fs.existsSync(encPath)) {
+            return fs.readFileSync(encPath, "utf8");
         }
         return null;
     } catch (e) {

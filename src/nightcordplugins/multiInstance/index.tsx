@@ -12,7 +12,7 @@ import { definePluginSettings } from "@api/Settings";
 import { ModalCloseButton, ModalContent, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps, waitFor } from "@webpack";
-import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, MediaEngineStore, React, ReactDOM, UserStore } from "@webpack/common";
+import { AuthenticationStore, FluxDispatcher, Forms, IconUtils, MediaEngineStore, React, ReactDOM, showToast, Toasts, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 
@@ -46,6 +46,32 @@ const settings = definePluginSettings({
 const Native = VencordNative.pluginHelpers.MultiInstance as PluginNative<typeof import("./native")>;
 const STORE_KEY = "TokenImporter_accounts";
 const MI_TOKEN_CACHE_KEY = "nightcord-mi-token-cache";
+
+export const INSTANCE_PALETTE = [
+    "#5865F2", // Discord Blurple
+    "#57F287", // Green
+    "#FEE75C", // Yellow
+    "#EB459E", // Fuchsia / Pink
+    "#ED4245", // Red
+    "#00AFF4", // Cyan
+    "#9B59B6", // Purple
+    "#F47B67", // Coral / Peach
+    "#E67E22", // Orange
+    "#1ABC9C", // Turquoise / Teal
+    "#FF73FA", // Neon Pink
+    "#3498DB", // Sky Blue
+    "#2ECC71", // Emerald
+    "#E91E63", // Hot Pink
+];
+
+export function getAccountColor(userId: string): string {
+    if (!userId) return INSTANCE_PALETTE[0];
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+        hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+    }
+    return INSTANCE_PALETTE[hash % INSTANCE_PALETTE.length];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Token cache — capture les tokens des accounts natifs Discord
@@ -940,72 +966,198 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         setCtx({ x: e.clientX, y: e.clientY, acc });
     };
 
+    const handleAddAccount = () => {
+        try {
+            const multiAuth = findByProps("openMultiAccountLoginModal", "switchAccount") ?? findByProps("loginToken");
+            if (multiAuth?.openMultiAccountLoginModal) {
+                rootProps.onClose();
+                multiAuth.openMultiAccountLoginModal();
+                return;
+            }
+        } catch { }
+        try {
+            const tokenMod = findByProps("openTokenImporterModal") as any;
+            if (typeof tokenMod?.openTokenImporterModal === "function") {
+                rootProps.onClose();
+                tokenMod.openTokenImporterModal();
+                return;
+            }
+        } catch { }
+        try {
+            const importer = (window as any).openTokenImporterModal;
+            if (typeof importer === "function") {
+                rootProps.onClose();
+                importer();
+                return;
+            }
+        } catch { }
+        showToast(t("Use TokenImporter or Switch Account in Discord settings."), Toasts.Type.INFO);
+    };
+
     return (
-        <ModalRoot {...rootProps} size="small">
-            <ModalHeader separator={false}>
-                <Forms.FormTitle tag="h4" style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, color: "#fff" }}>
-                    <DiscordIcon /> {t("Multi-instance")}
-                </Forms.FormTitle>
-                <ModalCloseButton onClick={rootProps.onClose} />
-            </ModalHeader>
-
-            <ModalContent className="mi-modal-content">
-                <p className="mi-subtitle">
-                    <strong>{t("Left click")}</strong> {t("or")} <strong>{t("right click")}</strong> → {t("options menu")}
-                </p>
-
-                <div className="mi-list">
-                    <div className="mi-section-label">
-                        {allAccounts.length} {t(allAccounts.length !== 1 ? "ACCOUNTS" : "ACCOUNT")}
-                    </div>
-
-                    {allAccounts.length === 0 ? (
-                        <div className="mi-empty">
-                            {t("No account found.")}<br />
-                            {t("Use")} "<strong>{t("Switch Account")}</strong>" {t("in Discord or add tokens via")} <strong>{t("TokenImporter")}</strong>.
+        <ModalRoot {...rootProps} size="medium" className="container__8a031 size-md__8a031 nc-mi-modal-container">
+            <header className="section__8a031 header__8a031 nc-mi-header">
+                <div data-align="stretch" data-justify="start" data-direction="vertical" data-wrap="false" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8, 8px)", padding: 0 }}>
+                    <div className="headerLayout__8a031 nc-mi-header-layout">
+                        <div className="headerMain__8a031">
+                            <h1 className="heading-lg/semibold_cf4812 defaultColor__5345c headerTitle__8a031 nc-mi-title" style={{ color: "var(--text-strong, #f2f3f5)" }}>
+                                {t("Manage Accounts")}
+                            </h1>
                         </div>
-                    ) : allAccounts.map(acc => {
-                        const isCurrent = acc.id === currentUser?.id;
-                        const isOpen = openInstances.includes(acc.id);
-                        const tagText = isCurrent
-                            ? `@${currentUser?.username ?? acc.username}`
-                            : (acc.hasToken
-                                ? (acc.isNative ? t("Discord Account") : t("Token"))
-                                : t("Requires normal login to capture token"));
-                        return (
-                            <div
-                                key={acc.id}
-                                className={`mi-account-row${isCurrent ? " mi-account-row--current" : ""}${isOpen ? " mi-account-row--active" : ""}${!acc.hasToken && !isCurrent ? " mi-account-row--no-token" : ""}`}
-                                onClick={e => openCtx(e, acc)}
-                                onContextMenu={e => openCtx(e, acc)}
+                        <div className="headerTrailing__8a031">
+                            <button
+                                className="button_a22cb0 md_a22cb0 icon-only_a22cb0 nc-mi-close-btn"
+                                type="button"
+                                aria-label="Close"
+                                onClick={rootProps.onClose}
                             >
-                                <AccountAvatar url={acc.avatar} name={acc.username} />
-                                <div className="mi-account-info">
-                                    <span className="mi-account-name">{acc.username}</span>
-                                    <span className="mi-account-tag">
-                                        {tagText}
-                                    </span>
+                                <div className="buttonChildrenWrapper_a22cb0">
+                                    <div className="buttonChildren_a22cb0">
+                                        <svg className="icon_a22cb0" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                                            <path fill="currentColor" d="M19.3 20.7a1 1 0 0 0 1.4-1.4L13.42 12l7.3-7.3a1 1 0 0 0-1.42-1.4L12 10.58l-7.3-7.3a1 1 0 0 0-1.4 1.42L10.58 12l-7.3 7.3a1 1 0 1 0 1.42 1.4L12 13.42l7.3 7.3Z"></path>
+                                        </svg>
+                                    </div>
                                 </div>
-                                {isCurrent ? (
-                                    <span className="mi-badge-current">{t("Active")}</span>
-                                ) : acc.hasToken ? (
-                                    isOpen
-                                        ? <span className="mi-badge-open">{t("Open")}</span>
-                                        : <span className="mi-badge-arrow">›</span>
-                                ) : (
-                                    <span className="mi-badge-lock"><LockIcon /></span>
-                                )}
-                            </div>
-                        );
-                    })}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="headerSubtitleWrapper__8a031">
+                        <div className="text-md/normal_cf4812 headerSubtitle__8a031 nc-mi-subtitle" style={{ color: "var(--text-subtle, #949ba4)" }}>
+                            {t("Switch accounts, sign in, sign out, go wild.")}
+                        </div>
+                    </div>
                 </div>
+            </header>
 
-                {status && (
-                    <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", textAlign: "center", margin: "4px 0 0" }}>
-                        {status}
-                    </p>
-                )}
-            </ModalContent>
+            <div className="body__8a031 scrollbarGutterStable_d125d2 auto_d125d2 scrollerBase_d125d2 nc-mi-body" style={{ overflow: "hidden scroll" }}>
+                <main className="bodyInner__8a031">
+                    <div className="list__920b8 nc-mi-list">
+                        {allAccounts.length === 0 ? (
+                            <div className="mi-empty">
+                                {t("No accounts found.")}
+                            </div>
+                        ) : allAccounts.map((acc, index) => {
+                            const isCurrent = acc.id === currentUser?.id;
+                            const isOpen = openInstances.includes(acc.id);
+                            const accColor = getAccountColor(acc.id);
+                            return (
+                                <React.Fragment key={acc.id}>
+                                    {index > 0 && <div role="separator" className="separator__920b8 nc-mi-separator" />}
+                                    <div
+                                        className={`accountCard__920b8 nc-mi-account-card${isCurrent ? " nc-mi-account-card--active" : ""}`}
+                                        onContextMenu={e => openCtx(e, acc)}
+                                    >
+                                        <div className="userDetails__920b8 nc-mi-user-details">
+                                            <div
+                                                className="wrapper__44b0c nc-mi-avatar-wrapper"
+                                                style={{
+                                                    width: 40,
+                                                    height: 40,
+                                                    border: `2px solid ${accColor}`,
+                                                    boxShadow: `0 0 8px ${accColor}55`
+                                                }}
+                                            >
+                                                <AccountAvatar url={acc.avatar} name={acc.username} />
+                                            </div>
+                                            <div className="usernameSection__920b8 nc-mi-user-section">
+                                                <div className="username__920b8 nc-mi-username" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                                    <span
+                                                        className="nc-mi-color-dot"
+                                                        style={{
+                                                            width: 8,
+                                                            height: 8,
+                                                            borderRadius: "50%",
+                                                            backgroundColor: accColor,
+                                                            flexShrink: 0,
+                                                            boxShadow: `0 0 6px ${accColor}aa`
+                                                        }}
+                                                        title={`Instance Color: ${accColor}`}
+                                                    />
+                                                    <div className="lineClamp1__4bd52 text-md/semibold_cf4812" style={{ color: "var(--text-strong, #f2f3f5)" }}>
+                                                        {acc.username}
+                                                    </div>
+                                                </div>
+                                                {isCurrent ? (
+                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-active" style={{ color: "var(--text-feedback-positive, #23a55a)" }}>
+                                                        {t("Active account")}
+                                                    </div>
+                                                ) : isOpen ? (
+                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-open" style={{ color: accColor, display: "flex", alignItems: "center", gap: 4 }}>
+                                                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: accColor }} />
+                                                        {t("Instance running")}
+                                                    </div>
+                                                ) : (
+                                                    !acc.hasToken ? (
+                                                        <div className="nc-mi-hint-sub">
+                                                            {t("Requires login")}
+                                                        </div>
+                                                    ) : null
+                                                )}
+                                            </div>
+                                            <div className="userActions__920b8 nc-mi-user-actions">
+                                                {!isCurrent && (
+                                                    <button
+                                                        className="button_a22cb0 md_a22cb0 secondary_a22cb0 hasText_a22cb0 nc-mi-switch-btn"
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (acc.token) switchToQuick(acc.token, acc.id);
+                                                            else switchNativeAccount(acc.id);
+                                                        }}
+                                                    >
+                                                        <div className="buttonChildrenWrapper_a22cb0">
+                                                            <div className="buttonChildren_a22cb0">
+                                                                <span className="lineClamp1__4bd52 text-md/medium_cf4812">{t("Switch")}</span>
+                                                            </div>
+                                                        </div>
+                                                    </button>
+                                                )}
+                                                <button
+                                                    className="button_a22cb0 md_a22cb0 icon-only_a22cb0 nc-mi-options-btn"
+                                                    type="button"
+                                                    aria-label="More Options"
+                                                    onClick={e => openCtx(e, acc)}
+                                                >
+                                                    <div className="buttonChildrenWrapper_a22cb0">
+                                                        <div className="buttonChildren_a22cb0">
+                                                            <svg className="icon_a22cb0" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+                                                                <path fill="currentColor" fillRule="evenodd" d="M4 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm8 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" clipRule="evenodd"></path>
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                </main>
+            </div>
+
+            <footer className="actionBar__8a031 section__8a031 nc-mi-footer">
+                <div className="actionBarTrailing__8a031 actionBarTrailingFullWidth__8a031" style={{ width: "100%" }}>
+                    <div data-align="stretch" data-justify="start" data-direction="horizontal" data-wrap="true" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8, 8px)", padding: 0, width: "100%" }}>
+                        <button
+                            className="button_a22cb0 md_a22cb0 secondary_a22cb0 hasText_a22cb0 fullWidth_a22cb0 nc-mi-add-btn"
+                            type="button"
+                            onClick={handleAddAccount}
+                        >
+                            <div className="buttonChildrenWrapper_a22cb0">
+                                <div className="buttonChildren_a22cb0">
+                                    <span className="lineClamp1__4bd52 text-md/medium_cf4812">{t("Add an account")}</span>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </footer>
+
+            {status && (
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", textAlign: "center", margin: "8px 0 0" }}>
+                    {status}
+                </p>
+            )}
 
             {/* Context menu via portal */}
             {ctx && (() => {
@@ -1035,8 +1187,8 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
 function AccountAvatar({ url, name }: { url: string; name: string; }) {
     const [err, setErr] = React.useState(false);
-    if (err || !url) return <div className="mi-avatar mi-avatar--ph">{name?.[0]?.toUpperCase() ?? "?"}</div>;
-    return <img src={url} className="mi-avatar" alt="" onError={() => setErr(true)} />;
+    if (err || !url) return <div className="nc-mi-avatar-ph">{name?.[0]?.toUpperCase() ?? "?"}</div>;
+    return <img src={url} className="nc-mi-avatar" alt="" onError={() => setErr(true)} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

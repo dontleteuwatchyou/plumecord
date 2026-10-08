@@ -28,25 +28,20 @@ import {
 } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
-import { openSavedMessagesChangePasswordModal } from "./ChangePasswordModal";
 import { SavedMessagesSettingsPanel } from "./SettingsPanel";
 import {
     addSavedMessage,
-    checkVaultStatus,
     clearAllSavedMessages,
     deleteSavedMessage,
     getAttachmentUrl,
     getSavedMessages,
-    isVaultPasswordSet,
-    isVaultUnlocked,
-    lockVault,
+    loadSavedMessages,
     Native,
     SAVED_MESSAGES_CHANNEL_ID,
     SAVED_MESSAGES_USER_ID,
     SavedMessage,
     storeListeners
 } from "./store";
-import { openSavedMessagesUnlockModal } from "./UnlockModal";
 
 export const settings = definePluginSettings({
     isDmClosed: {
@@ -264,6 +259,7 @@ let unpatchHTTPGet: (() => void) | null = null;
 let unpatchHTTPPost: (() => void) | null = null;
 let unpatchPermissionStore: (() => void) | null = null;
 let unpatchRelationshipStore: (() => void) | null = null;
+let unpatchSelectedChannelStore: (() => void) | null = null;
 let unpatchAvatarFns: (() => void)[] = [];
 
 function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
@@ -320,22 +316,6 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
 }
 
 function injectMessages() {
-    if (!isVaultUnlocked()) {
-        try {
-            FluxDispatcher.dispatch({
-                type: "LOAD_MESSAGES_SUCCESS",
-                channelId: SAVED_MESSAGES_CHANNEL_ID,
-                messages: [],
-                isBefore: false,
-                isAfter: false,
-                hasMoreBefore: false,
-                hasMoreAfter: false,
-                limit: 100,
-            });
-        } catch { }
-        return;
-    }
-
     const messages = getSavedMessages();
     const discordRecords = messages.map(convertSavedMessageToDiscordMessage);
 
@@ -387,13 +367,7 @@ function handleChannelSelect(e: any) {
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
         setDmClosedSafe(false);
         reinjectSavedMessages();
-        if (isVaultUnlocked()) {
-            injectMessages();
-        } else {
-            openSavedMessagesUnlockModal(() => {
-                injectMessages();
-            });
-        }
+        injectMessages();
     }
 }
 
@@ -403,17 +377,15 @@ export function SavedMessagesBanner() {
     React.useEffect(() => {
         const listener = () => {
             forceUpdate(n => n + 1);
-            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID && isVaultUnlocked()) {
+            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
                 injectMessages();
             }
         };
         storeListeners.add(listener);
-        checkVaultStatus();
+        loadSavedMessages();
+
         return () => { storeListeners.delete(listener); };
     }, []);
-
-    const isUnlocked = isVaultUnlocked();
-    const isPasswordSet = isVaultPasswordSet();
 
     return (
         <div className="nc-saved-messages-banner">
@@ -424,132 +396,53 @@ export function SavedMessagesBanner() {
                     </svg>
                 </div>
                 <div>
-                    <div className="nc-saved-messages-banner-title">
-                        {isUnlocked
-                            ? t("Saved Messages - Local Encrypted Storage")
-                            : t("Saved Messages Vault")}
+                    <div className="nc-saved-messages-banner-title" style={{ color: "var(--header-primary, #ffffff)" }}>
+                        {t("Saved Messages")}
                     </div>
-                    <div className="nc-saved-messages-banner-desc">
-                        {isUnlocked
-                            ? t("Messages and media are stored locally on your PC. Zero server transit.")
-                            : t("Vault locked. Enter your master password to view saved messages.")}
+                    <div className="nc-saved-messages-banner-desc" style={{ color: "var(--text-muted, #949ba4)" }}>
+                        {t("Messages and media are stored locally on your PC. Zero server transit.")}
                     </div>
                 </div>
             </div>
             <div className="nc-saved-messages-banner-actions">
-                {isUnlocked ? (
-                    <>
-                        <button
-                            className="nc-saved-messages-banner-btn"
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--background-modifier-accent)",
-                                color: "var(--header-primary)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => openSavedMessagesChangePasswordModal()}
-                        >
-                            {t("Change Password")}
-                        </button>
-                        <button
-                            className="nc-saved-messages-banner-btn"
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--background-modifier-accent)",
-                                color: "var(--header-primary)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                lockVault();
-                                showToast(t("Saved Messages locked."), Toasts.Type.INFO);
-                            }}
-                        >
-                            {t("Lock Vault")}
-                        </button>
-                        <button
-                            className="nc-saved-messages-banner-btn"
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--background-modifier-accent)",
-                                color: "var(--header-primary)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                try { Native?.openStorageFolder?.(); } catch { }
-                            }}
-                        >
-                            {t("Open Folder")}
-                        </button>
-                        <button
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--status-danger-background)",
-                                color: "var(--text-danger)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                if (confirm(t("Are you sure you want to permanently clear all saved messages and media files?"))) {
-                                    clearAllSavedMessages();
-                                    showToast(t("All saved messages cleared."), Toasts.Type.SUCCESS);
-                                }
-                            }}
-                        >
-                            {t("Clear All")}
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <button
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--brand-500)",
-                                color: "#ffffff",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => openSavedMessagesUnlockModal(() => injectMessages())}
-                        >
-                            {isPasswordSet ? t("Unlock Saved Messages") : t("Set Master Password")}
-                        </button>
-                        <button
-                            className="nc-saved-messages-banner-btn"
-                            style={{
-                                padding: "6px 12px",
-                                background: "var(--background-modifier-accent)",
-                                color: "var(--header-primary)",
-                                border: "none",
-                                borderRadius: 4,
-                                cursor: "pointer",
-                                fontSize: 12,
-                                fontWeight: 600
-                            }}
-                            onClick={() => {
-                                try { Native?.openStorageFolder?.(); } catch { }
-                            }}
-                        >
-                            {t("Open Folder")}
-                        </button>
-                    </>
-                )}
+                <button
+                    className="nc-saved-messages-banner-btn"
+                    style={{
+                        padding: "6px 12px",
+                        background: "var(--background-modifier-accent)",
+                        color: "var(--header-primary, #ffffff)",
+                        border: "none",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600
+                    }}
+                    onClick={() => {
+                        try { Native?.openStorageFolder?.(); } catch { }
+                    }}
+                >
+                    {t("Open Folder")}
+                </button>
+                <button
+                    style={{
+                        padding: "6px 12px",
+                        background: "var(--status-danger-background, rgba(242,63,67,0.2))",
+                        color: "var(--text-danger, #f23f43)",
+                        border: "none",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 600
+                    }}
+                    onClick={() => {
+                        if (confirm(t("Are you sure you want to permanently clear all saved messages and media files?"))) {
+                            clearAllSavedMessages();
+                            showToast(t("All saved messages cleared."), Toasts.Type.SUCCESS);
+                        }
+                    }}
+                >
+                    {t("Clear All")}
+                </button>
             </div>
         </div>
     );
@@ -623,14 +516,6 @@ export default definePlugin({
 
     async onBeforeMessageSend(channelId, messageObj, options, props) {
         if (channelId !== SAVED_MESSAGES_CHANNEL_ID) return;
-
-        if (!isVaultUnlocked()) {
-            showToast(t("Vault locked. Enter your master password to view saved messages."), Toasts.Type.FAILURE);
-            openSavedMessagesUnlockModal(() => {
-                injectMessages();
-            });
-            return { cancel: true };
-        }
 
         const text = messageObj?.content || options?.content || "";
         const files: (File | any)[] = [];
@@ -727,7 +612,14 @@ export default definePlugin({
     },
 
     start() {
-        checkVaultStatus();
+        loadSavedMessages().then(() => {
+            if (!isDmClosedSafe()) {
+                reinjectSavedMessages();
+                if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
+                    injectMessages();
+                }
+            }
+        });
 
         // Patch SnowflakeUtils
         waitFor(["fromTimestamp", "extractTimestamp"], (m: any) => {
@@ -1296,14 +1188,33 @@ export default definePlugin({
             setTimeout(reinjectSavedMessages, 1500);
         }
 
+        const onChannelChange = () => {
+            try {
+                const currentId = SelectedChannelStore.getChannelId();
+                if (currentId === SAVED_MESSAGES_CHANNEL_ID) {
+                    setDmClosedSafe(false);
+                    reinjectSavedMessages();
+                    injectMessages();
+                }
+            } catch { }
+        };
+
+        if (typeof SelectedChannelStore?.addChangeListener === "function") {
+            SelectedChannelStore.addChangeListener(onChannelChange);
+            unpatchSelectedChannelStore = () => {
+                try { SelectedChannelStore.removeChangeListener(onChannelChange); } catch { }
+            };
+        }
+
         if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
             setTimeout(() => {
-                handleChannelSelect({ channelId: SAVED_MESSAGES_CHANNEL_ID });
-            }, 200);
+                onChannelChange();
+            }, 100);
         }
     },
 
     stop() {
+        if (unpatchSelectedChannelStore) unpatchSelectedChannelStore();
         if (unpatchUserProfileStore) unpatchUserProfileStore();
         if (unpatchUserStore) unpatchUserStore();
         if (unpatchUserStoreGetUsers) unpatchUserStoreGetUsers();

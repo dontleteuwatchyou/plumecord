@@ -11,7 +11,7 @@
 
 import "./checkNodeVersion.js";
 
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { recoverOriginalAsar } from "./recoverAsar.mjs";
@@ -130,12 +130,22 @@ function checkBuild() {
 function inject(resourcesDir) {
     const appDirPath = join(resourcesDir, "app");
 
-    // Nettoyer les fichiers de mods tiers
+    // Nettoyer les fichiers de mods tiers et anciens dossiers factices app.asar
     for (const modAsar of ["vencord.asar", "equicord.asar", "betterdiscord.asar"]) {
         const p = join(resourcesDir, modAsar);
         if (existsSync(p)) {
             try { rmSync(p, { force: true }); } catch {}
         }
+    }
+
+    const appAsarPath = join(resourcesDir, "app.asar");
+    if (existsSync(appAsarPath)) {
+        try {
+            const stat = statSync(appAsarPath);
+            if (stat.isDirectory()) {
+                rmSync(appAsarPath, { recursive: true, force: true });
+            }
+        } catch {}
     }
 
     // Étape 1 : Garantir la présence de _app.asar original (> 1MB)

@@ -8,8 +8,6 @@ import * as DataStore from "@api/DataStore";
 import { PluginNative } from "@utils/types";
 import { FluxDispatcher } from "@webpack/common";
 
-import { decryptData, EncryptedEnvelope, encryptData } from "./crypto";
-
 export const SAVED_MESSAGES_CHANNEL_ID = "888888888888888888";
 export const SAVED_MESSAGES_USER_ID = "888888888888888880";
 
@@ -58,11 +56,8 @@ export interface SavedMessagesPayload {
 
 export const Native = (window as any).VencordNative?.pluginHelpers?.SavedMessages as PluginNative<typeof import("./native")> | undefined;
 
-// In-memory session state (preserved across navigation, cleared only on app reload/restart)
-let sessionPassword: string | null = null;
-let isUnlockedState = false;
-let isPasswordSetState = false;
-let decryptedMessagesCache: SavedMessage[] = [];
+let savedMessagesCache: SavedMessage[] = [];
+let isLoaded = false;
 
 // High-speed Blob URL cache for instant image/video loading
 const mediaBlobUrlCache = new Map<string, string>();
@@ -73,19 +68,26 @@ export function notifyStoreChange() {
 }
 
 export function isVaultUnlocked(): boolean {
-    return isUnlockedState;
+    return true;
 }
 
 export function isVaultPasswordSet(): boolean {
-    return isPasswordSetState;
+    return false;
 }
 
-export function getDecryptedMessages(): SavedMessage[] {
-    return isUnlockedState ? [...decryptedMessagesCache] : [];
+export async function checkVaultStatus(): Promise<{ isPasswordSet: boolean; isUnlocked: boolean }> {
+    if (!isLoaded) {
+        await loadSavedMessages();
+    }
+    return { isPasswordSet: false, isUnlocked: true };
 }
 
 export function getSavedMessages(): SavedMessage[] {
-    return isUnlockedState ? [...decryptedMessagesCache] : [];
+    return [...savedMessagesCache];
+}
+
+export function getDecryptedMessages(): SavedMessage[] {
+    return [...savedMessagesCache];
 }
 
 // ─── Media & Blob URL Helpers (Instant GPU-accelerated rendering) ───────────
@@ -189,17 +191,27 @@ export async function preloadMediaAttachments(messages: SavedMessage[]): Promise
     }
 }
 
-// ─── Vault Envelope Storage ──────────────────────────────────────────────────
+// ─── Direct Local Storage ───────────────────────────────────────────────────
 
-async function readRawEnvelope(): Promise<EncryptedEnvelope | null> {
+export async function loadSavedMessages(): Promise<SavedMessage[]> {
     try {
         if (Native?.readVaultFile) {
             const diskContent = await Native.readVaultFile();
             if (diskContent) {
                 try {
                     const parsed = JSON.parse(diskContent);
-                    if (parsed?.version === 1 && parsed?.ciphertext && parsed?.salt) {
-                        return parsed as EncryptedEnvelope;
+                    if (Array.isArray(parsed?.messages)) {
+                        savedMessagesCache = parsed.messages;
+                        isLoaded = true;
+                        preloadMediaAttachments(savedMessagesCache).catch(() => { });
+                        notifyStoreChange();
+                        return [...savedMessagesCache];
+                    } else if (Array.isArray(parsed)) {
+                        savedMessagesCache = parsed;
+                        isLoaded = true;
+                        preloadMediaAttachments(savedMessagesCache).catch(() => { });
+                        notifyStoreChange();
+                        return [...savedMessagesCache];
                     }
                 } catch { }
             }
@@ -207,108 +219,24 @@ async function readRawEnvelope(): Promise<EncryptedEnvelope | null> {
     } catch { }
 
     try {
-        const dsContent = await DataStore.get<EncryptedEnvelope>(DATASTORE_KEY);
-        if (dsContent?.version === 1 && dsContent?.ciphertext && dsContent?.salt) {
-            return dsContent;
+        const dsContent = await DataStore.get<any>(DATASTORE_KEY);
+        if (dsContent) {
+            if (Array.isArray(dsContent?.messages)) {
+                savedMessagesCache = dsContent.messages;
+            } else if (Array.isArray(dsContent)) {
+                savedMessagesCache = dsContent;
+            }
         }
     } catch { }
 
-    return null;
-}
-
-async function writeRawEnvelope(envelope: EncryptedEnvelope): Promise<void> {
-    const jsonStr = JSON.stringify(envelope, null, 2);
-    try {
-        if (Native?.writeVaultFile) {
-            await Native.writeVaultFile(jsonStr);
-        }
-    } catch { }
-
-    try {
-        await DataStore.set(DATASTORE_KEY, envelope);
-    } catch { }
-}
-
-export async function checkVaultStatus(): Promise<{ isPasswordSet: boolean; isUnlocked: boolean }> {
-    const envelope = await readRawEnvelope();
-    isPasswordSetState = Boolean(envelope);
-    if (!isPasswordSetState) {
-        isUnlockedState = false;
-    }
+    isLoaded = true;
+    preloadMediaAttachments(savedMessagesCache).catch(() => { });
     notifyStoreChange();
-    return { isPasswordSet: isPasswordSetState, isUnlocked: isUnlockedState };
-}
-
-export async function unlockVault(password: string): Promise<boolean> {
-    if (!password || !password.trim()) throw new Error("Password cannot be empty");
-
-    const envelope = await readRawEnvelope();
-    if (!envelope) {
-        // First-time setup: initialize encrypted vault
-        sessionPassword = password;
-        isUnlockedState = true;
-        isPasswordSetState = true;
-        decryptedMessagesCache = [];
-
-        const payload: SavedMessagesPayload = {
-            version: 1,
-            messages: [],
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-        };
-        const newEnvelope = await encryptData(JSON.stringify(payload), password);
-        await writeRawEnvelope(newEnvelope);
-        notifyStoreChange();
-        return true;
-    }
-
-    const decryptedStr = await decryptData(envelope, password);
-    const payload = JSON.parse(decryptedStr) as SavedMessagesPayload;
-    decryptedMessagesCache = Array.isArray(payload.messages) ? payload.messages : [];
-    sessionPassword = password;
-    isUnlockedState = true;
-    isPasswordSetState = true;
-
-    // Asynchronously pre-cache media attachments so images load instantly
-    preloadMediaAttachments(decryptedMessagesCache).catch(() => { });
-
-    notifyStoreChange();
-    return true;
-}
-
-export function lockVault(): void {
-    sessionPassword = null;
-    isUnlockedState = false;
-    decryptedMessagesCache = [];
-
-    // Revoke cached Blob URLs to free memory
-    for (const url of mediaBlobUrlCache.values()) {
-        try { URL.revokeObjectURL(url); } catch { }
-    }
-    mediaBlobUrlCache.clear();
-
-    try {
-        FluxDispatcher.dispatch({
-            type: "LOAD_MESSAGES_SUCCESS",
-            channelId: SAVED_MESSAGES_CHANNEL_ID,
-            messages: [],
-            isBefore: false,
-            isAfter: false,
-            hasMoreBefore: false,
-            hasMoreAfter: false,
-            limit: 50,
-        });
-    } catch { }
-
-    notifyStoreChange();
+    return [...savedMessagesCache];
 }
 
 async function persistCurrentMessages(): Promise<void> {
-    if (!sessionPassword || !isUnlockedState) return;
-
-    // Sanitize payload to omit giant base64 dataUrls from the encrypted JSON:
-    // Files are safely saved on disk in media/ folder, keeping vault encryption sub-millisecond!
-    const sanitizedMessages: SavedMessage[] = decryptedMessagesCache.map(msg => ({
+    const sanitizedMessages: SavedMessage[] = savedMessagesCache.map(msg => ({
         ...msg,
         attachments: (msg.attachments || []).map(att => ({
             id: att.id,
@@ -321,7 +249,6 @@ async function persistCurrentMessages(): Promise<void> {
             isImage: att.isImage,
             isVideo: att.isVideo,
             isAudio: att.isAudio
-            // Note: dataUrl is not serialized to disk to keep vault lightweight
         }))
     }));
 
@@ -332,8 +259,17 @@ async function persistCurrentMessages(): Promise<void> {
         updatedAt: Date.now()
     };
 
-    const envelope = await encryptData(JSON.stringify(payload), sessionPassword);
-    await writeRawEnvelope(envelope);
+    const jsonStr = JSON.stringify(payload, null, 2);
+
+    try {
+        if (Native?.writeVaultFile) {
+            await Native.writeVaultFile(jsonStr);
+        }
+    } catch { }
+
+    try {
+        await DataStore.set(DATASTORE_KEY, payload);
+    } catch { }
 }
 
 function fileToBase64(file: File | Blob): Promise<string> {
@@ -357,8 +293,8 @@ function generateSnowflake(): string {
 }
 
 export async function addSavedMessage(content: string, files: (File | Blob | any)[] = []): Promise<SavedMessage> {
-    if (!isUnlockedState || !sessionPassword) {
-        throw new Error("Vault is locked. Please unlock first.");
+    if (!isLoaded) {
+        await loadSavedMessages();
     }
 
     const savedAttachments: SavedAttachment[] = [];
@@ -430,7 +366,7 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
         isBot: true
     };
 
-    decryptedMessagesCache.unshift(savedMsg);
+    savedMessagesCache.unshift(savedMsg);
     await persistCurrentMessages();
     notifyStoreChange();
 
@@ -438,9 +374,11 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
 }
 
 export async function deleteSavedMessage(messageId: string): Promise<void> {
-    if (!isUnlockedState || !sessionPassword) return;
+    if (!isLoaded) {
+        await loadSavedMessages();
+    }
 
-    const target = decryptedMessagesCache.find(m => m.id === messageId);
+    const target = savedMessagesCache.find(m => m.id === messageId);
     if (target?.attachments?.length) {
         for (const att of target.attachments) {
             try {
@@ -455,7 +393,7 @@ export async function deleteSavedMessage(messageId: string): Promise<void> {
         }
     }
 
-    decryptedMessagesCache = decryptedMessagesCache.filter(m => m.id !== messageId);
+    savedMessagesCache = savedMessagesCache.filter(m => m.id !== messageId);
     await persistCurrentMessages();
     notifyStoreChange();
 
@@ -469,9 +407,7 @@ export async function deleteSavedMessage(messageId: string): Promise<void> {
 }
 
 export async function clearAllSavedMessages(): Promise<void> {
-    if (!isUnlockedState || !sessionPassword) return;
-
-    for (const msg of decryptedMessagesCache) {
+    for (const msg of savedMessagesCache) {
         for (const att of msg.attachments || []) {
             try {
                 if (att.mediaId && mediaBlobUrlCache.has(att.mediaId)) {
@@ -485,7 +421,7 @@ export async function clearAllSavedMessages(): Promise<void> {
         }
     }
 
-    decryptedMessagesCache = [];
+    savedMessagesCache = [];
     await persistCurrentMessages();
     notifyStoreChange();
 
@@ -501,26 +437,4 @@ export async function clearAllSavedMessages(): Promise<void> {
             limit: 50,
         });
     } catch { }
-}
-
-export async function changeVaultPassword(oldPass: string, newPass: string): Promise<boolean> {
-    if (!newPass || !newPass.trim()) throw new Error("New password cannot be empty");
-
-    const envelope = await readRawEnvelope();
-    if (!envelope) {
-        return unlockVault(newPass);
-    }
-
-    const decryptedStr = await decryptData(envelope, oldPass);
-    const payload = JSON.parse(decryptedStr) as SavedMessagesPayload;
-    payload.updatedAt = Date.now();
-
-    sessionPassword = newPass;
-    const newEnvelope = await encryptData(JSON.stringify(payload), newPass);
-    await writeRawEnvelope(newEnvelope);
-
-    isUnlockedState = true;
-    isPasswordSetState = true;
-    notifyStoreChange();
-    return true;
 }

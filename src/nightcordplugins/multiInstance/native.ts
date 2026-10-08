@@ -708,6 +708,34 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
 // ─────────────────────────────────────────────────────────────────────────────
 // Crée le script de préchargement qui injecte le token
 // ─────────────────────────────────────────────────────────────────────────────
+// Palette de couleurs déterministes par compte / instance
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const INSTANCE_PALETTE = [
+    "#5865F2", // Discord Blurple
+    "#57F287", // Green
+    "#FEE75C", // Yellow
+    "#EB459E", // Fuchsia / Pink
+    "#ED4245", // Red
+    "#00AFF4", // Cyan
+    "#9B59B6", // Purple
+    "#F47B67", // Coral / Peach
+    "#E67E22", // Orange
+    "#1ABC9C", // Turquoise / Teal
+    "#FF73FA", // Neon Pink
+    "#3498DB", // Sky Blue
+    "#2ECC71", // Emerald
+    "#E91E63", // Hot Pink
+];
+
+export function getAccountColor(userId: string): string {
+    if (!userId) return INSTANCE_PALETTE[0];
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+        hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+    }
+    return INSTANCE_PALETTE[hash % INSTANCE_PALETTE.length];
+}
 
 /**
  * Ensemble des chemins de preloads actuellement utilisés par une fenêtre MI ouverte.
@@ -716,7 +744,7 @@ function registerNotificationIpc(win: BrowserWindow): () => void {
  */
 const activePreloads = new Set<string>();
 
-function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}, targetUserId = "", audioSettings?: any): string {
+function createTokenPreload(token: string, sharedSettings: Record<string, string> = {}, targetUserId = "", audioSettings?: any, username = ""): string {
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
@@ -757,11 +785,14 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
     }
 
     // Serialize values to JS string literals safe to embed via JSON.stringify
+    const accentColor = getAccountColor(effectiveUid);
     const tokenLiteral = JSON.stringify(cleanToken);
     const settingsLiteral = JSON.stringify(JSON.stringify(sharedSettings ?? {}));
     const targetUserIdLiteral = JSON.stringify(effectiveUid ?? "");
     const tokensMapLiteral = JSON.stringify(JSON.stringify(tokensMap));
     const audioLiteral = JSON.stringify(rawAudioStr);
+    const colorLiteral = JSON.stringify(accentColor);
+    const usernameLiteral = JSON.stringify(username || "");
 
     // Inner script: runs in main world via webFrame.executeJavaScript.
     // Must be plain JavaScript — no TypeScript syntax, no template literals.
@@ -772,6 +803,8 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  var TARGET_UID = " + targetUserIdLiteral + ";",
         "  var TOKENS_JSON = " + tokensMapLiteral + ";",
         "  var RAW_AUDIO = " + audioLiteral + ";",
+        "  var ACCENT_COLOR = " + colorLiteral + ";",
+        "  var ACCENT_USER = " + usernameLiteral + ";",
         "  var CONFLICT = ['token','default_token','multiaccount_tokens','tokens','user_id_cache','MultiAccountStore','AuthenticationStore','login_token'];",
         "  try {",
         "    var sh = JSON.parse(SETTINGS_JSON || '{}');",
@@ -801,6 +834,18 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  }",
         "  try { Object.defineProperty(window, '__nightcord_token', { value: RAW_TOKEN, writable: false, configurable: true }); } catch(e) {}",
         "  try { Object.defineProperty(window, '__nightcord_user_id', { value: TARGET_UID, writable: false, configurable: true }); } catch(e) {}",
+        "  try { Object.defineProperty(window, '__nightcord_instance_color', { value: ACCENT_COLOR, writable: false, configurable: true }); } catch(e) {}",
+        "  (function() {",
+        "    function injectTheme() {",
+        "      if (document.getElementById('nightcord-mi-theme-style')) return;",
+        "      var style = document.createElement('style');",
+        "      style.id = 'nightcord-mi-theme-style';",
+        "      style.textContent = ':root { --nightcord-instance-color: ' + ACCENT_COLOR + ' !important; } #app-mount::before { content: \"\" !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; height: 3.5px !important; background: ' + ACCENT_COLOR + ' !important; z-index: 999999999 !important; pointer-events: none !important; box-shadow: 0 1px 10px ' + ACCENT_COLOR + 'aa !important; }';",
+        "      (document.head || document.documentElement).appendChild(style);",
+        "    }",
+        "    if (document.head || document.documentElement) injectTheme();",
+        "    document.addEventListener('DOMContentLoaded', injectTheme);",
+        "  })();",
         "  (function() {",
         "    var lastUI = 0;",
         "    window.addEventListener('pointerdown', function(e) { if (e.isTrusted) lastUI = Date.now(); }, true);",
@@ -960,7 +1005,7 @@ export async function openInstanceWindow(
         }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio, username);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -978,6 +1023,7 @@ export async function openInstanceWindow(
             backgroundColor: "#313338",
             title: `Nightcord [${username || userId}]`,
             icon: currentIconPath || undefined,
+            show: false,
             webPreferences: {
                 preload: join(__dirname, "preload.js"),
                 contextIsolation: true,
@@ -1011,6 +1057,35 @@ export async function openInstanceWindow(
         const wcId = wc.id;
         openWindows.set(userId, win);
         pendingInstanceAuth.set(wcId, { token: cleanTok, userId, username });
+
+        const accentColor = getAccountColor(userId || getUserIdFromToken(cleanTok));
+        let hasShown = false;
+        const showWindowSafely = () => {
+            if (hasShown || win.isDestroyed()) return;
+            hasShown = true;
+            win.show();
+            win.focus();
+        };
+
+        win.once("ready-to-show", showWindowSafely);
+
+        const accentCss = `
+            :root {
+                --nightcord-instance-color: ${accentColor} !important;
+            }
+            #app-mount::before {
+                content: "" !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                height: 3.5px !important;
+                background: ${accentColor} !important;
+                z-index: 999999999 !important;
+                pointer-events: none !important;
+                box-shadow: 0 1px 10px ${accentColor}aa !important;
+            }
+        `;
 
         win.on("enter-html-full-screen", () => {
             if (!win.isDestroyed()) win.setFullScreen(true);
@@ -1128,9 +1203,21 @@ export async function openInstanceWindow(
                 document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
-        wc.on("dom-ready", () => wc.executeJavaScript(injectJs).catch(() => { }));
-        wc.on("did-finish-load", () => wc.executeJavaScript(injectJs).catch(() => { }));
-        wc.on("did-navigate", () => wc.executeJavaScript(injectJs).catch(() => { }));
+        wc.on("dom-ready", () => {
+            showWindowSafely();
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        wc.on("did-finish-load", () => {
+            showWindowSafely();
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        wc.on("did-navigate", () => {
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        setTimeout(showWindowSafely, 3000);
 
         // Titre de la fenetre
         wc.on("page-title-updated", (e, title) => {
@@ -1230,7 +1317,7 @@ export async function openInstanceWindowGrouped(
         }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
         const sharedSettings = await captureAndMergeSharedSettings(_);
-        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio);
+        const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio, username);
         ses.setPreloads([preloadPath]);
 
         const win = new BrowserWindow({
@@ -1247,6 +1334,7 @@ export async function openInstanceWindowGrouped(
             darkTheme: true,
             backgroundColor: "#313338",
             title: `Nightcord [${username || userId}]`,
+            show: false,
             webPreferences: {
                 preload: join(__dirname, "preload.js"),
                 contextIsolation: true,
@@ -1265,6 +1353,35 @@ export async function openInstanceWindowGrouped(
         const wcId = wc.id;
         openGroupedWindows.set(userId, win);
         pendingInstanceAuth.set(wcId, { token: cleanTok, userId, username });
+
+        const accentColor = getAccountColor(userId || getUserIdFromToken(cleanTok));
+        let hasShown = false;
+        const showWindowSafely = () => {
+            if (hasShown || win.isDestroyed()) return;
+            hasShown = true;
+            win.show();
+            win.focus();
+        };
+
+        win.once("ready-to-show", showWindowSafely);
+
+        const accentCss = `
+            :root {
+                --nightcord-instance-color: ${accentColor} !important;
+            }
+            #app-mount::before {
+                content: "" !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                height: 3.5px !important;
+                background: ${accentColor} !important;
+                z-index: 999999999 !important;
+                pointer-events: none !important;
+                box-shadow: 0 1px 10px ${accentColor}aa !important;
+            }
+        `;
 
         win.on("enter-html-full-screen", () => {
             if (!win.isDestroyed()) win.setFullScreen(true);
@@ -1376,9 +1493,21 @@ export async function openInstanceWindowGrouped(
                 document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
-        wc.on("dom-ready", () => wc.executeJavaScript(injectJs).catch(() => {}));
-        wc.on("did-finish-load", () => wc.executeJavaScript(injectJs).catch(() => {}));
-        wc.on("did-navigate", () => wc.executeJavaScript(injectJs).catch(() => {}));
+        wc.on("dom-ready", () => {
+            showWindowSafely();
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        wc.on("did-finish-load", () => {
+            showWindowSafely();
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        wc.on("did-navigate", () => {
+            wc.insertCSS(accentCss).catch(() => {});
+            wc.executeJavaScript(injectJs).catch(() => {});
+        });
+        setTimeout(showWindowSafely, 3000);
 
         wc.on("page-title-updated", (e, title) => {
             const cleanTitle = title.replace(/^\(\d+\)\s*/, "").replace(/\s*\[.*\]$/, "");
