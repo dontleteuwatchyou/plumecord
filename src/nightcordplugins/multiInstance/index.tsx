@@ -1032,7 +1032,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                 </div>
             </header>
 
-            <div className="body__8a031 scrollbarGutterStable_d125d2 auto_d125d2 scrollerBase_d125d2 nc-mi-body" style={{ overflow: "hidden scroll" }}>
+            <div className="body__8a031 nc-mi-body">
                 <main className="bodyInner__8a031">
                     <div className="list__920b8 nc-mi-list">
                         {allAccounts.length === 0 ? (
@@ -1042,7 +1042,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                         ) : allAccounts.map((acc, index) => {
                             const isCurrent = acc.id === currentUser?.id;
                             const isOpen = openInstances.includes(acc.id);
-                            const accColor = getAccountColor(acc.id);
                             return (
                                 <React.Fragment key={acc.id}>
                                     {index > 0 && <div role="separator" className="separator__920b8 nc-mi-separator" />}
@@ -1055,27 +1054,13 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                                                 className="wrapper__44b0c nc-mi-avatar-wrapper"
                                                 style={{
                                                     width: 40,
-                                                    height: 40,
-                                                    border: `2px solid ${accColor}`,
-                                                    boxShadow: `0 0 8px ${accColor}55`
+                                                    height: 40
                                                 }}
                                             >
                                                 <AccountAvatar url={acc.avatar} name={acc.username} />
                                             </div>
                                             <div className="usernameSection__920b8 nc-mi-user-section">
-                                                <div className="username__920b8 nc-mi-username" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                                    <span
-                                                        className="nc-mi-color-dot"
-                                                        style={{
-                                                            width: 8,
-                                                            height: 8,
-                                                            borderRadius: "50%",
-                                                            backgroundColor: accColor,
-                                                            flexShrink: 0,
-                                                            boxShadow: `0 0 6px ${accColor}aa`
-                                                        }}
-                                                        title={`Instance Color: ${accColor}`}
-                                                    />
+                                                <div className="username__920b8 nc-mi-username">
                                                     <div className="lineClamp1__4bd52 text-md/semibold_cf4812" style={{ color: "var(--text-strong, #f2f3f5)" }}>
                                                         {acc.username}
                                                     </div>
@@ -1085,8 +1070,8 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                                                         {t("Active account")}
                                                     </div>
                                                 ) : isOpen ? (
-                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-open" style={{ color: accColor, display: "flex", alignItems: "center", gap: 4 }}>
-                                                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: accColor }} />
+                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-open" style={{ color: "var(--brand-500, #5865f2)", display: "flex", alignItems: "center", gap: 4 }}>
+                                                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "var(--brand-500, #5865f2)" }} />
                                                         {t("Instance running")}
                                                     </div>
                                                 ) : (

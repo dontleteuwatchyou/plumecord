@@ -834,18 +834,6 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "  }",
         "  try { Object.defineProperty(window, '__nightcord_token', { value: RAW_TOKEN, writable: false, configurable: true }); } catch(e) {}",
         "  try { Object.defineProperty(window, '__nightcord_user_id', { value: TARGET_UID, writable: false, configurable: true }); } catch(e) {}",
-        "  try { Object.defineProperty(window, '__nightcord_instance_color', { value: ACCENT_COLOR, writable: false, configurable: true }); } catch(e) {}",
-        "  (function() {",
-        "    function injectTheme() {",
-        "      if (document.getElementById('nightcord-mi-theme-style')) return;",
-        "      var style = document.createElement('style');",
-        "      style.id = 'nightcord-mi-theme-style';",
-        "      style.textContent = ':root { --nightcord-instance-color: ' + ACCENT_COLOR + ' !important; } #app-mount::before { content: \"\" !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; height: 3.5px !important; background: ' + ACCENT_COLOR + ' !important; z-index: 999999999 !important; pointer-events: none !important; box-shadow: 0 1px 10px ' + ACCENT_COLOR + 'aa !important; }';",
-        "      (document.head || document.documentElement).appendChild(style);",
-        "    }",
-        "    if (document.head || document.documentElement) injectTheme();",
-        "    document.addEventListener('DOMContentLoaded', injectTheme);",
-        "  })();",
         "  (function() {",
         "    var lastUI = 0;",
         "    window.addEventListener('pointerdown', function(e) { if (e.isTrusted) lastUI = Date.now(); }, true);",
@@ -1069,24 +1057,6 @@ export async function openInstanceWindow(
 
         win.once("ready-to-show", showWindowSafely);
 
-        const accentCss = `
-            :root {
-                --nightcord-instance-color: ${accentColor} !important;
-            }
-            #app-mount::before {
-                content: "" !important;
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-                height: 3.5px !important;
-                background: ${accentColor} !important;
-                z-index: 999999999 !important;
-                pointer-events: none !important;
-                box-shadow: 0 1px 10px ${accentColor}aa !important;
-            }
-        `;
-
         win.on("enter-html-full-screen", () => {
             if (!win.isDestroyed()) win.setFullScreen(true);
         });
@@ -1205,16 +1175,13 @@ export async function openInstanceWindow(
         })();`;
         wc.on("dom-ready", () => {
             showWindowSafely();
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         wc.on("did-finish-load", () => {
             showWindowSafely();
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         wc.on("did-navigate", () => {
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         setTimeout(showWindowSafely, 3000);
@@ -1354,7 +1321,6 @@ export async function openInstanceWindowGrouped(
         openGroupedWindows.set(userId, win);
         pendingInstanceAuth.set(wcId, { token: cleanTok, userId, username });
 
-        const accentColor = getAccountColor(userId || getUserIdFromToken(cleanTok));
         let hasShown = false;
         const showWindowSafely = () => {
             if (hasShown || win.isDestroyed()) return;
@@ -1364,24 +1330,6 @@ export async function openInstanceWindowGrouped(
         };
 
         win.once("ready-to-show", showWindowSafely);
-
-        const accentCss = `
-            :root {
-                --nightcord-instance-color: ${accentColor} !important;
-            }
-            #app-mount::before {
-                content: "" !important;
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-                height: 3.5px !important;
-                background: ${accentColor} !important;
-                z-index: 999999999 !important;
-                pointer-events: none !important;
-                box-shadow: 0 1px 10px ${accentColor}aa !important;
-            }
-        `;
 
         win.on("enter-html-full-screen", () => {
             if (!win.isDestroyed()) win.setFullScreen(true);
@@ -1495,16 +1443,13 @@ export async function openInstanceWindowGrouped(
         })();`;
         wc.on("dom-ready", () => {
             showWindowSafely();
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         wc.on("did-finish-load", () => {
             showWindowSafely();
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         wc.on("did-navigate", () => {
-            wc.insertCSS(accentCss).catch(() => {});
             wc.executeJavaScript(injectJs).catch(() => {});
         });
         setTimeout(showWindowSafely, 3000);
