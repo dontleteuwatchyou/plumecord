@@ -241,34 +241,43 @@ function GroqApiKeySection() {
     };
 
     return (
-        <>
-            <Card className={Margins.top20}>
-                <Heading tag="h5">{t("How to get a Groq API key")}</Heading>
-                <Paragraph>
+        <div style={{ marginTop: 20 }}>
+            <Card style={{ padding: "16px 20px", borderRadius: "8px", border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))" }}>
+                <Heading tag="h5" style={{ marginBottom: 8, color: "var(--header-primary)" }}>{t("How to get a Groq API key")}</Heading>
+                <Paragraph style={{ color: "var(--text-muted)", fontSize: 14, lineHeight: 1.4 }}>
                     {t("Create a free account on console.groq.com, then go to API Keys and click Create API Key. Copy the key and paste it in the Api Key field above.")}
                 </Paragraph>
-                <Paragraph style={{ marginTop: 6 }}>
+                <Paragraph style={{ marginTop: 8, color: "var(--text-muted)", fontSize: 14, lineHeight: 1.4 }}>
                     {t("The Groq API is free and gives access to fast LLMs (Llama, Mixtral…).")}
                 </Paragraph>
-                <LinkButton size="small" href="https://console.groq.com/keys" className={Margins.top8}>
-                    {t("Create API Key")}
-                </LinkButton>
+                <div style={{ marginTop: 14 }}>
+                    <LinkButton
+                        size="small"
+                        variant="secondary"
+                        href="https://console.groq.com/keys"
+                        style={{ display: "inline-flex", width: "fit-content", padding: "6px 16px" }}
+                    >
+                        {t("Create API Key")}
+                    </LinkButton>
+                </div>
             </Card>
 
-            <Heading className={Margins.top20}>{t("Settings")}</Heading>
-            <Heading tag="h5" className={Margins.top8}>{t("Api Key")}</Heading>
-            <Paragraph className={Margins.bottom8}>
-                {t("Groq API Key (console.groq.com/keys) — shared with AutoCorrect and VoiceDictation")}
-            </Paragraph>
-            <TextInput
-                value={key}
-                placeholder="gsk_••••••••••••••••••••••••••••••••••"
-                type="password"
-                onChange={handleChange}
-            />
-        </>
+            <div style={{ marginTop: 16 }}>
+                <Heading tag="h5" style={{ marginBottom: 4, color: "var(--header-primary)" }}>{t("Api Key")}</Heading>
+                <Paragraph className={Margins.bottom8} style={{ color: "var(--text-muted)", fontSize: 14 }}>
+                    {t("Groq API Key (console.groq.com/keys) — shared with AutoCorrect and VoiceDictation")}
+                </Paragraph>
+                <TextInput
+                    value={key}
+                    placeholder="gsk_••••••••••••••••••••••••••••••••••"
+                    type="password"
+                    onChange={handleChange}
+                />
+            </div>
+        </div>
     );
 }
+
 
 function EquicordSettings() {
     const settings = useSettings();
@@ -449,6 +458,8 @@ function EquicordSettings() {
                     ),
                 )}
 
+                <GroqApiKeySection />
+
                 {needsVibrancySettings && (
                     <>
                         <Divider className={Margins.top20} />
@@ -560,13 +571,10 @@ function EquicordSettings() {
             </Paragraph>
             <StealthModeButton />
 
-            <Divider className={Margins.top20} />
-
-            <GroqApiKeySection />
-
         </SettingsTab>
     );
 }
+
 
 export default wrapTab(EquicordSettings, "Nightcord Settings");
 
