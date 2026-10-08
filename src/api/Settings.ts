@@ -30,7 +30,6 @@ const FORCE_DISABLED_DEFAULT_PLUGIN_KEYS = new Set([
     "activityspoofer",
     "audiolimiter",
     "antigroup",
-    "cursormacos",
     "fakeperm",
     "translucence",
     "rolecoloreverywhere",

@@ -34,7 +34,6 @@ export const TUTORIAL_VIDEOS: ReadonlyMap<string, string> = new Map([
     ["CloseGroup", "CloseGroup"],
     ["CrashHandler", "CrashHandler"],
     ["CreateTheme", "CreateTheme"],
-    ["CursorMacOS", "CursorMacOS"],
     ["CustomProfile", "CustomProfile"],
     ["DMBomb", "DMBomb"],
     ["DoubleCall", "DoubleCall"],

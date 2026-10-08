@@ -48,9 +48,4 @@ if (fs.existsSync(iconsSrc)) {
     console.warn("[collect] ⚠️ assets/multi-instance-icons NOT FOUND");
 }
 
-// ── mac folder ──────────────────────────────────────────────────────────────
-if (copyIfExists(path.join(rootDir, "mac"), path.join(distDir, "mac"))) {
-    console.log("[collect] ✅ mac folder copied");
-}
-
 console.log("\n[collect] Done collecting assets!");

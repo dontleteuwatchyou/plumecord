@@ -148,16 +148,6 @@ require(path.join(__dirname, "dist", "desktop", "patcher.js"));
         if (existsSync(localBin)) cpSync(localBin, join(outDir, bin));
     }
 
-    // Curseurs macOS (utilises par le plugin CursorMacOS) -> resourcesPath/mac/mac/...
-    // native.ts cherche via process.resourcesPath, qui pointe vers outDir/resources (asar: false)
-    const macCursorsSrc = join(__dirname, "mac");
-    if (existsSync(macCursorsSrc)) {
-        console.log("[nightcord] Copie des curseurs macOS...");
-        cpSync(macCursorsSrc, join(outRes, "mac"), { recursive: true });
-    } else {
-        console.warn("[nightcord] ATTENTION: dossier 'mac' introuvable a la racine, le plugin CursorMacOS ne fonctionnera pas dans le build package.");
-    }
-
     const discordExe = join(outDir, "Discord.exe");
     const injectScript = join(__dirname, "inject-discord.ps1");
     if (existsSync(injectScript)) cpSync(injectScript, join(outDir, "inject-discord.ps1"));
