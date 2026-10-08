@@ -88,8 +88,12 @@ export async function saveMediaFile(_: any, filename: string, base64Data: string
 
         const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
         const fullPath = path.join(mediaDir, safeName);
-        const buffer = Buffer.from(base64Data, "base64");
+        let cleanB64 = base64Data;
+        const commaIdx = cleanB64.indexOf(",");
+        if (commaIdx !== -1) cleanB64 = cleanB64.slice(commaIdx + 1);
+        cleanB64 = cleanB64.replace(/\s+/g, "");
 
+        const buffer = Buffer.from(cleanB64, "base64");
         fs.writeFileSync(fullPath, buffer);
         return { ok: true, path: fullPath };
     } catch (e: any) {
@@ -108,6 +112,11 @@ export async function readMediaFile(_: any, filename: string): Promise<string | 
             const buf = fs.readFileSync(fullPath);
             return buf.toString("base64");
         }
+        const directPath = path.join(dir, "media", filename);
+        if (fs.existsSync(directPath)) {
+            const buf = fs.readFileSync(directPath);
+            return buf.toString("base64");
+        }
         return null;
     } catch (e) {
         console.error("[SavedMessagesNative] readMediaFile error:", e);
@@ -123,6 +132,11 @@ export async function deleteMediaFile(_: any, filename: string): Promise<boolean
 
         if (fs.existsSync(fullPath)) {
             fs.unlinkSync(fullPath);
+            return true;
+        }
+        const directPath = path.join(dir, "media", filename);
+        if (fs.existsSync(directPath)) {
+            fs.unlinkSync(directPath);
             return true;
         }
         return false;

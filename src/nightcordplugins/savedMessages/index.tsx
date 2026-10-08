@@ -267,15 +267,18 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
 
     for (const att of msg.attachments || []) {
         const url = getAttachmentUrl(att);
+        const isImg = att.isImage || att.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(att.filename || "");
         attachments.push({
             id: att.id,
             filename: att.filename,
             size: att.size,
             url,
             proxy_url: url,
+            proxyUrl: url,
             content_type: att.contentType,
-            width: att.width || (att.isImage ? 600 : undefined),
-            height: att.height || (att.isImage ? 400 : undefined),
+            contentType: att.contentType,
+            width: att.width || (isImg ? 600 : undefined),
+            height: att.height || (isImg ? 400 : undefined),
             spoiler: false
         });
     }
@@ -315,7 +318,7 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
     return rawMsg;
 }
 
-function injectMessages() {
+export function injectMessages() {
     const messages = getSavedMessages();
     const discordRecords = messages.map(convertSavedMessageToDiscordMessage);
 
@@ -367,7 +370,7 @@ function handleChannelSelect(e: any) {
     if (id === SAVED_MESSAGES_CHANNEL_ID) {
         setDmClosedSafe(false);
         reinjectSavedMessages();
-        injectMessages();
+        loadSavedMessages().then(() => injectMessages());
     }
 }
 
@@ -382,7 +385,11 @@ export function SavedMessagesBanner() {
             }
         };
         storeListeners.add(listener);
-        loadSavedMessages();
+        loadSavedMessages().then(() => {
+            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
+                injectMessages();
+            }
+        });
 
         return () => { storeListeners.delete(listener); };
     }, []);

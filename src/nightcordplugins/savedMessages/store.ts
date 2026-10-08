@@ -60,7 +60,7 @@ let savedMessagesCache: SavedMessage[] = [];
 let isLoaded = false;
 
 // High-speed Blob URL cache for instant image/video loading
-const mediaBlobUrlCache = new Map<string, string>();
+export const mediaBlobUrlCache = new Map<string, string>();
 
 export const storeListeners = new Set<() => void>();
 export function notifyStoreChange() {
@@ -92,45 +92,55 @@ export function getDecryptedMessages(): SavedMessage[] {
 
 // ─── Media & Blob URL Helpers (Instant GPU-accelerated rendering) ───────────
 
-function base64ToBlob(b64Data: string, contentType = "application/octet-stream"): Blob {
-    let cleanB64 = b64Data;
-    const commaIdx = cleanB64.indexOf(",");
-    if (commaIdx !== -1) cleanB64 = cleanB64.slice(commaIdx + 1);
+export function createBlobUrlFromData(data: string, contentType = "application/octet-stream"): string {
+    if (!data) return "";
+    if (data.startsWith("blob:")) return data;
 
-    const sliceSize = 512;
-    const byteCharacters = atob(cleanB64);
-    const byteArrays: Uint8Array[] = [];
-
-    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-        const slice = byteCharacters.slice(offset, offset + sliceSize);
-        const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++) {
-            byteNumbers[i] = slice.charCodeAt(i);
+    try {
+        let cleanB64 = data;
+        if (cleanB64.startsWith("data:")) {
+            const commaIdx = cleanB64.indexOf(",");
+            if (commaIdx !== -1) {
+                const header = cleanB64.slice(0, commaIdx);
+                const match = header.match(/data:([^;]+);base64/i);
+                if (match?.[1]) contentType = match[1];
+                cleanB64 = cleanB64.slice(commaIdx + 1);
+            }
         }
-        byteArrays.push(new Uint8Array(byteNumbers));
-    }
+        cleanB64 = cleanB64.replace(/\s+/g, "");
 
-    return new Blob(byteArrays as any, { type: contentType });
+        const binaryString = atob(cleanB64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: contentType || "image/png" });
+        return URL.createObjectURL(blob);
+    } catch (e) {
+        console.warn("[SavedMessages] createBlobUrlFromData error:", e);
+        if (data.startsWith("data:")) return data;
+        return `data:${contentType || "image/png"};base64,${data.replace(/\s+/g, "")}`;
+    }
 }
 
 export function getAttachmentUrl(att: SavedAttachment): string {
     if (!att) return "";
 
+    const mediaKey = att.mediaId || att.id;
+    if (mediaKey && mediaBlobUrlCache.has(mediaKey)) {
+        return mediaBlobUrlCache.get(mediaKey)!;
+    }
     if (att.mediaId && mediaBlobUrlCache.has(att.mediaId)) {
         return mediaBlobUrlCache.get(att.mediaId)!;
     }
 
     if (att.dataUrl) {
-        if (att.dataUrl.startsWith("blob:")) return att.dataUrl;
-        if (att.dataUrl.startsWith("data:")) {
-            try {
-                const blob = base64ToBlob(att.dataUrl, att.contentType);
-                const url = URL.createObjectURL(blob);
-                if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, url);
-                return url;
-            } catch {
-                return att.dataUrl;
-            }
+        const blobUrl = createBlobUrlFromData(att.dataUrl, att.contentType);
+        if (blobUrl) {
+            if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
+            if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
+            return blobUrl;
         }
     }
 
@@ -138,17 +148,17 @@ export function getAttachmentUrl(att: SavedAttachment): string {
     if (att.mediaId && Native?.readMediaFile) {
         Native.readMediaFile(att.mediaId).then(b64 => {
             if (b64) {
-                try {
-                    const blob = base64ToBlob(b64, att.contentType);
-                    const url = URL.createObjectURL(blob);
-                    mediaBlobUrlCache.set(att.mediaId, url);
+                const blobUrl = createBlobUrlFromData(b64, att.contentType);
+                if (blobUrl) {
+                    if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
+                    if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
                     notifyStoreChange();
-                } catch { }
+                }
             }
         }).catch(() => { });
     }
 
-    return att.dataUrl || "";
+    return "";
 }
 
 export async function preloadMediaAttachments(messages: SavedMessage[]): Promise<void> {
@@ -158,26 +168,29 @@ export async function preloadMediaAttachments(messages: SavedMessage[]): Promise
 
     for (const msg of messages) {
         for (const att of msg.attachments || []) {
-            if (!att.mediaId) continue;
-            if (mediaBlobUrlCache.has(att.mediaId)) continue;
+            if (!att) continue;
+            const mediaKey = att.mediaId || att.id;
+            if (mediaKey && mediaBlobUrlCache.has(mediaKey)) continue;
 
-            if (att.dataUrl && att.dataUrl.startsWith("data:")) {
-                try {
-                    const blob = base64ToBlob(att.dataUrl, att.contentType);
-                    const url = URL.createObjectURL(blob);
-                    mediaBlobUrlCache.set(att.mediaId, url);
+            // 1. If att.dataUrl exists, convert to blob url immediately (synchronous!)
+            if (att.dataUrl) {
+                const blobUrl = createBlobUrlFromData(att.dataUrl, att.contentType);
+                if (blobUrl) {
+                    if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
+                    if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
                     continue;
-                } catch { }
+                }
             }
 
-            if (Native?.readMediaFile) {
+            // 2. If stored on disk, load asynchronously from native storage
+            if (att.mediaId && Native?.readMediaFile) {
                 const task = Native.readMediaFile(att.mediaId).then(b64 => {
                     if (b64) {
-                        try {
-                            const blob = base64ToBlob(b64, att.contentType);
-                            const url = URL.createObjectURL(blob);
-                            mediaBlobUrlCache.set(att.mediaId, url);
-                        } catch { }
+                        const blobUrl = createBlobUrlFromData(b64, att.contentType);
+                        if (blobUrl) {
+                            if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
+                            if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
+                        }
                     }
                 }).catch(() => { });
                 loadTasks.push(task);
@@ -187,13 +200,14 @@ export async function preloadMediaAttachments(messages: SavedMessage[]): Promise
 
     if (loadTasks.length > 0) {
         await Promise.allSettled(loadTasks);
-        notifyStoreChange();
     }
 }
 
 // ─── Direct Local Storage ───────────────────────────────────────────────────
 
 export async function loadSavedMessages(): Promise<SavedMessage[]> {
+    let loadedMessages: SavedMessage[] | null = null;
+
     try {
         if (Native?.readVaultFile) {
             const diskContent = await Native.readVaultFile();
@@ -201,36 +215,38 @@ export async function loadSavedMessages(): Promise<SavedMessage[]> {
                 try {
                     const parsed = JSON.parse(diskContent);
                     if (Array.isArray(parsed?.messages)) {
-                        savedMessagesCache = parsed.messages;
-                        isLoaded = true;
-                        preloadMediaAttachments(savedMessagesCache).catch(() => { });
-                        notifyStoreChange();
-                        return [...savedMessagesCache];
+                        loadedMessages = parsed.messages;
                     } else if (Array.isArray(parsed)) {
-                        savedMessagesCache = parsed;
-                        isLoaded = true;
-                        preloadMediaAttachments(savedMessagesCache).catch(() => { });
-                        notifyStoreChange();
-                        return [...savedMessagesCache];
+                        loadedMessages = parsed;
                     }
-                } catch { }
+                } catch (err) {
+                    console.error("[SavedMessages] Failed to parse vault file:", err);
+                }
             }
         }
     } catch { }
 
-    try {
-        const dsContent = await DataStore.get<any>(DATASTORE_KEY);
-        if (dsContent) {
-            if (Array.isArray(dsContent?.messages)) {
-                savedMessagesCache = dsContent.messages;
-            } else if (Array.isArray(dsContent)) {
-                savedMessagesCache = dsContent;
+    if (!loadedMessages) {
+        try {
+            const dsContent = await DataStore.get<any>(DATASTORE_KEY);
+            if (dsContent) {
+                if (Array.isArray(dsContent?.messages)) {
+                    loadedMessages = dsContent.messages;
+                } else if (Array.isArray(dsContent)) {
+                    loadedMessages = dsContent;
+                }
             }
-        }
-    } catch { }
+        } catch { }
+    }
+
+    if (Array.isArray(loadedMessages)) {
+        savedMessagesCache = loadedMessages;
+    }
+
+    // Preload all media attachments so blob URLs are ready synchronously before injection
+    await preloadMediaAttachments(savedMessagesCache);
 
     isLoaded = true;
-    preloadMediaAttachments(savedMessagesCache).catch(() => { });
     notifyStoreChange();
     return [...savedMessagesCache];
 }
@@ -305,6 +321,21 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
             const contentType = (actualFile as File)?.type || f.contentType || f.content_type || "application/octet-stream";
             const size = actualFile?.size || f.size || 0;
 
+            const isImage = contentType.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(filename);
+            const isVideo = contentType.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/i.test(filename);
+            const isAudio = contentType.startsWith("audio/") || /\.(mp3|ogg|wav|m4a|flac|aac)$/i.test(filename);
+
+            let width: number | undefined;
+            let height: number | undefined;
+            if (isImage && typeof createImageBitmap === "function") {
+                try {
+                    const bitmap = await createImageBitmap(actualFile);
+                    width = bitmap.width;
+                    height = bitmap.height;
+                    bitmap.close();
+                } catch { }
+            }
+
             const b64 = await fileToBase64(actualFile);
             const mediaId = `media_${Date.now()}_${generateSnowflake()}_${filename}`;
 
@@ -316,16 +347,10 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
             } catch { }
 
             // Create instantaneous native Blob URL in memory
-            let blobUrl = "";
-            try {
-                const blob = base64ToBlob(b64, contentType);
-                blobUrl = URL.createObjectURL(blob);
+            const blobUrl = createBlobUrlFromData(b64, contentType);
+            if (blobUrl) {
                 mediaBlobUrlCache.set(mediaId, blobUrl);
-            } catch { }
-
-            const isImage = contentType.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(filename);
-            const isVideo = contentType.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/i.test(filename);
-            const isAudio = contentType.startsWith("audio/") || /\.(mp3|ogg|wav|m4a|flac|aac)$/i.test(filename);
+            }
 
             savedAttachments.push({
                 id: generateSnowflake(),
@@ -334,6 +359,8 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
                 size,
                 dataUrl: blobUrl,
                 mediaId,
+                width,
+                height,
                 isImage,
                 isVideo,
                 isAudio
