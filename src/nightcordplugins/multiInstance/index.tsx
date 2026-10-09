@@ -48,6 +48,8 @@ const Native = VencordNative.pluginHelpers.MultiInstance as PluginNative<typeof 
 const STORE_KEY = "TokenImporter_accounts";
 const MI_TOKEN_CACHE_KEY = "nightcord-mi-token-cache";
 const MI_AUTO_LAUNCH_KEY = "nightcord-mi-autolaunch-ids";
+export const inMemoryAutoLaunchIds: Set<string> = new Set();
+let autoLaunchLoaded = false;
 
 export async function getAutoLaunchAccountIds(): Promise<string[]> {
     try {
@@ -61,7 +63,11 @@ export async function getAutoLaunchAccountIds(): Promise<string[]> {
                 shared = (await (Native as any).getSharedAutoLaunch()) ?? [];
             }
         } catch {}
-        return Array.from(new Set([...shared, ...local].filter(Boolean)));
+        const merged = Array.from(new Set([...shared, ...local].filter(Boolean)));
+        inMemoryAutoLaunchIds.clear();
+        merged.forEach(id => inMemoryAutoLaunchIds.add(id));
+        autoLaunchLoaded = true;
+        return merged;
     } catch {
         return [];
     }
@@ -70,6 +76,8 @@ export async function getAutoLaunchAccountIds(): Promise<string[]> {
 export async function setAutoLaunchAccountIds(ids: string[]): Promise<void> {
     try {
         const unique = Array.from(new Set(ids.filter(Boolean)));
+        inMemoryAutoLaunchIds.clear();
+        unique.forEach(id => inMemoryAutoLaunchIds.add(id));
         await DataStore.set(MI_AUTO_LAUNCH_KEY, unique);
         if (typeof (Native as any)?.saveSharedAutoLaunch === "function") {
             (Native as any).saveSharedAutoLaunch(unique).catch(() => {});
@@ -77,19 +85,20 @@ export async function setAutoLaunchAccountIds(ids: string[]): Promise<void> {
     } catch {}
 }
 
-export async function toggleAutoLaunchAccount(userId: string): Promise<boolean> {
-    const current = await getAutoLaunchAccountIds();
-    let updated: string[];
-    let isNowAutoLaunch = false;
-    if (current.includes(userId)) {
-        updated = current.filter(id => id !== userId);
-        isNowAutoLaunch = false;
+export async function setAccountAutoLaunch(userId: string, enable: boolean): Promise<boolean> {
+    if (enable) {
+        inMemoryAutoLaunchIds.add(userId);
     } else {
-        updated = [...current, userId];
-        isNowAutoLaunch = true;
+        inMemoryAutoLaunchIds.delete(userId);
     }
-    await setAutoLaunchAccountIds(updated);
-    return isNowAutoLaunch;
+    const arr = Array.from(inMemoryAutoLaunchIds);
+    await setAutoLaunchAccountIds(arr);
+    return enable;
+}
+
+export async function toggleAutoLaunchAccount(userId: string): Promise<boolean> {
+    const isCurrently = inMemoryAutoLaunchIds.has(userId);
+    return setAccountAutoLaunch(userId, !isCurrently);
 }
 
 let autoLaunchDone = false;
@@ -956,8 +965,8 @@ function AccountActionsMenu({
     acc,
     isOpen,
     isCurrent,
-    isAutoLaunch,
-    onToggleAutoLaunch,
+    initialAutoLaunch,
+    onAutoLaunchChanged,
     onNewGrouped,
     onSwitch,
     onLogout,
@@ -968,8 +977,8 @@ function AccountActionsMenu({
     acc: AccountEntry;
     isOpen: boolean;
     isCurrent: boolean;
-    isAutoLaunch: boolean;
-    onToggleAutoLaunch(): void;
+    initialAutoLaunch: boolean;
+    onAutoLaunchChanged(nextState: boolean): void;
     onNewGrouped(): void;
     onSwitch(): void;
     onLogout(): void;
@@ -977,6 +986,20 @@ function AccountActionsMenu({
     onChangeUsername(): void;
     onCloseInstance(): void;
 }) {
+    const [checked, setChecked] = React.useState(initialAutoLaunch);
+
+    const handleToggle = async () => {
+        const nextVal = !checked;
+        setChecked(nextVal);
+        await setAccountAutoLaunch(acc.id, nextVal);
+        onAutoLaunchChanged(nextVal);
+        if (nextVal) {
+            showToast(t("Auto-launch enabled"), Toasts.Type.SUCCESS);
+        } else {
+            showToast(t("Auto-launch disabled"), Toasts.Type.INFO);
+        }
+    };
+
     return (
         <Menu.Menu navId="nc-mi-account-actions" onClose={ContextMenuApi.closeContextMenu} aria-label={acc.username}>
             <Menu.MenuGroup>
@@ -999,8 +1022,8 @@ function AccountActionsMenu({
                 <Menu.MenuCheckboxItem
                     id="mi-auto-launch"
                     label={t("Launch on Discord startup")}
-                    checked={isAutoLaunch}
-                    action={onToggleAutoLaunch}
+                    checked={checked}
+                    action={handleToggle}
                 />
             </Menu.MenuGroup>
             <Menu.MenuGroup>
@@ -1261,15 +1284,17 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         e.stopPropagation();
         const isCurrent = acc.id === currentUser?.id;
         const isOpen = openInstances.includes(acc.id);
-        const isAutoLaunch = autoLaunchIds.includes(acc.id);
+        const isAutoLaunch = inMemoryAutoLaunchIds.has(acc.id) || autoLaunchIds.includes(acc.id);
 
         ContextMenuApi.openContextMenu(e, () => (
             <AccountActionsMenu
                 acc={acc}
                 isOpen={isOpen}
                 isCurrent={isCurrent}
-                isAutoLaunch={isAutoLaunch}
-                onToggleAutoLaunch={() => handleToggleAutoLaunch(acc)}
+                initialAutoLaunch={isAutoLaunch}
+                onAutoLaunchChanged={() => {
+                    setAutoLaunchIds(Array.from(inMemoryAutoLaunchIds));
+                }}
                 onNewGrouped={() => handleNewGrouped(acc)}
                 onSwitch={() => {
                     ContextMenuApi.closeContextMenu();
