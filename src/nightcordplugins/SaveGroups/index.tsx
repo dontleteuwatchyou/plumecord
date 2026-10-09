@@ -82,11 +82,6 @@ const settings = definePluginSettings({
         description: "Save loaded message history when a group is archived.",
         default: true
     },
-    saveOnManualLeave: {
-        type: OptionType.BOOLEAN,
-        description: "Save group and message history when you leave a group voluntarily.",
-        default: true
-    },
     notifyOnSave: {
         type: OptionType.BOOLEAN,
         description: "Show a desktop notification when you are removed from a group and it gets saved.",
@@ -105,6 +100,7 @@ const savedGroups = new Map<string, SavedGroupData>();
 const hydratedChannels = new Map<string, any>();
 const knownActiveGroups = new Map<string, SavedGroupData>();
 const manuallyDeletedGroupIds = new Set<string>();
+const voluntarilyLeftGroupIds = new Set<string>();
 
 let unpatchFluxDispatch: (() => void) | null = null;
 let unpatchChannelStore: (() => void) | null = null;
@@ -118,7 +114,11 @@ let unpatchPrivateChannelSortStore: (() => void) | null = null;
 let unpatchFetchMessages: (() => void) | null = null;
 let unpatchSendMessage: (() => void) | null = null;
 let unpatchHTTPGet: (() => void) | null = null;
+let unpatchHTTPDel: (() => void) | null = null;
+let unpatchHTTPDelete: (() => void) | null = null;
 let unpatchRestGet: (() => void) | null = null;
+let unpatchRestDel: (() => void) | null = null;
+let unpatchRestDelete: (() => void) | null = null;
 let unpatchCloseMethods: (() => void)[] = [];
 
 let channelStoreListener: (() => void) | null = null;
@@ -468,12 +468,35 @@ async function persistSavedGroups() {
     }
 }
 
+function markVoluntaryLeave(channelId: string) {
+    if (!channelId) return;
+    const cid = String(channelId);
+    voluntarilyLeftGroupIds.add(cid);
+    manuallyDeletedGroupIds.add(cid);
+    savedGroups.delete(cid);
+    hydratedChannels.delete(cid);
+    knownActiveGroups.delete(cid);
+    persistDeletedIds();
+    persistSavedGroups();
+    persistKnownGroupsImmediate();
+    updateStyles();
+    removeArchivedNoticeBanner();
+
+    document.querySelectorAll(
+        `nav a[href*="/channels/@me/${cid}"], [class*="privateChannels"] a[href*="/channels/@me/${cid}"]`
+    ).forEach(el => {
+        el.classList.remove("vc-savegroups-kicked");
+    });
+    document.querySelectorAll(".vc-savegroups-badge").forEach(el => el.remove());
+}
+
 async function loadAccountData(userId: string) {
     activeAccountUserId = userId;
     savedGroups.clear();
     hydratedChannels.clear();
     knownActiveGroups.clear();
     manuallyDeletedGroupIds.clear();
+    voluntarilyLeftGroupIds.clear();
 
     // 1. Load deleted IDs first so we never re-load deleted groups
     try {
@@ -555,6 +578,7 @@ async function switchAccountContext(newUserId: string | null) {
     hydratedChannels.clear();
     knownActiveGroups.clear();
     manuallyDeletedGroupIds.clear();
+    voluntarilyLeftGroupIds.clear();
     removeArchivedNoticeBanner();
     updateStyles();
     scanAndTagSidebarElements();
@@ -718,7 +742,7 @@ function checkOfflineKicks() {
 
         if (knownActiveGroups.size === 0) return;
         for (const [id, knownData] of Array.from(knownActiveGroups.entries())) {
-            if (manuallyDeletedGroupIds.has(id)) {
+            if (manuallyDeletedGroupIds.has(id) || voluntarilyLeftGroupIds.has(id)) {
                 knownActiveGroups.delete(id);
                 continue;
             }
@@ -1089,8 +1113,8 @@ function patchFluxDispatcher() {
         if (type === "CHANNEL_DELETE") {
             const channelId = action.channel?.id || action.channelId || action.id;
             if (channelId) {
-                if (manuallyDeletedGroupIds.has(channelId)) {
-                    manuallyDeletedGroupIds.delete(channelId);
+                if (voluntarilyLeftGroupIds.has(channelId) || manuallyDeletedGroupIds.has(channelId)) {
+                    voluntarilyLeftGroupIds.delete(channelId);
                     return origDispatch.apply(this, arguments as any);
                 }
 
@@ -1111,10 +1135,12 @@ function patchFluxDispatcher() {
             const removedUserId = action.user?.id || action.userId;
             const channelId = action.channelId || action.channel?.id;
             if (currentUserId && removedUserId === currentUserId && channelId) {
-                if (!manuallyDeletedGroupIds.has(channelId)) {
-                    archiveGroup(channelId, action.channel);
-                    return Promise.resolve();
+                if (voluntarilyLeftGroupIds.has(channelId) || manuallyDeletedGroupIds.has(channelId)) {
+                    voluntarilyLeftGroupIds.delete(channelId);
+                    return origDispatch.apply(this, arguments as any);
                 }
+                archiveGroup(channelId, action.channel);
+                return Promise.resolve();
             }
         }
 
@@ -1131,21 +1157,21 @@ function patchManualLeaveTracking() {
     try {
         const patchCloseMod = (mod: any) => {
             if (!mod) return;
-            const closeMethods = ["closePrivateChannel", "closeChannel", "deletePrivateChannel", "closeDM"];
+            const closeMethods = [
+                "closePrivateChannel",
+                "closeChannel",
+                "deletePrivateChannel",
+                "deleteChannel",
+                "closeDM",
+                "removeRecipient"
+            ];
 
             for (const method of closeMethods) {
                 if (typeof mod[method] === "function" && !mod[method].__nightcordSaveGroupsTracked) {
                     const origFn = mod[method];
                     mod[method] = function(channelId: string, ...args: any[]) {
                         if (channelId) {
-                            const ch = ChannelStore.getChannel(channelId);
-                            const isGroup = ch?.type === 3 || ch?.isGroupDM?.() || knownActiveGroups.has(channelId);
-
-                            if (isGroup && !savedGroups.has(channelId) && settings.store.saveOnManualLeave) {
-                                // User is voluntarily leaving a group DM:
-                                // Archive immediately while messages are still in memory!
-                                archiveGroup(channelId, ch);
-                            }
+                            markVoluntaryLeave(channelId);
                         }
                         return origFn.apply(this, [channelId, ...args]);
                     };
@@ -1160,11 +1186,15 @@ function patchManualLeaveTracking() {
 
         const actionMods = [
             findByProps("closePrivateChannel"),
-            findByProps("openPrivateChannel")
+            findByProps("openPrivateChannel"),
+            findByProps("deleteChannel"),
+            findByProps("removeRecipient")
         ].filter(Boolean) as any[];
 
         actionMods.forEach(patchCloseMod);
         waitFor(["closePrivateChannel"], patchCloseMod);
+        waitFor(["deleteChannel"], patchCloseMod);
+        waitFor(["removeRecipient"], patchCloseMod);
     } catch {}
 }
 
@@ -1346,54 +1376,92 @@ function patchPrivateChannelSortStore(sortStore: any) {
 }
 
 function patchNetworkLayer() {
-    // 1. Intercept RestAPI.get (imported directly from @webpack/common)
-    if (RestAPI && typeof RestAPI.get === "function" && !(RestAPI.get as any).__nightcordSaveGroupsPatched) {
-        const origRestGet = RestAPI.get;
-        RestAPI.get = function(opts: any) {
-            const url = typeof opts === "string" ? opts : opts?.url;
-            if (url && typeof url === "string") {
-                for (const [id, savedGroup] of savedGroups) {
-                    if (url.includes(`/channels/${id}/messages`)) {
-                        const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
-                        return Promise.resolve({
-                            ok: true,
-                            status: 200,
-                            body: descMsgs,
-                            text: JSON.stringify(descMsgs),
-                            headers: {}
-                        });
-                    }
-                    if (url.includes(`/channels/${id}`)) {
-                        const groupObj = {
-                            id: savedGroup.id,
-                            type: 3,
-                            name: savedGroup.name || "Group DM",
-                            icon: savedGroup.icon || null,
-                            owner_id: savedGroup.ownerId,
-                            ownerId: savedGroup.ownerId,
-                            topic: savedGroup.topic || "",
-                            recipients: savedGroup.recipients || [],
-                            rawRecipients: savedGroup.rawRecipients || [],
-                            last_message_id: savedGroup.lastMessageId || null,
-                            lastMessageId: savedGroup.lastMessageId || null,
-                        };
-                        return Promise.resolve({
-                            ok: true,
-                            status: 200,
-                            body: groupObj,
-                            text: JSON.stringify(groupObj),
-                            headers: {}
-                        });
+    const checkDeleteUrl = (opts: any) => {
+        const url = typeof opts === "string" ? opts : opts?.url;
+        if (url && typeof url === "string") {
+            const match = url.match(/\/channels\/(\d+)(?:\/recipients(?:\/.*)?)?$/);
+            if (match && match[1]) {
+                markVoluntaryLeave(match[1]);
+            }
+        }
+    };
+
+    // 1. Intercept RestAPI.get & RestAPI.del (imported directly from @webpack/common)
+    if (RestAPI) {
+        if (typeof RestAPI.get === "function" && !(RestAPI.get as any).__nightcordSaveGroupsPatched) {
+            const origRestGet = RestAPI.get;
+            RestAPI.get = function(opts: any) {
+                const url = typeof opts === "string" ? opts : opts?.url;
+                if (url && typeof url === "string") {
+                    for (const [id, savedGroup] of savedGroups) {
+                        if (url.includes(`/channels/${id}/messages`)) {
+                            const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: descMsgs,
+                                text: JSON.stringify(descMsgs),
+                                headers: {}
+                            });
+                        }
+                        if (url.includes(`/channels/${id}`)) {
+                            const groupObj = {
+                                id: savedGroup.id,
+                                type: 3,
+                                name: savedGroup.name || "Group DM",
+                                icon: savedGroup.icon || null,
+                                owner_id: savedGroup.ownerId,
+                                ownerId: savedGroup.ownerId,
+                                topic: savedGroup.topic || "",
+                                recipients: savedGroup.recipients || [],
+                                rawRecipients: savedGroup.rawRecipients || [],
+                                last_message_id: savedGroup.lastMessageId || null,
+                                lastMessageId: savedGroup.lastMessageId || null,
+                            };
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: groupObj,
+                                text: JSON.stringify(groupObj),
+                                headers: {}
+                            });
+                        }
                     }
                 }
-            }
-            return origRestGet.apply(this, arguments as any);
-        };
-        (RestAPI.get as any).__nightcordSaveGroupsPatched = true;
-        unpatchRestGet = () => {
-            RestAPI.get = origRestGet;
-            delete (RestAPI.get as any).__nightcordSaveGroupsPatched;
-        };
+                return origRestGet.apply(this, arguments as any);
+            };
+            (RestAPI.get as any).__nightcordSaveGroupsPatched = true;
+            unpatchRestGet = () => {
+                RestAPI.get = origRestGet;
+                delete (RestAPI.get as any).__nightcordSaveGroupsPatched;
+            };
+        }
+
+        if (typeof RestAPI.del === "function" && !(RestAPI.del as any).__nightcordSaveGroupsPatched) {
+            const origRestDel = RestAPI.del;
+            RestAPI.del = function(opts: any, ...args: any[]) {
+                checkDeleteUrl(opts);
+                return origRestDel.apply(this, [opts, ...args]);
+            };
+            (RestAPI.del as any).__nightcordSaveGroupsPatched = true;
+            unpatchRestDel = () => {
+                RestAPI.del = origRestDel;
+                delete (RestAPI.del as any).__nightcordSaveGroupsPatched;
+            };
+        }
+
+        if (typeof (RestAPI as any).delete === "function" && !((RestAPI as any).delete as any).__nightcordSaveGroupsPatched) {
+            const origRestDelete = (RestAPI as any).delete;
+            (RestAPI as any).delete = function(opts: any, ...args: any[]) {
+                checkDeleteUrl(opts);
+                return origRestDelete.apply(this, [opts, ...args]);
+            };
+            ((RestAPI as any).delete as any).__nightcordSaveGroupsPatched = true;
+            unpatchRestDelete = () => {
+                (RestAPI as any).delete = origRestDelete;
+                delete ((RestAPI as any).delete as any).__nightcordSaveGroupsPatched;
+            };
+        }
     }
 
     // 2. Intercept MessageActions.fetchMessages & sendMessage with waitFor for lazy-loaded webpack chunks
@@ -1441,56 +1509,80 @@ function patchNetworkLayer() {
         patchMessageActions(mod);
     });
 
-    // 3. Intercept HTTP.get with waitFor
+    // 3. Intercept HTTP.get, HTTP.del, HTTP.delete with waitFor
     const patchHTTP = (HTTP: any) => {
-        if (!HTTP || !HTTP.get || (HTTP.get as any).__nightcordSaveGroupsPatched) return;
-        (HTTP.get as any).__nightcordSaveGroupsPatched = true;
+        if (!HTTP || (HTTP as any).__nightcordSaveGroupsPatched) return;
+        (HTTP as any).__nightcordSaveGroupsPatched = true;
 
-        const origGet = HTTP.get;
-        HTTP.get = function(opts: any) {
-            const url = typeof opts === "string" ? opts : opts?.url;
-            if (url && typeof url === "string") {
-                for (const [id, savedGroup] of savedGroups) {
-                    if (url.includes(`/channels/${id}/messages`)) {
-                        const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
-                        return Promise.resolve({
-                            ok: true,
-                            status: 200,
-                            body: descMsgs,
-                            text: JSON.stringify(descMsgs),
-                            headers: {}
-                        });
-                    }
-                    if (url.includes(`/channels/${id}`)) {
-                        const groupObj = {
-                            id: savedGroup.id,
-                            type: 3,
-                            name: savedGroup.name || "Group DM",
-                            icon: savedGroup.icon || null,
-                            owner_id: savedGroup.ownerId,
-                            ownerId: savedGroup.ownerId,
-                            topic: savedGroup.topic || "",
-                            recipients: savedGroup.recipients || [],
-                            rawRecipients: savedGroup.rawRecipients || [],
-                            last_message_id: savedGroup.lastMessageId || null,
-                            lastMessageId: savedGroup.lastMessageId || null,
-                        };
-                        return Promise.resolve({
-                            ok: true,
-                            status: 200,
-                            body: groupObj,
-                            text: JSON.stringify(groupObj),
-                            headers: {}
-                        });
+        if (typeof HTTP.get === "function") {
+            const origGet = HTTP.get;
+            HTTP.get = function(opts: any) {
+                const url = typeof opts === "string" ? opts : opts?.url;
+                if (url && typeof url === "string") {
+                    for (const [id, savedGroup] of savedGroups) {
+                        if (url.includes(`/channels/${id}/messages`)) {
+                            const descMsgs = getDescendingMessages(savedGroup.savedMessages || []);
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: descMsgs,
+                                text: JSON.stringify(descMsgs),
+                                headers: {}
+                            });
+                        }
+                        if (url.includes(`/channels/${id}`)) {
+                            const groupObj = {
+                                id: savedGroup.id,
+                                type: 3,
+                                name: savedGroup.name || "Group DM",
+                                icon: savedGroup.icon || null,
+                                owner_id: savedGroup.ownerId,
+                                ownerId: savedGroup.ownerId,
+                                topic: savedGroup.topic || "",
+                                recipients: savedGroup.recipients || [],
+                                rawRecipients: savedGroup.rawRecipients || [],
+                                last_message_id: savedGroup.lastMessageId || null,
+                                lastMessageId: savedGroup.lastMessageId || null,
+                            };
+                            return Promise.resolve({
+                                ok: true,
+                                status: 200,
+                                body: groupObj,
+                                text: JSON.stringify(groupObj),
+                                headers: {}
+                            });
+                        }
                     }
                 }
-            }
-            return origGet.apply(this, arguments as any);
-        };
-        unpatchHTTPGet = () => {
-            HTTP.get = origGet;
-            delete (HTTP.get as any).__nightcordSaveGroupsPatched;
-        };
+                return origGet.apply(this, arguments as any);
+            };
+            unpatchHTTPGet = () => {
+                HTTP.get = origGet;
+                delete (HTTP as any).__nightcordSaveGroupsPatched;
+            };
+        }
+
+        if (typeof HTTP.del === "function") {
+            const origDel = HTTP.del;
+            HTTP.del = function(opts: any, ...args: any[]) {
+                checkDeleteUrl(opts);
+                return origDel.apply(this, [opts, ...args]);
+            };
+            unpatchHTTPDel = () => {
+                HTTP.del = origDel;
+            };
+        }
+
+        if (typeof HTTP.delete === "function") {
+            const origDelete = HTTP.delete;
+            HTTP.delete = function(opts: any, ...args: any[]) {
+                checkDeleteUrl(opts);
+                return origDelete.apply(this, [opts, ...args]);
+            };
+            unpatchHTTPDelete = () => {
+                HTTP.delete = origDelete;
+            };
+        }
     };
 
     const existingHTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
@@ -1727,9 +1819,25 @@ export default definePlugin({
             unpatchHTTPGet();
             unpatchHTTPGet = null;
         }
+        if (unpatchHTTPDel) {
+            unpatchHTTPDel();
+            unpatchHTTPDel = null;
+        }
+        if (unpatchHTTPDelete) {
+            unpatchHTTPDelete();
+            unpatchHTTPDelete = null;
+        }
         if (unpatchRestGet) {
             unpatchRestGet();
             unpatchRestGet = null;
+        }
+        if (unpatchRestDel) {
+            unpatchRestDel();
+            unpatchRestDel = null;
+        }
+        if (unpatchRestDelete) {
+            unpatchRestDelete();
+            unpatchRestDelete = null;
         }
 
         if (sidebarObserver) {
