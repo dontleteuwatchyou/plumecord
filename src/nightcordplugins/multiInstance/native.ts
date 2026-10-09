@@ -317,6 +317,31 @@ export async function saveSharedTokenCache(_: any, cache: Record<string, string>
     }
 }
 
+const SHARED_AUTOLAUNCH_FILE = join(app.getPath("userData"), "nightcord-mi-autolaunch.json");
+
+export async function getSharedAutoLaunch(): Promise<string[]> {
+    try {
+        if (!existsSync(SHARED_AUTOLAUNCH_FILE)) return [];
+        const raw = readFileSync(SHARED_AUTOLAUNCH_FILE, "utf-8");
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.map(String) : [];
+    } catch (e) {
+        console.warn("[NightcordMI] getSharedAutoLaunch error:", e);
+        return [];
+    }
+}
+
+export async function saveSharedAutoLaunch(_: any, ids: string[]): Promise<boolean> {
+    try {
+        if (!Array.isArray(ids)) return false;
+        writeFileSync(SHARED_AUTOLAUNCH_FILE, JSON.stringify(ids.map(String), null, 2), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] saveSharedAutoLaunch error:", e);
+        return false;
+    }
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Intercepte les IPC de contrôle de fenêtre pour une instance multi.

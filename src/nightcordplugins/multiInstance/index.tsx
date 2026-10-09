@@ -47,6 +47,104 @@ const settings = definePluginSettings({
 const Native = VencordNative.pluginHelpers.MultiInstance as PluginNative<typeof import("./native")>;
 const STORE_KEY = "TokenImporter_accounts";
 const MI_TOKEN_CACHE_KEY = "nightcord-mi-token-cache";
+const MI_AUTO_LAUNCH_KEY = "nightcord-mi-autolaunch-ids";
+
+export async function getAutoLaunchAccountIds(): Promise<string[]> {
+    try {
+        let local: string[] = [];
+        try {
+            local = (await DataStore.get<string[]>(MI_AUTO_LAUNCH_KEY)) ?? [];
+        } catch {}
+        let shared: string[] = [];
+        try {
+            if (typeof (Native as any)?.getSharedAutoLaunch === "function") {
+                shared = (await (Native as any).getSharedAutoLaunch()) ?? [];
+            }
+        } catch {}
+        return Array.from(new Set([...shared, ...local].filter(Boolean)));
+    } catch {
+        return [];
+    }
+}
+
+export async function setAutoLaunchAccountIds(ids: string[]): Promise<void> {
+    try {
+        const unique = Array.from(new Set(ids.filter(Boolean)));
+        await DataStore.set(MI_AUTO_LAUNCH_KEY, unique);
+        if (typeof (Native as any)?.saveSharedAutoLaunch === "function") {
+            (Native as any).saveSharedAutoLaunch(unique).catch(() => {});
+        }
+    } catch {}
+}
+
+export async function toggleAutoLaunchAccount(userId: string): Promise<boolean> {
+    const current = await getAutoLaunchAccountIds();
+    let updated: string[];
+    let isNowAutoLaunch = false;
+    if (current.includes(userId)) {
+        updated = current.filter(id => id !== userId);
+        isNowAutoLaunch = false;
+    } else {
+        updated = [...current, userId];
+        isNowAutoLaunch = true;
+    }
+    await setAutoLaunchAccountIds(updated);
+    return isNowAutoLaunch;
+}
+
+let autoLaunchDone = false;
+
+async function runAutoLaunch(): Promise<void> {
+    if (autoLaunchDone || isCurrentInstanceWindow()) return;
+    autoLaunchDone = true;
+
+    try {
+        const autoIds = await getAutoLaunchAccountIds();
+        if (!autoIds || autoIds.length === 0) return;
+
+        await loadTokenCache();
+        const accounts = await fetchAllAccounts().catch(() => []);
+        const curUser = UserStore.getCurrentUser();
+        const openIds = (await Native.getOpenInstances().catch(() => [])) ?? [];
+
+        const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
+        const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
+
+        let delayMs = 1500;
+        for (const targetId of autoIds) {
+            if (!targetId || (curUser?.id && targetId === curUser.id)) continue;
+            if (openIds.includes(targetId)) continue;
+
+            const acc = accounts.find(a => a.id === targetId);
+            const tok = acc?.token || tokenCache[targetId];
+            if (!tok) continue;
+
+            const username = acc?.username || "";
+            setTimeout(async () => {
+                try {
+                    const currentlyOpen = (await Native.getOpenInstances().catch(() => [])) ?? [];
+                    if (currentlyOpen.includes(targetId)) return;
+                    console.log(`[NightcordMI] Auto-launching instance for ${username || targetId}...`);
+                    await Native.openInstanceWindow(
+                        tok,
+                        targetId,
+                        true,
+                        username,
+                        domain,
+                        blockExternalTokenAccess,
+                        performanceMode,
+                        audioSettings
+                    );
+                } catch (err) {
+                    console.warn(`[NightcordMI] Auto-launch failed for ${targetId}:`, err);
+                }
+            }, delayMs);
+            delayMs += 1200;
+        }
+    } catch (e) {
+        console.warn("[NightcordMI] runAutoLaunch error:", e);
+    }
+}
 
 export const INSTANCE_PALETTE = [
     "#5865F2", // Discord Blurple
@@ -858,6 +956,8 @@ function AccountActionsMenu({
     acc,
     isOpen,
     isCurrent,
+    isAutoLaunch,
+    onToggleAutoLaunch,
     onNewGrouped,
     onSwitch,
     onLogout,
@@ -868,6 +968,8 @@ function AccountActionsMenu({
     acc: AccountEntry;
     isOpen: boolean;
     isCurrent: boolean;
+    isAutoLaunch: boolean;
+    onToggleAutoLaunch(): void;
     onNewGrouped(): void;
     onSwitch(): void;
     onLogout(): void;
@@ -892,6 +994,14 @@ function AccountActionsMenu({
                         action={onNewGrouped}
                     />
                 )}
+            </Menu.MenuGroup>
+            <Menu.MenuGroup>
+                <Menu.MenuCheckboxItem
+                    id="mi-auto-launch"
+                    label={t("Launch on Discord startup")}
+                    checked={isAutoLaunch}
+                    action={onToggleAutoLaunch}
+                />
             </Menu.MenuGroup>
             <Menu.MenuGroup>
                 <Menu.MenuItem
@@ -934,7 +1044,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     const [savedAccounts, setSavedAccounts] = React.useState<SavedAccount[]>([]);
     const [nativeAccounts, setNativeAccounts] = React.useState<SavedAccount[]>([]);
     const [openInstances, setOpenInstances] = React.useState<string[]>([]);
-    const [status, setStatus] = React.useState<string | null>(null);
+    const [autoLaunchIds, setAutoLaunchIds] = React.useState<string[]>([]);
 
     const refreshAccounts = async () => {
         captureCurrentToken();
@@ -943,6 +1053,8 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         setNativeAccounts(getNativeAccounts());
         const ids = await Native.getOpenInstances().catch(() => []);
         setOpenInstances(ids ?? []);
+        const aIds = await getAutoLaunchAccountIds().catch(() => []);
+        setAutoLaunchIds(aIds);
     };
 
     React.useEffect(() => {
@@ -1021,27 +1133,34 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         setOpenInstances(ids ?? []);
     };
 
+    const handleToggleAutoLaunch = async (acc: AccountEntry) => {
+        const isNowAuto = await toggleAutoLaunchAccount(acc.id);
+        const aIds = await getAutoLaunchAccountIds().catch(() => []);
+        setAutoLaunchIds(aIds);
+        if (isNowAuto) {
+            showToast(t("Auto-launch enabled"), Toasts.Type.SUCCESS);
+        } else {
+            showToast(t("Auto-launch disabled"), Toasts.Type.INFO);
+        }
+    };
+
     const handleNewWindow = async (acc: AccountEntry) => {
         if (!acc.hasToken || !acc.token) return;
         const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
-            setStatus(t("Cannot launch: Token collision detected."));
-            setTimeout(() => setStatus(null), 4000);
+            showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
             return;
         }
-        setStatus(t("Opening window…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
         // @ts-ignore - Passage du pseudo, domaine, token protection, perf mode, audioSettings
         const res = await Native.openInstanceWindow(acc.token, acc.id, false, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
-        if ((res as any).ok) {
-            setStatus(t("Window opened"));
+        if ((res as any)?.ok) {
             await refreshInstances();
         } else {
-            setStatus(`${t("Error:")} ` + ((res as any).error ?? t("unknown")));
+            showToast(`${t("Error:")} ` + ((res as any)?.error ?? t("unknown")), Toasts.Type.FAILURE);
         }
-        setTimeout(() => setStatus(null), 3000);
     };
 
     const handleNewDetached = async (acc: AccountEntry) => {
@@ -1052,22 +1171,18 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
-            setStatus(t("Cannot launch: Token collision detected."));
-            setTimeout(() => setStatus(null), 4000);
+            showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
             return;
         }
-        setStatus(t("Opening detached instance…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
         // @ts-ignore - Argument 'detached', pseudo, domaine, token protection, perf mode, audioSettings
         const res = await Native.openInstanceWindow(acc.token, acc.id, true, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
-        if ((res as any).ok) {
-            setStatus(t("Instance opened"));
+        if ((res as any)?.ok) {
             await refreshInstances();
         } else {
-            setStatus(`${t("Error:")} ` + ((res as any).error ?? t("unknown")));
+            showToast(`${t("Error:")} ` + ((res as any)?.error ?? t("unknown")), Toasts.Type.FAILURE);
         }
-        setTimeout(() => setStatus(null), 3000);
     };
 
     const handleNewGrouped = async (acc: AccountEntry) => {
@@ -1075,22 +1190,18 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
-            setStatus(t("Cannot launch: Token collision detected."));
-            setTimeout(() => setStatus(null), 4000);
+            showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
             return;
         }
-        setStatus(t("Opening grouped instance…"));
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
         // @ts-ignore
         const res = await Native.openInstanceWindowGrouped(acc.token, acc.id, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
-        if ((res as any).ok) {
-            setStatus(t("Instance opened"));
+        if ((res as any)?.ok) {
             await refreshInstances();
         } else {
-            setStatus(`${t("Error:")} ` + ((res as any).error ?? t("unknown")));
+            showToast(`${t("Error:")} ` + ((res as any)?.error ?? t("unknown")), Toasts.Type.FAILURE);
         }
-        setTimeout(() => setStatus(null), 3000);
     };
 
     const handleLogout = async (acc: AccountEntry) => {
@@ -1150,12 +1261,15 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         e.stopPropagation();
         const isCurrent = acc.id === currentUser?.id;
         const isOpen = openInstances.includes(acc.id);
+        const isAutoLaunch = autoLaunchIds.includes(acc.id);
 
         ContextMenuApi.openContextMenu(e, () => (
             <AccountActionsMenu
                 acc={acc}
                 isOpen={isOpen}
                 isCurrent={isCurrent}
+                isAutoLaunch={isAutoLaunch}
+                onToggleAutoLaunch={() => handleToggleAutoLaunch(acc)}
                 onNewGrouped={() => handleNewGrouped(acc)}
                 onSwitch={() => {
                     ContextMenuApi.closeContextMenu();
@@ -1348,12 +1462,6 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                     </div>
                 </div>
             </footer>
-
-            {status && (
-                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", textAlign: "center", margin: "8px 0 0" }}>
-                    {status}
-                </p>
-            )}
         </ModalRoot>
     );
 }
@@ -1579,6 +1687,24 @@ export default definePlugin({
         if (!isCurrentInstanceWindow()) {
             scheduleMasterAudioSave();
             hookAudioSettingsWatcher();
+
+            const triggerAuto = () => {
+                setTimeout(() => {
+                    runAutoLaunch().catch(err => console.warn("[NightcordMI] runAutoLaunch error:", err));
+                }, 2000);
+            };
+
+            const curUser = UserStore.getCurrentUser();
+            if (curUser?.id) {
+                triggerAuto();
+            } else {
+                waitFor(["dispatch", "subscribe"], (dispatcher: any) => {
+                    const unConn = dispatcher.subscribe("CONNECTION_OPEN", () => {
+                        try { unConn(); } catch {}
+                        triggerAuto();
+                    });
+                });
+            }
         }
         addHeaderBarButton("nightcord-multi-instance", () => <MultiInstanceButton />, 9);
     },
