@@ -7,6 +7,7 @@
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { showNotification } from "@api/Notifications";
 import { definePluginSettings } from "@api/Settings";
+import ErrorBoundary from "@components/ErrorBoundary";
 import { React } from "@webpack/common";
 
 const SurveillanceIcon = ({ width = 20, height = 20 }: { width?: number; height?: number; }) => (
@@ -202,6 +203,27 @@ export function removeServerTarget(guildId: string) {
     setServerTargets(serverTargets.filter(target => target !== guildId));
 }
 
+function syncSettingsSidebar(show?: boolean) {
+    const shouldShow = show ?? settings.store.showInSettingsSidebar ?? true;
+    while (SettingsPlugin.customEntries.some(entry => entry.key === SETTINGS_ENTRY_KEY)) {
+        removeFromArray(SettingsPlugin.customEntries, entry => entry.key === SETTINGS_ENTRY_KEY);
+    }
+    if (shouldShow) {
+        const diagIndex = SettingsPlugin.customEntries.findIndex(entry => entry.key === "vc-client-diagnostics");
+        const entry = {
+            key: SETTINGS_ENTRY_KEY,
+            title: "Surveillance",
+            Component: ErrorBoundary.wrap(SurveillanceTab, { noop: true }),
+            Icon: SurveillanceIcon,
+        };
+        if (diagIndex !== -1) {
+            SettingsPlugin.customEntries.splice(diagIndex + 1, 0, entry);
+        } else {
+            SettingsPlugin.customEntries.push(entry);
+        }
+    }
+}
+
 export const settings = definePluginSettings({
     targets: {
         type: OptionType.STRING,
@@ -219,8 +241,9 @@ export const settings = definePluginSettings({
     },
     showInSettingsSidebar: {
         type: OptionType.BOOLEAN,
-        default: false,
+        default: true,
         description: "Show Surveillance tab in settings sidebar.",
+        onChange: (val: boolean) => syncSettingsSidebar(val),
     },
     addContextMenu: {
         type: OptionType.BOOLEAN,
@@ -1195,6 +1218,8 @@ export default definePlugin({
     tags: ["Friends", "Utility"],
     authors: [{ name: "irritably",
      id: 928787166916640838n }],
+    dependencies: ["Settings"],
+    requiresRestart: false,
     settings,
     contextMenus: {
         "user-context": patchUserContext,
@@ -1209,7 +1234,6 @@ export default definePlugin({
         );
     },
 
-
     start() {
         updateTargets(settings.store.targets);
         updateServerTargets(settings.store.serverTargets);
@@ -1220,20 +1244,7 @@ export default definePlugin({
         hydrationInterval = setInterval(hydrateTargetPresences, 60_000);
         profileSyncInterval = setInterval(() => void syncTargetProfiles(), 120_000);
 
-        if (settings.store.showInSettingsSidebar && !SettingsPlugin.customEntries.some(entry => entry.key === SETTINGS_ENTRY_KEY)) {
-            const diagIndex = SettingsPlugin.customEntries.findIndex(entry => entry.key === "vc-client-diagnostics");
-            const entry = {
-                key: SETTINGS_ENTRY_KEY,
-                title: "Surveillance",
-                Component: SurveillanceTab,
-                Icon: SurveillanceIcon,
-            };
-            if (diagIndex !== -1) {
-                SettingsPlugin.customEntries.splice(diagIndex + 1, 0, entry);
-            } else {
-                SettingsPlugin.customEntries.push(entry);
-            }
-        }
+        syncSettingsSidebar(settings.store.showInSettingsSidebar);
     },
 
     stop() {
@@ -1246,7 +1257,7 @@ export default definePlugin({
             clearInterval(profileSyncInterval);
             profileSyncInterval = undefined;
         }
-        removeFromArray(SettingsPlugin.customEntries, entry => entry.key === SETTINGS_ENTRY_KEY);
+        syncSettingsSidebar(false);
         previousVoiceStates.clear();
         messageCache.clear();
         typingCooldowns.clear();
