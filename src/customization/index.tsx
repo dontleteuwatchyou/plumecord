@@ -45,6 +45,8 @@ export const CustomizationIcon = ({ width = 24, height = 24, className, ...props
     </svg>
 );
 
+import { addPatch } from "@api/PluginManager";
+
 export function isCustomizationEnabled(): boolean {
     const st = getCachedPremiumSettings();
     return st.enabled;
@@ -89,7 +91,17 @@ export function pushPremiumSections(sections: any[], user: any) {
                         try {
                             const UPS = (Vencord as any).Webpack?.findByStoreName?.("UserProfileStore") ??
                                         (Vencord as any).Webpack?.findByProps?.("getUserProfile");
-                            if (UPS?.emitChange) UPS.emitChange();
+                            if (UPS?.emitChange) {
+                                UPS.emitChange();
+                            }
+                        } catch {}
+                        try {
+                            const { FluxDispatcher } = (Vencord as any).Webpack?.Common ?? {};
+                            FluxDispatcher?.dispatch?.({
+                                type: "USER_PROFILE_MODAL_OPEN",
+                                userId: user.id,
+                                section: "ACTIVITY"
+                            });
                         } catch {}
                     }
                 });
@@ -131,6 +143,34 @@ export function registerCustomizationPatches() {
     (window as any).NightcordCustomizationGlobals = globals;
     if (typeof Vencord !== "undefined") {
         (Vencord as any).Customization = globals;
+    }
+
+    try {
+        addPatch(
+            {
+                find: "#{intl::USER_PROFILE_ACTIVITY}",
+                replacement: {
+                    match: /(\i)\.id!==\i\?\.id&&\i&&\(.{0,300}\.MUTUAL_GUILDS\}\)\)(?=,(\i))/,
+                    replace: "$&,window.NightcordCustomizationGlobals?.pushPremiumSections?.($2,$1)",
+                }
+            },
+            "NightcordCustomization",
+            "window.NightcordCustomizationGlobals"
+        );
+
+        addPatch(
+            {
+                find: ".WIDGETS?",
+                replacement: {
+                    match: /(\i)===\i\.\i\.WISHLIST/,
+                    replace: '$1==="MY_STORY"||$1==="FAV_SONGS"?window.NightcordCustomizationGlobals?.renderPremiumTab?.($1,arguments[0]):$&',
+                }
+            },
+            "NightcordCustomization",
+            "window.NightcordCustomizationGlobals"
+        );
+    } catch (err) {
+        console.error("[NightcordCustomization] Failed to register profile tab patches:", err);
     }
 }
 

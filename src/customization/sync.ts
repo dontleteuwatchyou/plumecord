@@ -48,6 +48,23 @@ export const DEFAULT_EFFECTS_CONFIG: ProfileEffectsConfig = {
 
 // ─── Settings Store ──────────────────────────────────────────────────────────
 
+const LS_PREMIUM_SETTINGS_KEY = "nightcord_premium_settings_cache";
+
+function loadInitialSettings(): NightcordPremiumSettings {
+    try {
+        if (typeof window !== "undefined" && window.localStorage) {
+            const raw = window.localStorage.getItem(LS_PREMIUM_SETTINGS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === "object") {
+                    return { ...DEFAULT_PREMIUM_SETTINGS, ...parsed };
+                }
+            }
+        }
+    } catch {}
+    return { ...DEFAULT_PREMIUM_SETTINGS };
+}
+
 let inMemorySettings: NightcordPremiumSettings | null = null;
 const settingsListeners = new Set<(s: NightcordPremiumSettings) => void>();
 
@@ -55,17 +72,30 @@ export async function getPremiumSettings(): Promise<NightcordPremiumSettings> {
     if (inMemorySettings) return inMemorySettings;
     const saved = await DataStore.get<NightcordPremiumSettings>(PREMIUM_SETTINGS_KEY);
     inMemorySettings = { ...DEFAULT_PREMIUM_SETTINGS, ...(saved || {}) };
+    try {
+        if (typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.setItem(LS_PREMIUM_SETTINGS_KEY, JSON.stringify(inMemorySettings));
+        }
+    } catch {}
     return inMemorySettings;
 }
 
 export function getCachedPremiumSettings(): NightcordPremiumSettings {
-    return inMemorySettings ?? DEFAULT_PREMIUM_SETTINGS;
+    if (!inMemorySettings) {
+        inMemorySettings = loadInitialSettings();
+    }
+    return inMemorySettings;
 }
 
 export async function setPremiumSettings(update: Partial<NightcordPremiumSettings>): Promise<NightcordPremiumSettings> {
     const current = await getPremiumSettings();
     const next = { ...current, ...update };
     inMemorySettings = next;
+    try {
+        if (typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.setItem(LS_PREMIUM_SETTINGS_KEY, JSON.stringify(next));
+        }
+    } catch {}
     await DataStore.set(PREMIUM_SETTINGS_KEY, next);
     for (const listener of settingsListeners) {
         try { listener(next); } catch {}

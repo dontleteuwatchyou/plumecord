@@ -27,6 +27,8 @@ export interface PremiumFavSong {
 
 export type ProfileFontType = "none" | "gothic" | "signature" | "pixel" | "nerd" | "cyberpunk" | "handwritten";
 
+export type UsernameEffectType = "none" | "glow" | "glitch" | "rainbow" | "type" | "gothic" | "signature" | "pixel" | "nerd" | "cyberpunk" | "handwritten";
+
 export interface ProfileEffectsConfig {
     enabled?: boolean;
     mode: "preset" | "gif";
@@ -37,10 +39,10 @@ export interface ProfileEffectsConfig {
     gifFit: "cover" | "contain" | "fill";
     gifBgColor: string;
     gifBlendMode: string;
-    nameEffect: "none" | "glow" | "glitch" | "rainbow" | "type";
+    nameEffect: UsernameEffectType;
     glowColor: string;
-    chatUsernameEffect: "none" | "glow" | "glitch" | "rainbow" | "type";
-    memberListEffect: "none" | "glow" | "glitch" | "rainbow" | "type";
+    chatUsernameEffect: UsernameEffectType;
+    memberListEffect: UsernameEffectType;
     profileFont?: ProfileFontType;
 }
 

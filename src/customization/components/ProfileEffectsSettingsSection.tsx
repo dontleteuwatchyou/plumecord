@@ -74,6 +74,12 @@ export function ProfileEffectsSettingsSection() {
         { label: t("Glitch (Cyberpunk)"), value: "glitch" },
         { label: t("Typewriter"), value: "type" },
         { label: t("Rainbow"), value: "rainbow" },
+        { label: t("Gothic (Unifraktur)"), value: "gothic" },
+        { label: t("Signature Script (Alex Brush)"), value: "signature" },
+        { label: t("Pixel / Minecraft (Press Start 2P)"), value: "pixel" },
+        { label: t("Nerd Font (JetBrains Mono)"), value: "nerd" },
+        { label: t("Cyberpunk (Orbitron)"), value: "cyberpunk" },
+        { label: t("Handwritten (Caveat)"), value: "handwritten" },
     ];
 
     const fontOptions = [
@@ -183,7 +189,7 @@ export function ProfileEffectsSettingsSection() {
                             {t("Preview of your chosen profile effect")}
                         </span>
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
                         {cfg.nameEffect === "type" ? (
                             <TypewriterPreview text={currentUserName} />
                         ) : (
@@ -191,9 +197,17 @@ export function ProfileEffectsSettingsSection() {
                                 className={
                                     cfg.nameEffect === "glow" ? "cpe-glow" :
                                     cfg.nameEffect === "glitch" ? "cpe-glitch" :
-                                    cfg.nameEffect === "rainbow" ? "cpe-rainbow-letter" : ""
+                                    cfg.nameEffect === "rainbow" ? "cpe-rainbow-letter" :
+                                    ["gothic", "signature", "pixel", "nerd", "cyberpunk", "handwritten"].includes(cfg.nameEffect)
+                                        ? `cpe-font-${cfg.nameEffect}`
+                                        : ""
                                 }
                                 data-cpe-text={currentUserName}
+                                data-cpe-font={
+                                    ["gothic", "signature", "pixel", "nerd", "cyberpunk", "handwritten"].includes(cfg.nameEffect)
+                                        ? cfg.nameEffect
+                                        : undefined
+                                }
                                 style={{
                                     "--cpe-glow-color": cfg.glowColor || "#a78bfa",
                                     color: "var(--header-primary, #ffffff)",

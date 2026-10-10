@@ -215,7 +215,7 @@ function initTrayIpc() {
 }
 
 import { ReactDOM } from "@webpack/common";
-import { initCustomization } from "customization";
+import { initCustomization, registerCustomizationPatches } from "customization";
 
 async function init() {
     await onceReady;
@@ -290,6 +290,7 @@ if ((window as any).__NIGHTCORD_INITIALIZED__) {
         g.NightcordNative ??= g.VencordNative;
     } catch {}
 
+    registerCustomizationPatches();
     initPluginManager();
     initStyles();
     startAllPlugins(StartAt.Init);
