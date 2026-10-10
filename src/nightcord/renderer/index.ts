@@ -1,5 +1,5 @@
 /*
- * Vencord, a Discord client mod
+ * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -21,9 +21,12 @@ import { React, VoiceActions } from "@webpack/common";
 import { SecurityModal } from "./components/SecurityModal";
 import SettingsUi from "./components/settings/Settings";
 import { VesktopLogger } from "./logger";
+import { initPremium } from "./premium";
 import { Settings } from "./settings";
 import { localStorage } from "./utils";
 export { Settings };
+
+void initPremium();
 
 import type SettingsPlugin from "@plugins/_core/settings";
 import { VesktopSettingsIcon } from "shared/icons";

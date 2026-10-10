@@ -11,6 +11,13 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Nightcord Premium": {"en":"Nightcord Premium","fr":"Nightcord Premium","ar":"نايتكورد بريميوم","es":"Nightcord Premium","ru":"Nightcord Premium","zh":"Nightcord Premium"},
+    "Stories & Highlights": {"en":"Stories & Highlights","fr":"Stories & À la une","ar":"القصص والمميزات","es":"Historias y destacados","ru":"Истории и актуальное","zh":"快拍与精选"},
+    "My Story": {"en":"My Story","fr":"Ma story","ar":"قصتي","es":"Mi historia","ru":"Моя история","zh":"我的快拍"},
+    "Fav Songs": {"en":"Fav Songs","fr":"Musiques favorites","ar":"الأغاني المفضلة","es":"Canciones favoritas","ru":"Любимые песни","zh":"最爱音乐"},
+    "My Fav Song": {"en":"My Fav Song","fr":"Ma musique","ar":"أغنيتي المفضلة","es":"Mi canción favorita","ru":"Моя любимая песня","zh":"我的最爱音乐"},
+    "Profile Effects": {"en":"Profile Effects","fr":"Effets de profil","ar":"تأثيرات الملف الشخصي","es":"Efectos de perfil","ru":"Эффекты профиля","zh":"个人资料特效"},
+    "Enable Nightcord Premium": {"en":"Enable Nightcord Premium","fr":"Activer Nightcord Premium","ar":"تفعيل نايتكورد بريميوم","es":"Activar Nightcord Premium","ru":"Включить Nightcord Premium","zh":"启用 Nightcord Premium"},
     "Quick Reload Required": {"en":"Quick Reload Required","fr":"Rechargement rapide requis","ar":"مطلوب إعادة التحميل السريع","es":"Recarga rápida requerida","ru":"Требуется быстрая перезагрузка","zh":"需要快速重新加载"},
     "Quick Reload Now": {"en":"Quick Reload Now","fr":"Recharger maintenant (1s)","ar":"إعادة التحميل السريع الآن","es":"Recargar rápido ahora","ru":"Перезагрузить сейчас","zh":"立即快速重载"},
     "Quick Reload": {"en":"Quick Reload","fr":"Rechargement rapide","ar":"إعادة التحميل السريع","es":"Recarga rápida","ru":"Быстрая перезагрузка","zh":"快速重载"},
