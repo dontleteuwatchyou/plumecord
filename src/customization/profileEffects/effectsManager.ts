@@ -46,7 +46,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     }
 
     const img = el.querySelector("img[src*='/avatars/']") ||
-        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='peopleListItem_'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
+        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_'], [class*='peopleListItem_'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
     if (img) {
         const match = img.getAttribute("src")?.match(/\/avatars\/(\d+)\//);
         if (match) return match[1];
@@ -61,6 +61,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
                 if (props) {
                     if (props.user?.id) return String(props.user.id);
                     if (props.userId) return String(props.userId);
+                    if (props.currentUser?.id) return String(props.currentUser.id);
                     if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
                     if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
                     if (props.author?.id) return String(props.author.id);
@@ -75,7 +76,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     } catch {}
 
     const container = el.closest<HTMLElement>(
-        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='peopleListItem'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
+        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_'], [class*='userInfo_'], [class*='peopleListItem'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
     );
     if (container && container !== el) {
         try {
@@ -87,6 +88,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
                     if (props) {
                         if (props.user?.id) return String(props.user.id);
                         if (props.userId) return String(props.userId);
+                        if (props.currentUser?.id) return String(props.currentUser.id);
                         if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
                         if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
                         if (props.author?.id) return String(props.author.id);
@@ -123,8 +125,8 @@ function isForbiddenElement(el: HTMLElement): boolean {
     }
 
     const isProfileNameHeader =
-        (el.matches("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']") ||
-        !!el.closest("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']")) &&
+        (el.matches("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [data-text-variant*='heading-lg/bold'], [class*='displayName_'], [class*='displayNameRow_'], [class*='heading-lg'], [data-text-variant*='heading-lg']") ||
+        !!el.closest("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [class*='displayNameRow_']")) &&
         !el.closest("[class*='chat_'], [class*='chatContent_'], [class*='messagesWrapper_']");
 
     const tag = el.tagName.toLowerCase();
@@ -443,15 +445,19 @@ function applyProfileFont(el: HTMLElement, font: string) {
 
     if (target !== "none") {
         el.setAttribute("data-nc-profile-font", target);
-        const inner = el.querySelector<HTMLElement>("[class*='profileContentInner_']");
-        if (inner && inner !== el) inner.setAttribute("data-nc-profile-font", target);
-        const outer = el.closest<HTMLElement>("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout']");
+        const inners = el.querySelectorAll<HTMLElement>("[class*='profileContentInner_'], [class*='inner_'], [class*='userInfo_']");
+        for (const inn of Array.from(inners)) inn.setAttribute("data-nc-profile-font", target);
+        const outer = el.closest<HTMLElement>(
+            "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_']"
+        );
         if (outer && outer !== el) outer.setAttribute("data-nc-profile-font", target);
     } else {
         el.removeAttribute("data-nc-profile-font");
-        const inner = el.querySelector<HTMLElement>("[class*='profileContentInner_']");
-        if (inner && inner !== el) inner.removeAttribute("data-nc-profile-font");
-        const outer = el.closest<HTMLElement>("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout']");
+        const inners = el.querySelectorAll<HTMLElement>("[data-nc-profile-font]");
+        for (const inn of Array.from(inners)) inn.removeAttribute("data-nc-profile-font");
+        const outer = el.closest<HTMLElement>(
+            "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_']"
+        );
         if (outer && outer !== el) outer.removeAttribute("data-nc-profile-font");
     }
 }
@@ -537,13 +543,21 @@ export function scanAndApplyEffects() {
 
     // 2. Profile Popouts, Modals and Live Previews (Banners, Nicknames & Profile Fonts)
     const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile'], [class*='profileContentInner_']"
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='themeContainer_'], [class*='outer_'][class*='theme-'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile'], [class*='profileContentInner_']"
     );
 
-    for (const el of Array.from(profileElements)) {
+    const processedContainers = new Set<HTMLElement>();
+    for (const rawEl of Array.from(profileElements)) {
+        const el = rawEl.closest<HTMLElement>(
+            "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='user-profile-popout'], .user-profile-popout, [class*='userPopout'], [class*='themeContainer_'], [id='account'], [class*='accountProfile']"
+        ) || rawEl;
+
+        if (processedContainers.has(el)) continue;
+        processedContainers.add(el);
+
         const authorId = getAuthorIdFromElement(el);
         const nameEls = el.querySelectorAll<HTMLElement>(
-            "[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
+            "[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [data-text-variant*='heading-lg/bold'], [class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
         );
 
         let hasOwnName = false;
@@ -645,7 +659,7 @@ export function scanAndApplyEffects() {
         "[class*='message_'] [data-username-with-effects]"
     );
     for (const el of Array.from(chatNames)) {
-        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile'], [class*='peopleListItem_'], [class*='member_'], [role='listitem']")) {
+        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile'], [class*='peopleListItem_'], [class*='member_'], [role='listitem']")) {
             continue;
         }
         if (isForbiddenElement(el)) {
@@ -899,8 +913,8 @@ export function startProfileEffects() {
                 const node = m.addedNodes[j];
                 if (node instanceof HTMLElement) {
                     if (
-                        node.matches?.("[class*='userProfile'], [class*='userPopout'], [class*='profileContentInner'], [class*='modalRoot'], [role='dialog'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']") ||
-                        node.querySelector?.("[class*='userProfile'], [class*='userPopout'], [class*='profileContentInner'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']")
+                        node.matches?.("[class*='userProfile'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer'], [class*='outer_'], [class*='profileContentInner'], [class*='modalRoot'], [role='dialog'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']") ||
+                        node.querySelector?.("[class*='userProfile'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer'], [class*='outer_'], [class*='profileContentInner'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']")
                     ) {
                         hasProfileMutation = true;
                         break;

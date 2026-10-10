@@ -1006,24 +1006,37 @@
     padding-bottom: 0 !important;
 }
 
-[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='header__00de6'],
-[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='heading-xxl'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayName_'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayNameContent_'] {
     line-height: 1.15 !important;
 }
 
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayNameRow_'] {
+    margin-bottom: 2px !important;
+    padding-bottom: 0 !important;
+}
+
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTag_'],
-[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTagUsername_'],
-[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='usernameAndPronounsRow_'] {
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTagUsername_'] {
     line-height: 1.2 !important;
     display: inline-flex !important;
     align-items: center !important;
 }
 
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='usernameAndPronounsRow_'] {
+    line-height: 1.2 !important;
+    display: flex !important;
+    align-items: center !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    gap: 4px !important;
+}
+
 /* 1. Gothic (UnifrakturMaguntia) */
 [data-nc-profile-font="gothic"],
-[data-nc-profile-font="gothic"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="gothic"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'UnifrakturMaguntia', 'MedievalSharp', cursive, serif !important;
 }
 
@@ -1044,7 +1057,7 @@
 
 /* 2. Signature Script (Alex Brush) - High-legibility boosted scale & anti-clipping */
 [data-nc-profile-font="signature"],
-[data-nc-profile-font="signature"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="signature"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'Alex Brush', 'Great Vibes', cursive !important;
     font-weight: 400 !important;
 }
@@ -1122,7 +1135,7 @@
 
 /* 3. Pixel (Press Start 2P) */
 [data-nc-profile-font="pixel"],
-[data-nc-profile-font="pixel"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="pixel"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'Press Start 2P', 'VT323', monospace !important;
     letter-spacing: -0.5px;
 }
@@ -1137,19 +1150,19 @@
 
 /* 4. Nerd Font (JetBrains Mono) */
 [data-nc-profile-font="nerd"],
-[data-nc-profile-font="nerd"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="nerd"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
 }
 
 /* 5. Cyberpunk (Orbitron) */
 [data-nc-profile-font="cyberpunk"],
-[data-nc-profile-font="cyberpunk"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="cyberpunk"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'Orbitron', sans-serif !important;
 }
 
 /* 6. Handwritten (Caveat) - High-legibility boosted scale & anti-clipping */
 [data-nc-profile-font="handwritten"],
-[data-nc-profile-font="handwritten"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+[data-nc-profile-font="handwritten"] *:not(svg):not(path):not(use):not(foreignObject):not(img):not([class*='menuItem']):not([class*='menuItem'] *):not([class*='menu_']):not([class*='menu_'] *) {
     font-family: 'Caveat', cursive !important;
     font-weight: 600 !important;
 }
