@@ -108,7 +108,7 @@ export function getGlobalFontConfig(): GlobalFontConfig {
 }
 
 export function ensureGoogleFontsLoaded() {
-    if (typeof document === "undefined") return;
+    if (typeof document === "undefined" || !document.head) return;
     if (document.getElementById("nightcord-google-fonts-sheet")) return;
     const link = document.createElement("link");
     link.id = "nightcord-google-fonts-sheet";
@@ -122,6 +122,13 @@ export function applyGlobalFont(config: GlobalFontConfig) {
 
     cachedConfig = { ...config };
 
+    if (!document.documentElement || !document.head) {
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => applyGlobalFont(config), { once: true });
+        }
+        return;
+    }
+
     const styleId = "nightcord-global-client-font";
     let styleEl = document.getElementById(styleId) as HTMLStyleElement | null;
 
@@ -129,7 +136,7 @@ export function applyGlobalFont(config: GlobalFontConfig) {
         if (styleEl) {
             styleEl.remove();
         }
-        document.documentElement.style.removeProperty("--nc-global-font-scale");
+        document.documentElement?.style?.removeProperty?.("--nc-global-font-scale");
         return;
     }
 
