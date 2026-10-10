@@ -5076,7 +5076,8 @@ export default definePlugin({
             description: "Automatically translate strings",
             type: 4, // select
             options: [
-                { label: "English", value: "en", default: true },
+                { label: "Automatic (Discord)", value: "auto", default: true },
+                { label: "English", value: "en" },
                 { label: "Français", value: "fr" },
                 { label: "العربية", value: "ar" },
                 { label: "Español", value: "es" },
@@ -5111,7 +5112,13 @@ export function getActiveLanguage(): SupportedLang {
     const globalLang = Settings.language;
     if (globalLang && globalLang !== "auto") return normalizeLang(globalLang);
 
-    // 4. Auto-detect from Discord client DOM / navigator
+    // 4. Auto-detect from Discord client LocaleStore
+    try {
+        const { LocaleStore } = (typeof Vencord !== "undefined" ? Vencord.Webpack?.Common : {}) as any;
+        if (LocaleStore?.locale) return normalizeLang(LocaleStore.locale);
+    } catch {}
+
+    // 5. Auto-detect from Discord client DOM / navigator
     try {
         const discordLocale = (typeof window !== "undefined" && (window as any).DiscordNative?.app?.getLocale?.());
         if (discordLocale) return normalizeLang(discordLocale);

@@ -23,13 +23,13 @@ export const EFFECTS_KEY = "NightcordPremium_ProfileEffects";
 
 export const DEFAULT_PREMIUM_SETTINGS: NightcordPremiumSettings = {
     enabled: true,
-    storiesEnabled: true,
-    favSongsEnabled: true,
-    profileEffectsEnabled: true,
+    storiesEnabled: false,
+    favSongsEnabled: false,
+    profileEffectsEnabled: false,
 };
 
 export const DEFAULT_EFFECTS_CONFIG: ProfileEffectsConfig = {
-    enabled: true,
+    enabled: false,
     mode: "preset",
     presetName: "cards-glitch",
     showBanner: false,

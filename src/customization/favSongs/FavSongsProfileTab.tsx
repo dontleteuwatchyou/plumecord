@@ -118,82 +118,61 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
 
     if (isSelf && !isAuthenticated) {
         return (
-            <div style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: 340,
-                height: "100%",
-                padding: "48px 20px",
-                textAlign: "center",
-                gap: 16
-            }}>
-                <div style={{ color: "var(--brand-500, #5865f2)" }}>
-                    <MusicIcon size={36} />
+            <div className="ncp-profile-empty-state">
+                <div className="ncp-profile-empty-inner" style={{ gap: 16 }}>
+                    <div className="ncp-profile-empty-icon" style={{ color: "var(--brand-500, #5865f2)", opacity: 1 }}>
+                        <MusicIcon size={36} />
+                    </div>
+                    <div>
+                        <h3 className="ncp-profile-empty-title" style={{ margin: "0 0 6px 0", fontSize: 18 }}>
+                            {t("Nightcord Authentication Required")}
+                        </h3>
+                        <p className="ncp-profile-empty-desc" style={{ margin: "0 auto" }}>
+                            {t("Connect your Discord account via OAuth2 to display and sync your favorite songs on your profile.")}
+                        </p>
+                    </div>
+                    <Button
+                        color={Button.Colors.BRAND}
+                        onClick={async () => {
+                            const tok = await promptDiscordOAuth();
+                            if (tok) void loadData();
+                        }}
+                    >
+                        <DiscordIcon />
+                        {t("Authenticate with Discord")}
+                    </Button>
                 </div>
-                <div>
-                    <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                        {t("Nightcord Authentication Required")}
-                    </h3>
-                    <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted, #949ba4)", maxWidth: 360, lineHeight: 1.5 }}>
-                        {t("Connect your Discord account via OAuth2 to display and sync your favorite songs on your profile.")}
-                    </p>
-                </div>
-                <Button
-                    color={Button.Colors.BRAND}
-                    onClick={async () => {
-                        const tok = await promptDiscordOAuth();
-                        if (tok) void loadData();
-                    }}
-                >
-                    <DiscordIcon />
-                    {t("Authenticate with Discord")}
-                </Button>
             </div>
         );
     }
 
     if (loading) {
         return (
-            <div style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: 340,
-                height: "100%",
-                textAlign: "center",
-                padding: "40px 20px",
-                color: "var(--text-muted, #949ba4)"
-            }}>
-                {t("Loading songs...")}
+            <div className="ncp-profile-empty-state">
+                <div className="ncp-profile-empty-inner">
+                    <div className="ncp-profile-empty-title" style={{ fontSize: 14, fontWeight: 500, color: "var(--text-muted, #949ba4)" }}>
+                        {t("Loading songs...")}
+                    </div>
+                </div>
             </div>
         );
     }
 
     if (songs.length === 0) {
         return (
-            <div style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: 340,
-                height: "100%",
-                padding: "32px 20px",
-                textAlign: "center",
-                color: "var(--text-muted, #949ba4)"
-            }}>
-                <div style={{ opacity: 0.5, marginBottom: 12 }}>
-                    <MusicIcon size={36} />
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 500, color: "var(--header-primary, #ffffff)" }}>
-                    {t("No favorite songs")}
-                </div>
-                <div style={{ fontSize: 13, marginTop: 4, color: "var(--text-muted, #949ba4)" }}>
-                    {isSelf
-                        ? t("Add your favorite songs from Nightcord Customization settings.")
-                        : t("This user hasn't configured any favorite songs yet.")}
+            <div className="ncp-profile-empty-state">
+                <div className="ncp-profile-empty-inner">
+                    <div className="ncp-profile-empty-icon">
+                        <MusicIcon size={36} />
+                    </div>
+                    <div className="ncp-profile-empty-title">
+                        {t("No favorite songs")}
+                    </div>
+                    <div className="ncp-profile-empty-desc">
+                        {isSelf
+                            ? t("Add your favorite songs from Nightcord Customization settings.")
+                            : t("This user hasn't configured any favorite songs yet.")}
+                    </div>
                 </div>
             </div>
         );

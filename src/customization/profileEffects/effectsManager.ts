@@ -189,12 +189,13 @@ export async function scanAndApplyEffects() {
     if (!active) return;
 
     const settings = await getPremiumSettings();
-    if (!settings.enabled || !settings.profileEffectsEnabled) return;
+    if (!settings.enabled) return;
 
     const curUser = UserStore.getCurrentUser();
     if (!curUser?.id) return;
 
     const ownConfig = await getLocalEffectsConfig(curUser.id);
+    const selfEffectsActive = !!settings.profileEffectsEnabled;
 
     const userNames = new Set<string>();
     if (curUser.username) userNames.add(curUser.username.trim().toLowerCase());
@@ -230,11 +231,18 @@ export async function scanAndApplyEffects() {
         const isSelf = (authorId && authorId === curUser.id) || hasOwnName;
 
         if (isSelf) {
-            void injectBackground(el, ownConfig);
-            for (const n of Array.from(nameEls)) {
-                if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-                    applyNameEffectToElement(n, ownConfig.nameEffect, ownConfig.glowColor);
-                } else {
+            if (selfEffectsActive) {
+                void injectBackground(el, ownConfig);
+                for (const n of Array.from(nameEls)) {
+                    if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+                        applyNameEffectToElement(n, ownConfig.nameEffect, ownConfig.glowColor);
+                    } else {
+                        removeNameEffectFromElement(n);
+                    }
+                }
+            } else {
+                el.querySelector(".cpe-bg-layer")?.remove();
+                for (const n of Array.from(nameEls)) {
                     removeNameEffectFromElement(n);
                 }
             }
@@ -265,7 +273,7 @@ export async function scanAndApplyEffects() {
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
 
         if (isSelf) {
-            if (ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none") {
+            if (selfEffectsActive && ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none") {
                 applyNameEffectToElement(el, ownConfig.chatUsernameEffect, ownConfig.glowColor);
             } else {
                 removeNameEffectFromElement(el);
@@ -284,7 +292,7 @@ export async function scanAndApplyEffects() {
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
 
         if (isSelf) {
-            if (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none") {
+            if (selfEffectsActive && ownConfig.memberListEffect && ownConfig.memberListEffect !== "none") {
                 applyNameEffectToElement(el, ownConfig.memberListEffect, ownConfig.glowColor);
             } else {
                 removeNameEffectFromElement(el);
@@ -297,7 +305,7 @@ export async function scanAndApplyEffects() {
         "[class*='panels_'] [class*='nameTag_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='subtext_'], [class*='panels_'] [class*='username_']"
     );
     for (const el of Array.from(currentUserBar)) {
-        if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+        if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
             applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
         } else {
             removeNameEffectFromElement(el);

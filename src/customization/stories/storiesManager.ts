@@ -71,7 +71,9 @@ function scanAvatars() {
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = setTimeout(async () => {
         const settings = await getPremiumSettings();
-        if (!settings.enabled || !settings.storiesEnabled) return;
+        if (!settings.enabled) return;
+
+        const currentUserId = UserStore.getCurrentUser()?.id;
 
         const profileModals = document.querySelectorAll(
             '[class*="userProfile"] [class*="avatar"], [class*="UserProfile"] [class*="avatar"], [class*="userPopout"] [class*="avatar"]'
@@ -87,6 +89,9 @@ function scanAvatars() {
             if (!match) continue;
 
             const userId = match[1];
+            if (currentUserId && userId === currentUserId && !settings.storiesEnabled) {
+                continue;
+            }
             await injectRingIntoAvatar(avatarEl, userId);
         }
     }, 120);
