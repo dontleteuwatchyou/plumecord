@@ -11,28 +11,15 @@ import {
     GLOBAL_FONTS,
     getGlobalFontConfig,
     setGlobalFontConfig,
+    subscribeGlobalFont,
     type GlobalFontConfig
 } from "customization/globalFonts/globalFontManager";
 import { Button, React, showToast, TextInput, Toasts, useEffect, useState } from "@webpack/common";
-
-const CheckIcon = () => (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-    </svg>
-);
 
 const ResetIcon = () => (
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
         <path d="M3 3v5h5" />
-    </svg>
-);
-
-const FontPreviewIcon = () => (
-    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="4 7 4 4 20 4 20 7" />
-        <line x1="9" y1="20" x2="15" y2="20" />
-        <line x1="12" y1="4" x2="12" y2="20" />
     </svg>
 );
 
@@ -42,6 +29,10 @@ export default function FontsTab() {
 
     useEffect(() => {
         setConfig(getGlobalFontConfig());
+        const unsub = subscribeGlobalFont(next => {
+            setConfig(next);
+        });
+        return unsub;
     }, []);
 
     const update = (patch: Partial<GlobalFontConfig>) => {
@@ -50,8 +41,14 @@ export default function FontsTab() {
         showToast(t("Client font updated successfully"), Toasts.Type.SUCCESS);
     };
 
-    const handleSelectFont = (fontId: string) => {
-        update({ fontId, enabled: true });
+    const handleToggleFont = (fontId: string, currentActive: boolean) => {
+        if (currentActive) {
+            // Turning OFF this active font turns it back to default (none)
+            update({ fontId: "none", enabled: true });
+        } else {
+            // Turning ON this font deactivates any previously selected font
+            update({ fontId, enabled: true });
+        }
     };
 
     const handleCustomSubmit = () => {
@@ -90,7 +87,7 @@ export default function FontsTab() {
                     </p>
                 </div>
 
-                {/* Status and Master Toggle Card */}
+                {/* Status and Active Info Card */}
                 <div style={{
                     background: "var(--background-secondary, #2b2d31)",
                     border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
@@ -126,24 +123,17 @@ export default function FontsTab() {
                         </div>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        {isCustomActive && (
-                            <Button
-                                size={Button.Sizes.SMALL}
-                                color={Button.Colors.PRIMARY}
-                                onClick={handleReset}
-                                style={{ display: "flex", alignItems: "center" }}
-                            >
-                                <ResetIcon />
-                                {t("Reset to Default")}
-                            </Button>
-                        )}
-                        <FormSwitch
-                            value={config.enabled}
-                            onChange={(val: boolean) => update({ enabled: val })}
-                            hideBorder
-                        />
-                    </div>
+                    {isCustomActive && (
+                        <Button
+                            size={Button.Sizes.SMALL}
+                            color={Button.Colors.PRIMARY}
+                            onClick={handleReset}
+                            style={{ display: "flex", alignItems: "center" }}
+                        >
+                            <ResetIcon />
+                            {t("Reset to Default")}
+                        </Button>
+                    )}
                 </div>
 
                 {/* Available Fonts Grid */}
@@ -168,9 +158,6 @@ export default function FontsTab() {
                             return (
                                 <div
                                     key={font.id}
-                                    onClick={() => handleSelectFont(font.id)}
-                                    role="button"
-                                    tabIndex={0}
                                     style={{
                                         background: isSelected
                                             ? "rgba(88, 101, 242, 0.12)"
@@ -178,7 +165,6 @@ export default function FontsTab() {
                                         border: `1.5px solid ${isSelected ? "var(--brand-500, #5865f2)" : "var(--border-subtle, rgba(255, 255, 255, 0.08))"}`,
                                         borderRadius: 8,
                                         padding: 16,
-                                        cursor: "pointer",
                                         transition: "all 0.15s ease",
                                         display: "flex",
                                         flexDirection: "column",
@@ -194,39 +180,33 @@ export default function FontsTab() {
                                         }}>
                                             {t(font.name)}
                                         </div>
-                                        {isSelected && (
-                                            <div style={{
-                                                width: 20,
-                                                height: 20,
-                                                borderRadius: 10,
-                                                background: "var(--brand-500, #5865f2)",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                color: "#ffffff"
-                                            }}>
-                                                <CheckIcon />
-                                            </div>
-                                        )}
+                                        <FormSwitch
+                                            value={isSelected}
+                                            onChange={() => handleToggleFont(font.id, isSelected)}
+                                            hideBorder
+                                        />
                                     </div>
 
                                     <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", lineHeight: 1.35 }}>
                                         {t(font.description)}
                                     </div>
 
-                                    {/* Direct font preview sample */}
-                                    <div style={{
-                                        marginTop: 4,
-                                        padding: "8px 10px",
-                                        background: "var(--background-tertiary, #1e1f22)",
-                                        borderRadius: 6,
-                                        fontFamily: font.fontFamily || "inherit",
-                                        fontSize: font.id === "pixel" ? 11 : font.id === "signature" ? 20 : 14,
-                                        color: "var(--header-primary, #ffffff)",
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis"
-                                    }}>
+                                    {/* Direct font preview sample - strictly preserved in authentic font */}
+                                    <div
+                                        className={`nc-font-sample nc-font-sample-${font.id}`}
+                                        style={{
+                                            marginTop: 4,
+                                            padding: "8px 10px",
+                                            background: "var(--background-tertiary, #1e1f22)",
+                                            borderRadius: 6,
+                                            fontFamily: font.fontFamily || "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                                            fontSize: font.id === "pixel" ? 11 : font.id === "signature" ? 20 : 14,
+                                            color: "var(--header-primary, #ffffff)",
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis"
+                                        }}
+                                    >
                                         Nightcord Discord Client 2026
                                     </div>
                                 </div>
@@ -254,17 +234,21 @@ export default function FontsTab() {
                                 {t("Specify any font installed on your operating system (e.g. Segoe UI, Consolas, Roboto, Impact, Arial).")}
                             </div>
                         </div>
-                        {config.fontId === "custom" && config.enabled && (
-                            <span style={{
-                                fontSize: 12,
-                                fontWeight: 600,
-                                padding: "2px 8px",
-                                borderRadius: 12,
-                                background: "var(--brand-500, #5865f2)",
-                                color: "#ffffff"
-                            }}>
-                                {t("Active")}
-                            </span>
+                        {config.fontId === "custom" && config.enabled ? (
+                            <FormSwitch
+                                value={true}
+                                onChange={() => handleToggleFont("custom", true)}
+                                hideBorder
+                            />
+                        ) : (
+                            <Button
+                                size={Button.Sizes.SMALL}
+                                color={Button.Colors.BRAND}
+                                onClick={handleCustomSubmit}
+                                disabled={!customInput.trim()}
+                            >
+                                {t("Apply Custom Font")}
+                            </Button>
                         )}
                     </div>
 
@@ -275,94 +259,16 @@ export default function FontsTab() {
                             onChange={(val: string) => setCustomInput(val)}
                             style={{ flex: 1 }}
                         />
-                        <Button
-                            size={Button.Sizes.MEDIUM}
-                            color={Button.Colors.BRAND}
-                            onClick={handleCustomSubmit}
-                            disabled={!customInput.trim()}
-                        >
-                            {t("Apply Custom Font")}
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Live Client Preview Box */}
-                <div style={{
-                    background: "var(--background-secondary, #2b2d31)",
-                    border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
-                    borderRadius: 8,
-                    padding: "16px 20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 14
-                }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <FontPreviewIcon />
-                        <span style={{ fontSize: 15, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                            {t("Live Preview")}
-                        </span>
-                    </div>
-
-                    <div style={{
-                        background: "var(--background-tertiary, #1e1f22)",
-                        borderRadius: 8,
-                        padding: 16,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 12
-                    }}>
-                        {/* Title simulation */}
-                        <div style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                            color: "var(--header-primary, #ffffff)",
-                            borderBottom: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
-                            paddingBottom: 8
-                        }}>
-                            # general • Nightcord Community
-                        </div>
-
-                        {/* Message simulation */}
-                        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                            <div style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 18,
-                                background: "var(--brand-500, #5865f2)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                color: "#ffffff",
-                                flexShrink: 0
-                            }}>
-                                N
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                                    <span style={{ fontSize: 15, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                                        Nightcord User
-                                    </span>
-                                    <span style={{ fontSize: 12, color: "var(--text-muted, #949ba4)" }}>
-                                        Today at 18:50
-                                    </span>
-                                </div>
-                                <div style={{ fontSize: 14, color: "var(--text-normal, #dbdee1)", lineHeight: 1.45 }}>
-                                    This is a live preview of how messages, channels, settings, and profile popouts look with this typography.
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Code snippet simulation */}
-                        <div style={{
-                            background: "var(--background-floating, #111214)",
-                            borderRadius: 6,
-                            padding: "8px 12px",
-                            fontSize: 13,
-                            color: "var(--text-normal, #dbdee1)"
-                        }}>
-                            <code>const typography = "100% applied across all Discord interface";</code>
-                        </div>
+                        {!(config.fontId === "custom" && config.enabled) && (
+                            <Button
+                                size={Button.Sizes.MEDIUM}
+                                color={Button.Colors.BRAND}
+                                onClick={handleCustomSubmit}
+                                disabled={!customInput.trim()}
+                            >
+                                {t("Apply Custom Font")}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>

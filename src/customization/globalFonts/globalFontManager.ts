@@ -78,7 +78,10 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
     }
 };
 
+import * as DataStore from "@api/DataStore";
+
 const LS_KEY = "nightcord_global_font_config";
+const DATASTORE_KEY = "nightcord_global_font_config";
 
 export const DEFAULT_GLOBAL_FONT_CONFIG: GlobalFontConfig = {
     enabled: true,
@@ -87,24 +90,45 @@ export const DEFAULT_GLOBAL_FONT_CONFIG: GlobalFontConfig = {
     scale: 1.0,
 };
 
-let cachedConfig: GlobalFontConfig = DEFAULT_GLOBAL_FONT_CONFIG;
+let cachedConfig: GlobalFontConfig | null = null;
+const fontListeners = new Set<(cfg: GlobalFontConfig) => void>();
 
 export function getGlobalFontConfig(): GlobalFontConfig {
-    if (typeof localStorage === "undefined") return DEFAULT_GLOBAL_FONT_CONFIG;
+    if (cachedConfig) return cachedConfig;
+    if (typeof localStorage !== "undefined") {
+        try {
+            const raw = localStorage.getItem(LS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                cachedConfig = {
+                    enabled: parsed.enabled ?? true,
+                    fontId: parsed.fontId ?? "none",
+                    customFamily: parsed.customFamily ?? "",
+                    scale: typeof parsed.scale === "number" ? parsed.scale : 1.0,
+                };
+                return cachedConfig;
+            }
+        } catch {}
+    }
+    cachedConfig = { ...DEFAULT_GLOBAL_FONT_CONFIG };
+    return cachedConfig;
+}
+
+export function subscribeGlobalFont(listener: (cfg: GlobalFontConfig) => void): () => void {
+    fontListeners.add(listener);
+    return () => fontListeners.delete(listener);
+}
+
+export async function loadSavedFontFromDataStore() {
     try {
-        const raw = localStorage.getItem(LS_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            cachedConfig = {
-                enabled: parsed.enabled ?? true,
-                fontId: parsed.fontId ?? "none",
-                customFamily: parsed.customFamily ?? "",
-                scale: typeof parsed.scale === "number" ? parsed.scale : 1.0,
-            };
-            return cachedConfig;
+        const saved = await DataStore.get<GlobalFontConfig>(DATASTORE_KEY);
+        if (saved && typeof saved === "object") {
+            const current = getGlobalFontConfig();
+            if (saved.fontId !== current.fontId || saved.enabled !== current.enabled || saved.customFamily !== current.customFamily) {
+                setGlobalFontConfig(saved);
+            }
         }
     } catch {}
-    return DEFAULT_GLOBAL_FONT_CONFIG;
 }
 
 export function ensureGoogleFontsLoaded() {
@@ -186,7 +210,7 @@ export function applyGlobalFont(config: GlobalFontConfig) {
 html,
 body,
 #app-mount,
-#app-mount *:not(svg):not(path):not(use):not(foreignObject):not(img):not(i):not([class*='icon']):not([class*='Icon']) {
+#app-mount *:not(svg):not(path):not(use):not(foreignObject):not(img):not(i):not([class*='icon']):not([class*='Icon']):not(.nc-font-sample):not(.nc-font-sample *) {
     font-family: ${family} !important;
     ${letterSpacing ? `letter-spacing: ${letterSpacing} !important;` : ""}
 }
@@ -205,14 +229,20 @@ ${scale !== 1.0 ? `
 export function setGlobalFontConfig(next: Partial<GlobalFontConfig>): GlobalFontConfig {
     const current = getGlobalFontConfig();
     const updated: GlobalFontConfig = { ...current, ...next };
+    cachedConfig = updated;
     try {
         localStorage.setItem(LS_KEY, JSON.stringify(updated));
     } catch {}
+    void DataStore.set(DATASTORE_KEY, updated).catch(() => {});
     applyGlobalFont(updated);
+    for (const listener of fontListeners) {
+        try { listener(updated); } catch {}
+    }
     return updated;
 }
 
 export function initGlobalFont() {
     const config = getGlobalFontConfig();
     applyGlobalFont(config);
+    void loadSavedFontFromDataStore();
 }
