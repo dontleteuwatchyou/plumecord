@@ -271,7 +271,7 @@ export function CustomizationTab() {
                     }}>
                         <FormSwitch
                             title={t("Profile Effects")}
-                            description={t("Animated profile banners and custom username effects (glow, glitch, etc.).")}
+                            description={t("Custom username text effects (glow, glitch, typewriter, rainbow).")}
                             value={settings.profileEffectsEnabled}
                             onChange={(v: boolean) => updateSt({ profileEffectsEnabled: v })}
                             hideBorder

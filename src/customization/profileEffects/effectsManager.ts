@@ -8,42 +8,9 @@ import { FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from 
 import { getCachedEffectsConfig, getCachedPremiumSettings, profileCache, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
-const PRESETS_BASE_URL = "https://raw.githubusercontent.com/holderikonik-prog/preset/main/presets/";
-const presetCache = new Map<string, { html: string; css: string; js: string; }>();
-
 let observer: MutationObserver | null = null;
 let active = false;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function fetchPreset(name: string): Promise<{ html: string; css: string; js: string; } | null> {
-    if (presetCache.has(name)) return presetCache.get(name)!;
-    try {
-        const res = await fetch(`${PRESETS_BASE_URL}${name}.html`);
-        if (!res.ok) return null;
-        const raw = await res.text();
-        if (!raw || raw.trim().length < 5) return null;
-
-        const doc = new DOMParser().parseFromString(raw, "text/html");
-        const cssBlocks: string[] = [];
-        doc.querySelectorAll("style").forEach(el => { cssBlocks.push(el.textContent ?? ""); el.remove(); });
-        const jsBlocks: string[] = [];
-        doc.querySelectorAll("script").forEach(el => {
-            const s = el as HTMLScriptElement;
-            if (!s.src) jsBlocks.push(s.textContent ?? "");
-            s.remove();
-        });
-
-        const parsed = {
-            html: doc.body?.innerHTML ?? "",
-            css: cssBlocks.join("\n"),
-            js: jsBlocks.join("\n")
-        };
-        presetCache.set(name, parsed);
-        return parsed;
-    } catch {
-        return null;
-    }
-}
 
 function getAuthorIdFromElement(el: HTMLElement): string | null {
     if (el.dataset.authorId) return el.dataset.authorId;
@@ -150,6 +117,78 @@ export function getTargetNameElement(el: HTMLElement): HTMLElement {
     return curr;
 }
 
+interface TypewriterState {
+    fullText: string;
+    currentIndex: number;
+    isDeleting: boolean;
+    pauseUntil: number;
+}
+
+const activeTypewriters = new Map<HTMLElement, TypewriterState>();
+let typewriterTimer: ReturnType<typeof setInterval> | null = null;
+
+function updateElementText(el: HTMLElement, text: string) {
+    const child = el.firstChild;
+    if (child && child.nodeType === Node.TEXT_NODE) {
+        child.nodeValue = text;
+    } else {
+        el.textContent = text;
+    }
+}
+
+function startTypewriterLoop() {
+    if (typewriterTimer !== null) return;
+    typewriterTimer = setInterval(() => {
+        if (!active || activeTypewriters.size === 0) {
+            stopTypewriterLoop();
+            return;
+        }
+
+        const now = Date.now();
+        for (const [el, state] of Array.from(activeTypewriters.entries())) {
+            if (!el.isConnected) {
+                activeTypewriters.delete(el);
+                continue;
+            }
+
+            if (state.pauseUntil > now) continue;
+
+            if (!state.isDeleting) {
+                if (state.currentIndex < state.fullText.length) {
+                    state.currentIndex++;
+                    updateElementText(el, state.fullText.slice(0, state.currentIndex));
+                    if (state.currentIndex === state.fullText.length) {
+                        state.pauseUntil = now + 1800; // Pause 1.8s once full username is displayed
+                    }
+                } else {
+                    state.isDeleting = true;
+                }
+            } else {
+                if (state.currentIndex > 0) {
+                    state.currentIndex--;
+                    updateElementText(el, state.fullText.slice(0, state.currentIndex));
+                    if (state.currentIndex === 0) {
+                        state.pauseUntil = now + 600; // Pause 0.6s at empty cursor before re-typing
+                    }
+                } else {
+                    state.isDeleting = false;
+                }
+            }
+        }
+
+        if (activeTypewriters.size === 0) {
+            stopTypewriterLoop();
+        }
+    }, 90);
+}
+
+function stopTypewriterLoop() {
+    if (typewriterTimer !== null) {
+        clearInterval(typewriterTimer);
+        typewriterTimer = null;
+    }
+}
+
 export function removeNameEffectFromElement(nameEl: HTMLElement) {
     if (
         !nameEl.dataset.ncAppliedEffect &&
@@ -165,6 +204,19 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
     nameEl.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
     nameEl.removeAttribute("data-cpe-text");
     nameEl.style.removeProperty("--cpe-glow-color");
+
+    if (activeTypewriters.has(nameEl)) {
+        const state = activeTypewriters.get(nameEl);
+        if (state) {
+            const originalText = nameEl.getAttribute("data-cpe-original-text") || state.fullText;
+            updateElementText(nameEl, originalText);
+        }
+        nameEl.removeAttribute("data-cpe-original-text");
+        activeTypewriters.delete(nameEl);
+        if (activeTypewriters.size === 0) {
+            stopTypewriterLoop();
+        }
+    }
 }
 
 export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowColor = "#a78bfa") {
@@ -206,44 +258,22 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
         nameEl.classList.add("cpe-rainbow-letter");
     } else if (effectType === "type") {
         nameEl.classList.add("cpe-type-cursor");
+        if (!activeTypewriters.has(nameEl)) {
+            const fullText = nameEl.getAttribute("data-cpe-original-text") || currentText;
+            nameEl.setAttribute("data-cpe-original-text", fullText);
+            activeTypewriters.set(nameEl, {
+                fullText,
+                currentIndex: fullText.length,
+                isDeleting: false,
+                pauseUntil: Date.now() + 1500
+            });
+            startTypewriterLoop();
+        }
     }
 }
 
-async function injectBackground(profileEl: HTMLElement, config: ProfileEffectsConfig) {
-    if (!config.showBanner) {
-        profileEl.querySelector(".cpe-bg-layer")?.remove();
-        return;
-    }
-    if (profileEl.querySelector(".cpe-bg-layer")) return;
-
-    const layer = document.createElement("div");
-    layer.className = "cpe-bg-layer";
-
-    if (config.mode === "preset" && config.presetName) {
-        const preset = await fetchPreset(config.presetName);
-        if (preset) {
-            const container = document.createElement("div");
-            container.style.cssText = "width:100%;height:100%;position:absolute;top:0;left:0;";
-            container.innerHTML = preset.html;
-
-            const style = document.createElement("style");
-            style.textContent = preset.css;
-            layer.appendChild(style);
-            layer.appendChild(container);
-        }
-    } else if (config.mode === "gif" && config.gifUrl) {
-        const img = document.createElement("img");
-        img.className = "cpe-gif-bg";
-        img.src = config.gifUrl;
-        img.style.objectFit = config.gifFit;
-        img.style.opacity = String(config.gifOpacity ?? 0.6);
-        img.style.mixBlendMode = config.gifBlendMode ?? "normal";
-        img.style.backgroundColor = config.gifBgColor ?? "transparent";
-        layer.appendChild(img);
-    }
-
-    profileEl.style.position = "relative";
-    profileEl.insertBefore(layer, profileEl.firstChild);
+async function injectBackground(profileEl: HTMLElement, _config: ProfileEffectsConfig) {
+    profileEl.querySelector(".cpe-bg-layer")?.remove();
 }
 
 export function scanAndApplyEffects() {
@@ -575,6 +605,15 @@ export function stopProfileEffects() {
         clearTimeout(scanTimer);
         scanTimer = null;
     }
+    stopTypewriterLoop();
+    for (const [el, state] of Array.from(activeTypewriters.entries())) {
+        if (el.isConnected) {
+            updateElementText(el, state.fullText);
+            el.removeAttribute("data-cpe-original-text");
+        }
+    }
+    activeTypewriters.clear();
+
     try {
         FluxDispatcher.unsubscribe("CONNECTION_OPEN", onConnectionOpen);
         FluxDispatcher.unsubscribe("CURRENT_USER_UPDATE", onConnectionOpen);

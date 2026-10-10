@@ -883,18 +883,21 @@
     line-height: inherit !important;
     margin: 0 !important;
     padding: 0 !important;
-    color: inherit;
+    color: var(--header-primary, #ffffff) !important;
+    -webkit-text-fill-color: var(--header-primary, #ffffff) !important;
 }
 
 .cpe-type-cursor * {
-    color: inherit;
+    color: var(--header-primary, #ffffff) !important;
+    -webkit-text-fill-color: var(--header-primary, #ffffff) !important;
 }
 
 .cpe-type-cursor::after {
     content: '|';
     display: inline-block;
     margin-left: 2px;
-    color: var(--brand-500, #5865f2);
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
     font-weight: 700;
     animation: cpe-blink 0.75s step-end infinite !important;
 }
