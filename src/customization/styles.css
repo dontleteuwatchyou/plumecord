@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=Cinzel:wght@600;800&family=Comfortaa:wght@600;700&family=Creepster&family=Dancing+Script:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Monoton&family=Orbitron:wght@600;800&family=Pacifico&family=Playfair+Display:wght@600;700&family=Poppins:wght@400;600;700&family=Press+Start+2P&family=Righteous&family=Roboto+Mono:wght@400;600&family=UnifrakturMaguntia&display=swap');
 
 /* ── Story Ring on Avatars ─────────────────────────────────────────────────── */
 
@@ -1381,5 +1381,45 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-font-sample-handwritten {
     font-family: 'Caveat', cursive !important;
+}
+
+.nc-font-sample-poppins {
+    font-family: 'Poppins', sans-serif !important;
+}
+
+.nc-font-sample-robotoMono {
+    font-family: 'Roboto Mono', monospace !important;
+}
+
+.nc-font-sample-pacifico {
+    font-family: 'Pacifico', cursive !important;
+}
+
+.nc-font-sample-cinzel {
+    font-family: 'Cinzel', serif !important;
+}
+
+.nc-font-sample-dancingScript {
+    font-family: 'Dancing Script', cursive !important;
+}
+
+.nc-font-sample-playfair {
+    font-family: 'Playfair Display', serif !important;
+}
+
+.nc-font-sample-comfortaa {
+    font-family: 'Comfortaa', sans-serif !important;
+}
+
+.nc-font-sample-righteous {
+    font-family: 'Righteous', cursive !important;
+}
+
+.nc-font-sample-creepster {
+    font-family: 'Creepster', cursive !important;
+}
+
+.nc-font-sample-monoton {
+    font-family: 'Monoton', cursive !important;
 }
 

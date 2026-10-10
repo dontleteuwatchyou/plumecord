@@ -20,7 +20,7 @@ export interface GlobalFontDefinition {
     letterSpacing?: string;
 }
 
-export const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap";
+export const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=Cinzel:wght@600;800&family=Comfortaa:wght@600;700&family=Creepster&family=Dancing+Script:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Monoton&family=Orbitron:wght@600;800&family=Pacifico&family=Playfair+Display:wght@600;700&family=Poppins:wght@400;600;700&family=Press+Start+2P&family=Righteous&family=Roboto+Mono:wght@400;600&family=UnifrakturMaguntia&display=swap";
 
 export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
     none: {
@@ -28,6 +28,73 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         name: "Default (Discord)",
         description: "Discord standard native typography (gg sans)",
         fontFamily: "",
+    },
+    poppins: {
+        id: "poppins",
+        name: "Modern Sans (Poppins)",
+        description: "Clean modern geometric sans-serif typeface",
+        fontFamily: "'Poppins', sans-serif",
+    },
+    robotoMono: {
+        id: "robotoMono",
+        name: "Roboto Mono",
+        description: "Clean monospaced developer typeface",
+        fontFamily: "'Roboto Mono', monospace",
+    },
+    pacifico: {
+        id: "pacifico",
+        name: "Pacifico Script",
+        description: "Warm and cheerful 1950s surf culture brush script",
+        fontFamily: "'Pacifico', cursive",
+    },
+    cinzel: {
+        id: "cinzel",
+        name: "Cinzel Decorative",
+        description: "Classical Roman inscriptional proportions and elegance",
+        fontFamily: "'Cinzel', serif",
+        letterSpacing: "0.4px",
+    },
+    dancingScript: {
+        id: "dancingScript",
+        name: "Dancing Script",
+        description: "Lively casual script with bouncing letters",
+        fontFamily: "'Dancing Script', cursive",
+        letterSpacing: "0.3px",
+    },
+    playfair: {
+        id: "playfair",
+        name: "Playfair Display",
+        description: "High-contrast editorial serif inspired by John Baskerville",
+        fontFamily: "'Playfair Display', serif",
+        letterSpacing: "0.2px",
+    },
+    comfortaa: {
+        id: "comfortaa",
+        name: "Comfortaa Rounded",
+        description: "Smooth rounded geometric sans-serif typeface",
+        fontFamily: "'Comfortaa', sans-serif",
+        letterSpacing: "0.2px",
+    },
+    righteous: {
+        id: "righteous",
+        name: "Righteous Arcade",
+        description: "Bold retro 1980s display typography",
+        fontFamily: "'Righteous', cursive",
+        letterSpacing: "0.5px",
+    },
+    creepster: {
+        id: "creepster",
+        name: "Creepster Spooky",
+        description: "Spooky horror and gothic comic display typeface",
+        fontFamily: "'Creepster', cursive",
+        letterSpacing: "0.4px",
+    },
+    monoton: {
+        id: "monoton",
+        name: "Monoton Retro",
+        description: "Multi-line retro 1970s and neon display typography",
+        fontFamily: "'Monoton', cursive",
+        letterSpacing: "1px",
     },
     gothic: {
         id: "gothic",
@@ -191,7 +258,7 @@ export function applyGlobalFont(config: GlobalFontConfig) {
     }
 
     const scale = config.scale || 1.0;
-    const fontCodeFamily = (config.fontId === "nerd" || config.fontId === "pixel")
+    const fontCodeFamily = (config.fontId === "nerd" || config.fontId === "pixel" || config.fontId === "robotoMono")
         ? family
         : `'JetBrains Mono', 'Fira Code', ${family}, monospace`;
 

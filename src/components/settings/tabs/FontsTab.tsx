@@ -153,30 +153,30 @@ export default function FontsTab() {
                         gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
                         gap: 12
                     }}>
-                        {Object.values(GLOBAL_FONTS).filter(f => f.id !== "custom").map(font => {
+                        {Object.values(GLOBAL_FONTS).filter(f => f.id !== "custom" && f.id !== "none").map(font => {
                             const isSelected = config.enabled && config.fontId === font.id;
                             return (
                                 <div
                                     key={font.id}
                                     style={{
-                                        background: isSelected
-                                            ? "rgba(88, 101, 242, 0.12)"
-                                            : "var(--background-secondary, #2b2d31)",
-                                        border: `1.5px solid ${isSelected ? "var(--brand-500, #5865f2)" : "var(--border-subtle, rgba(255, 255, 255, 0.08))"}`,
+                                        background: "var(--background-secondary, #2b2d31)",
+                                        border: isSelected
+                                            ? "1px solid rgba(88, 101, 242, 0.65)"
+                                            : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
                                         borderRadius: 8,
                                         padding: 16,
-                                        transition: "all 0.15s ease",
+                                        transition: "border-color 0.15s ease",
                                         display: "flex",
                                         flexDirection: "column",
                                         gap: 10,
-                                        boxShadow: isSelected ? "0 4px 14px rgba(88, 101, 242, 0.2)" : "none"
+                                        boxShadow: "none"
                                     }}
                                 >
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                         <div style={{
                                             fontSize: 15,
                                             fontWeight: 600,
-                                            color: isSelected ? "var(--brand-500, #5865f2)" : "var(--header-primary, #ffffff)"
+                                            color: "var(--header-primary, #ffffff)"
                                         }}>
                                             {t(font.name)}
                                         </div>
@@ -200,7 +200,7 @@ export default function FontsTab() {
                                             background: "var(--background-tertiary, #1e1f22)",
                                             borderRadius: 6,
                                             fontFamily: font.fontFamily || "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                                            fontSize: font.id === "pixel" ? 11 : font.id === "signature" ? 20 : 14,
+                                            fontSize: font.id === "pixel" ? 11 : (font.id === "signature" || font.id === "dancingScript" || font.id === "pacifico") ? 18 : 14,
                                             color: "var(--header-primary, #ffffff)",
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
@@ -218,7 +218,9 @@ export default function FontsTab() {
                 {/* Custom Font Family Card */}
                 <div style={{
                     background: "var(--background-secondary, #2b2d31)",
-                    border: `1.5px solid ${config.fontId === "custom" && config.enabled ? "var(--brand-500, #5865f2)" : "var(--border-subtle, rgba(255, 255, 255, 0.08))"}`,
+                    border: config.fontId === "custom" && config.enabled
+                        ? "1px solid rgba(88, 101, 242, 0.65)"
+                        : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
                     borderRadius: 8,
                     padding: "16px 20px",
                     display: "flex",
