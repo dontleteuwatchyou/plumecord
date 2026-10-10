@@ -77,6 +77,7 @@ export const translations: TranslationMap = {
     "Glitch (Cyberpunk)": {"en":"Glitch (Cyberpunk)","fr":"Glitch (Cyberpunk)","ar":"خلل (سايبربانك)","es":"Glitch (Cyberpunk)","ru":"Глитч (Cyberpunk)","zh":"故障（赛博朋克）"},
     "Typewriter": {"en":"Typewriter","fr":"Machine à écrire","ar":"آلة كاتبة","es":"Máquina de escribir","ru":"Печатная машинка","zh":"打字机"},
     "Rainbow": {"en":"Rainbow","fr":"Arc-en-ciel","ar":"قوس قزح","es":"Arcoíris","ru":"Радуга","zh":"彩虹"},
+    "Preview of your chosen profile effect": {"en":"Preview of your chosen profile effect","fr":"Aperçu de l'effet de profil sélectionné","ar":"معاينة تأثير الملف الشخصي المحدد","es":"Vista previa del efecto de perfil seleccionado","ru":"Предпросмотр выбранного эффекта профиля","zh":"所选个人资料特效预览"},
     "Successfully authenticated via Discord OAuth2": {"en":"Successfully authenticated via Discord OAuth2","fr":"Identifié avec succès via Discord OAuth2","ar":"تم تسجيل الدخول بنجاح عبر Discord OAuth2","es":"Identificado con éxito mediante Discord OAuth2","ru":"Успешная авторизация через Discord OAuth2","zh":"已成功通过 Discord OAuth2 登录"},
     "Authentication cancelled": {"en":"Authentication cancelled","fr":"Identification annulée","ar":"تم إلغاء تسجيل الدخول","es":"Identificación cancelada","ru":"Авторизация отменена","zh":"身份验证已取消"},
     "OAuth2 session disconnected": {"en":"OAuth2 session disconnected","fr":"Session OAuth2 déconnectée","ar":"تم قطع جلسة OAuth2","es":"Sesión OAuth2 desconectada","ru":"Сессия OAuth2 завершена","zh":"OAuth2 会话已断开"},

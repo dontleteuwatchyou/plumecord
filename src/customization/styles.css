@@ -322,10 +322,9 @@
     display: inline !important;
     color: var(--cpe-glow-color, #a78bfa) !important;
     -webkit-text-fill-color: var(--cpe-glow-color, #a78bfa) !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8), 0 0 6px var(--cpe-glow-color, #a78bfa) !important;
+    text-shadow: 0 0 1px rgba(0,0,0,0.8), 0 0 8px var(--cpe-glow-color, #a78bfa), 0 0 14px var(--cpe-glow-color, #a78bfa) !important;
     filter: none !important;
-    background: none !important;
-    white-space: pre !important;
+    transition: color 0.15s ease, text-shadow 0.15s ease;
 }
 
 .cpe-glitch {
@@ -346,21 +345,30 @@
 .cpe-glitch::after {
     content: attr(data-cpe-text);
     position: absolute !important;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     transform: translateZ(0);
+    pointer-events: none;
 }
 
 .cpe-glitch::before {
-    left: -3px;
+    left: -2px;
     clip-path: polygon(0 15%, 100% 15%, 100% 40%, 0 40%);
     animation: cpe-glitch-top 1.3s steps(1) infinite !important;
-    opacity: 0.9;
+    opacity: 0.85;
+    color: #ff0055 !important;
+    -webkit-text-fill-color: #ff0055 !important;
 }
 
 .cpe-glitch::after {
-    left: 3px;
+    left: 2px;
     clip-path: polygon(0 60%, 100% 60%, 100% 85%, 0 85%);
     animation: cpe-glitch-bot 1.7s steps(1) infinite !important;
-    opacity: 0.9;
+    opacity: 0.85;
+    color: #00e5ff !important;
+    -webkit-text-fill-color: #00e5ff !important;
 }
 
 @keyframes cpe-glitch-top {
@@ -377,11 +385,12 @@
 
 .cpe-rainbow-letter {
     display: inline-block !important;
-    background: linear-gradient(to right, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3, #ff0000) !important;
+    background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #00d4ff, #8b00ff, #ff0000) !important;
     background-size: 200% auto !important;
     background-clip: text !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
+    color: transparent !important;
     animation: cpe-rainbow-anim 3s linear infinite !important;
     text-shadow: none !important;
 }
@@ -390,13 +399,22 @@
     to { background-position: 200% center; }
 }
 
+.cpe-type-cursor {
+    position: relative !important;
+    display: inline-block !important;
+}
+
 .cpe-type-cursor::after {
     content: '|';
-    animation: cpe-blink 0.65s step-end infinite !important;
+    display: inline-block;
     margin-left: 2px;
+    color: var(--brand-500, #5865f2);
+    font-weight: 700;
+    animation: cpe-blink 0.75s step-end infinite !important;
 }
 
 @keyframes cpe-blink {
+    from, to { opacity: 1; }
     50% { opacity: 0; }
 }
 

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { UserStore } from "@webpack/common";
+import { FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
 import { getLocalEffectsConfig, getPremiumSettings, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
@@ -13,7 +13,7 @@ const presetCache = new Map<string, { html: string; css: string; js: string; }>(
 
 let observer: MutationObserver | null = null;
 let active = false;
-let styleTag: HTMLStyleElement | null = null;
+let scanTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function fetchPreset(name: string): Promise<{ html: string; css: string; js: string; } | null> {
     if (presetCache.has(name)) return presetCache.get(name)!;
@@ -45,11 +45,92 @@ async function fetchPreset(name: string): Promise<{ html: string; css: string; j
     }
 }
 
-function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowColor = "#a78bfa") {
-    if (nameEl.dataset.ncAppliedEffect === effectType) return;
-    nameEl.dataset.ncAppliedEffect = effectType;
+function getAuthorIdFromElement(el: HTMLElement): string | null {
+    if (el.dataset.authorId) return el.dataset.authorId;
+    if (el.dataset.userId) return el.dataset.userId;
 
-    // Reset previous
+    const img = el.querySelector("img[src*='/avatars/']") ||
+        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout']")?.querySelector("img[src*='/avatars/']");
+    if (img) {
+        const match = img.getAttribute("src")?.match(/\/avatars\/(\d+)\//);
+        if (match) return match[1];
+    }
+
+    try {
+        const fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (fiberKey) {
+            let fiber = (el as any)[fiberKey];
+            for (let i = 0; i < 20 && fiber; i++) {
+                const props = fiber.memoizedProps;
+                if (props) {
+                    if (props.message?.author?.id) return String(props.message.author.id);
+                    if (props.author?.id) return String(props.author.id);
+                    if (props.user?.id) return String(props.user.id);
+                    if (props.userId) return String(props.userId);
+                }
+                fiber = fiber.return;
+            }
+        }
+    } catch {}
+
+    const container = el.closest<HTMLElement>("[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile']");
+    if (container && container !== el) {
+        try {
+            const fiberKey = Object.keys(container).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+            if (fiberKey) {
+                let fiber = (container as any)[fiberKey];
+                for (let i = 0; i < 20 && fiber; i++) {
+                    const props = fiber.memoizedProps;
+                    if (props) {
+                        if (props.message?.author?.id) return String(props.message.author.id);
+                        if (props.author?.id) return String(props.author.id);
+                        if (props.user?.id) return String(props.user.id);
+                        if (props.userId) return String(props.userId);
+                    }
+                    fiber = fiber.return;
+                }
+            }
+        } catch {}
+    }
+
+    return null;
+}
+
+export function removeNameEffectFromElement(nameEl: HTMLElement) {
+    if (
+        !nameEl.dataset.ncAppliedEffect &&
+        !nameEl.classList.contains("cpe-glow") &&
+        !nameEl.classList.contains("cpe-glitch") &&
+        !nameEl.classList.contains("cpe-rainbow-letter") &&
+        !nameEl.classList.contains("cpe-type-cursor")
+    ) {
+        return;
+    }
+    delete nameEl.dataset.ncAppliedEffect;
+    delete nameEl.dataset.ncGlowColor;
+    nameEl.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
+    nameEl.removeAttribute("data-cpe-text");
+    nameEl.style.removeProperty("--cpe-glow-color");
+}
+
+export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowColor = "#a78bfa") {
+    if (!effectType || effectType === "none") {
+        removeNameEffectFromElement(nameEl);
+        return;
+    }
+
+    const currentText = nameEl.textContent?.trim() || "";
+    if (
+        nameEl.dataset.ncAppliedEffect === effectType &&
+        nameEl.dataset.ncGlowColor === glowColor &&
+        nameEl.getAttribute("data-cpe-text") === currentText
+    ) {
+        return;
+    }
+
+    nameEl.dataset.ncAppliedEffect = effectType;
+    nameEl.dataset.ncGlowColor = glowColor;
+
     nameEl.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
     nameEl.removeAttribute("data-cpe-text");
     nameEl.style.removeProperty("--cpe-glow-color");
@@ -59,7 +140,7 @@ function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowC
         nameEl.style.setProperty("--cpe-glow-color", glowColor);
     } else if (effectType === "glitch") {
         nameEl.classList.add("cpe-glitch");
-        nameEl.setAttribute("data-cpe-text", nameEl.textContent || "");
+        nameEl.setAttribute("data-cpe-text", currentText);
     } else if (effectType === "rainbow") {
         nameEl.classList.add("cpe-rainbow-letter");
     } else if (effectType === "type") {
@@ -68,8 +149,11 @@ function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowC
 }
 
 async function injectBackground(profileEl: HTMLElement, config: ProfileEffectsConfig) {
+    if (!config.showBanner) {
+        profileEl.querySelector(".cpe-bg-layer")?.remove();
+        return;
+    }
     if (profileEl.querySelector(".cpe-bg-layer")) return;
-    if (!config.showBanner) return;
 
     const layer = document.createElement("div");
     layer.className = "cpe-bg-layer";
@@ -101,55 +185,147 @@ async function injectBackground(profileEl: HTMLElement, config: ProfileEffectsCo
     profileEl.insertBefore(layer, profileEl.firstChild);
 }
 
-let scanTimer: ReturnType<typeof setTimeout> | null = null;
+export async function scanAndApplyEffects() {
+    if (!active) return;
 
-async function scanAndApplyEffects() {
+    const settings = await getPremiumSettings();
+    if (!settings.enabled || !settings.profileEffectsEnabled) return;
+
+    const curUser = UserStore.getCurrentUser();
+    if (!curUser?.id) return;
+
+    const ownConfig = await getLocalEffectsConfig(curUser.id);
+
+    const userNames = new Set<string>();
+    if (curUser.username) userNames.add(curUser.username.trim().toLowerCase());
+    if (curUser.globalName) userNames.add(curUser.globalName.trim().toLowerCase());
+    if ((curUser as any).displayName) userNames.add(String((curUser as any).displayName).trim().toLowerCase());
+    try {
+        const curGuildId = SelectedGuildStore?.getGuildId?.();
+        if (curGuildId) {
+            const nick = GuildMemberStore?.getNick?.(curGuildId, curUser.id);
+            if (nick) userNames.add(nick.trim().toLowerCase());
+        }
+    } catch {}
+
+    // 1. Scan Profile Popouts and Modals
+    const profileElements = document.querySelectorAll<HTMLElement>(
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_']"
+    );
+
+    for (const el of Array.from(profileElements)) {
+        const authorId = getAuthorIdFromElement(el);
+        const nameEls = el.querySelectorAll<HTMLElement>(
+            "[class*='userTagUsername'], [class*='nickname'], [class*='globalName'], [class*='username_'], h1, h2"
+        );
+        let hasOwnName = false;
+        for (const n of Array.from(nameEls)) {
+            const txt = n.textContent?.trim().toLowerCase();
+            if (txt && userNames.has(txt)) {
+                hasOwnName = true;
+                break;
+            }
+        }
+
+        const isSelf = (authorId && authorId === curUser.id) || hasOwnName;
+
+        if (isSelf) {
+            void injectBackground(el, ownConfig);
+            for (const n of Array.from(nameEls)) {
+                if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+                    applyNameEffectToElement(n, ownConfig.nameEffect, ownConfig.glowColor);
+                } else {
+                    removeNameEffectFromElement(n);
+                }
+            }
+        } else if (authorId) {
+            void readUserPremiumData(authorId).then(data => {
+                if (!data?.effects) return;
+                if (data.effects.showBanner) void injectBackground(el, data.effects);
+                if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
+                    for (const n of Array.from(nameEls)) {
+                        applyNameEffectToElement(n, data.effects.nameEffect, data.effects.glowColor);
+                    }
+                }
+            });
+        }
+    }
+
+    // 2. Scan Chat Usernames
+    const chatNames = document.querySelectorAll<HTMLElement>(
+        "[class*='username_'], [class*='header_'] [class*='username'], [id^='message-username-']"
+    );
+    for (const el of Array.from(chatNames)) {
+        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_']")) {
+            continue;
+        }
+
+        const authorId = getAuthorIdFromElement(el);
+        const txt = el.textContent?.trim().toLowerCase() || "";
+        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+
+        if (isSelf) {
+            if (ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none") {
+                applyNameEffectToElement(el, ownConfig.chatUsernameEffect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(el);
+            }
+        }
+    }
+
+    // 3. Scan Member List
+    const memberNames = document.querySelectorAll<HTMLElement>(
+        "[class*='member_'] [class*='name_'], [class*='member_'] [class*='username_'], [role='listitem'] [class*='name_']"
+    );
+    for (const el of Array.from(memberNames)) {
+        const memberItem = el.closest<HTMLElement>("[class*='member_'], [role='listitem']") || el;
+        const authorId = getAuthorIdFromElement(memberItem);
+        const txt = el.textContent?.trim().toLowerCase() || "";
+        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+
+        if (isSelf) {
+            if (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none") {
+                applyNameEffectToElement(el, ownConfig.memberListEffect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(el);
+            }
+        }
+    }
+
+    // 4. Scan Bottom-Left Current User Bar
+    const currentUserBar = document.querySelectorAll<HTMLElement>(
+        "[class*='panels_'] [class*='nameTag_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='subtext_'], [class*='panels_'] [class*='username_']"
+    );
+    for (const el of Array.from(currentUserBar)) {
+        if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+            applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
+        } else {
+            removeNameEffectFromElement(el);
+        }
+    }
+}
+
+export function triggerEffectsUpdate() {
+    if (!active) {
+        startProfileEffects();
+    }
+    if (scanTimer) {
+        clearTimeout(scanTimer);
+        scanTimer = null;
+    }
+    void scanAndApplyEffects();
+}
+
+function debouncedScan() {
     if (!active) return;
     if (scanTimer) clearTimeout(scanTimer);
+    scanTimer = setTimeout(() => {
+        void scanAndApplyEffects();
+    }, 120);
+}
 
-    scanTimer = setTimeout(async () => {
-        const settings = await getPremiumSettings();
-        if (!settings.enabled || !settings.profileEffectsEnabled) return;
-
-        const curUser = UserStore.getCurrentUser();
-        if (!curUser?.id) return;
-
-        const ownConfig = await getLocalEffectsConfig(curUser.id);
-
-        // 1. Scan Profile Popouts and Modals
-        const profileElements = document.querySelectorAll<HTMLElement>(
-            "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout']"
-        );
-
-        for (const el of Array.from(profileElements)) {
-            void injectBackground(el, ownConfig);
-
-            const nameEl = el.querySelector<HTMLElement>("[class*='userTagUsername'], [class*='nickname'], h1, h2");
-            if (nameEl && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-                applyNameEffectToElement(nameEl, ownConfig.nameEffect, ownConfig.glowColor);
-            }
-        }
-
-        // 2. Scan Chat Usernames
-        if (ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none") {
-            const chatNames = document.querySelectorAll<HTMLElement>("[class*='username_']");
-            for (const el of Array.from(chatNames)) {
-                if (el.textContent?.trim() === curUser.username || el.dataset.authorId === curUser.id) {
-                    applyNameEffectToElement(el, ownConfig.chatUsernameEffect, ownConfig.glowColor);
-                }
-            }
-        }
-
-        // 3. Scan Member List
-        if (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none") {
-            const memberNames = document.querySelectorAll<HTMLElement>("[class*='member_'] [class*='name_']");
-            for (const el of Array.from(memberNames)) {
-                if (el.textContent?.trim() === curUser.username) {
-                    applyNameEffectToElement(el, ownConfig.memberListEffect, ownConfig.glowColor);
-                }
-            }
-        }
-    }, 150);
+function onConnectionOpen() {
+    triggerEffectsUpdate();
 }
 
 export function startProfileEffects() {
@@ -157,7 +333,7 @@ export function startProfileEffects() {
     active = true;
 
     observer = new MutationObserver(() => {
-        void scanAndApplyEffects();
+        debouncedScan();
     });
 
     observer.observe(document.body, {
@@ -165,7 +341,12 @@ export function startProfileEffects() {
         subtree: true,
     });
 
-    void scanAndApplyEffects();
+    try {
+        FluxDispatcher.subscribe("CONNECTION_OPEN", onConnectionOpen);
+        FluxDispatcher.subscribe("CURRENT_USER_UPDATE", onConnectionOpen);
+    } catch {}
+
+    triggerEffectsUpdate();
 }
 
 export function stopProfileEffects() {
@@ -178,11 +359,13 @@ export function stopProfileEffects() {
         clearTimeout(scanTimer);
         scanTimer = null;
     }
+    try {
+        FluxDispatcher.unsubscribe("CONNECTION_OPEN", onConnectionOpen);
+        FluxDispatcher.unsubscribe("CURRENT_USER_UPDATE", onConnectionOpen);
+    } catch {}
+
     document.querySelectorAll(".cpe-bg-layer").forEach(el => el.remove());
-    document.querySelectorAll("[data-nc-applied-effect]").forEach(el => {
-        el.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
-        el.removeAttribute("data-cpe-text");
-        el.removeAttribute("data-nc-applied-effect");
-        (el as HTMLElement).style.removeProperty("--cpe-glow-color");
+    document.querySelectorAll("[data-nc-applied-effect], .cpe-glow, .cpe-glitch, .cpe-rainbow-letter, .cpe-type-cursor").forEach(el => {
+        removeNameEffectFromElement(el as HTMLElement);
     });
 }

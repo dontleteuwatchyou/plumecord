@@ -6,7 +6,8 @@
 
 import { t } from "@api/i18n";
 import { FormSwitch } from "@components/FormSwitch";
-import { Button, React, Select, showToast, TextInput, Toasts, useEffect, useState } from "@webpack/common";
+import { Button, React, Select, showToast, TextInput, Toasts, useEffect, useState, UserStore } from "@webpack/common";
+import { triggerEffectsUpdate } from "../profileEffects/effectsManager";
 import { DEFAULT_EFFECTS_CONFIG, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud, uploadToImgur } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
@@ -48,6 +49,7 @@ export function ProfileEffectsSettingsSection() {
         const full = { ...cfg, ...next };
         setCfg(full);
         await saveLocalEffectsConfig(full);
+        triggerEffectsUpdate();
         void syncOwnDataToCloud();
     };
 
@@ -82,6 +84,8 @@ export function ProfileEffectsSettingsSection() {
         { label: "Fill", value: "fill" },
     ];
 
+    const currentUserName = UserStore.getCurrentUser()?.username || "Username";
+
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {/* Banner Section */}
@@ -114,12 +118,14 @@ export function ProfileEffectsSettingsSection() {
                                     {t("Banner type")}
                                 </div>
                                 <Select
-                                    value={cfg.mode}
                                     options={[
                                         { label: t("CSS Animated Preset"), value: "preset" },
                                         { label: t("Custom GIF"), value: "gif" },
                                     ]}
-                                    select={(val: any) => update({ mode: val })}
+                                    closeOnSelect={true}
+                                    isSelected={(v: string) => v === (cfg.mode ?? "preset")}
+                                    select={(val: string) => update({ mode: val as any })}
+                                    serialize={String}
                                 />
                             </div>
 
@@ -129,9 +135,11 @@ export function ProfileEffectsSettingsSection() {
                                         {t("Animation preset")}
                                     </div>
                                     <Select
-                                        value={cfg.presetName}
                                         options={PRESET_OPTIONS}
-                                        select={(val: any) => update({ presetName: val })}
+                                        closeOnSelect={true}
+                                        isSelected={(v: string) => v === (cfg.presetName ?? "cards-glitch")}
+                                        select={(val: string) => update({ presetName: val })}
+                                        serialize={String}
                                     />
                                 </div>
                             ) : (
@@ -140,9 +148,11 @@ export function ProfileEffectsSettingsSection() {
                                         {t("Fitting (Fit)")}
                                     </div>
                                     <Select
-                                        value={cfg.gifFit}
                                         options={fitOptions}
-                                        select={(val: any) => update({ gifFit: val })}
+                                        closeOnSelect={true}
+                                        isSelected={(v: string) => v === (cfg.gifFit ?? "cover")}
+                                        select={(val: string) => update({ gifFit: val as any })}
+                                        serialize={String}
                                     />
                                 </div>
                             )}
@@ -239,9 +249,11 @@ export function ProfileEffectsSettingsSection() {
                             {t("Effect on profile")}
                         </div>
                         <Select
-                            value={cfg.nameEffect}
                             options={effectOptions}
-                            select={(val: any) => update({ nameEffect: val })}
+                            closeOnSelect={true}
+                            isSelected={(v: string) => v === (cfg.nameEffect ?? "none")}
+                            select={(val: string) => update({ nameEffect: val as any })}
+                            serialize={String}
                         />
                     </div>
                     <div>
@@ -249,9 +261,11 @@ export function ProfileEffectsSettingsSection() {
                             {t("Effect in chat")}
                         </div>
                         <Select
-                            value={cfg.chatUsernameEffect}
                             options={effectOptions}
-                            select={(val: any) => update({ chatUsernameEffect: val })}
+                            closeOnSelect={true}
+                            isSelected={(v: string) => v === (cfg.chatUsernameEffect ?? "none")}
+                            select={(val: string) => update({ chatUsernameEffect: val as any })}
+                            serialize={String}
                         />
                     </div>
                 </div>
@@ -262,9 +276,11 @@ export function ProfileEffectsSettingsSection() {
                             {t("Effect in member list")}
                         </div>
                         <Select
-                            value={cfg.memberListEffect}
                             options={effectOptions}
-                            select={(val: any) => update({ memberListEffect: val })}
+                            closeOnSelect={true}
+                            isSelected={(v: string) => v === (cfg.memberListEffect ?? "none")}
+                            select={(val: string) => update({ memberListEffect: val as any })}
+                            serialize={String}
                         />
                     </div>
                     <div>
@@ -284,6 +300,43 @@ export function ProfileEffectsSettingsSection() {
                                 onChange={(val: string) => update({ glowColor: val })}
                             />
                         </div>
+                    </div>
+                </div>
+
+                {/* Live Preview Card */}
+                <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background: "var(--background-tertiary, #1e1f22)",
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
+                    marginTop: 2
+                }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
+                            {t("Live Preview")}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted, #949ba4)" }}>
+                            {t("Preview of your chosen profile effect")}
+                        </span>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>
+                        <span
+                            className={
+                                cfg.nameEffect === "glow" ? "cpe-glow" :
+                                cfg.nameEffect === "glitch" ? "cpe-glitch" :
+                                cfg.nameEffect === "rainbow" ? "cpe-rainbow-letter" :
+                                cfg.nameEffect === "type" ? "cpe-type-cursor" : ""
+                            }
+                            data-cpe-text={currentUserName}
+                            style={{
+                                "--cpe-glow-color": cfg.glowColor || "#a78bfa"
+                            } as any}
+                        >
+                            {currentUserName}
+                        </span>
                     </div>
                 </div>
             </div>
