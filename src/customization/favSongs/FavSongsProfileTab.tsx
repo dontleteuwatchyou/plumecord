@@ -9,59 +9,59 @@ import { Button, React, useEffect, useRef, useState, UserStore } from "@webpack/
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumFavSong } from "../types";
 
-const MusicIcon = ({ size = 22 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+const MusicIcon = ({ size = 20 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 18V5l12-2v13" />
         <circle cx="6" cy="18" r="3" />
         <circle cx="18" cy="16" r="3" />
     </svg>
 );
 
-const PlayIcon = ({ size = 16, style }: { size?: number; style?: React.CSSProperties; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
-        <polygon points="6 4 20 12 6 20 6 4" />
+const PlayIcon = ({ size = 18, style }: { size?: number; style?: React.CSSProperties; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#ffffff" style={style}>
+        <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
     </svg>
 );
 
-const PauseIcon = ({ size = 16, style }: { size?: number; style?: React.CSSProperties; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" style={style}>
-        <rect x="6" y="4" width="4" height="16" rx="1.5" />
-        <rect x="14" y="4" width="4" height="16" rx="1.5" />
+const PauseIcon = ({ size = 18, style }: { size?: number; style?: React.CSSProperties; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#ffffff" style={style}>
+        <rect x="5.5" y="4" width="4" height="16" rx="2" />
+        <rect x="14.5" y="4" width="4" height="16" rx="2" />
     </svg>
 );
 
-const PrevTrackIcon = ({ size = 14 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="19 20 9 12 19 4 19 20" />
-        <line x1="5" y1="4" x2="5" y2="20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+const PrevTrackIcon = ({ size = 16 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#ffffff">
+        <rect x="4" y="4" width="2.5" height="16" rx="1.25" />
+        <path d="M19 5.24a1 1 0 0 0-1.55-.83L8 11.17a1 1 0 0 0 0 1.66l9.45 6.76A1 1 0 0 0 19 18.76V5.24Z" />
     </svg>
 );
 
-const NextTrackIcon = ({ size = 14 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="5 4 15 12 5 20 5 4" />
-        <line x1="19" y1="4" x2="19" y2="20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+const NextTrackIcon = ({ size = 16 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#ffffff">
+        <rect x="17.5" y="4" width="2.5" height="16" rx="1.25" />
+        <path d="M5 5.24a1 1 0 0 1 1.55-.83L16 11.17a1 1 0 0 1 0 1.66l-9.45 6.76A1 1 0 0 1 5 18.76V5.24Z" />
     </svg>
 );
 
-const VolumeIcon = ({ size = 16 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+const VolumeIcon = ({ size = 18 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#ffffff" stroke="none" />
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
         <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
     </svg>
 );
 
-const VolumeMuteIcon = ({ size = 16 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-        <line x1="23" y1="9" x2="17" y2="15" />
-        <line x1="17" y1="9" x2="23" y2="15" />
+const VolumeMuteIcon = ({ size = 18 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#ffffff" stroke="none" />
+        <line x1="22" y1="9" x2="16" y2="15" />
+        <line x1="16" y1="9" x2="22" y2="15" />
     </svg>
 );
 
-const CloseIcon = ({ size = 14 }: { size?: number; }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+const CloseIcon = ({ size = 16 }: { size?: number; }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         <line x1="18" y1="6" x2="6" y2="18" />
         <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
@@ -91,8 +91,13 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
     const [prevVolume, setPrevVolume] = useState(0.5);
     const [loading, setLoading] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(true);
+    const [isDraggingVolume, setIsDraggingVolume] = useState(false);
+    const [isDraggingScrub, setIsDraggingScrub] = useState(false);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const volumeTrackRef = useRef<HTMLDivElement | null>(null);
+    const scrubberTrackRef = useRef<HTMLDivElement | null>(null);
+
     const currentUserId = UserStore.getCurrentUser()?.id;
     const isSelf = user?.id && String(user.id) === String(currentUserId);
 
@@ -183,31 +188,84 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         }
     };
 
-    const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-        const newTime = ratio * (duration || 0);
-        setCurrentTime(newTime);
-        if (audioRef.current) audioRef.current.currentTime = newTime;
-    };
+    // ─── Real-Time Live Volume Dragging ──────────────────────────────────────────
 
-    const handleVolumeScrub = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const clickX = e.clientX - rect.left;
-        const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+    const updateVolumeFromClientX = (clientX: number) => {
+        if (!volumeTrackRef.current) return;
+        const rect = volumeTrackRef.current.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         setVolume(ratio);
         setIsMuted(ratio === 0);
-        if (audioRef.current) audioRef.current.volume = ratio;
+        if (audioRef.current) {
+            audioRef.current.volume = ratio;
+        }
+    };
+
+    const handleVolumeMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingVolume(true);
+        updateVolumeFromClientX(e.clientX);
+
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            moveEvent.preventDefault();
+            updateVolumeFromClientX(moveEvent.clientX);
+        };
+
+        const onMouseUp = (upEvent: MouseEvent) => {
+            upEvent.preventDefault();
+            setIsDraggingVolume(false);
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+    };
+
+    // ─── Real-Time Live Seek / Scrubbing ─────────────────────────────────────────
+
+    const updateScrubFromClientX = (clientX: number) => {
+        if (!scrubberTrackRef.current) return;
+        const rect = scrubberTrackRef.current.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        const newTime = ratio * (duration || 0);
+        setCurrentTime(newTime);
+        if (audioRef.current) {
+            audioRef.current.currentTime = newTime;
+        }
+    };
+
+    const handleScrubMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingScrub(true);
+        updateScrubFromClientX(e.clientX);
+
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            moveEvent.preventDefault();
+            updateScrubFromClientX(moveEvent.clientX);
+        };
+
+        const onMouseUp = (upEvent: MouseEvent) => {
+            upEvent.preventDefault();
+            setIsDraggingScrub(false);
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
     };
 
     const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+    const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
     if (isSelf && !isAuthenticated) {
         return (
             <div className="ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner" style={{ gap: 16 }}>
-                    <div className="ncp-profile-empty-icon" style={{ color: "var(--brand-500, #5865f2)", opacity: 1 }}>
+                    <div className="ncp-profile-empty-icon" style={{ color: "#ffffff", opacity: 0.9 }}>
                         <MusicIcon size={36} />
                     </div>
                     <div>
@@ -219,7 +277,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                         </p>
                     </div>
                     <Button
-                        color={Button.Colors.BRAND}
+                        color={Button.Colors.PRIMARY}
                         onClick={async () => {
                             const tok = await promptDiscordOAuth();
                             if (tok) void loadData();
@@ -249,7 +307,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         return (
             <div className="ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner">
-                    <div className="ncp-profile-empty-icon">
+                    <div className="ncp-profile-empty-icon" style={{ color: "#ffffff", opacity: 0.8 }}>
                         <MusicIcon size={36} />
                     </div>
                     <div className="ncp-profile-empty-title">
@@ -269,7 +327,11 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         <div className="ncp-fav-songs-container">
             <audio
                 ref={audioRef}
-                onTimeUpdate={e => setCurrentTime(e.currentTarget.currentTime)}
+                onTimeUpdate={e => {
+                    if (!isDraggingScrub) {
+                        setCurrentTime(e.currentTarget.currentTime);
+                    }
+                }}
                 onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
                 onEnded={() => {
                     const idx = songs.findIndex(s => s.id === currentSong?.id);
@@ -283,7 +345,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
             />
 
             {/* Song List */}
-            <div className="ncp-song-list">
+            <div className="ncp-song-list ncp-no-scrollbar">
                 {songs.map(song => {
                     const active = currentSong?.id === song.id;
                     return (
@@ -321,14 +383,14 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                                     handlePlaySong(song);
                                 }}
                             >
-                                {active && isPlaying ? <PauseIcon size={14} /> : <PlayIcon size={14} style={{ marginLeft: 2 }} />}
+                                {active && isPlaying ? <PauseIcon size={16} /> : <PlayIcon size={16} />}
                             </button>
                         </div>
                     );
                 })}
             </div>
 
-            {/* Sleek Now Playing Bar */}
+            {/* Frameless Frosted Glass Now Playing Bar */}
             {currentSong && (
                 <div className="ncp-player-bar">
                     <div className="ncp-player-top">
@@ -356,21 +418,21 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                                 title={t("Previous")}
                                 onClick={handlePrevSong}
                             >
-                                <PrevTrackIcon size={14} />
+                                <PrevTrackIcon size={15} />
                             </button>
                             <button
                                 className="ncp-play-btn"
                                 title={isPlaying ? t("Pause") : t("Play")}
                                 onClick={() => handlePlaySong(currentSong)}
                             >
-                                {isPlaying ? <PauseIcon size={16} /> : <PlayIcon size={16} style={{ marginLeft: 2 }} />}
+                                {isPlaying ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
                             </button>
                             <button
                                 className="ncp-control-btn"
                                 title={t("Next")}
                                 onClick={handleNextSong}
                             >
-                                <NextTrackIcon size={14} />
+                                <NextTrackIcon size={15} />
                             </button>
                         </div>
 
@@ -383,14 +445,18 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                                 {isMuted || volume === 0 ? <VolumeMuteIcon size={16} /> : <VolumeIcon size={16} />}
                             </button>
                             <div
-                                className="ncp-volume-scrubber"
-                                onClick={handleVolumeScrub}
-                                title={`${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                                className={`ncp-volume-scrubber${isDraggingVolume ? " dragging" : ""}`}
+                                onMouseDown={handleVolumeMouseDown}
+                                title={`${volumePercent}%`}
                             >
-                                <div className="ncp-volume-track">
+                                <div className="ncp-volume-track" ref={volumeTrackRef}>
                                     <div
                                         className="ncp-volume-fill"
-                                        style={{ width: `${Math.round((isMuted ? 0 : volume) * 100)}%` }}
+                                        style={{ width: `${volumePercent}%` }}
+                                    />
+                                    <div
+                                        className="ncp-volume-thumb"
+                                        style={{ left: `${volumePercent}%` }}
                                     />
                                 </div>
                             </div>
@@ -411,19 +477,19 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                     <div className="ncp-player-bottom">
                         <span className="ncp-time-text">{fmtTime(currentTime)}</span>
                         <div
-                            className="ncp-scrubber"
-                            onClick={handleScrub}
+                            className={`ncp-scrubber${isDraggingScrub ? " dragging" : ""}`}
+                            onMouseDown={handleScrubMouseDown}
                         >
-                            <div className="ncp-scrubber-track">
+                            <div className="ncp-scrubber-track" ref={scrubberTrackRef}>
                                 <div
                                     className="ncp-scrubber-fill"
                                     style={{ width: `${progressPercent}%` }}
                                 />
+                                <div
+                                    className="ncp-scrubber-thumb"
+                                    style={{ left: `${progressPercent}%` }}
+                                />
                             </div>
-                            <div
-                                className="ncp-scrubber-thumb"
-                                style={{ left: `${progressPercent}%` }}
-                            />
                         </div>
                         <span className="ncp-time-text">{fmtTime(duration)}</span>
                     </div>
