@@ -102,6 +102,14 @@ function isForbiddenElement(el: HTMLElement): boolean {
         return true;
     }
 
+    // Explicitly forbid username handles/tags (e.g. eaooe) — ONLY display names and chat usernames get effects!
+    if (
+        el.matches("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_'], [class*='userTagDiscriminator_']") ||
+        el.closest("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_']")
+    ) {
+        return true;
+    }
+
     const text = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
     if (!text) return true;
 
@@ -248,7 +256,7 @@ export async function scanAndApplyEffects() {
         }
     } catch {}
 
-    // 0. Active Cleanup: Strip effects from any forbidden headings/labels
+    // 0. Active Cleanup: Strip effects from any forbidden headings/labels/userTags
     const allApplied = document.querySelectorAll<HTMLElement>(
         "[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor"
     );
@@ -258,31 +266,52 @@ export async function scanAndApplyEffects() {
         }
     }
 
-    // 1. Settings Profile Editor & Display Name Sizer (e.g. Snippet 1)
-    const sizerElements = document.querySelectorAll<HTMLElement>(
-        "[class*='sizer_'] [class*='displayNameContent_'], [class*='sizer_'] [class*='displayName_']"
+    // 1. All Display Names across Discord (Settings preview sizer, Account popout menu, User popouts, Profile modals)
+    const allDisplayNames = document.querySelectorAll<HTMLElement>(
+        "[class*='displayNameContent_'], [class*='displayName_']"
     );
-    for (const el of Array.from(sizerElements)) {
+    for (const el of Array.from(allDisplayNames)) {
         if (isForbiddenElement(el)) {
             removeNameEffectFromElement(el);
             continue;
         }
-        if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-            applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
-        } else {
-            removeNameEffectFromElement(el);
+
+        const authorId = getAuthorIdFromElement(el);
+        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const isSelf = (authorId && authorId === curUser.id) ||
+                       (txt && userNames.has(txt)) ||
+                       !!el.closest("[id='account'], [class*='accountProfile'], [class*='sizer_']");
+
+        if (isSelf) {
+            if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+                applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(el);
+            }
+        } else if (authorId) {
+            const cached = profileCache.get(authorId)?.data;
+            if (cached?.effects?.nameEffect && cached.effects.nameEffect !== "none") {
+                applyNameEffectToElement(el, cached.effects.nameEffect, cached.effects.glowColor);
+            } else {
+                void readUserPremiumData(authorId).then(data => {
+                    if (data?.effects?.nameEffect && data.effects.nameEffect !== "none") {
+                        applyNameEffectToElement(el, data.effects.nameEffect, data.effects.glowColor);
+                    }
+                });
+            }
         }
     }
 
-    // 2. Profile Popouts, Modals and Live Previews (e.g. Snippet 2)
+    // 2. Profile Popouts, Modals and Live Previews (Banners & Nicknames)
     const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_']"
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile']"
     );
 
     for (const el of Array.from(profileElements)) {
         const authorId = getAuthorIdFromElement(el);
+        // Exclusively select display names and nicknames — NEVER username handles / userTags!
         const nameEls = el.querySelectorAll<HTMLElement>(
-            "[class*='displayNameContent_'], [class*='displayName_'], [class*='userTagUsername'], [class*='nickname'], [class*='globalName'], [class*='userTag_'] [class*='username_'], [class*='headerText_'] [class*='username_']"
+            "[class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
         );
 
         let hasOwnName = false;
@@ -294,7 +323,7 @@ export async function scanAndApplyEffects() {
             }
         }
 
-        const isSelf = (authorId && authorId === curUser.id) || hasOwnName;
+        const isSelf = (authorId && authorId === curUser.id) || hasOwnName || !!el.closest("[id='account'], [class*='accountProfile']");
 
         if (isSelf) {
             if (selfEffectsActive) {
@@ -335,7 +364,7 @@ export async function scanAndApplyEffects() {
 
     // 3. Bottom-Left Current User Bar (e.g. Snippet 3)
     const currentUserBar = document.querySelectorAll<HTMLElement>(
-        "[class*='panels_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='title_']"
+        "[class*='panels_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='title_'], [class*='panels_'] [class*='displayName_']"
     );
     for (const el of Array.from(currentUserBar)) {
         if (isForbiddenElement(el)) {
@@ -360,10 +389,21 @@ export async function scanAndApplyEffects() {
         "[data-username-with-effects]"
     );
     for (const el of Array.from(chatNames)) {
-        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_']")) {
+        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile']")) {
             continue;
         }
         if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+        // If an ancestor already has effect, don't nest effects on inner spans
+        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
+        if (parentEffect) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+        // If this element contains an inner container for text, skip the outer element so only the innermost gets styled
+        if (el.querySelector("[class*='innerContainer_'], [data-username-with-effects]")) {
             removeNameEffectFromElement(el);
             continue;
         }

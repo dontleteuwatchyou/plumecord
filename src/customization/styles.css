@@ -732,6 +732,10 @@
 
 .cpe-glow {
     display: inline !important;
+    vertical-align: baseline !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
     color: var(--cpe-glow-color, #a78bfa) !important;
     -webkit-text-fill-color: var(--cpe-glow-color, #a78bfa) !important;
     text-shadow: 0 0 1px rgba(0,0,0,0.8), 0 0 8px var(--cpe-glow-color, #a78bfa), 0 0 14px var(--cpe-glow-color, #a78bfa) !important;
@@ -741,7 +745,11 @@
 
 .cpe-glitch {
     position: relative !important;
-    display: inline-block !important;
+    display: inline !important;
+    vertical-align: baseline !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
     text-shadow: 0 1px 3px rgba(0,0,0,0.8) !important;
     animation: cpe-glitch-main 1.1s steps(1) infinite !important;
     will-change: transform;
@@ -796,7 +804,11 @@
 }
 
 .cpe-rainbow-letter {
-    display: inline-block !important;
+    display: inline !important;
+    vertical-align: baseline !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #00d4ff, #8b00ff, #ff0000) !important;
     background-size: 200% auto !important;
     background-clip: text !important;
@@ -813,12 +825,16 @@
 
 .cpe-type-cursor {
     position: relative !important;
-    display: inline-block !important;
+    display: inline !important;
+    vertical-align: baseline !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 .cpe-type-cursor::after {
     content: '|';
-    display: inline-block;
+    display: inline;
     margin-left: 2px;
     color: var(--brand-500, #5865f2);
     font-weight: 700;
@@ -828,6 +844,27 @@
 @keyframes cpe-blink {
     from, to { opacity: 1; }
     50% { opacity: 0; }
+}
+
+/* Chat message header safeguard: eliminate any artificial vertical line-height gap */
+[class*='message_'] .cpe-rainbow-letter,
+[class*='message_'] .cpe-glitch,
+[class*='message_'] .cpe-glow,
+[class*='message_'] .cpe-type-cursor,
+[class*='contents_'] .cpe-rainbow-letter,
+[class*='contents_'] .cpe-glitch,
+[class*='contents_'] .cpe-glow,
+[class*='contents_'] .cpe-type-cursor,
+[class*='header_'] .cpe-rainbow-letter,
+[class*='header_'] .cpe-glitch,
+[class*='header_'] .cpe-glow,
+[class*='header_'] .cpe-type-cursor {
+    display: inline !important;
+    vertical-align: baseline !important;
+    line-height: inherit !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
 }
 
 /* ── Banner and Preset Containers ──────────────────────────────────────────── */

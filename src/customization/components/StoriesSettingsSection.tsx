@@ -6,7 +6,7 @@
 
 import { t } from "@api/i18n";
 import { Button, React, showToast, TextInput, Toasts, useEffect, useState } from "@webpack/common";
-import { getLocalStories, saveLocalStories, syncOwnDataToCloud, uploadToImgur } from "../sync";
+import { getLocalStories, saveLocalStories, syncOwnDataToCloud, uploadImageFile } from "../sync";
 import type { PremiumStory } from "../types";
 
 const TrashIcon = () => (
@@ -51,7 +51,7 @@ export function StoriesSettingsSection() {
         setUploading(true);
         const added: PremiumStory[] = [];
         for (const file of files) {
-            const url = await uploadToImgur(file);
+            const url = await uploadImageFile(file);
             if (url) {
                 added.push({
                     id: `story-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
