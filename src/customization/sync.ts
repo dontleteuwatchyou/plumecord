@@ -43,6 +43,7 @@ export const DEFAULT_EFFECTS_CONFIG: ProfileEffectsConfig = {
     glowColor: "#a78bfa",
     chatUsernameEffect: "none",
     memberListEffect: "none",
+    profileFont: "none",
 };
 
 // ─── Settings Store ──────────────────────────────────────────────────────────

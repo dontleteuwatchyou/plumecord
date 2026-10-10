@@ -76,6 +76,16 @@ export function ProfileEffectsSettingsSection() {
         { label: t("Rainbow"), value: "rainbow" },
     ];
 
+    const fontOptions = [
+        { label: t("Default (Discord)"), value: "none" },
+        { label: t("Gothic (Unifraktur)"), value: "gothic" },
+        { label: t("Signature Script (Alex Brush)"), value: "signature" },
+        { label: t("Pixel / Minecraft (Press Start 2P)"), value: "pixel" },
+        { label: t("Nerd Font (JetBrains Mono)"), value: "nerd" },
+        { label: t("Cyberpunk (Orbitron)"), value: "cyberpunk" },
+        { label: t("Handwritten (Caveat)"), value: "handwritten" },
+    ];
+
     const currentUserName = UserStore.getCurrentUser()?.username || "Username";
 
     return (
@@ -197,6 +207,72 @@ export function ProfileEffectsSettingsSection() {
                                 {currentUserName}
                             </span>
                         )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Profile Font Card */}
+            <div style={{
+                background: "var(--background-secondary, #2b2d31)",
+                padding: "16px 20px",
+                borderRadius: 8,
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
+            }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
+                        {t("Profile Font")}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", lineHeight: 1.4 }}>
+                        {t("Applies a custom font to all text throughout your profile modal and popout.")}
+                    </div>
+                </div>
+
+                <div style={{ maxWidth: 360 }}>
+                    <Select
+                        options={fontOptions}
+                        closeOnSelect={true}
+                        isSelected={(v: string) => v === (cfg.profileFont ?? "none")}
+                        select={(val: string) => update({ profileFont: val as any })}
+                        serialize={String}
+                    />
+                </div>
+
+                {/* Typography Live Preview */}
+                <div style={{
+                    background: "var(--background-tertiary, #1e1f22)",
+                    padding: "14px 16px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6
+                }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted, #949ba4)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                        {t("Typography Preview")}
+                    </div>
+                    <div
+                        data-nc-profile-font={cfg.profileFont || "none"}
+                        style={{
+                            fontSize: 16,
+                            fontWeight: 600,
+                            color: "var(--header-primary, #ffffff)",
+                            lineHeight: 1.4
+                        }}
+                    >
+                        {t("Nightcord Custom Profile — Elegance & Customization")}
+                    </div>
+                    <div
+                        data-nc-profile-font={cfg.profileFont || "none"}
+                        style={{
+                            fontSize: 13,
+                            color: "var(--text-muted, #949ba4)",
+                            lineHeight: 1.4
+                        }}
+                    >
+                        {t("All texts, bio, notes, tabs, and details will be displayed using this font on your profile.")}
                     </div>
                 </div>
             </div>

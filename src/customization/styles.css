@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@600&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap');
+
 /* ── Story Ring on Avatars ─────────────────────────────────────────────────── */
 
 .ncp-story-ring-container {
@@ -1009,3 +1011,37 @@
     line-height: 1.45 !important;
     max-width: 320px !important;
 }
+
+/* ── Profile Custom Typography ────────────────────────────────────────────── */
+
+[data-nc-profile-font="gothic"],
+[data-nc-profile-font="gothic"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'UnifrakturMaguntia', 'MedievalSharp', cursive, serif !important;
+}
+
+[data-nc-profile-font="signature"],
+[data-nc-profile-font="signature"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'Alex Brush', 'Great Vibes', cursive !important;
+}
+
+[data-nc-profile-font="pixel"],
+[data-nc-profile-font="pixel"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'Press Start 2P', 'VT323', monospace !important;
+    letter-spacing: -0.5px;
+}
+
+[data-nc-profile-font="nerd"],
+[data-nc-profile-font="nerd"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+}
+
+[data-nc-profile-font="cyberpunk"],
+[data-nc-profile-font="cyberpunk"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'Orbitron', sans-serif !important;
+}
+
+[data-nc-profile-font="handwritten"],
+[data-nc-profile-font="handwritten"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
+    font-family: 'Caveat', cursive !important;
+}
+

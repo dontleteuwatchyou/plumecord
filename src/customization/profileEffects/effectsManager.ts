@@ -335,6 +335,38 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     }
 }
 
+const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@600&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap";
+
+export function ensureProfileFontsLoaded() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById("nightcord-custom-profile-fonts")) return;
+    const link = document.createElement("link");
+    link.id = "nightcord-custom-profile-fonts";
+    link.rel = "stylesheet";
+    link.href = GOOGLE_FONTS_URL;
+    document.head.appendChild(link);
+}
+
+function applyProfileFont(el: HTMLElement, font: string) {
+    const current = el.getAttribute("data-nc-profile-font") || "none";
+    const target = (font && font !== "none") ? font : "none";
+    if (current === target) return;
+
+    if (target !== "none") {
+        el.setAttribute("data-nc-profile-font", target);
+        const inner = el.querySelector<HTMLElement>("[class*='profileContentInner_']");
+        if (inner && inner !== el) inner.setAttribute("data-nc-profile-font", target);
+        const outer = el.closest<HTMLElement>("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout']");
+        if (outer && outer !== el) outer.setAttribute("data-nc-profile-font", target);
+    } else {
+        el.removeAttribute("data-nc-profile-font");
+        const inner = el.querySelector<HTMLElement>("[class*='profileContentInner_']");
+        if (inner && inner !== el) inner.removeAttribute("data-nc-profile-font");
+        const outer = el.closest<HTMLElement>("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout']");
+        if (outer && outer !== el) outer.removeAttribute("data-nc-profile-font");
+    }
+}
+
 async function injectBackground(profileEl: HTMLElement, _config: ProfileEffectsConfig) {
     profileEl.querySelector(".cpe-bg-layer")?.remove();
 }
@@ -349,7 +381,10 @@ export function scanAndApplyEffects() {
     if (!curUser?.id) return;
 
     const ownConfig = getCachedEffectsConfig();
-    const selfEffectsActive = !!settings.profileEffectsEnabled || (ownConfig.nameEffect && ownConfig.nameEffect !== "none") || !!ownConfig.showBanner;
+    const selfEffectsActive = !!settings.profileEffectsEnabled ||
+        (ownConfig.nameEffect && ownConfig.nameEffect !== "none") ||
+        (ownConfig.profileFont && ownConfig.profileFont !== "none") ||
+        !!ownConfig.showBanner;
 
     const userNames = new Set<string>();
     if (curUser.username) userNames.add(curUser.username.trim().toLowerCase());
@@ -411,9 +446,9 @@ export function scanAndApplyEffects() {
         }
     }
 
-    // 2. Profile Popouts, Modals and Live Previews (Banners & Nicknames)
+    // 2. Profile Popouts, Modals and Live Previews (Banners, Nicknames & Profile Fonts)
     const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile']"
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile'], [class*='profileContentInner_']"
     );
 
     for (const el of Array.from(profileElements)) {
@@ -434,6 +469,9 @@ export function scanAndApplyEffects() {
         const isSelf = (authorId && authorId === curUser.id) || hasOwnName || !!el.closest("[id='account'], [class*='accountProfile']");
 
         if (isSelf) {
+            const targetFont = (selfEffectsActive && ownConfig.profileFont) ? ownConfig.profileFont : "none";
+            applyProfileFont(el, targetFont);
+
             if (selfEffectsActive) {
                 void injectBackground(el, ownConfig);
                 for (const n of Array.from(nameEls)) {
@@ -457,6 +495,7 @@ export function scanAndApplyEffects() {
         } else if (authorId) {
             const cached = profileCache.get(authorId);
             if (cached && cached.data?.effects) {
+                applyProfileFont(el, cached.data.effects.profileFont || "none");
                 if (cached.data.effects.showBanner) void injectBackground(el, cached.data.effects);
                 if (cached.data.effects.nameEffect && cached.data.effects.nameEffect !== "none") {
                     for (const n of Array.from(nameEls)) {
@@ -464,10 +503,20 @@ export function scanAndApplyEffects() {
                             applyNameEffectToElement(getTargetNameElement(n), cached.data.effects.nameEffect, cached.data.effects.glowColor);
                         }
                     }
+                } else {
+                    for (const n of Array.from(nameEls)) {
+                        removeNameEffectFromElement(getTargetNameElement(n));
+                    }
                 }
+            } else if (cached) {
+                applyProfileFont(el, "none");
             } else if (!cached) {
                 void readUserPremiumData(authorId).then(data => {
-                    if (!data?.effects) return;
+                    if (!data?.effects) {
+                        applyProfileFont(el, "none");
+                        return;
+                    }
+                    applyProfileFont(el, data.effects.profileFont || "none");
                     if (data.effects.showBanner) void injectBackground(el, data.effects);
                     if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
                         for (const n of Array.from(nameEls)) {
@@ -630,19 +679,92 @@ function debouncedScan() {
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
         scanAndApplyEffects();
-    }, 140);
+    }, 35);
 }
 
 function onConnectionOpen() {
     triggerEffectsUpdate();
 }
 
+function onDocumentPointerDown(e: MouseEvent) {
+    if (!active) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    // Check if clicked element relates to an avatar, username or member item to prefetch immediately
+    const userEl = target.closest<HTMLElement>(
+        "img[src*='/avatars/'], [class*='avatar'], [class*='username'], [class*='member_'], [class*='peopleListItem_'], [class*='message_'], [class*='wrapper_'][role='img'], [role='listitem']"
+    );
+    if (userEl) {
+        const curUser = UserStore.getCurrentUser();
+        const userId = getAuthorIdFromElement(userEl);
+        if (userId && userId !== curUser?.id) {
+            void readUserPremiumData(userId);
+        }
+    }
+
+    // Trigger instant scanning
+    requestAnimationFrame(() => scanAndApplyEffects());
+    setTimeout(() => scanAndApplyEffects(), 20);
+}
+
+function onDocumentClick() {
+    if (!active) return;
+    requestAnimationFrame(() => scanAndApplyEffects());
+    setTimeout(() => scanAndApplyEffects(), 16);
+    setTimeout(() => scanAndApplyEffects(), 50);
+}
+
+function onUserProfileModalOpen(action: any) {
+    if (!active) return;
+    const curUser = UserStore.getCurrentUser();
+    if (action?.userId && action.userId !== curUser?.id) {
+        void readUserPremiumData(action.userId);
+    }
+    scanAndApplyEffects();
+    requestAnimationFrame(() => scanAndApplyEffects());
+    setTimeout(() => scanAndApplyEffects(), 25);
+    setTimeout(() => scanAndApplyEffects(), 80);
+}
+
+function onModalPush() {
+    if (!active) return;
+    scanAndApplyEffects();
+    requestAnimationFrame(() => scanAndApplyEffects());
+    setTimeout(() => scanAndApplyEffects(), 25);
+}
+
 export function startProfileEffects() {
     if (active) return;
     active = true;
 
-    observer = new MutationObserver(() => {
-        debouncedScan();
+    ensureProfileFontsLoaded();
+
+    observer = new MutationObserver(mutations => {
+        let hasProfileMutation = false;
+        for (let i = 0; i < mutations.length; i++) {
+            const m = mutations[i];
+            for (let j = 0; j < m.addedNodes.length; j++) {
+                const node = m.addedNodes[j];
+                if (node instanceof HTMLElement) {
+                    if (
+                        node.matches?.("[class*='userProfile'], [class*='userPopout'], [class*='profileContentInner'], [class*='modalRoot'], [role='dialog'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']") ||
+                        node.querySelector?.("[class*='userProfile'], [class*='userPopout'], [class*='profileContentInner'], [class*='biteSize'], [class*='fullSize'], [class*='displayName']")
+                    ) {
+                        hasProfileMutation = true;
+                        break;
+                    }
+                }
+            }
+            if (hasProfileMutation) break;
+        }
+
+        if (hasProfileMutation) {
+            scanAndApplyEffects();
+            requestAnimationFrame(() => scanAndApplyEffects());
+        } else {
+            debouncedScan();
+        }
     });
 
     observer.observe(document.body, {
@@ -653,7 +775,15 @@ export function startProfileEffects() {
     try {
         FluxDispatcher.subscribe("CONNECTION_OPEN", onConnectionOpen);
         FluxDispatcher.subscribe("CURRENT_USER_UPDATE", onConnectionOpen);
+        FluxDispatcher.subscribe("USER_PROFILE_MODAL_OPEN", onUserProfileModalOpen);
+        FluxDispatcher.subscribe("USER_POPOUT_OPEN", onUserProfileModalOpen);
+        FluxDispatcher.subscribe("MODAL_PUSH", onModalPush);
     } catch {}
+
+    if (typeof document !== "undefined") {
+        document.addEventListener("mousedown", onDocumentPointerDown, true);
+        document.addEventListener("click", onDocumentClick, true);
+    }
 
     triggerEffectsUpdate();
 }
@@ -680,7 +810,18 @@ export function stopProfileEffects() {
     try {
         FluxDispatcher.unsubscribe("CONNECTION_OPEN", onConnectionOpen);
         FluxDispatcher.unsubscribe("CURRENT_USER_UPDATE", onConnectionOpen);
+        FluxDispatcher.unsubscribe("USER_PROFILE_MODAL_OPEN", onUserProfileModalOpen);
+        FluxDispatcher.unsubscribe("USER_POPOUT_OPEN", onUserProfileModalOpen);
+        FluxDispatcher.unsubscribe("MODAL_PUSH", onModalPush);
     } catch {}
+
+    if (typeof document !== "undefined") {
+        document.removeEventListener("mousedown", onDocumentPointerDown, true);
+        document.removeEventListener("click", onDocumentClick, true);
+        document.querySelectorAll("[data-nc-profile-font]").forEach(el => {
+            el.removeAttribute("data-nc-profile-font");
+        });
+    }
 
     document.querySelectorAll(".cpe-bg-layer").forEach(el => el.remove());
     document.querySelectorAll("[data-nc-applied-effect], .cpe-glow, .cpe-glitch, .cpe-rainbow-letter, .cpe-type-cursor").forEach(el => {

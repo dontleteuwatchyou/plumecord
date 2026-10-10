@@ -25,6 +25,8 @@ export interface PremiumFavSong {
     duration?: number;
 }
 
+export type ProfileFontType = "none" | "gothic" | "signature" | "pixel" | "nerd" | "cyberpunk" | "handwritten";
+
 export interface ProfileEffectsConfig {
     enabled?: boolean;
     mode: "preset" | "gif";
@@ -39,6 +41,7 @@ export interface ProfileEffectsConfig {
     glowColor: string;
     chatUsernameEffect: "none" | "glow" | "glitch" | "rainbow" | "type";
     memberListEffect: "none" | "glow" | "glitch" | "rainbow" | "type";
+    profileFont?: ProfileFontType;
 }
 
 export interface NightcordPremiumPayload {
