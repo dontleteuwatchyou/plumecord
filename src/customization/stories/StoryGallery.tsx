@@ -4,16 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { t } from "@api/i18n";
 import { Button, React, useEffect, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumStory } from "../types";
 import { StoryViewer } from "./StoryViewer";
-
-const StarIcon = () => (
-    <svg width={12} height={12} viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-);
 
 const CameraIcon = () => (
     <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
@@ -46,8 +41,7 @@ export function StoryGallery({ user }: { user: any }) {
 
         const data = await readUserPremiumData(user.id);
         if (data && data.storiesEnabled !== false && Array.isArray(data.stories)) {
-            const sorted = [...data.stories].sort((a, b) => (b.isHighlight ? 1 : 0) - (a.isHighlight ? 1 : 0));
-            setStories(sorted);
+            setStories(data.stories);
         } else {
             setStories([]);
         }
@@ -65,6 +59,8 @@ export function StoryGallery({ user }: { user: any }) {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
+                minHeight: 340,
+                height: "100%",
                 padding: "48px 20px",
                 textAlign: "center",
                 gap: 16
@@ -74,10 +70,10 @@ export function StoryGallery({ user }: { user: any }) {
                 </div>
                 <div>
                     <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                        Identification Nightcord requise
+                        {t("Nightcord Authentication Required")}
                     </h3>
                     <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted, #949ba4)", maxWidth: 360, lineHeight: 1.5 }}>
-                        Connectez votre compte Discord via OAuth2 pour publier et synchroniser vos Stories & Highlights sur votre profil.
+                        {t("Connect your Discord account via OAuth2 to sync Stories on your profile.")}
                     </p>
                 </div>
                 <Button
@@ -88,7 +84,7 @@ export function StoryGallery({ user }: { user: any }) {
                     }}
                 >
                     <DiscordIcon />
-                    S'identifier avec Discord
+                    {t("Authenticate with Discord")}
                 </Button>
             </div>
         );
@@ -96,8 +92,17 @@ export function StoryGallery({ user }: { user: any }) {
 
     if (loading) {
         return (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted, #949ba4)" }}>
-                Chargement des stories...
+            <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 340,
+                height: "100%",
+                textAlign: "center",
+                padding: "40px 20px",
+                color: "var(--text-muted, #949ba4)"
+            }}>
+                {t("Loading stories...")}
             </div>
         );
     }
@@ -109,7 +114,9 @@ export function StoryGallery({ user }: { user: any }) {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "48px 20px",
+                minHeight: 340,
+                height: "100%",
+                padding: "32px 20px",
                 textAlign: "center",
                 color: "var(--text-muted, #949ba4)"
             }}>
@@ -117,10 +124,12 @@ export function StoryGallery({ user }: { user: any }) {
                     <CameraIcon />
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--header-primary, #ffffff)" }}>
-                    Aucune story pour le moment
+                    {t("No stories yet")}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 4, color: "var(--text-muted, #949ba4)" }}>
-                    {isSelf ? "Ajoutez des stories depuis les paramètres Nightcord Premium." : "Cet utilisateur n'a pas encore partagé de story."}
+                    {isSelf
+                        ? t("Add stories from Nightcord Customization settings.")
+                        : t("This user hasn't shared any stories yet.")}
                 </div>
             </div>
         );
@@ -135,11 +144,6 @@ export function StoryGallery({ user }: { user: any }) {
                         className="ncp-story-gallery-item"
                         onClick={() => setSelectedStoryIndex(i)}
                     >
-                        {story.isHighlight && (
-                            <div className="ncp-story-highlight-badge">
-                                <StarIcon />
-                            </div>
-                        )}
                         {story.type === "video" ? (
                             <video src={story.url} muted />
                         ) : (

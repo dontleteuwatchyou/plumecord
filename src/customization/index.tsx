@@ -6,6 +6,7 @@
 
 import "./styles.css";
 
+import { t } from "@api/i18n";
 import { addPatch } from "@api/PluginManager";
 import { React, UserStore } from "@webpack/common";
 
@@ -60,10 +61,10 @@ export function pushPremiumSections(sections: any[], user: any) {
 
         if (isSelf) {
             if (st.favSongsEnabled) {
-                sections.unshift({ text: "My Fav Song", section: "FAV_SONGS" });
+                sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
             }
             if (st.storiesEnabled) {
-                sections.unshift({ text: "My Story", section: "MY_STORY" });
+                sections.unshift({ text: t("Story"), section: "MY_STORY" });
             }
         } else {
             void readUserPremiumData(user.id).then(data => {
@@ -71,13 +72,13 @@ export function pushPremiumSections(sections: any[], user: any) {
                 let changed = false;
                 if (data.favSongsEnabled !== false && Array.isArray(data.favSongs) && data.favSongs.length > 0) {
                     if (!sections.some(s => s?.section === "FAV_SONGS")) {
-                        sections.unshift({ text: "My Fav Song", section: "FAV_SONGS" });
+                        sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
                         changed = true;
                     }
                 }
                 if (data.storiesEnabled !== false && Array.isArray(data.stories) && data.stories.length > 0) {
                     if (!sections.some(s => s?.section === "MY_STORY")) {
-                        sections.unshift({ text: "My Story", section: "MY_STORY" });
+                        sections.unshift({ text: t("Story"), section: "MY_STORY" });
                         changed = true;
                     }
                 }

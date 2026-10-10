@@ -121,14 +121,14 @@ export function CustomizationTab() {
                     {t("Customization")}
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted, #949ba4)", margin: 0, lineHeight: 1.5 }}>
-                    {t("Customize your profile and presence on Nightcord with exclusive options: Stories & Highlights, Favorite Music Player, and Animated Visual Effects.")}
+                    {t("Customize your profile and presence on Nightcord with exclusive options: Stories, Favorite Music Player, and Animated Visual Effects.")}
                 </p>
             </div>
 
             {/* OAuth2 Status Card */}
             <div style={{
                 background: "var(--background-secondary, #2b2d31)",
-                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))",
                 borderRadius: 8,
                 padding: "16px 20px",
                 display: "flex",
@@ -137,26 +137,16 @@ export function CustomizationTab() {
                 flexWrap: "wrap",
                 gap: 12
             }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        backgroundColor: isAuthed ? "var(--status-positive, #23a55a)" : "var(--status-warning, #f0b232)",
-                        boxShadow: isAuthed ? "0 0 8px rgba(35, 165, 90, 0.5)" : "none"
-                    }} />
-
-                    <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                            {isAuthed
-                                ? `${t("Identified via Discord OAuth2")} (${currentUser?.username ?? t("User")})`
-                                : t("Not identified via Discord OAuth2")}
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)" }}>
-                            {isAuthed
-                                ? t("Your customization settings are live synced to the Nightcord cloud.")
-                                : t("Log in with Discord OAuth2 to sync and share your customization publicly.")}
-                        </div>
+                <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
+                        {isAuthed
+                            ? `${t("Identified via Discord OAuth2")} (${currentUser?.username ?? t("User")})`
+                            : t("Not identified via Discord OAuth2")}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", marginTop: 2 }}>
+                        {isAuthed
+                            ? t("Your customization settings are live synced to the Nightcord cloud.")
+                            : t("Log in with Discord OAuth2 to sync and share your customization publicly.")}
                     </div>
                 </div>
 
@@ -200,7 +190,7 @@ export function CustomizationTab() {
                 display: "flex",
                 flexDirection: "column",
                 gap: 16,
-                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))"
             }}>
                 <div style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--header-secondary, #b5bac1)" }}>
                     {t("Customization Options")}
@@ -211,20 +201,20 @@ export function CustomizationTab() {
                     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                     gap: 16
                 }}>
-                    {/* Option 1: Stories & Highlights */}
+                    {/* Option 1: Stories */}
                     <div style={{
-                        background: "var(--background-secondary-alt, #232428)",
+                        background: "rgba(255, 255, 255, 0.03)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "stories" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
+                        border: activeTab === "stories" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
                         gap: 12
                     }}>
                         <FormSwitch
-                            title={t("Stories & Highlights")}
-                            description={t("Gradient avatar borders and My Story tab on Discord profiles.")}
+                            title={t("Stories")}
+                            description={t("Avatar borders and Story tab on Discord profiles.")}
                             value={settings.storiesEnabled}
                             onChange={(v: boolean) => updateSt({ storiesEnabled: v })}
                             hideBorder
@@ -241,10 +231,10 @@ export function CustomizationTab() {
 
                     {/* Option 2: Musiques Favorites */}
                     <div style={{
-                        background: "var(--background-secondary-alt, #232428)",
+                        background: "rgba(255, 255, 255, 0.03)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "songs" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
+                        border: activeTab === "songs" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
@@ -252,7 +242,7 @@ export function CustomizationTab() {
                     }}>
                         <FormSwitch
                             title={t("Favorite Musics")}
-                            description={t("My Fav Song tab on profile with interactive SoundCord player.")}
+                            description={t("Song tab on profile with interactive SoundCord player.")}
                             value={settings.favSongsEnabled}
                             onChange={(v: boolean) => updateSt({ favSongsEnabled: v })}
                             hideBorder
@@ -269,10 +259,10 @@ export function CustomizationTab() {
 
                     {/* Option 3: Effets de Profil */}
                     <div style={{
-                        background: "var(--background-secondary-alt, #232428)",
+                        background: "rgba(255, 255, 255, 0.03)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "effects" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
+                        border: activeTab === "effects" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",

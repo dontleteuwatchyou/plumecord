@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { t } from "@api/i18n";
 import { Button, React, useEffect, useRef, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumFavSong } from "../types";
@@ -122,6 +123,8 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
+                minHeight: 340,
+                height: "100%",
                 padding: "48px 20px",
                 textAlign: "center",
                 gap: 16
@@ -131,10 +134,10 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                 </div>
                 <div>
                     <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                        Identification Nightcord requise
+                        {t("Nightcord Authentication Required")}
                     </h3>
                     <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted, #949ba4)", maxWidth: 360, lineHeight: 1.5 }}>
-                        Connectez votre compte Discord via OAuth2 pour afficher et synchroniser vos musiques favorites sur votre profil.
+                        {t("Connect your Discord account via OAuth2 to display and sync your favorite songs on your profile.")}
                     </p>
                 </div>
                 <Button
@@ -145,7 +148,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                     }}
                 >
                     <DiscordIcon />
-                    S'identifier avec Discord
+                    {t("Authenticate with Discord")}
                 </Button>
             </div>
         );
@@ -153,8 +156,17 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
 
     if (loading) {
         return (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-muted, #949ba4)" }}>
-                Chargement des musiques...
+            <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 340,
+                height: "100%",
+                textAlign: "center",
+                padding: "40px 20px",
+                color: "var(--text-muted, #949ba4)"
+            }}>
+                {t("Loading songs...")}
             </div>
         );
     }
@@ -166,7 +178,9 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                padding: "48px 20px",
+                minHeight: 340,
+                height: "100%",
+                padding: "32px 20px",
                 textAlign: "center",
                 color: "var(--text-muted, #949ba4)"
             }}>
@@ -174,10 +188,12 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                     <MusicIcon size={36} />
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--header-primary, #ffffff)" }}>
-                    Aucune musique favorite
+                    {t("No favorite songs")}
                 </div>
                 <div style={{ fontSize: 13, marginTop: 4, color: "var(--text-muted, #949ba4)" }}>
-                    {isSelf ? "Ajoutez vos morceaux favoris depuis les paramètres Nightcord Premium." : "Cet utilisateur n'a pas encore configuré de musique favorite."}
+                    {isSelf
+                        ? t("Add your favorite songs from Nightcord Customization settings.")
+                        : t("This user hasn't configured any favorite songs yet.")}
                 </div>
             </div>
         );
@@ -292,7 +308,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                             }}
                         >
                             {isPlaying ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
-                            {isPlaying ? "Pause" : "Play"}
+                            {isPlaying ? t("Pause") : t("Play")}
                         </button>
 
                         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted, #949ba4)" }}>

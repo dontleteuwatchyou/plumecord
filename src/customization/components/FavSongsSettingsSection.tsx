@@ -278,13 +278,13 @@ export function FavSongsSettingsSection() {
                                     <div
                                         key={track.id}
                                         style={{
-                                            background: "var(--background-secondary-alt, #232428)",
+                                            background: "rgba(255, 255, 255, 0.03)",
                                             borderRadius: 6,
                                             padding: "8px 12px",
                                             display: "flex",
                                             alignItems: "center",
                                             gap: 12,
-                                            border: isAdded ? "1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))" : "1px solid transparent"
+                                            border: isAdded ? "1px solid var(--border-subtle, rgba(255, 255, 255, 0.16))" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))"
                                         }}
                                     >
                                         <div style={{
@@ -390,13 +390,13 @@ export function FavSongsSettingsSection() {
                 {/* Collapsible Manual Add Form */}
                 {showManualAdd && (
                     <div style={{
-                        background: "var(--background-secondary-alt, #232428)",
+                        background: "rgba(255, 255, 255, 0.03)",
                         borderRadius: 6,
                         padding: "14px 16px",
                         display: "flex",
                         flexDirection: "column",
                         gap: 10,
-                        border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))"
+                        border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
                     }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--header-secondary, #b5bac1)" }}>
                             {t("Manual Track Addition")}
@@ -469,8 +469,9 @@ export function FavSongsSettingsSection() {
                         textAlign: "center",
                         color: "var(--text-muted, #949ba4)",
                         fontSize: 13,
-                        background: "var(--background-secondary-alt, #232428)",
-                        borderRadius: 6
+                        background: "rgba(255, 255, 255, 0.03)",
+                        borderRadius: 6,
+                        border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))"
                     }}>
                         {t("No favorite songs configured yet. Use the search bar above to add your favorite tracks!")}
                     </div>
@@ -480,12 +481,13 @@ export function FavSongsSettingsSection() {
                             <div
                                 key={song.id}
                                 style={{
-                                    background: "var(--background-secondary-alt, #232428)",
+                                    background: "rgba(255, 255, 255, 0.03)",
                                     borderRadius: 6,
                                     padding: "8px 14px",
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: 12
+                                    gap: 12,
+                                    border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))"
                                 }}
                             >
                                 <div style={{

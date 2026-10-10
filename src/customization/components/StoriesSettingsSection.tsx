@@ -5,7 +5,6 @@
  */
 
 import { t } from "@api/i18n";
-import { FormSwitch } from "@components/FormSwitch";
 import { Button, React, showToast, TextInput, Toasts, useEffect, useState } from "@webpack/common";
 import { getLocalStories, saveLocalStories, syncOwnDataToCloud, uploadToImgur } from "../sync";
 import type { PremiumStory } from "../types";
@@ -22,12 +21,6 @@ const UploadIcon = () => (
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="17 8 12 3 7 8" />
         <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-);
-
-const StarIcon = () => (
-    <svg width={12} height={12} viewBox="0 0 24 24" fill="currentColor">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
 );
 
@@ -102,16 +95,6 @@ export function StoriesSettingsSection() {
         const updated = stories.filter(s => s.id !== id);
         await persist(updated);
         showToast(t("Story removed"), Toasts.Type.INFO);
-    };
-
-    const handleToggleHighlight = async (id: string) => {
-        const updated = stories.map(s => s.id === id ? { ...s, isHighlight: !s.isHighlight } : s);
-        await persist(updated);
-    };
-
-    const handleUpdateSoundcloud = async (id: string, url: string, startTime = 0) => {
-        const updated = stories.map(s => s.id === id ? { ...s, soundcloudUrl: url, startTime } : s);
-        await persist(updated);
     };
 
     return (
@@ -201,54 +184,22 @@ export function StoriesSettingsSection() {
                                 overflow: "hidden",
                                 display: "flex",
                                 flexDirection: "column",
-                                border: story.isHighlight ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255,255,255,0.06))"
+                                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
                             }}
                         >
-                            <div style={{ position: "relative", width: "100%", height: 160, background: "#000" }}>
+                            <div style={{ position: "relative", width: "100%", height: 180, background: "#000" }}>
                                 {story.type === "video" ? (
                                     <video src={story.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                 ) : (
                                     <img src={story.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
                                 )}
-                                {story.isHighlight && (
-                                    <div style={{
-                                        position: "absolute",
-                                        top: 6,
-                                        left: 6,
-                                        background: "rgba(0,0,0,0.6)",
-                                        borderRadius: 4,
-                                        padding: "2px 6px",
-                                        color: "#f0b429",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 4,
-                                        fontSize: 11
-                                    }}>
-                                        <StarIcon /> {t("Highlight")}
-                                    </div>
-                                )}
                             </div>
 
-                            <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                                <FormSwitch
-                                    value={story.isHighlight}
-                                    onChange={() => handleToggleHighlight(story.id)}
-                                    title={t("Highlight")}
-                                    description={t("Feature on profile")}
-                                    hideBorder
-                                />
-
-                                <TextInput
-                                    placeholder={t("SoundCloud URL...")}
-                                    value={story.soundcloudUrl || ""}
-                                    onChange={(val: string) => handleUpdateSoundcloud(story.id, val, story.startTime || 0)}
-                                />
-
+                            <div style={{ padding: 10, display: "flex", justifyContent: "flex-end" }}>
                                 <Button
                                     color={Button.Colors.RED}
                                     size={Button.Sizes.SMALL}
                                     onClick={() => handleDelete(story.id)}
-                                    style={{ marginTop: 4 }}
                                 >
                                     <TrashIcon />
                                     {t("Remove")}

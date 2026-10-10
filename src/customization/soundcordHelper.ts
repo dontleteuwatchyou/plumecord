@@ -5,6 +5,7 @@
  */
 
 import { DataStore } from "@api/index";
+import { playerState } from "@nightcordplugins/soundcloudPlayer";
 
 export interface SoundCordTrackResult {
     id: string;
@@ -19,34 +20,52 @@ export interface SoundCordTrackResult {
 }
 
 const SC_CLIENT_ID_KEY = "SoundCordPlayer_clientId";
-const FALLBACK_CLIENT_ID = "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX";
+const DEAD_CLIENT_ID = "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX";
+const CURRENT_FALLBACK_CLIENT_ID = "vI5BsvpTIlavDLl7RDbbcFAPg8kls8Bg";
 
 let cachedClientId: string | null = null;
 
-export async function getSoundCordClientId(): Promise<string> {
-    if (cachedClientId) return cachedClientId;
-    try {
-        const stored = await DataStore.get<string>(SC_CLIENT_ID_KEY);
-        if (stored) {
-            cachedClientId = stored;
-            return stored;
+export async function getSoundCordClientId(forceRefresh = false): Promise<string> {
+    if (!forceRefresh) {
+        if (cachedClientId && cachedClientId !== DEAD_CLIENT_ID) {
+            return cachedClientId;
         }
+
+        if (playerState?.clientId && playerState.clientId !== DEAD_CLIENT_ID) {
+            cachedClientId = playerState.clientId;
+            return playerState.clientId;
+        }
+
+        try {
+            const stored = await DataStore.get<string>(SC_CLIENT_ID_KEY);
+            if (stored && stored !== DEAD_CLIENT_ID) {
+                cachedClientId = stored;
+                return stored;
+            }
+        } catch {}
+    }
+
+    cachedClientId = null;
+    try {
+        await DataStore.del(SC_CLIENT_ID_KEY);
     } catch {}
 
     const nativeHelper = (VencordNative.pluginHelpers as any)?.SoundCordPlayer;
     if (nativeHelper?.fetchSoundCloudClientId) {
         try {
             const id = await nativeHelper.fetchSoundCloudClientId();
-            if (id) {
+            if (id && id.length >= 20 && id !== DEAD_CLIENT_ID) {
                 cachedClientId = id;
                 void DataStore.set(SC_CLIENT_ID_KEY, id);
                 return id;
             }
-        } catch {}
+        } catch (e) {
+            console.warn("[Customization/SoundCord] fetchSoundCloudClientId error:", e);
+        }
     }
 
-    cachedClientId = FALLBACK_CLIENT_ID;
-    return FALLBACK_CLIENT_ID;
+    cachedClientId = CURRENT_FALLBACK_CLIENT_ID;
+    return CURRENT_FALLBACK_CLIENT_ID;
 }
 
 export function formatDuration(ms: number): string {
@@ -56,32 +75,54 @@ export function formatDuration(ms: number): string {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export async function searchSoundCordTracks(query: string, limit = 20): Promise<SoundCordTrackResult[]> {
+export async function searchSoundCordTracks(query: string, limit = 20, isRetry = false): Promise<SoundCordTrackResult[]> {
     const q = query.trim();
     if (!q) return [];
-    const clientId = await getSoundCordClientId();
+    const clientId = await getSoundCordClientId(isRetry);
 
     let jsonString: string | null = null;
+    let hadAuthError = false;
     const nativeHelper = (VencordNative.pluginHelpers as any)?.SoundCordPlayer;
 
     if (nativeHelper?.searchSoundCloud) {
         try {
             jsonString = await nativeHelper.searchSoundCloud(q, clientId, 0, limit);
-        } catch (e) {
-            console.warn("[Customization/SoundCord] native search failed, falling back to fetch:", e);
+        } catch (e: any) {
+            const msg = String(e?.message ?? e);
+            if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) {
+                hadAuthError = true;
+            }
+            console.warn("[Customization/SoundCord] native search failed:", msg);
         }
     }
 
-    if (!jsonString) {
-        const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&client_id=${clientId}&limit=${limit}&offset=0`;
-        const resp = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "Referer": "https://soundcloud.com/"
+    if (!jsonString && !hadAuthError) {
+        try {
+            const url = `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(q)}&client_id=${clientId}&limit=${limit}&offset=0`;
+            const resp = await fetch(url, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Referer": "https://soundcloud.com/"
+                }
+            });
+            if (resp.status === 401 || resp.status === 403) {
+                hadAuthError = true;
+            } else if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+            } else {
+                jsonString = await resp.text();
             }
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        jsonString = await resp.text();
+        } catch (e: any) {
+            const msg = String(e?.message ?? e);
+            if (msg.includes("401") || msg.includes("403")) hadAuthError = true;
+            else if (!hadAuthError) throw e;
+        }
+    }
+
+    if (hadAuthError && !isRetry) {
+        console.warn("[Customization/SoundCord] SoundCord client ID expired, refreshing dynamically...");
+        await getSoundCordClientId(true);
+        return searchSoundCordTracks(query, limit, true);
     }
 
     if (!jsonString) return [];
@@ -137,8 +178,8 @@ export async function searchSoundCordTracks(query: string, limit = 20): Promise<
     return results;
 }
 
-export async function resolveSoundCordStream(streamTranscodingUrl: string): Promise<string | null> {
-    const clientId = await getSoundCordClientId();
+export async function resolveSoundCordStream(streamTranscodingUrl: string, isRetry = false): Promise<string | null> {
+    const clientId = await getSoundCordClientId(isRetry);
     const nativeHelper = (VencordNative.pluginHelpers as any)?.SoundCordPlayer;
 
     if (nativeHelper?.resolveStreamUrl) {
@@ -157,9 +198,17 @@ export async function resolveSoundCordStream(streamTranscodingUrl: string): Prom
                 "Referer": "https://soundcloud.com/"
             }
         });
+        if ((resp.status === 401 || resp.status === 403) && !isRetry) {
+            await getSoundCordClientId(true);
+            return resolveSoundCordStream(streamTranscodingUrl, true);
+        }
         const data = await resp.json();
         return data?.url || null;
     } catch (e) {
+        if (!isRetry) {
+            await getSoundCordClientId(true);
+            return resolveSoundCordStream(streamTranscodingUrl, true);
+        }
         console.error("[Customization/SoundCord] resolveStreamUrl error:", e);
         return null;
     }
