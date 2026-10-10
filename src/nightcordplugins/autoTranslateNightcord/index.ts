@@ -112,6 +112,7 @@ export const translations: TranslationMap = {
     "My Fav Song": {"en":"My Fav Song","fr":"Ma musique","ar":"أغنيتي المفضلة","es":"Mi canción favorita","ru":"Моя любимая песня","zh":"我的最爱音乐"},
     "Profile Effects": {"en":"Profile Effects","fr":"Effets de profil","ar":"تأثيرات الملف الشخصي","es":"Efectos de perfil","ru":"Эффекты профиля","zh":"个人资料特效"},
     "Enable Nightcord Premium": {"en":"Enable Nightcord Premium","fr":"Activer Nightcord Premium","ar":"تفعيل نايتكورد بريميوم","es":"Activar Nightcord Premium","ru":"Включить Nightcord Premium","zh":"启用 Nightcord Premium"},
+    "Close Player": {"en":"Close Player","fr":"Fermer le lecteur","ar":"إغلاق المشغل","es":"Cerrar reproductor","ru":"Закрыть плеер","zh":"关闭播放器"},
     "Quick Reload Required": {"en":"Quick Reload Required","fr":"Rechargement rapide requis","ar":"مطلوب إعادة التحميل السريع","es":"Recarga rápida requerida","ru":"Требуется быстрая перезагрузка","zh":"需要快速重新加载"},
     "Quick Reload Now": {"en":"Quick Reload Now","fr":"Recharger maintenant (1s)","ar":"إعادة التحميل السريع الآن","es":"Recargar rápido ahora","ru":"Перезагрузить сейчас","zh":"立即快速重载"},
     "Quick Reload": {"en":"Quick Reload","fr":"Rechargement rapide","ar":"إعادة التحميل السريع","es":"Recarga rápida","ru":"Быстрая перезагрузка","zh":"快速重载"},

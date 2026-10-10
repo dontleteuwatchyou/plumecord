@@ -264,14 +264,18 @@ export function FavSongsSettingsSection() {
                             </span>
                         </div>
 
-                        <div style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 6,
-                            maxHeight: 380,
-                            overflowY: "auto",
-                            paddingRight: 4
-                        }}>
+                        <div
+                            className="ncp-no-scrollbar"
+                            style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 6,
+                                maxHeight: 380,
+                                overflowY: "auto",
+                                paddingRight: 4,
+                                scrollbarWidth: "none"
+                            }}
+                        >
                             {searchResults.map(track => {
                                 const isAdded = songs.some(s => s.id === `sc-${track.id}`);
                                 return (
