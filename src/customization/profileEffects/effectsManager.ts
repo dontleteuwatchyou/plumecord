@@ -5,7 +5,7 @@
  */
 
 import { FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
-import { getLocalEffectsConfig, getPremiumSettings, readUserPremiumData } from "../sync";
+import { getLocalEffectsConfig, getPremiumSettings, profileCache, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
 const PRESETS_BASE_URL = "https://raw.githubusercontent.com/holderikonik-prog/preset/main/presets/";
@@ -96,6 +96,38 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     return null;
 }
 
+function isForbiddenElement(el: HTMLElement): boolean {
+    const tag = el.tagName.toLowerCase();
+    if (["h1", "h2", "h3", "h4", "h5", "h6", "label", "p", "button", "input", "textarea", "svg", "path"].includes(tag)) {
+        return true;
+    }
+
+    const text = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+    if (!text) return true;
+
+    // Disallow common section headers
+    const forbiddenTexts = [
+        "bio", "about me", "à propos de moi",
+        "member since", "membre depuis",
+        "connections", "connexions",
+        "note", "notes",
+        "mutual servers", "serveurs en commun", "mutual guilds",
+        "mutual friends", "amis en commun",
+        "activity", "activité",
+        "display name", "nom d'affichage",
+        "pronouns", "pronoms",
+        "user profile", "profil d'utilisateur"
+    ];
+    if (forbiddenTexts.includes(text)) return true;
+
+    // Disallow section containers unless specifically display name / username
+    if (el.matches("[class*='section_'], [class*='userInfoSection_'], [class*='tabBar_'], [class*='banner_']")) {
+        return true;
+    }
+
+    return false;
+}
+
 export function removeNameEffectFromElement(nameEl: HTMLElement) {
     if (
         !nameEl.dataset.ncAppliedEffect &&
@@ -114,12 +146,19 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
 }
 
 export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string, glowColor = "#a78bfa") {
-    if (!effectType || effectType === "none") {
+    if (!effectType || effectType === "none" || isForbiddenElement(nameEl)) {
         removeNameEffectFromElement(nameEl);
         return;
     }
 
-    const currentText = nameEl.textContent?.trim() || "";
+    const currentText = nameEl.getAttribute("data-username-with-effects") ||
+                        nameEl.getAttribute("data-text") ||
+                        nameEl.textContent?.trim() || "";
+    if (!currentText) {
+        removeNameEffectFromElement(nameEl);
+        return;
+    }
+
     if (
         nameEl.dataset.ncAppliedEffect === effectType &&
         nameEl.dataset.ncGlowColor === glowColor &&
@@ -195,7 +234,7 @@ export async function scanAndApplyEffects() {
     if (!curUser?.id) return;
 
     const ownConfig = await getLocalEffectsConfig(curUser.id);
-    const selfEffectsActive = !!settings.profileEffectsEnabled;
+    const selfEffectsActive = !!settings.profileEffectsEnabled || (ownConfig.nameEffect && ownConfig.nameEffect !== "none") || !!ownConfig.showBanner;
 
     const userNames = new Set<string>();
     if (curUser.username) userNames.add(curUser.username.trim().toLowerCase());
@@ -209,19 +248,46 @@ export async function scanAndApplyEffects() {
         }
     } catch {}
 
-    // 1. Scan Profile Popouts and Modals
+    // 0. Active Cleanup: Strip effects from any forbidden headings/labels
+    const allApplied = document.querySelectorAll<HTMLElement>(
+        "[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor"
+    );
+    for (const el of Array.from(allApplied)) {
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+        }
+    }
+
+    // 1. Settings Profile Editor & Display Name Sizer (e.g. Snippet 1)
+    const sizerElements = document.querySelectorAll<HTMLElement>(
+        "[class*='sizer_'] [class*='displayNameContent_'], [class*='sizer_'] [class*='displayName_']"
+    );
+    for (const el of Array.from(sizerElements)) {
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+        if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
+            applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
+        } else {
+            removeNameEffectFromElement(el);
+        }
+    }
+
+    // 2. Profile Popouts, Modals and Live Previews (e.g. Snippet 2)
     const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_']"
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_']"
     );
 
     for (const el of Array.from(profileElements)) {
         const authorId = getAuthorIdFromElement(el);
         const nameEls = el.querySelectorAll<HTMLElement>(
-            "[class*='userTagUsername'], [class*='nickname'], [class*='globalName'], [class*='username_'], h1, h2"
+            "[class*='displayNameContent_'], [class*='displayName_'], [class*='userTagUsername'], [class*='nickname'], [class*='globalName'], [class*='userTag_'] [class*='username_'], [class*='headerText_'] [class*='username_']"
         );
+
         let hasOwnName = false;
         for (const n of Array.from(nameEls)) {
-            const txt = n.textContent?.trim().toLowerCase();
+            const txt = (n.getAttribute("data-username-with-effects") || n.getAttribute("data-text") || n.textContent || "").trim().toLowerCase();
             if (txt && userNames.has(txt)) {
                 hasOwnName = true;
                 break;
@@ -234,6 +300,10 @@ export async function scanAndApplyEffects() {
             if (selfEffectsActive) {
                 void injectBackground(el, ownConfig);
                 for (const n of Array.from(nameEls)) {
+                    if (isForbiddenElement(n)) {
+                        removeNameEffectFromElement(n);
+                        continue;
+                    }
                     if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
                         applyNameEffectToElement(n, ownConfig.nameEffect, ownConfig.glowColor);
                     } else {
@@ -252,6 +322,10 @@ export async function scanAndApplyEffects() {
                 if (data.effects.showBanner) void injectBackground(el, data.effects);
                 if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
                     for (const n of Array.from(nameEls)) {
+                        if (isForbiddenElement(n)) {
+                            removeNameEffectFromElement(n);
+                            continue;
+                        }
                         applyNameEffectToElement(n, data.effects.nameEffect, data.effects.glowColor);
                     }
                 }
@@ -259,56 +333,108 @@ export async function scanAndApplyEffects() {
         }
     }
 
-    // 2. Scan Chat Usernames
-    const chatNames = document.querySelectorAll<HTMLElement>(
-        "[class*='username_'], [class*='header_'] [class*='username'], [id^='message-username-']"
-    );
-    for (const el of Array.from(chatNames)) {
-        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_']")) {
-            continue;
-        }
-
-        const authorId = getAuthorIdFromElement(el);
-        const txt = el.textContent?.trim().toLowerCase() || "";
-        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
-
-        if (isSelf) {
-            if (selfEffectsActive && ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none") {
-                applyNameEffectToElement(el, ownConfig.chatUsernameEffect, ownConfig.glowColor);
-            } else {
-                removeNameEffectFromElement(el);
-            }
-        }
-    }
-
-    // 3. Scan Member List
-    const memberNames = document.querySelectorAll<HTMLElement>(
-        "[class*='member_'] [class*='name_'], [class*='member_'] [class*='username_'], [role='listitem'] [class*='name_']"
-    );
-    for (const el of Array.from(memberNames)) {
-        const memberItem = el.closest<HTMLElement>("[class*='member_'], [role='listitem']") || el;
-        const authorId = getAuthorIdFromElement(memberItem);
-        const txt = el.textContent?.trim().toLowerCase() || "";
-        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
-
-        if (isSelf) {
-            if (selfEffectsActive && ownConfig.memberListEffect && ownConfig.memberListEffect !== "none") {
-                applyNameEffectToElement(el, ownConfig.memberListEffect, ownConfig.glowColor);
-            } else {
-                removeNameEffectFromElement(el);
-            }
-        }
-    }
-
-    // 4. Scan Bottom-Left Current User Bar
+    // 3. Bottom-Left Current User Bar (e.g. Snippet 3)
     const currentUserBar = document.querySelectorAll<HTMLElement>(
-        "[class*='panels_'] [class*='nameTag_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='subtext_'], [class*='panels_'] [class*='username_']"
+        "[class*='panels_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='title_']"
     );
     for (const el of Array.from(currentUserBar)) {
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
         if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
             applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
         } else {
             removeNameEffectFromElement(el);
+        }
+    }
+
+    // 4. Chat Usernames & Decorators (e.g. Snippets 4, 5, 6)
+    const chatNames = document.querySelectorAll<HTMLElement>(
+        "[class*='message_'] [class*='username_'], " +
+        "[class*='contents_'] [class*='username_'], " +
+        "[class*='header_'] [class*='username_'], " +
+        "[id^='message-username-'], " +
+        "[class*='usernameFont_'], " +
+        "[class*='innerContainer_'], " +
+        "[data-username-with-effects]"
+    );
+    for (const el of Array.from(chatNames)) {
+        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_']")) {
+            continue;
+        }
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+
+        const authorId = getAuthorIdFromElement(el);
+        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+
+        if (isSelf) {
+            const effect = (ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none")
+                ? ownConfig.chatUsernameEffect
+                : ownConfig.nameEffect;
+            if (selfEffectsActive && effect && effect !== "none") {
+                applyNameEffectToElement(el, effect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(el);
+            }
+        } else if (authorId) {
+            const cached = profileCache.get(authorId)?.data;
+            if (cached?.effects) {
+                const effect = cached.effects.chatUsernameEffect || cached.effects.nameEffect;
+                if (effect && effect !== "none") {
+                    applyNameEffectToElement(el, effect, cached.effects.glowColor);
+                } else {
+                    removeNameEffectFromElement(el);
+                }
+            } else {
+                void readUserPremiumData(authorId);
+            }
+        }
+    }
+
+    // 5. Member List (e.g. Snippet 7)
+    const memberNames = document.querySelectorAll<HTMLElement>(
+        "[class*='member_'] [class*='name_'], " +
+        "[class*='member_'] [class*='username_'], " +
+        "[role='listitem'] [class*='name_'], " +
+        "[role='listitem'] [class*='username_']"
+    );
+    for (const el of Array.from(memberNames)) {
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+
+        const memberItem = el.closest<HTMLElement>("[class*='member_'], [role='listitem']") || el;
+        const authorId = getAuthorIdFromElement(memberItem);
+        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+
+        if (isSelf) {
+            const effect = (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none")
+                ? ownConfig.memberListEffect
+                : ownConfig.nameEffect;
+            if (selfEffectsActive && effect && effect !== "none") {
+                applyNameEffectToElement(el, effect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(el);
+            }
+        } else if (authorId) {
+            const cached = profileCache.get(authorId)?.data;
+            if (cached?.effects) {
+                const effect = cached.effects.memberListEffect || cached.effects.nameEffect;
+                if (effect && effect !== "none") {
+                    applyNameEffectToElement(el, effect, cached.effects.glowColor);
+                } else {
+                    removeNameEffectFromElement(el);
+                }
+            } else {
+                void readUserPremiumData(authorId);
+            }
         }
     }
 }

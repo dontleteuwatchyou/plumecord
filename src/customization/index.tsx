@@ -52,7 +52,6 @@ export function pushPremiumSections(sections: any[], user: any) {
     try {
         if (!user || !Array.isArray(sections)) return;
         const st = getCachedPremiumSettings();
-        if (!st.enabled) return;
 
         if (sections.some(s => s?.section === "MY_STORY" || s?.section === "FAV_SONGS")) return;
 
@@ -67,32 +66,9 @@ export function pushPremiumSections(sections: any[], user: any) {
                 sections.unshift({ text: t("Story"), section: "MY_STORY" });
             }
         } else {
-            void readUserPremiumData(user.id).then(data => {
-                if (!data) return;
-                let changed = false;
-                if (data.favSongsEnabled !== false && Array.isArray(data.favSongs) && data.favSongs.length > 0) {
-                    if (!sections.some(s => s?.section === "FAV_SONGS")) {
-                        sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
-                        changed = true;
-                    }
-                }
-                if (data.storiesEnabled !== false && Array.isArray(data.stories) && data.stories.length > 0) {
-                    if (!sections.some(s => s?.section === "MY_STORY")) {
-                        sections.unshift({ text: t("Story"), section: "MY_STORY" });
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    try {
-                        const { FluxDispatcher } = Vencord.Webpack.Common;
-                        FluxDispatcher?.dispatch?.({
-                            type: "USER_PROFILE_MODAL_OPEN",
-                            userId: user.id,
-                            section: "ACTIVITY"
-                        });
-                    } catch {}
-                }
-            });
+            // For other users: always synchronously add Song and Story tabs
+            sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
+            sections.unshift({ text: t("Story"), section: "MY_STORY" });
         }
     } catch (e) {
         console.error("[NightcordCustomization] pushPremiumSections error:", e);
@@ -151,8 +127,8 @@ export async function initCustomization() {
     const st = await getPremiumSettings();
 
     if (st.enabled) {
-        if (st.storiesEnabled) startStories();
-        if (st.profileEffectsEnabled) startProfileEffects();
+        startStories();
+        startProfileEffects();
     }
 
     subscribePremiumSettings(next => {
@@ -160,11 +136,8 @@ export async function initCustomization() {
             stopStories();
             stopProfileEffects();
         } else {
-            if (next.storiesEnabled) startStories();
-            else stopStories();
-
-            if (next.profileEffectsEnabled) startProfileEffects();
-            else stopProfileEffects();
+            startStories();
+            startProfileEffects();
         }
     });
 }

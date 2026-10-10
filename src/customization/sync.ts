@@ -68,6 +68,7 @@ export async function setPremiumSettings(update: Partial<NightcordPremiumSetting
     for (const listener of settingsListeners) {
         try { listener(next); } catch {}
     }
+    void syncOwnDataToCloud();
     return next;
 }
 
@@ -117,13 +118,17 @@ export async function disconnectDiscordOAuth(): Promise<void> {
 // ─── Local Data Storage ──────────────────────────────────────────────────────
 
 export async function getLocalStories(userId?: string): Promise<PremiumStory[]> {
-    const uid = userId || UserStore.getCurrentUser()?.id;
+    const curId = UserStore.getCurrentUser()?.id;
+    const uid = userId || curId;
     if (uid) {
         const saved = await DataStore.get<PremiumStory[]>(`${STORIES_KEY}_${uid}`);
-        if (Array.isArray(saved)) return saved;
+        if (Array.isArray(saved) && saved.length > 0) return saved;
     }
-    const fallback = await DataStore.get<PremiumStory[]>(STORIES_KEY);
-    return Array.isArray(fallback) ? fallback : [];
+    if (!userId || userId === curId) {
+        const fallback = await DataStore.get<PremiumStory[]>(STORIES_KEY);
+        return Array.isArray(fallback) ? fallback : [];
+    }
+    return [];
 }
 
 export async function saveLocalStories(stories: PremiumStory[]): Promise<void> {
@@ -132,16 +137,21 @@ export async function saveLocalStories(stories: PremiumStory[]): Promise<void> {
         await DataStore.set(`${STORIES_KEY}_${uid}`, stories);
     }
     await DataStore.set(STORIES_KEY, stories);
+    void syncOwnDataToCloud();
 }
 
 export async function getLocalFavSongs(userId?: string): Promise<PremiumFavSong[]> {
-    const uid = userId || UserStore.getCurrentUser()?.id;
+    const curId = UserStore.getCurrentUser()?.id;
+    const uid = userId || curId;
     if (uid) {
         const saved = await DataStore.get<PremiumFavSong[]>(`${FAV_SONGS_KEY}_${uid}`);
-        if (Array.isArray(saved)) return saved;
+        if (Array.isArray(saved) && saved.length > 0) return saved;
     }
-    const fallback = await DataStore.get<PremiumFavSong[]>(FAV_SONGS_KEY);
-    return Array.isArray(fallback) ? fallback : [];
+    if (!userId || userId === curId) {
+        const fallback = await DataStore.get<PremiumFavSong[]>(FAV_SONGS_KEY);
+        return Array.isArray(fallback) ? fallback : [];
+    }
+    return [];
 }
 
 export async function saveLocalFavSongs(songs: PremiumFavSong[]): Promise<void> {
@@ -150,16 +160,21 @@ export async function saveLocalFavSongs(songs: PremiumFavSong[]): Promise<void> 
         await DataStore.set(`${FAV_SONGS_KEY}_${uid}`, songs);
     }
     await DataStore.set(FAV_SONGS_KEY, songs);
+    void syncOwnDataToCloud();
 }
 
 export async function getLocalEffectsConfig(userId?: string): Promise<ProfileEffectsConfig> {
-    const uid = userId || UserStore.getCurrentUser()?.id;
+    const curId = UserStore.getCurrentUser()?.id;
+    const uid = userId || curId;
     if (uid) {
         const saved = await DataStore.get<ProfileEffectsConfig>(`${EFFECTS_KEY}_${uid}`);
         if (saved) return { ...DEFAULT_EFFECTS_CONFIG, ...saved };
     }
-    const fallback = await DataStore.get<ProfileEffectsConfig>(EFFECTS_KEY);
-    return { ...DEFAULT_EFFECTS_CONFIG, ...(fallback || {}) };
+    if (!userId || userId === curId) {
+        const fallback = await DataStore.get<ProfileEffectsConfig>(EFFECTS_KEY);
+        return { ...DEFAULT_EFFECTS_CONFIG, ...(fallback || {}) };
+    }
+    return DEFAULT_EFFECTS_CONFIG;
 }
 
 export async function saveLocalEffectsConfig(config: ProfileEffectsConfig): Promise<void> {
@@ -168,11 +183,12 @@ export async function saveLocalEffectsConfig(config: ProfileEffectsConfig): Prom
         await DataStore.set(`${EFFECTS_KEY}_${uid}`, config);
     }
     await DataStore.set(EFFECTS_KEY, config);
+    void syncOwnDataToCloud();
 }
 
 // ─── Cloud Sync via Nightcord OAuth2 ─────────────────────────────────────────
 
-const profileCache = new Map<string, { data: NightcordPremiumPayload | null; ts: number }>();
+export const profileCache = new Map<string, { data: NightcordPremiumPayload | null; ts: number }>();
 const CACHE_TTL_MS = 20 * 1000;
 
 export async function syncOwnDataToCloud(): Promise<boolean> {
@@ -215,9 +231,9 @@ export async function readUserPremiumData(userId: string): Promise<NightcordPrem
 
     if (isSelf) {
         const [stories, favSongs, effects, st] = await Promise.all([
-            getLocalStories(),
-            getLocalFavSongs(),
-            getLocalEffectsConfig(),
+            getLocalStories(userId),
+            getLocalFavSongs(userId),
+            getLocalEffectsConfig(userId),
             getPremiumSettings(),
         ]);
         return {
@@ -239,12 +255,34 @@ export async function readUserPremiumData(userId: string): Promise<NightcordPrem
     try {
         const remote = await getPublicPluginConfig("nightcord_premium", userId);
         const data = (remote && typeof remote === "object") ? (remote as NightcordPremiumPayload) : null;
-        profileCache.set(userId, { data, ts: Date.now() });
-        return data;
-    } catch {
-        profileCache.set(userId, { data: null, ts: Date.now() });
-        return null;
+        if (data) {
+            profileCache.set(userId, { data, ts: Date.now() });
+            return data;
+        }
+    } catch {}
+
+    // Fallback: check if local storage has data specifically for this userId
+    const [localStories, localSongs, localEffects] = await Promise.all([
+        getLocalStories(userId),
+        getLocalFavSongs(userId),
+        getLocalEffectsConfig(userId),
+    ]);
+    if (localStories.length > 0 || localSongs.length > 0 || localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none")) {
+        const fallbackData: NightcordPremiumPayload = {
+            storiesEnabled: localStories.length > 0,
+            favSongsEnabled: localSongs.length > 0,
+            profileEffectsEnabled: localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none"),
+            stories: localStories,
+            favSongs: localSongs,
+            effects: localEffects,
+            updatedAt: Date.now(),
+        };
+        profileCache.set(userId, { data: fallbackData, ts: Date.now() });
+        return fallbackData;
     }
+
+    profileCache.set(userId, { data: null, ts: Date.now() });
+    return null;
 }
 
 // ─── Imgur Hosting ───────────────────────────────────────────────────────────
