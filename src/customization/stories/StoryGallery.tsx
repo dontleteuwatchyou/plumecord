@@ -5,7 +5,7 @@
  */
 
 import { t } from "@api/i18n";
-import { Button, React, ScrollerThin, useEffect, useState, UserStore } from "@webpack/common";
+import { Button, React, useEffect, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumStory } from "../types";
 import { StoryViewer } from "./StoryViewer";
@@ -132,7 +132,7 @@ export function StoryGallery({ user }: { user: any }) {
     }
 
     return (
-        <ScrollerThin className="ncp-story-gallery-container" fade={true}>
+        <div className="ncp-story-gallery-container">
             <div className="ncp-story-gallery">
                 {stories.map((story, i) => (
                     <div
@@ -156,6 +156,6 @@ export function StoryGallery({ user }: { user: any }) {
                     onClose={() => setSelectedStoryIndex(null)}
                 />
             )}
-        </ScrollerThin>
+        </div>
     );
 }
