@@ -22,9 +22,9 @@ import { ModalCloseButton, ModalContent, ModalProps, ModalRoot, ModalSize, openM
 import { onlyOnce } from "@utils/onlyOnce";
 import type { ComponentType, PropsWithChildren } from "react";
 
-export function SettingsTab({ children }: PropsWithChildren) {
+export function SettingsTab({ children, className }: PropsWithChildren<{ className?: string; }>) {
     return (
-        <section className="vc-settings-tab">{children}</section>
+        <section className={`vc-settings-tab${className ? ` ${className}` : ""}`}>{children}</section>
     );
 }
 

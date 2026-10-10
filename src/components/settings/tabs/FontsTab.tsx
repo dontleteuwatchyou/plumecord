@@ -65,7 +65,7 @@ export default function FontsTab() {
     const isCustomActive = config.fontId !== "none" && config.enabled;
 
     return (
-        <SettingsTab>
+        <SettingsTab className="nc-fonts-tab">
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
                 {/* Header Description */}
                 <div>

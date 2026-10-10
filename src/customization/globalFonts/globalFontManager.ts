@@ -282,6 +282,42 @@ body,
     ${letterSpacing ? `letter-spacing: ${letterSpacing} !important;` : ""}
 }
 
+/* All Nightcord settings categories, tabs, and modals are strictly spared from the font change */
+#app-mount .vc-settings-tab:not(.nc-font-sample),
+#app-mount .vc-settings-tab *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount .nc-fonts-tab:not(.nc-font-sample),
+#app-mount .nc-fonts-tab *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount .vc-settings-modal:not(.nc-font-sample),
+#app-mount .vc-settings-modal *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount [class*="vc-settings"]:not(.nc-font-sample),
+#app-mount [class*="vc-settings"] *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount [class*="contentColumn"]:has(.vc-settings-tab):not(.nc-font-sample),
+#app-mount [class*="contentColumn"]:has(.vc-settings-tab) *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount [class*="contentRegion"]:has(.vc-settings-tab):not(.nc-font-sample),
+#app-mount [class*="contentRegion"]:has(.vc-settings-tab) *:not(.nc-font-sample):not(.nc-font-sample *),
+#app-mount [data-item-id*="equicord"],
+#app-mount [data-item-id*="equicord"] *,
+#app-mount [data-item-id*="nightcord"],
+#app-mount [data-item-id*="nightcord"] *,
+#app-mount [data-item-id*="vencord"],
+#app-mount [data-item-id*="vencord"] *,
+#app-mount [aria-controls*="equicord"],
+#app-mount [aria-controls*="equicord"] *,
+#app-mount [aria-controls*="nightcord"],
+#app-mount [aria-controls*="nightcord"] *,
+#app-mount [aria-controls*="vencord"],
+#app-mount [aria-controls*="vencord"] * {
+    font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+    letter-spacing: normal !important;
+}
+
+#app-mount .vc-settings-tab code,
+#app-mount .vc-settings-tab pre,
+#app-mount .vc-settings-tab code *,
+#app-mount .vc-settings-tab pre * {
+    font-family: Consolas, "Courier New", Courier, monospace !important;
+}
+
 /* Allow scalable client font sizing when customized */
 ${scale !== 1.0 ? `
 :root {
