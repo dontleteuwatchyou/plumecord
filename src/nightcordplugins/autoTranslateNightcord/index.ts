@@ -89,6 +89,7 @@ export const translations: TranslationMap = {
     "Opacity": {"en":"Opacity","fr":"Opacité","ar":"العتامة","es":"Opacidad","ru":"Непрозрачность","zh":"不透明度"},
     "Background color": {"en":"Background color","fr":"Couleur de fond","ar":"لون الخلفية","es":"Color de fondo","ru":"Цвет фона","zh":"背景颜色"},
     "Username Text Effects": {"en":"Username Text Effects","fr":"Effets de texte sur le pseudo","ar":"مؤثرات نص اسم المستخدم","es":"Efectos de texto del nombre de usuario","ru":"Текстовые эффекты никнейма","zh":"用户名文本特效"},
+    "Username Effect": {"en":"Username Effect","fr":"Effet de pseudo","ar":"تأثير اسم المستخدم","es":"Efecto de nombre de usuario","ru":"Эффект никнейма","zh":"用户名特效"},
     "Effect on profile": {"en":"Effect on profile","fr":"Effet sur le profil","ar":"التأثير في الملف الشخصي","es":"Efecto en el perfil","ru":"Эффект в профиле","zh":"个人资料中的特效"},
     "Effect in chat": {"en":"Effect in chat","fr":"Effet dans le chat","ar":"التأثير في الدردشة","es":"Efecto en el chat","ru":"Эффект в чате","zh":"聊天中的特效"},
     "Effect in member list": {"en":"Effect in member list","fr":"Effet dans la liste des membres","ar":"التأثير في قائمة الأعضاء","es":"Efecto en la lista de miembros","ru":"Эффект в списке участников","zh":"成员列表中的特效"},

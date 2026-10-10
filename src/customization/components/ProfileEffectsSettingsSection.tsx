@@ -113,40 +113,17 @@ export function ProfileEffectsSettingsSection() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
-                            {t("Effect on profile")}
+                            {t("Username Effect")}
                         </div>
                         <Select
                             options={effectOptions}
                             closeOnSelect={true}
                             isSelected={(v: string) => v === (cfg.nameEffect ?? "none")}
-                            select={(val: string) => update({ nameEffect: val as any })}
-                            serialize={String}
-                        />
-                    </div>
-                    <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
-                            {t("Effect in chat")}
-                        </div>
-                        <Select
-                            options={effectOptions}
-                            closeOnSelect={true}
-                            isSelected={(v: string) => v === (cfg.chatUsernameEffect ?? "none")}
-                            select={(val: string) => update({ chatUsernameEffect: val as any })}
-                            serialize={String}
-                        />
-                    </div>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
-                            {t("Effect in member list")}
-                        </div>
-                        <Select
-                            options={effectOptions}
-                            closeOnSelect={true}
-                            isSelected={(v: string) => v === (cfg.memberListEffect ?? "none")}
-                            select={(val: string) => update({ memberListEffect: val as any })}
+                            select={(val: string) => update({
+                                nameEffect: val as any,
+                                chatUsernameEffect: val as any,
+                                memberListEffect: val as any
+                            })}
                             serialize={String}
                         />
                     </div>
