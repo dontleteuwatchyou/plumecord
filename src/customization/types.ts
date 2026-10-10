@@ -20,6 +20,7 @@ export interface PremiumFavSong {
     artist: string;
     artworkUrl: string;
     url: string;
+    streamUrl?: string;
     type: "soundcloud" | "local";
     duration?: number;
 }

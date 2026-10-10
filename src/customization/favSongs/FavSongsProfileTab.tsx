@@ -83,7 +83,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         void loadData();
     }, [user?.id]);
 
-    const handlePlaySong = (song: PremiumFavSong) => {
+    const handlePlaySong = async (song: PremiumFavSong) => {
         if (currentSong?.id === song.id) {
             if (isPlaying) {
                 audioRef.current?.pause();
@@ -98,7 +98,15 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         setCurrentSong(song);
         setIsPlaying(true);
         if (audioRef.current) {
-            audioRef.current.src = song.url;
+            let playUrl = song.url;
+            if (song.type === "soundcloud" && song.streamUrl) {
+                try {
+                    const { resolveSoundCordStream } = await import("../soundcordHelper");
+                    const resolved = await resolveSoundCordStream(song.streamUrl);
+                    if (resolved) playUrl = resolved;
+                } catch {}
+            }
+            audioRef.current.src = playUrl;
             audioRef.current.currentTime = 0;
             audioRef.current.volume = volume;
             audioRef.current.play().catch(() => {

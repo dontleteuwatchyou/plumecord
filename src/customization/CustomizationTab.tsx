@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { t } from "@api/i18n";
 import { FormSwitch } from "@components/FormSwitch";
 import { Button, React, showToast, Toasts, useEffect, useState, UserStore } from "@webpack/common";
 import { FavSongsSettingsSection } from "./components/FavSongsSettingsSection";
@@ -88,17 +89,17 @@ export function CustomizationTab() {
         const token = await promptDiscordOAuth();
         if (token) {
             setIsAuthed(true);
-            showToast("Identifié avec succès via Discord OAuth2", Toasts.Type.SUCCESS);
+            showToast(t("Successfully authenticated via Discord OAuth2"), Toasts.Type.SUCCESS);
             void syncOwnDataToCloud();
         } else {
-            showToast("Identification annulée", Toasts.Type.INFO);
+            showToast(t("Authentication cancelled"), Toasts.Type.INFO);
         }
     };
 
     const handleDisconnect = async () => {
         await disconnectDiscordOAuth();
         setIsAuthed(false);
-        showToast("Session OAuth2 déconnectée", Toasts.Type.INFO);
+        showToast(t("OAuth2 session disconnected"), Toasts.Type.INFO);
     };
 
     const handleManualSync = async () => {
@@ -106,9 +107,9 @@ export function CustomizationTab() {
         const ok = await syncOwnDataToCloud();
         setSyncing(false);
         if (ok) {
-            showToast("Données synchronisées avec succès", Toasts.Type.SUCCESS);
+            showToast(t("Data synchronized successfully"), Toasts.Type.SUCCESS);
         } else {
-            showToast("Échec de la synchronisation (vérifiez votre connexion)", Toasts.Type.WARNING);
+            showToast(t("Synchronization failed (check your connection)"), Toasts.Type.WARNING);
         }
     };
 
@@ -117,10 +118,10 @@ export function CustomizationTab() {
             {/* Header */}
             <div>
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--header-primary, #ffffff)", margin: "0 0 6px 0" }}>
-                    Customization
+                    {t("Customization")}
                 </h2>
                 <p style={{ fontSize: 14, color: "var(--text-muted, #949ba4)", margin: 0, lineHeight: 1.5 }}>
-                    Personnalisez votre profil et votre présence sur Nightcord grâce aux 3 options exclusives : Stories & Highlights avec musique, Lecteur de musiques favorites sur profil, et Effets visuels animés (bannières & effets de pseudo).
+                    {t("Customize your profile and presence on Nightcord with exclusive options: Stories & Highlights, Favorite Music Player, and Animated Visual Effects.")}
                 </p>
             </div>
 
@@ -148,13 +149,13 @@ export function CustomizationTab() {
                     <div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
                             {isAuthed
-                                ? `Identifié via Discord OAuth2 (${currentUser?.username ?? "Utilisateur"})`
-                                : "Non identifié via Discord OAuth2"}
+                                ? `${t("Identified via Discord OAuth2")} (${currentUser?.username ?? t("User")})`
+                                : t("Not identified via Discord OAuth2")}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)" }}>
                             {isAuthed
-                                ? "Vos 3 options de personnalisation sont synchronisées en direct sur le cloud Nightcord."
-                                : "Connectez-vous avec Discord OAuth2 pour synchroniser et partager vos données publiquement."}
+                                ? t("Your customization settings are live synced to the Nightcord cloud.")
+                                : t("Log in with Discord OAuth2 to sync and share your customization publicly.")}
                         </div>
                     </div>
                 </div>
@@ -169,14 +170,14 @@ export function CustomizationTab() {
                                 disabled={syncing}
                             >
                                 <RefreshIcon />
-                                {syncing ? "Synchronisation..." : "Synchroniser"}
+                                {syncing ? t("Syncing...") : t("Sync")}
                             </Button>
                             <Button
                                 color={Button.Colors.RED}
                                 size={Button.Sizes.SMALL}
                                 onClick={handleDisconnect}
                             >
-                                Déconnexion
+                                {t("Disconnect")}
                             </Button>
                         </>
                     ) : (
@@ -185,23 +186,24 @@ export function CustomizationTab() {
                             onClick={handleOAuthLogin}
                         >
                             <DiscordIcon />
-                            S'identifier avec Discord
+                            {t("Log in with Discord")}
                         </Button>
                     )}
                 </div>
             </div>
 
-            {/* The 3 Options Overview & Switches */}
+            {/* The 3 Options Overview Cards */}
             <div style={{
-                background: "var(--background-secondary-alt, #1e1f22)",
+                background: "var(--background-secondary, #2b2d31)",
                 padding: "16px 20px",
                 borderRadius: 8,
                 display: "flex",
                 flexDirection: "column",
-                gap: 16
+                gap: 16,
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
             }}>
                 <div style={{ fontSize: 13, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--header-secondary, #b5bac1)" }}>
-                    Les 3 Options de Personnalisation
+                    {t("Customization Options")}
                 </div>
 
                 <div style={{
@@ -211,18 +213,18 @@ export function CustomizationTab() {
                 }}>
                     {/* Option 1: Stories & Highlights */}
                     <div style={{
-                        background: "var(--background-secondary, #2b2d31)",
+                        background: "var(--background-secondary-alt, #232428)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "stories" ? "1px solid var(--brand-500, #5865f2)" : "1px solid rgba(255, 255, 255, 0.06)",
+                        border: activeTab === "stories" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
                         gap: 12
                     }}>
                         <FormSwitch
-                            title="Stories & Highlights"
-                            description="Cercles d'avatar dégradés et onglet My Story sur les profils."
+                            title={t("Stories & Highlights")}
+                            description={t("Gradient avatar borders and My Story tab on Discord profiles.")}
                             value={settings.storiesEnabled}
                             onChange={(v: boolean) => updateSt({ storiesEnabled: v })}
                             hideBorder
@@ -233,24 +235,24 @@ export function CustomizationTab() {
                             onClick={() => setActiveTab("stories")}
                         >
                             <CameraIcon />
-                            Gérer les Stories
+                            {t("Manage Stories")}
                         </Button>
                     </div>
 
                     {/* Option 2: Musiques Favorites */}
                     <div style={{
-                        background: "var(--background-secondary, #2b2d31)",
+                        background: "var(--background-secondary-alt, #232428)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "songs" ? "1px solid var(--brand-500, #5865f2)" : "1px solid rgba(255, 255, 255, 0.06)",
+                        border: activeTab === "songs" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
                         gap: 12
                     }}>
                         <FormSwitch
-                            title="Musiques Favorites"
-                            description="Onglet My Fav Song sur profil avec lecteur audio interactif."
+                            title={t("Favorite Musics")}
+                            description={t("My Fav Song tab on profile with interactive SoundCord player.")}
                             value={settings.favSongsEnabled}
                             onChange={(v: boolean) => updateSt({ favSongsEnabled: v })}
                             hideBorder
@@ -261,24 +263,24 @@ export function CustomizationTab() {
                             onClick={() => setActiveTab("songs")}
                         >
                             <MusicIcon />
-                            Gérer les Musiques
+                            {t("Manage Musics")}
                         </Button>
                     </div>
 
                     {/* Option 3: Effets de Profil */}
                     <div style={{
-                        background: "var(--background-secondary, #2b2d31)",
+                        background: "var(--background-secondary-alt, #232428)",
                         padding: "14px 16px",
                         borderRadius: 8,
-                        border: activeTab === "effects" ? "1px solid var(--brand-500, #5865f2)" : "1px solid rgba(255, 255, 255, 0.06)",
+                        border: activeTab === "effects" ? "1px solid var(--brand-500, #5865f2)" : "1px solid var(--border-subtle, rgba(255, 255, 255, 0.06))",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
                         gap: 12
                     }}>
                         <FormSwitch
-                            title="Effets de Profil"
-                            description="Bannières animées (presets/GIF) et effets de pseudo (lueur, glitch, etc.)."
+                            title={t("Profile Effects")}
+                            description={t("Animated profile banners and custom username effects (glow, glitch, etc.).")}
                             value={settings.profileEffectsEnabled}
                             onChange={(v: boolean) => updateSt({ profileEffectsEnabled: v })}
                             hideBorder
@@ -289,46 +291,13 @@ export function CustomizationTab() {
                             onClick={() => setActiveTab("effects")}
                         >
                             <SparklesIcon />
-                            Gérer les Effets
+                            {t("Manage Effects")}
                         </Button>
                     </div>
                 </div>
             </div>
 
-            {/* Sub-tab Navigation */}
-            <div style={{
-                display: "flex",
-                gap: 8,
-                borderBottom: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))",
-                paddingBottom: 10
-            }}>
-                <Button
-                    color={activeTab === "stories" ? Button.Colors.BRAND : Button.Colors.PRIMARY}
-                    size={Button.Sizes.SMALL}
-                    onClick={() => setActiveTab("stories")}
-                >
-                    <CameraIcon />
-                    Option 1 : Stories & Highlights
-                </Button>
-                <Button
-                    color={activeTab === "songs" ? Button.Colors.BRAND : Button.Colors.PRIMARY}
-                    size={Button.Sizes.SMALL}
-                    onClick={() => setActiveTab("songs")}
-                >
-                    <MusicIcon />
-                    Option 2 : Musiques Favorites
-                </Button>
-                <Button
-                    color={activeTab === "effects" ? Button.Colors.BRAND : Button.Colors.PRIMARY}
-                    size={Button.Sizes.SMALL}
-                    onClick={() => setActiveTab("effects")}
-                >
-                    <SparklesIcon />
-                    Option 3 : Effets de Profil
-                </Button>
-            </div>
-
-            {/* Active Option View */}
+            {/* Active Selected Option View */}
             <div>
                 {activeTab === "stories" && <StoriesSettingsSection />}
                 {activeTab === "songs" && <FavSongsSettingsSection />}

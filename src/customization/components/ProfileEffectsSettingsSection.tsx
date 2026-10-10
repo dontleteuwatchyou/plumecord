@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { t } from "@api/i18n";
+import { FormSwitch } from "@components/FormSwitch";
 import { Button, React, Select, showToast, TextInput, Toasts, useEffect, useState } from "@webpack/common";
 import { DEFAULT_EFFECTS_CONFIG, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud, uploadToImgur } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
@@ -24,20 +26,6 @@ const PRESET_OPTIONS = [
     { label: "Sakura", value: "sakura" },
     { label: "Snow", value: "snow" },
     { label: "Starfield", value: "starfield" },
-];
-
-const EFFECT_OPTIONS = [
-    { label: "Aucun", value: "none" },
-    { label: "Glow (Halo lumineux)", value: "glow" },
-    { label: "Glitch (Cyberpunk)", value: "glitch" },
-    { label: "Typewriter (Machine à écrire)", value: "type" },
-    { label: "Rainbow (Arc-en-ciel)", value: "rainbow" },
-];
-
-const FIT_OPTIONS = [
-    { label: "Cover", value: "cover" },
-    { label: "Contain", value: "contain" },
-    { label: "Fill", value: "fill" },
 ];
 
 const UploadIcon = () => (
@@ -74,46 +62,62 @@ export function ProfileEffectsSettingsSection() {
 
         if (url) {
             await update({ gifUrl: url, mode: "gif", showBanner: true });
-            showToast("Bannière téléversée avec succès", Toasts.Type.SUCCESS);
+            showToast(t("Banner uploaded successfully"), Toasts.Type.SUCCESS);
         } else {
-            showToast("Échec du téléversement du GIF", Toasts.Type.DANGER);
+            showToast(t("Failed to upload GIF banner"), Toasts.Type.DANGER);
         }
     };
+
+    const effectOptions = [
+        { label: t("None"), value: "none" },
+        { label: t("Glow (Light halo)"), value: "glow" },
+        { label: t("Glitch (Cyberpunk)"), value: "glitch" },
+        { label: t("Typewriter"), value: "type" },
+        { label: t("Rainbow"), value: "rainbow" },
+    ];
+
+    const fitOptions = [
+        { label: "Cover", value: "cover" },
+        { label: "Contain", value: "contain" },
+        { label: "Fill", value: "fill" },
+    ];
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             {/* Banner Section */}
             <div style={{
-                background: "var(--background-secondary-alt, #1e1f22)",
+                background: "var(--background-secondary, #2b2d31)",
                 padding: "16px 20px",
                 borderRadius: 8,
                 display: "flex",
                 flexDirection: "column",
-                gap: 14
+                gap: 14,
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
             }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                    Bannière animée de profil
+                    {t("Animated Profile Banner")}
                 </div>
 
                 <FormSwitch
                     value={cfg.showBanner}
                     onChange={(v: boolean) => update({ showBanner: v })}
-                    note="Affiche un arrière-plan animé personnalisé sur votre modale et popout de profil."
+                    title={t("Enable animated banner")}
+                    description={t("Displays a customized animated background on your profile modal and popout.")}
                     hideBorder
-                >
-                    Activer la bannière animée
-                </FormSwitch>
+                />
 
                 {cfg.showBanner && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                             <div>
-                                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Type de bannière</div>
+                                <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                                    {t("Banner type")}
+                                </div>
                                 <Select
                                     value={cfg.mode}
                                     options={[
-                                        { label: "Preset animé CSS", value: "preset" },
-                                        { label: "GIF Personnalisé", value: "gif" },
+                                        { label: t("CSS Animated Preset"), value: "preset" },
+                                        { label: t("Custom GIF"), value: "gif" },
                                     ]}
                                     select={(val: any) => update({ mode: val })}
                                 />
@@ -121,7 +125,9 @@ export function ProfileEffectsSettingsSection() {
 
                             {cfg.mode === "preset" ? (
                                 <div>
-                                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Preset d'animation</div>
+                                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                                        {t("Animation preset")}
+                                    </div>
                                     <Select
                                         value={cfg.presetName}
                                         options={PRESET_OPTIONS}
@@ -130,10 +136,12 @@ export function ProfileEffectsSettingsSection() {
                                 </div>
                             ) : (
                                 <div>
-                                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Ajustement (Fit)</div>
+                                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                                        {t("Fitting (Fit)")}
+                                    </div>
                                     <Select
                                         value={cfg.gifFit}
-                                        options={FIT_OPTIONS}
+                                        options={fitOptions}
                                         select={(val: any) => update({ gifFit: val })}
                                     />
                                 </div>
@@ -144,7 +152,9 @@ export function ProfileEffectsSettingsSection() {
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                                     <div style={{ flex: 1 }}>
-                                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>URL directe du GIF</div>
+                                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                                            {t("Direct GIF URL")}
+                                        </div>
                                         <TextInput
                                             placeholder="https://i.imgur.com/..."
                                             value={cfg.gifUrl}
@@ -165,7 +175,7 @@ export function ProfileEffectsSettingsSection() {
                                             alignItems: "center"
                                         }}>
                                             <UploadIcon />
-                                            {uploading ? "Téléversement..." : "Téléverser"}
+                                            {uploading ? t("Uploading...") : t("Upload")}
                                             <input
                                                 type="file"
                                                 accept="image/gif,image/png,image/jpeg"
@@ -180,7 +190,7 @@ export function ProfileEffectsSettingsSection() {
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                                     <div>
                                         <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
-                                            Opacité ({Math.round((cfg.gifOpacity ?? 0.6) * 100)}%)
+                                            {t("Opacity")} ({Math.round((cfg.gifOpacity ?? 0.6) * 100)}%)
                                         </div>
                                         <input
                                             type="range"
@@ -193,7 +203,9 @@ export function ProfileEffectsSettingsSection() {
                                         />
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Couleur de fond</div>
+                                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                                            {t("Background color")}
+                                        </div>
                                         <TextInput
                                             placeholder="#0a0010"
                                             value={cfg.gifBgColor ?? "#0a0010"}
@@ -209,31 +221,36 @@ export function ProfileEffectsSettingsSection() {
 
             {/* Name Effects Section */}
             <div style={{
-                background: "var(--background-secondary-alt, #1e1f22)",
+                background: "var(--background-secondary, #2b2d31)",
                 padding: "16px 20px",
                 borderRadius: 8,
                 display: "flex",
                 flexDirection: "column",
-                gap: 14
+                gap: 14,
+                border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
             }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--header-primary, #ffffff)" }}>
-                    Effets de texte sur le pseudo
+                    {t("Username Text Effects")}
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Effet sur le profil</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                            {t("Effect on profile")}
+                        </div>
                         <Select
                             value={cfg.nameEffect}
-                            options={EFFECT_OPTIONS}
+                            options={effectOptions}
                             select={(val: any) => update({ nameEffect: val })}
                         />
                     </div>
                     <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Effet dans le chat</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                            {t("Effect in chat")}
+                        </div>
                         <Select
                             value={cfg.chatUsernameEffect}
-                            options={EFFECT_OPTIONS}
+                            options={effectOptions}
                             select={(val: any) => update({ chatUsernameEffect: val })}
                         />
                     </div>
@@ -241,15 +258,19 @@ export function ProfileEffectsSettingsSection() {
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                     <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Effet dans la liste des membres</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                            {t("Effect in member list")}
+                        </div>
                         <Select
                             value={cfg.memberListEffect}
-                            options={EFFECT_OPTIONS}
+                            options={effectOptions}
                             select={(val: any) => update({ memberListEffect: val })}
                         />
                     </div>
                     <div>
-                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>Couleur du Glow (Hex)</div>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted, #949ba4)", marginBottom: 4 }}>
+                            {t("Glow Color (Hex)")}
+                        </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input
                                 type="color"
