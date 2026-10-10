@@ -11,6 +11,7 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Customization": {"en":"Customization","fr":"Personnalisation","ar":"التخصيص","es":"Personalización","ru":"Кастомизация","zh":"个性化"},
     "Nightcord Premium": {"en":"Nightcord Premium","fr":"Nightcord Premium","ar":"نايتكورد بريميوم","es":"Nightcord Premium","ru":"Nightcord Premium","zh":"Nightcord Premium"},
     "Stories & Highlights": {"en":"Stories & Highlights","fr":"Stories & À la une","ar":"القصص والمميزات","es":"Historias y destacados","ru":"Истории и актуальное","zh":"快拍与精选"},
     "My Story": {"en":"My Story","fr":"Ma story","ar":"قصتي","es":"Mi historia","ru":"Моя история","zh":"我的快拍"},

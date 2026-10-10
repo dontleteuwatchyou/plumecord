@@ -1,6 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -21,6 +21,7 @@ import {
 } from "@components/settings";
 import { CreateThemeTab } from "@components/settings/tabs/createTheme/CreateThemeTab";
 import { PencilSparkleIcon } from "@components/settings/tabs/createTheme/PencilSparkleIcon";
+import { CustomizationIcon, CustomizationTab } from "customization";
 
 function StatusPulseIcon(props: IconProps) {
     return (
@@ -273,6 +274,12 @@ export default definePlugin({
                 title: "Themes",
                 Component: ThemesTab,
                 Icon: PaintbrushIcon
+            }),
+            buildEntry({
+                key: "nightcord_customization",
+                title: "Customization",
+                Component: CustomizationTab,
+                Icon: CustomizationIcon
             }),
             settings.store.showStatus && buildEntry({
                 key: "nightcord_status",

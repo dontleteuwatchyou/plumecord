@@ -215,9 +215,12 @@ function initTrayIpc() {
 }
 
 import { ReactDOM } from "@webpack/common";
+import { initCustomization } from "customization";
 
 async function init() {
     await onceReady;
+
+    void initCustomization();
 
     startAllPlugins(StartAt.WebpackReady);
     initUserPluginsEngine();

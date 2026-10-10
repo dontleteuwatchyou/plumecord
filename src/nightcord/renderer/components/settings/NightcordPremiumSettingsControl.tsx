@@ -81,9 +81,9 @@ export function NightcordPremiumSettingsControl() {
                         <Button
                             color={Button.Colors.BRAND}
                             size={Button.Sizes.SMALL}
-                            onClick={() => SettingsRouter?.openUserSettings?.("nightcord_premium_panel")}
+                            onClick={() => SettingsRouter?.openUserSettings?.("nightcord_customization_panel")}
                         >
-                            Ouvrir le tableau de bord Nightcord Premium
+                            Ouvrir le panneau Customization
                         </Button>
                     </div>
                 </div>
