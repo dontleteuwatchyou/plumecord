@@ -1227,3 +1227,103 @@
     line-height: 1.35 !important;
 }
 
+
+/* ── Username Font Effects (.cpe-font-*) ──────────────────────────────────── */
+
+/* Base anti-clipping safeguards for all username font effects */
+[data-cpe-font] {
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+    line-height: 1.25 !important;
+    max-height: none !important;
+    text-overflow: clip !important;
+}
+
+/* 1. Gothic */
+.cpe-font-gothic,
+[data-cpe-font="gothic"] {
+    font-family: 'UnifrakturMaguntia', 'MedievalSharp', cursive, serif !important;
+    font-size: 1.15em !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* 2. Signature Script (Alex Brush) */
+.cpe-font-signature,
+[data-cpe-font="signature"] {
+    font-family: 'Alex Brush', 'Great Vibes', cursive !important;
+    font-weight: 400 !important;
+    font-size: 1.4em !important;
+    line-height: 1.25 !important;
+    padding-top: 1px !important;
+    padding-bottom: 2px !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* 3. Pixel / Minecraft (Press Start 2P) */
+.cpe-font-pixel,
+[data-cpe-font="pixel"] {
+    font-family: 'Press Start 2P', 'VT323', monospace !important;
+    font-size: 0.82em !important;
+    letter-spacing: -0.5px !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* 4. Nerd Font (JetBrains Mono) */
+.cpe-font-nerd,
+[data-cpe-font="nerd"] {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+    font-size: 1.05em !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* 5. Cyberpunk (Orbitron) */
+.cpe-font-cyberpunk,
+[data-cpe-font="cyberpunk"] {
+    font-family: 'Orbitron', sans-serif !important;
+    font-size: 1.05em !important;
+    letter-spacing: 0.5px !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* 6. Handwritten (Caveat) */
+.cpe-font-handwritten,
+[data-cpe-font="handwritten"] {
+    font-family: 'Caveat', cursive !important;
+    font-weight: 600 !important;
+    font-size: 1.25em !important;
+    line-height: 1.25 !important;
+    padding-top: 1px !important;
+    padding-bottom: 2px !important;
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    overflow: visible !important;
+}
+
+/* Chat / member-list / DM safeguards for font effects */
+[class*='message_'] [data-cpe-font],
+[class*='contents_'] [data-cpe-font],
+[class*='header_'] [data-cpe-font],
+[class*='member_'] [data-cpe-font],
+[class*='peopleListItem_'] [data-cpe-font],
+[role='listitem'] [data-cpe-font],
+[class*='privateChannels_'] [data-cpe-font],
+a[href^='/channels/@me/'] [data-cpe-font] {
+    display: inline-block !important;
+    vertical-align: baseline !important;
+    line-height: normal !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+}

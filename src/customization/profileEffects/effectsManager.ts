@@ -307,14 +307,19 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
         !nameEl.classList.contains("cpe-glow") &&
         !nameEl.classList.contains("cpe-glitch") &&
         !nameEl.classList.contains("cpe-rainbow-letter") &&
-        !nameEl.classList.contains("cpe-type-cursor")
+        !nameEl.classList.contains("cpe-type-cursor") &&
+        !nameEl.hasAttribute("data-cpe-font")
     ) {
         return;
     }
     delete nameEl.dataset.ncAppliedEffect;
     delete nameEl.dataset.ncGlowColor;
-    nameEl.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
+    nameEl.classList.remove(
+        "cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor",
+        "cpe-font-gothic", "cpe-font-signature", "cpe-font-pixel", "cpe-font-nerd", "cpe-font-cyberpunk", "cpe-font-handwritten"
+    );
     nameEl.removeAttribute("data-cpe-text");
+    nameEl.removeAttribute("data-cpe-font");
     nameEl.style.removeProperty("--cpe-glow-color");
 
     if (activeTypewriters.has(nameEl)) {
@@ -356,7 +361,9 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
             ? activeTypewriters.has(nameEl)
             : effectType === "glitch"
                 ? nameEl.getAttribute("data-cpe-text") === currentText
-                : true);
+                : ["gothic", "signature", "pixel", "nerd", "cyberpunk", "handwritten"].includes(effectType)
+                    ? nameEl.getAttribute("data-cpe-font") === effectType
+                    : true);
     if (alreadyApplied) {
         return;
     }
@@ -376,8 +383,12 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     nameEl.dataset.ncAppliedEffect = effectType;
     nameEl.dataset.ncGlowColor = glowColor;
 
-    nameEl.classList.remove("cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor");
+    nameEl.classList.remove(
+        "cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor",
+        "cpe-font-gothic", "cpe-font-signature", "cpe-font-pixel", "cpe-font-nerd", "cpe-font-cyberpunk", "cpe-font-handwritten"
+    );
     nameEl.removeAttribute("data-cpe-text");
+    nameEl.removeAttribute("data-cpe-font");
     nameEl.style.removeProperty("--cpe-glow-color");
 
     if (effectType === "glow") {
@@ -401,6 +412,9 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
             });
             startTypewriterLoop();
         }
+    } else if (["gothic", "signature", "pixel", "nerd", "cyberpunk", "handwritten"].includes(effectType)) {
+        nameEl.setAttribute("data-cpe-font", effectType);
+        nameEl.classList.add(`cpe-font-${effectType}`);
     }
 }
 
@@ -469,7 +483,7 @@ export function scanAndApplyEffects() {
 
     // 0. Active Cleanup: Strip effects from any forbidden headings/labels/userTags
     const allApplied = document.querySelectorAll<HTMLElement>(
-        "[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor"
+        "[data-nc-applied-effect], [data-cpe-font], [class*='cpe-font-'], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor"
     );
     for (const el of Array.from(allApplied)) {
         if (isForbiddenElement(el)) {
@@ -639,7 +653,7 @@ export function scanAndApplyEffects() {
             continue;
         }
         // If an ancestor already has effect, don't nest effects on inner spans
-        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
+        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], [data-cpe-font], [class*='cpe-font-'], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
         if (parentEffect) {
             removeNameEffectFromElement(el);
             continue;
@@ -752,7 +766,7 @@ export function scanAndApplyEffects() {
         if (el.querySelector("[class*='overflowTooltip_'], [class*='overflow_']")) {
             continue;
         }
-        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
+        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], [data-cpe-font], [class*='cpe-font-'], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
         if (parentEffect) {
             removeNameEffectFromElement(el);
             continue;
@@ -961,7 +975,7 @@ export function stopProfileEffects() {
     }
 
     document.querySelectorAll(".cpe-bg-layer").forEach(el => el.remove());
-    document.querySelectorAll("[data-nc-applied-effect], .cpe-glow, .cpe-glitch, .cpe-rainbow-letter, .cpe-type-cursor").forEach(el => {
+    document.querySelectorAll("[data-nc-applied-effect], [data-cpe-font], [class*='cpe-font-'], .cpe-glow, .cpe-glitch, .cpe-rainbow-letter, .cpe-type-cursor").forEach(el => {
         removeNameEffectFromElement(el as HTMLElement);
     });
 }
