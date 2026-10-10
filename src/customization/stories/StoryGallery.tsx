@@ -5,7 +5,7 @@
  */
 
 import { t } from "@api/i18n";
-import { Button, React, ScrollerThin, useEffect, useState, UserStore } from "@webpack/common";
+import { Button, React, useEffect, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumStory } from "../types";
 import { StoryViewer } from "./StoryViewer";
@@ -30,22 +30,39 @@ export function StoryGallery({ user }: { user: any }) {
     const [loading, setLoading] = useState(true);
 
     const currentUserId = UserStore.getCurrentUser()?.id;
-    const isSelf = user?.id && String(user.id) === String(currentUserId);
+    const targetUserId = user?.id || currentUserId;
+    const isSelf = !user?.id || String(targetUserId) === String(currentUserId);
 
     const loadData = async () => {
         setLoading(true);
-        if (isSelf) {
-            const auth = await isOAuthAuthenticated();
-            setIsAuthenticated(auth);
-        }
+        try {
+            if (isSelf) {
+                const auth = await isOAuthAuthenticated();
+                setIsAuthenticated(auth);
+            }
 
-        const data = await readUserPremiumData(user.id);
-        if (data && data.storiesEnabled !== false && Array.isArray(data.stories)) {
-            setStories(data.stories);
-        } else {
+            if (!targetUserId) {
+                setStories([]);
+                setLoading(false);
+                return;
+            }
+
+            const data = await readUserPremiumData(targetUserId);
+            if (data && Array.isArray(data.stories)) {
+                if (isSelf || data.storiesEnabled !== false) {
+                    setStories(data.stories);
+                } else {
+                    setStories([]);
+                }
+            } else {
+                setStories([]);
+            }
+        } catch (e) {
+            console.error("[StoryGallery] loadData error:", e);
             setStories([]);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     useEffect(() => {
@@ -115,24 +132,22 @@ export function StoryGallery({ user }: { user: any }) {
     }
 
     return (
-        <div style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <ScrollerThin fade style={{ height: "100%", width: "100%" }} className="ncp-story-gallery-scroller">
-                <div className="ncp-story-gallery">
-                    {stories.map((story, i) => (
-                        <div
-                            key={story.id}
-                            className="ncp-story-gallery-item"
-                            onClick={() => setSelectedStoryIndex(i)}
-                        >
-                            {story.type === "video" ? (
-                                <video src={story.url} muted />
-                            ) : (
-                                <img src={story.url} alt="" />
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </ScrollerThin>
+        <div className="ncp-story-gallery-container">
+            <div className="ncp-story-gallery">
+                {stories.map((story, i) => (
+                    <div
+                        key={story.id}
+                        className="ncp-story-gallery-item"
+                        onClick={() => setSelectedStoryIndex(i)}
+                    >
+                        {story.type === "video" ? (
+                            <video src={story.url} muted />
+                        ) : (
+                            <img src={story.url} alt="" />
+                        )}
+                    </div>
+                ))}
+            </div>
 
             {selectedStoryIndex !== null && (
                 <StoryViewer

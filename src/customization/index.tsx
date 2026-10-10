@@ -8,6 +8,7 @@ import "./styles.css";
 
 import { t } from "@api/i18n";
 import { addPatch } from "@api/PluginManager";
+import ErrorBoundary from "@components/ErrorBoundary";
 import { React, UserStore } from "@webpack/common";
 
 import { CustomizationTab } from "./CustomizationTab";
@@ -102,10 +103,18 @@ export function pushPremiumSections(sections: any[], user: any) {
 
 export function renderPremiumTab(section: string, props: any) {
     if (section === "MY_STORY") {
-        return <StoryGallery user={props.user} />;
+        return (
+            <ErrorBoundary>
+                <StoryGallery user={props.user} />
+            </ErrorBoundary>
+        );
     }
     if (section === "FAV_SONGS") {
-        return <FavSongsProfileTab user={props.user} />;
+        return (
+            <ErrorBoundary>
+                <FavSongsProfileTab user={props.user} />
+            </ErrorBoundary>
+        );
     }
     return null;
 }
