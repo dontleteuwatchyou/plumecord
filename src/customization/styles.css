@@ -243,13 +243,15 @@
 /* ── Favorite Songs Profile Tab & Player ───────────────────────────────────── */
 
 .ncp-fav-songs-container {
-    padding: 12px 0;
+    padding: 0;
+    margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     height: 100%;
     width: 100%;
     min-height: 0;
+    overflow: hidden;
 }
 
 .ncp-song-list {
@@ -257,10 +259,12 @@
     flex-direction: column;
     gap: 8px;
     overflow-y: auto;
-    max-height: 400px;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 2px 0;
+    margin: 0;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding-right: 2px;
 }
 
 .ncp-song-list::-webkit-scrollbar {
@@ -275,23 +279,24 @@
     padding: 10px 14px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
-    transition: all 0.18s ease;
+    transition: background 0.18s ease, border-color 0.18s ease;
     cursor: pointer;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     user-select: none;
+    overflow: hidden;
+    position: relative;
+    box-shadow: none !important;
 }
 
 .ncp-song-item:hover {
     background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.16);
 }
 
 .ncp-song-item.active {
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    box-shadow: none !important;
 }
 
 .ncp-song-artwork-container {

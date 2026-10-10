@@ -327,6 +327,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         <div className="ncp-fav-songs-container">
             <audio
                 ref={audioRef}
+                style={{ display: "none" }}
                 onTimeUpdate={e => {
                     if (!isDraggingScrub) {
                         setCurrentTime(e.currentTarget.currentTime);
