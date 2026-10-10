@@ -8,7 +8,7 @@ import { t } from "@api/i18n";
 import { FormSwitch } from "@components/FormSwitch";
 import { Button, React, Select, showToast, TextInput, Toasts, useEffect, useState, UserStore } from "@webpack/common";
 import { triggerEffectsUpdate } from "../profileEffects/effectsManager";
-import { DEFAULT_EFFECTS_CONFIG, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud, uploadToImgur } from "../sync";
+import { DEFAULT_EFFECTS_CONFIG, getCachedEffectsConfig, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud, uploadToImgur } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
 const PRESET_OPTIONS = [
@@ -38,7 +38,7 @@ const UploadIcon = () => (
 );
 
 export function ProfileEffectsSettingsSection() {
-    const [cfg, setCfg] = useState<ProfileEffectsConfig>(DEFAULT_EFFECTS_CONFIG);
+    const [cfg, setCfg] = useState<ProfileEffectsConfig>(getCachedEffectsConfig);
     const [uploading, setUploading] = useState(false);
 
     useEffect(() => {

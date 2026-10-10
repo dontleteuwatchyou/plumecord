@@ -13,6 +13,7 @@ import { StoriesSettingsSection } from "./components/StoriesSettingsSection";
 import {
     DEFAULT_PREMIUM_SETTINGS,
     disconnectDiscordOAuth,
+    getCachedPremiumSettings,
     getPremiumSettings,
     isOAuthAuthenticated,
     promptDiscordOAuth,
@@ -59,7 +60,7 @@ const SparklesIcon = () => (
 type ActiveTab = "stories" | "songs" | "effects";
 
 export function CustomizationTab() {
-    const [settings, setSettings] = useState<NightcordPremiumSettings>(DEFAULT_PREMIUM_SETTINGS);
+    const [settings, setSettings] = useState<NightcordPremiumSettings>(getCachedPremiumSettings);
     const [isAuthed, setIsAuthed] = useState(false);
     const [activeTab, setActiveTab] = useState<ActiveTab>("stories");
     const [syncing, setSyncing] = useState(false);

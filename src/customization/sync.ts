@@ -6,7 +6,8 @@
 
 import * as DataStore from "@api/DataStore";
 import { authorizeUser, checkOAuthToken, clearToken, getStoredToken } from "@api/OAuth2";
-import { getPluginSyncToken, getPublicPluginConfig, saveOwnPluginConfig } from "@api/SettingsSync/pluginSync";
+import { getPublicPluginConfig, saveOwnPluginConfig } from "@api/PluginSync";
+import { getPluginSyncToken } from "@api/SettingsSync/pluginSync";
 import { UserStore } from "@webpack/common";
 import type {
     NightcordPremiumPayload,
@@ -163,21 +164,34 @@ export async function saveLocalFavSongs(songs: PremiumFavSong[]): Promise<void> 
     void syncOwnDataToCloud();
 }
 
+let inMemoryEffectsConfig: ProfileEffectsConfig | null = null;
+
+export function getCachedEffectsConfig(): ProfileEffectsConfig {
+    return inMemoryEffectsConfig ?? DEFAULT_EFFECTS_CONFIG;
+}
+
 export async function getLocalEffectsConfig(userId?: string): Promise<ProfileEffectsConfig> {
     const curId = UserStore.getCurrentUser()?.id;
     const uid = userId || curId;
     if (uid) {
         const saved = await DataStore.get<ProfileEffectsConfig>(`${EFFECTS_KEY}_${uid}`);
-        if (saved) return { ...DEFAULT_EFFECTS_CONFIG, ...saved };
+        if (saved) {
+            const res = { ...DEFAULT_EFFECTS_CONFIG, ...saved };
+            if (!userId || userId === curId) inMemoryEffectsConfig = res;
+            return res;
+        }
     }
     if (!userId || userId === curId) {
         const fallback = await DataStore.get<ProfileEffectsConfig>(EFFECTS_KEY);
-        return { ...DEFAULT_EFFECTS_CONFIG, ...(fallback || {}) };
+        const res = { ...DEFAULT_EFFECTS_CONFIG, ...(fallback || {}) };
+        inMemoryEffectsConfig = res;
+        return res;
     }
     return DEFAULT_EFFECTS_CONFIG;
 }
 
 export async function saveLocalEffectsConfig(config: ProfileEffectsConfig): Promise<void> {
+    inMemoryEffectsConfig = config;
     const uid = UserStore.getCurrentUser()?.id;
     if (uid) {
         await DataStore.set(`${EFFECTS_KEY}_${uid}`, config);
@@ -189,7 +203,8 @@ export async function saveLocalEffectsConfig(config: ProfileEffectsConfig): Prom
 // ─── Cloud Sync via Nightcord OAuth2 ─────────────────────────────────────────
 
 export const profileCache = new Map<string, { data: NightcordPremiumPayload | null; ts: number }>();
-const CACHE_TTL_MS = 20 * 1000;
+const inFlightRequests = new Map<string, Promise<NightcordPremiumPayload | null>>();
+const CACHE_TTL_MS = 60 * 1000;
 
 export async function syncOwnDataToCloud(): Promise<boolean> {
     const token = await getValidOAuthToken();
@@ -213,7 +228,7 @@ export async function syncOwnDataToCloud(): Promise<boolean> {
     };
 
     try {
-        await saveOwnPluginConfig("nightcord_premium", token, payload as any);
+        await saveOwnPluginConfig("nightcord_premium", token, { ...payload, private: false });
         const curUser = UserStore.getCurrentUser();
         if (curUser?.id) {
             profileCache.set(curUser.id, { data: payload, ts: Date.now() });
@@ -226,6 +241,8 @@ export async function syncOwnDataToCloud(): Promise<boolean> {
 }
 
 export async function readUserPremiumData(userId: string): Promise<NightcordPremiumPayload | null> {
+    if (!userId) return null;
+
     const curUser = UserStore.getCurrentUser();
     const isSelf = curUser?.id && String(curUser.id) === String(userId);
 
@@ -236,7 +253,7 @@ export async function readUserPremiumData(userId: string): Promise<NightcordPrem
             getLocalEffectsConfig(userId),
             getPremiumSettings(),
         ]);
-        return {
+        const data: NightcordPremiumPayload = {
             storiesEnabled: st.storiesEnabled,
             favSongsEnabled: st.favSongsEnabled,
             profileEffectsEnabled: st.profileEffectsEnabled,
@@ -245,6 +262,8 @@ export async function readUserPremiumData(userId: string): Promise<NightcordPrem
             effects,
             updatedAt: Date.now(),
         };
+        profileCache.set(userId, { data, ts: Date.now() });
+        return data;
     }
 
     const cached = profileCache.get(userId);
@@ -252,37 +271,61 @@ export async function readUserPremiumData(userId: string): Promise<NightcordPrem
         return cached.data;
     }
 
-    try {
-        const remote = await getPublicPluginConfig("nightcord_premium", userId);
-        const data = (remote && typeof remote === "object") ? (remote as NightcordPremiumPayload) : null;
-        if (data) {
-            profileCache.set(userId, { data, ts: Date.now() });
-            return data;
-        }
-    } catch {}
-
-    // Fallback: check if local storage has data specifically for this userId
-    const [localStories, localSongs, localEffects] = await Promise.all([
-        getLocalStories(userId),
-        getLocalFavSongs(userId),
-        getLocalEffectsConfig(userId),
-    ]);
-    if (localStories.length > 0 || localSongs.length > 0 || localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none")) {
-        const fallbackData: NightcordPremiumPayload = {
-            storiesEnabled: localStories.length > 0,
-            favSongsEnabled: localSongs.length > 0,
-            profileEffectsEnabled: localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none"),
-            stories: localStories,
-            favSongs: localSongs,
-            effects: localEffects,
-            updatedAt: Date.now(),
-        };
-        profileCache.set(userId, { data: fallbackData, ts: Date.now() });
-        return fallbackData;
+    if (inFlightRequests.has(userId)) {
+        return inFlightRequests.get(userId)!;
     }
 
-    profileCache.set(userId, { data: null, ts: Date.now() });
-    return null;
+    const fetchPromise = (async (): Promise<NightcordPremiumPayload | null> => {
+        try {
+            const remote = await getPublicPluginConfig("nightcord_premium", userId);
+            const raw = (remote as any)?.settings ?? (remote as any)?.data ?? remote;
+            if (raw && typeof raw === "object") {
+                const data: NightcordPremiumPayload = {
+                    storiesEnabled: raw.storiesEnabled ?? false,
+                    favSongsEnabled: raw.favSongsEnabled ?? false,
+                    profileEffectsEnabled: raw.profileEffectsEnabled ?? false,
+                    stories: Array.isArray(raw.stories) ? raw.stories : [],
+                    favSongs: Array.isArray(raw.favSongs) ? raw.favSongs : [],
+                    effects: raw.effects ? { ...DEFAULT_EFFECTS_CONFIG, ...raw.effects } : DEFAULT_EFFECTS_CONFIG,
+                    updatedAt: raw.updatedAt ?? Date.now(),
+                };
+                profileCache.set(userId, { data, ts: Date.now() });
+                return data;
+            }
+        } catch (e) {
+            console.warn(`[NightcordPremium] readUserPremiumData error for ${userId}:`, e);
+        }
+
+        // Fallback: check if local storage has data specifically for this userId
+        try {
+            const [localStories, localSongs, localEffects] = await Promise.all([
+                getLocalStories(userId),
+                getLocalFavSongs(userId),
+                getLocalEffectsConfig(userId),
+            ]);
+            if (localStories.length > 0 || localSongs.length > 0 || localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none")) {
+                const fallbackData: NightcordPremiumPayload = {
+                    storiesEnabled: localStories.length > 0,
+                    favSongsEnabled: localSongs.length > 0,
+                    profileEffectsEnabled: localEffects.enabled || (localEffects.nameEffect && localEffects.nameEffect !== "none"),
+                    stories: localStories,
+                    favSongs: localSongs,
+                    effects: localEffects,
+                    updatedAt: Date.now(),
+                };
+                profileCache.set(userId, { data: fallbackData, ts: Date.now() });
+                return fallbackData;
+            }
+        } catch {}
+
+        profileCache.set(userId, { data: null, ts: Date.now() });
+        return null;
+    })().finally(() => {
+        inFlightRequests.delete(userId);
+    });
+
+    inFlightRequests.set(userId, fetchPromise);
+    return fetchPromise;
 }
 
 // ─── Resilient Image Upload & Hosting ───────────────────────────────────────

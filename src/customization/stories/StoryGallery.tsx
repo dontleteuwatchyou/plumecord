@@ -52,7 +52,7 @@ export function StoryGallery({ user }: { user: any }) {
         void loadData();
     }, [user?.id]);
 
-    if (isSelf && !isAuthenticated) {
+    if (isSelf && !isAuthenticated && stories.length === 0) {
         return (
             <div className="ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner" style={{ gap: 16 }}>

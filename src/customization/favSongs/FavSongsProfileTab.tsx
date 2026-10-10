@@ -261,7 +261,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
     const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
     const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
-    if (isSelf && !isAuthenticated) {
+    if (isSelf && !isAuthenticated && songs.length === 0) {
         return (
             <div className="ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner" style={{ gap: 16 }}>

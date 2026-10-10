@@ -5,7 +5,7 @@
  */
 
 import { FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
-import { getLocalEffectsConfig, getPremiumSettings, profileCache, readUserPremiumData } from "../sync";
+import { getCachedEffectsConfig, getCachedPremiumSettings, profileCache, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
 const PRESETS_BASE_URL = "https://raw.githubusercontent.com/holderikonik-prog/preset/main/presets/";
@@ -136,6 +136,20 @@ function isForbiddenElement(el: HTMLElement): boolean {
     return false;
 }
 
+export function getTargetNameElement(el: HTMLElement): HTMLElement {
+    const decorated = el.querySelector<HTMLElement>("[data-username-with-effects], [class*='innerContainer_']");
+    if (decorated) return decorated;
+    let curr = el;
+    while (
+        curr.children.length === 1 &&
+        curr.firstElementChild instanceof HTMLElement &&
+        curr.firstElementChild.textContent?.trim() === el.textContent?.trim()
+    ) {
+        curr = curr.firstElementChild;
+    }
+    return curr;
+}
+
 export function removeNameEffectFromElement(nameEl: HTMLElement) {
     if (
         !nameEl.dataset.ncAppliedEffect &&
@@ -232,16 +246,16 @@ async function injectBackground(profileEl: HTMLElement, config: ProfileEffectsCo
     profileEl.insertBefore(layer, profileEl.firstChild);
 }
 
-export async function scanAndApplyEffects() {
-    if (!active) return;
+export function scanAndApplyEffects() {
+    if (!active || (typeof document !== "undefined" && document.hidden)) return;
 
-    const settings = await getPremiumSettings();
+    const settings = getCachedPremiumSettings();
     if (!settings.enabled) return;
 
     const curUser = UserStore.getCurrentUser();
     if (!curUser?.id) return;
 
-    const ownConfig = await getLocalEffectsConfig(curUser.id);
+    const ownConfig = getCachedEffectsConfig();
     const selfEffectsActive = !!settings.profileEffectsEnabled || (ownConfig.nameEffect && ownConfig.nameEffect !== "none") || !!ownConfig.showBanner;
 
     const userNames = new Set<string>();
@@ -282,20 +296,22 @@ export async function scanAndApplyEffects() {
                        (txt && userNames.has(txt)) ||
                        !!el.closest("[id='account'], [class*='accountProfile'], [class*='sizer_']");
 
+        const targetEl = getTargetNameElement(el);
+
         if (isSelf) {
             if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-                applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
+                applyNameEffectToElement(targetEl, ownConfig.nameEffect, ownConfig.glowColor);
             } else {
-                removeNameEffectFromElement(el);
+                removeNameEffectFromElement(targetEl);
             }
         } else if (authorId) {
-            const cached = profileCache.get(authorId)?.data;
-            if (cached?.effects?.nameEffect && cached.effects.nameEffect !== "none") {
-                applyNameEffectToElement(el, cached.effects.nameEffect, cached.effects.glowColor);
-            } else {
+            const cached = profileCache.get(authorId);
+            if (cached && cached.data?.effects?.nameEffect && cached.data.effects.nameEffect !== "none") {
+                applyNameEffectToElement(targetEl, cached.data.effects.nameEffect, cached.data.effects.glowColor);
+            } else if (!cached) {
                 void readUserPremiumData(authorId).then(data => {
                     if (data?.effects?.nameEffect && data.effects.nameEffect !== "none") {
-                        applyNameEffectToElement(el, data.effects.nameEffect, data.effects.glowColor);
+                        applyNameEffectToElement(targetEl, data.effects.nameEffect, data.effects.glowColor);
                     }
                 });
             }
@@ -309,7 +325,6 @@ export async function scanAndApplyEffects() {
 
     for (const el of Array.from(profileElements)) {
         const authorId = getAuthorIdFromElement(el);
-        // Exclusively select display names and nicknames — NEVER username handles / userTags!
         const nameEls = el.querySelectorAll<HTMLElement>(
             "[class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
         );
@@ -333,36 +348,47 @@ export async function scanAndApplyEffects() {
                         removeNameEffectFromElement(n);
                         continue;
                     }
+                    const targetEl = getTargetNameElement(n);
                     if (ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-                        applyNameEffectToElement(n, ownConfig.nameEffect, ownConfig.glowColor);
+                        applyNameEffectToElement(targetEl, ownConfig.nameEffect, ownConfig.glowColor);
                     } else {
-                        removeNameEffectFromElement(n);
+                        removeNameEffectFromElement(targetEl);
                     }
                 }
             } else {
                 el.querySelector(".cpe-bg-layer")?.remove();
                 for (const n of Array.from(nameEls)) {
-                    removeNameEffectFromElement(n);
+                    removeNameEffectFromElement(getTargetNameElement(n));
                 }
             }
         } else if (authorId) {
-            void readUserPremiumData(authorId).then(data => {
-                if (!data?.effects) return;
-                if (data.effects.showBanner) void injectBackground(el, data.effects);
-                if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
+            const cached = profileCache.get(authorId);
+            if (cached && cached.data?.effects) {
+                if (cached.data.effects.showBanner) void injectBackground(el, cached.data.effects);
+                if (cached.data.effects.nameEffect && cached.data.effects.nameEffect !== "none") {
                     for (const n of Array.from(nameEls)) {
-                        if (isForbiddenElement(n)) {
-                            removeNameEffectFromElement(n);
-                            continue;
+                        if (!isForbiddenElement(n)) {
+                            applyNameEffectToElement(getTargetNameElement(n), cached.data.effects.nameEffect, cached.data.effects.glowColor);
                         }
-                        applyNameEffectToElement(n, data.effects.nameEffect, data.effects.glowColor);
                     }
                 }
-            });
+            } else if (!cached) {
+                void readUserPremiumData(authorId).then(data => {
+                    if (!data?.effects) return;
+                    if (data.effects.showBanner) void injectBackground(el, data.effects);
+                    if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
+                        for (const n of Array.from(nameEls)) {
+                            if (!isForbiddenElement(n)) {
+                                applyNameEffectToElement(getTargetNameElement(n), data.effects.nameEffect, data.effects.glowColor);
+                            }
+                        }
+                    }
+                });
+            }
         }
     }
 
-    // 3. Bottom-Left Current User Bar (e.g. Snippet 3)
+    // 3. Bottom-Left Current User Bar
     const currentUserBar = document.querySelectorAll<HTMLElement>(
         "[class*='panels_'] [class*='title_'], [class*='panels_'] [class*='nameTag_'] [class*='title_'], [class*='panels_'] [class*='displayName_']"
     );
@@ -371,14 +397,15 @@ export async function scanAndApplyEffects() {
             removeNameEffectFromElement(el);
             continue;
         }
+        const targetEl = getTargetNameElement(el);
         if (selfEffectsActive && ownConfig.nameEffect && ownConfig.nameEffect !== "none") {
-            applyNameEffectToElement(el, ownConfig.nameEffect, ownConfig.glowColor);
+            applyNameEffectToElement(targetEl, ownConfig.nameEffect, ownConfig.glowColor);
         } else {
-            removeNameEffectFromElement(el);
+            removeNameEffectFromElement(targetEl);
         }
     }
 
-    // 4. Chat Usernames & Decorators (e.g. Snippets 4, 5, 6)
+    // 4. Chat Usernames & Decorators
     const chatNames = document.querySelectorAll<HTMLElement>(
         "[class*='message_'] [class*='username_'], " +
         "[class*='contents_'] [class*='username_'], " +
@@ -402,12 +429,12 @@ export async function scanAndApplyEffects() {
             removeNameEffectFromElement(el);
             continue;
         }
-        // If this element contains an inner container for text, skip the outer element so only the innermost gets styled
         if (el.querySelector("[class*='innerContainer_'], [data-username-with-effects]")) {
             removeNameEffectFromElement(el);
             continue;
         }
 
+        const targetEl = getTargetNameElement(el);
         const authorId = getAuthorIdFromElement(el);
         const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
@@ -417,26 +444,33 @@ export async function scanAndApplyEffects() {
                 ? ownConfig.chatUsernameEffect
                 : ownConfig.nameEffect;
             if (selfEffectsActive && effect && effect !== "none") {
-                applyNameEffectToElement(el, effect, ownConfig.glowColor);
+                applyNameEffectToElement(targetEl, effect, ownConfig.glowColor);
             } else {
-                removeNameEffectFromElement(el);
+                removeNameEffectFromElement(targetEl);
             }
         } else if (authorId) {
-            const cached = profileCache.get(authorId)?.data;
-            if (cached?.effects) {
-                const effect = cached.effects.chatUsernameEffect || cached.effects.nameEffect;
+            const cached = profileCache.get(authorId);
+            if (cached && cached.data?.effects) {
+                const effect = cached.data.effects.chatUsernameEffect || cached.data.effects.nameEffect;
                 if (effect && effect !== "none") {
-                    applyNameEffectToElement(el, effect, cached.effects.glowColor);
+                    applyNameEffectToElement(targetEl, effect, cached.data.effects.glowColor);
                 } else {
-                    removeNameEffectFromElement(el);
+                    removeNameEffectFromElement(targetEl);
                 }
-            } else {
-                void readUserPremiumData(authorId);
+            } else if (!cached) {
+                void readUserPremiumData(authorId).then(data => {
+                    if (data?.effects) {
+                        const effect = data.effects.chatUsernameEffect || data.effects.nameEffect;
+                        if (effect && effect !== "none") {
+                            applyNameEffectToElement(targetEl, effect, data.effects.glowColor);
+                        }
+                    }
+                });
             }
         }
     }
 
-    // 5. Member List (e.g. Snippet 7)
+    // 5. Member List
     const memberNames = document.querySelectorAll<HTMLElement>(
         "[class*='member_'] [class*='name_'], " +
         "[class*='member_'] [class*='username_'], " +
@@ -453,27 +487,35 @@ export async function scanAndApplyEffects() {
         const authorId = getAuthorIdFromElement(memberItem);
         const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+        const targetEl = getTargetNameElement(el);
 
         if (isSelf) {
             const effect = (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none")
                 ? ownConfig.memberListEffect
                 : ownConfig.nameEffect;
             if (selfEffectsActive && effect && effect !== "none") {
-                applyNameEffectToElement(el, effect, ownConfig.glowColor);
+                applyNameEffectToElement(targetEl, effect, ownConfig.glowColor);
             } else {
-                removeNameEffectFromElement(el);
+                removeNameEffectFromElement(targetEl);
             }
         } else if (authorId) {
-            const cached = profileCache.get(authorId)?.data;
-            if (cached?.effects) {
-                const effect = cached.effects.memberListEffect || cached.effects.nameEffect;
+            const cached = profileCache.get(authorId);
+            if (cached && cached.data?.effects) {
+                const effect = cached.data.effects.memberListEffect || cached.data.effects.nameEffect;
                 if (effect && effect !== "none") {
-                    applyNameEffectToElement(el, effect, cached.effects.glowColor);
+                    applyNameEffectToElement(targetEl, effect, cached.data.effects.glowColor);
                 } else {
-                    removeNameEffectFromElement(el);
+                    removeNameEffectFromElement(targetEl);
                 }
-            } else {
-                void readUserPremiumData(authorId);
+            } else if (!cached) {
+                void readUserPremiumData(authorId).then(data => {
+                    if (data?.effects) {
+                        const effect = data.effects.memberListEffect || data.effects.nameEffect;
+                        if (effect && effect !== "none") {
+                            applyNameEffectToElement(targetEl, effect, data.effects.glowColor);
+                        }
+                    }
+                });
             }
         }
     }
@@ -487,15 +529,15 @@ export function triggerEffectsUpdate() {
         clearTimeout(scanTimer);
         scanTimer = null;
     }
-    void scanAndApplyEffects();
+    scanAndApplyEffects();
 }
 
 function debouncedScan() {
-    if (!active) return;
+    if (!active || (typeof document !== "undefined" && document.hidden)) return;
     if (scanTimer) clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
-        void scanAndApplyEffects();
-    }, 120);
+        scanAndApplyEffects();
+    }, 140);
 }
 
 function onConnectionOpen() {

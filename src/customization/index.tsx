@@ -17,7 +17,9 @@ import { startStories, stopStories } from "./stories/storiesManager";
 import { StoryGallery } from "./stories/StoryGallery";
 import {
     getCachedPremiumSettings,
+    getLocalEffectsConfig,
     getPremiumSettings,
+    profileCache,
     readUserPremiumData,
     subscribePremiumSettings
 } from "./sync";
@@ -66,9 +68,32 @@ export function pushPremiumSections(sections: any[], user: any) {
                 sections.unshift({ text: t("Story"), section: "MY_STORY" });
             }
         } else {
-            // For other users: always synchronously add Song and Story tabs
-            sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
-            sections.unshift({ text: t("Story"), section: "MY_STORY" });
+            // For other users: ONLY show tabs if they actually have content and enabled the option
+            const cached = profileCache.get(user.id);
+            if (cached !== undefined) {
+                if (cached.data) {
+                    if (cached.data.favSongsEnabled !== false && Array.isArray(cached.data.favSongs) && cached.data.favSongs.length > 0) {
+                        sections.unshift({ text: t("Song"), section: "FAV_SONGS" });
+                    }
+                    if (cached.data.storiesEnabled !== false && Array.isArray(cached.data.stories) && cached.data.stories.length > 0) {
+                        sections.unshift({ text: t("Story"), section: "MY_STORY" });
+                    }
+                }
+            } else {
+                // Not cached yet: trigger background fetch and refresh profile when data arrives
+                void readUserPremiumData(user.id).then(data => {
+                    if (data && (
+                        (data.favSongsEnabled !== false && data.favSongs?.length > 0) ||
+                        (data.storiesEnabled !== false && data.stories?.length > 0)
+                    )) {
+                        try {
+                            const UPS = (Vencord as any).Webpack?.findByStoreName?.("UserProfileStore") ??
+                                        (Vencord as any).Webpack?.findByProps?.("getUserProfile");
+                            if (UPS?.emitChange) UPS.emitChange();
+                        } catch {}
+                    }
+                });
+            }
         }
     } catch (e) {
         console.error("[NightcordCustomization] pushPremiumSections error:", e);
@@ -124,7 +149,10 @@ export async function initCustomization() {
 
     registerCustomizationPatches();
 
-    const st = await getPremiumSettings();
+    const [st] = await Promise.all([
+        getPremiumSettings(),
+        getLocalEffectsConfig()
+    ]);
 
     if (st.enabled) {
         startStories();
