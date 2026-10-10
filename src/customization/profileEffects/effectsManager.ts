@@ -404,7 +404,7 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     }
 }
 
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@600&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap";
+const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap";
 
 export function ensureProfileFontsLoaded() {
     if (typeof document === "undefined") return;

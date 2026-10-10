@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@600&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&family=Press+Start+2P&family=UnifrakturMaguntia&display=swap');
 
 /* ── Story Ring on Avatars ─────────────────────────────────────────────────── */
 
@@ -984,34 +984,246 @@
 
 /* ── Profile Custom Typography ────────────────────────────────────────────── */
 
+/* Universal anti-clipping safeguards for all custom profile fonts */
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='header__00de6'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='heading-xxl'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayName_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayNameContent_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTag_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTagUsername_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='usernameAndPronounsRow_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='nameTag_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='container__9c314'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='root__983bc'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='control__5a838'] {
+    overflow: visible !important;
+    max-height: none !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+}
+
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='header__00de6'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='heading-xxl'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayName_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayNameContent_'] {
+    padding-top: 3px !important;
+    padding-bottom: 6px !important;
+    line-height: 1.35 !important;
+}
+
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTag_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTagUsername_'],
+[data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='usernameAndPronounsRow_'] {
+    padding-top: 2px !important;
+    padding-bottom: 4px !important;
+    line-height: 1.35 !important;
+}
+
+/* 1. Gothic (UnifrakturMaguntia) */
 [data-nc-profile-font="gothic"],
 [data-nc-profile-font="gothic"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'UnifrakturMaguntia', 'MedievalSharp', cursive, serif !important;
 }
 
+[data-nc-profile-font="gothic"] [class*='header__00de6'],
+[data-nc-profile-font="gothic"] [class*='heading-xxl'],
+[data-nc-profile-font="gothic"] [class*='displayName_'],
+[data-nc-profile-font="gothic"] [class*='displayNameContent_'] {
+    font-size: 26px !important;
+    line-height: 1.35 !important;
+}
+
+[data-nc-profile-font="gothic"] [class*='userTag_'],
+[data-nc-profile-font="gothic"] [class*='userTagUsername_'],
+[data-nc-profile-font="gothic"] [class*='usernameAndPronounsRow_'] {
+    font-size: 16px !important;
+    line-height: 1.35 !important;
+}
+
+/* 2. Signature Script (Alex Brush) - High-legibility boosted scale & anti-clipping */
 [data-nc-profile-font="signature"],
 [data-nc-profile-font="signature"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'Alex Brush', 'Great Vibes', cursive !important;
+    font-weight: 400 !important;
 }
 
+[data-nc-profile-font="signature"] [class*='header__00de6'],
+[data-nc-profile-font="signature"] [class*='heading-xxl'],
+[data-nc-profile-font="signature"] [class*='displayName_'],
+[data-nc-profile-font="signature"] [class*='displayNameContent_'],
+[data-nc-profile-font="signature"] [class*='nickname_'],
+[data-nc-profile-font="signature"] [class*='globalName_'] {
+    font-size: 34px !important;
+    line-height: 1.45 !important;
+    letter-spacing: 0.5px !important;
+    padding-top: 6px !important;
+    padding-bottom: 8px !important;
+}
+
+[data-nc-profile-font="signature"] [class*='userTag_'],
+[data-nc-profile-font="signature"] [class*='userTagUsername_'],
+[data-nc-profile-font="signature"] [class*='usernameAndPronounsRow_'],
+[data-nc-profile-font="signature"] [class*='nameTag_'] {
+    font-size: 22px !important;
+    line-height: 1.4 !important;
+    padding-top: 2px !important;
+    padding-bottom: 4px !important;
+}
+
+[data-nc-profile-font="signature"] [class*='tabBarItem_'],
+[data-nc-profile-font="signature"] [class*='tabBar_'] [role='tab'],
+[data-nc-profile-font="signature"] [class*='tab_'] {
+    font-size: 20px !important;
+    line-height: 1.4 !important;
+    letter-spacing: 0.5px !important;
+}
+
+[data-nc-profile-font="signature"] [class*='section_'] h1,
+[data-nc-profile-font="signature"] [class*='section_'] h2,
+[data-nc-profile-font="signature"] [class*='section_'] h3,
+[data-nc-profile-font="signature"] [class*='section_'] h4,
+[data-nc-profile-font="signature"] [class*='section_'] [class*='title_'],
+[data-nc-profile-font="signature"] [class*='userInfoSection_'] h1,
+[data-nc-profile-font="signature"] [class*='userInfoSection_'] h2,
+[data-nc-profile-font="signature"] [class*='userInfoSection_'] h3,
+[data-nc-profile-font="signature"] [class*='userInfoSection_'] [class*='title_'],
+[data-nc-profile-font="signature"] [class*='heading-sm'],
+[data-nc-profile-font="signature"] [class*='heading-md'],
+[data-nc-profile-font="signature"] [class*='heading-lg'] {
+    font-size: 20px !important;
+    line-height: 1.4 !important;
+    letter-spacing: 0.5px !important;
+}
+
+[data-nc-profile-font="signature"] [class*='text-sm'],
+[data-nc-profile-font="signature"] [class*='text-md'],
+[data-nc-profile-font="signature"] [class*='text-xs'],
+[data-nc-profile-font="signature"] [class*='markup_'],
+[data-nc-profile-font="signature"] [class*='bio_'],
+[data-nc-profile-font="signature"] [class*='descriptionClamp_'],
+[data-nc-profile-font="signature"] [class*='lineClamp_'],
+[data-nc-profile-font="signature"] [class*='connectedAccountName_'],
+[data-nc-profile-font="signature"] [class*='note_'],
+[data-nc-profile-font="signature"] [class*='note_'] textarea,
+[data-nc-profile-font="signature"] [class*='aboutMe_'],
+[data-nc-profile-font="signature"] [class*='body_'],
+[data-nc-profile-font="signature"] .ncp-song-title,
+[data-nc-profile-font="signature"] .ncp-song-artist {
+    font-size: 19px !important;
+    line-height: 1.45 !important;
+}
+
+[data-nc-profile-font="signature"] [class*='button_'] {
+    font-size: 18px !important;
+    line-height: 1.4 !important;
+}
+
+/* 3. Pixel (Press Start 2P) */
 [data-nc-profile-font="pixel"],
 [data-nc-profile-font="pixel"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'Press Start 2P', 'VT323', monospace !important;
     letter-spacing: -0.5px;
 }
 
+[data-nc-profile-font="pixel"] [class*='header__00de6'],
+[data-nc-profile-font="pixel"] [class*='heading-xxl'],
+[data-nc-profile-font="pixel"] [class*='displayName_'],
+[data-nc-profile-font="pixel"] [class*='displayNameContent_'] {
+    font-size: 18px !important;
+    line-height: 1.5 !important;
+}
+
+/* 4. Nerd Font (JetBrains Mono) */
 [data-nc-profile-font="nerd"],
 [data-nc-profile-font="nerd"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
 }
 
+/* 5. Cyberpunk (Orbitron) */
 [data-nc-profile-font="cyberpunk"],
 [data-nc-profile-font="cyberpunk"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'Orbitron', sans-serif !important;
 }
 
+/* 6. Handwritten (Caveat) - High-legibility boosted scale & anti-clipping */
 [data-nc-profile-font="handwritten"],
 [data-nc-profile-font="handwritten"] *:not(svg):not(path):not(use):not(foreignObject):not(img) {
     font-family: 'Caveat', cursive !important;
+    font-weight: 600 !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='header__00de6'],
+[data-nc-profile-font="handwritten"] [class*='heading-xxl'],
+[data-nc-profile-font="handwritten"] [class*='displayName_'],
+[data-nc-profile-font="handwritten"] [class*='displayNameContent_'],
+[data-nc-profile-font="handwritten"] [class*='nickname_'],
+[data-nc-profile-font="handwritten"] [class*='globalName_'] {
+    font-size: 30px !important;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+    letter-spacing: 0.3px !important;
+    padding-top: 4px !important;
+    padding-bottom: 6px !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='userTag_'],
+[data-nc-profile-font="handwritten"] [class*='userTagUsername_'],
+[data-nc-profile-font="handwritten"] [class*='usernameAndPronounsRow_'],
+[data-nc-profile-font="handwritten"] [class*='nameTag_'] {
+    font-size: 19px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+    padding-top: 2px !important;
+    padding-bottom: 4px !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='tabBarItem_'],
+[data-nc-profile-font="handwritten"] [class*='tabBar_'] [role='tab'],
+[data-nc-profile-font="handwritten"] [class*='tab_'] {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='section_'] h1,
+[data-nc-profile-font="handwritten"] [class*='section_'] h2,
+[data-nc-profile-font="handwritten"] [class*='section_'] h3,
+[data-nc-profile-font="handwritten"] [class*='section_'] h4,
+[data-nc-profile-font="handwritten"] [class*='section_'] [class*='title_'],
+[data-nc-profile-font="handwritten"] [class*='userInfoSection_'] h1,
+[data-nc-profile-font="handwritten"] [class*='userInfoSection_'] h2,
+[data-nc-profile-font="handwritten"] [class*='userInfoSection_'] h3,
+[data-nc-profile-font="handwritten"] [class*='userInfoSection_'] [class*='title_'],
+[data-nc-profile-font="handwritten"] [class*='heading-sm'],
+[data-nc-profile-font="handwritten"] [class*='heading-md'],
+[data-nc-profile-font="handwritten"] [class*='heading-lg'] {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='text-sm'],
+[data-nc-profile-font="handwritten"] [class*='text-md'],
+[data-nc-profile-font="handwritten"] [class*='text-xs'],
+[data-nc-profile-font="handwritten"] [class*='markup_'],
+[data-nc-profile-font="handwritten"] [class*='bio_'],
+[data-nc-profile-font="handwritten"] [class*='descriptionClamp_'],
+[data-nc-profile-font="handwritten"] [class*='lineClamp_'],
+[data-nc-profile-font="handwritten"] [class*='connectedAccountName_'],
+[data-nc-profile-font="handwritten"] [class*='note_'],
+[data-nc-profile-font="handwritten"] [class*='note_'] textarea,
+[data-nc-profile-font="handwritten"] [class*='aboutMe_'],
+[data-nc-profile-font="handwritten"] [class*='body_'],
+[data-nc-profile-font="handwritten"] .ncp-song-title,
+[data-nc-profile-font="handwritten"] .ncp-song-artist {
+    font-size: 17px !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+}
+
+[data-nc-profile-font="handwritten"] [class*='button_'] {
+    font-size: 17px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
 }
 
