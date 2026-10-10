@@ -5,7 +5,7 @@
  */
 
 import { t } from "@api/i18n";
-import { Button, React, useEffect, useState, UserStore } from "@webpack/common";
+import { Button, React, ScrollerThin, useEffect, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumStory } from "../types";
 import { StoryViewer } from "./StoryViewer";
@@ -115,22 +115,24 @@ export function StoryGallery({ user }: { user: any }) {
     }
 
     return (
-        <div style={{ height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <div className="ncp-story-gallery">
-                {stories.map((story, i) => (
-                    <div
-                        key={story.id}
-                        className="ncp-story-gallery-item"
-                        onClick={() => setSelectedStoryIndex(i)}
-                    >
-                        {story.type === "video" ? (
-                            <video src={story.url} muted />
-                        ) : (
-                            <img src={story.url} alt="" />
-                        )}
-                    </div>
-                ))}
-            </div>
+        <div style={{ height: "100%", width: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <ScrollerThin fade style={{ height: "100%", width: "100%" }} className="ncp-story-gallery-scroller">
+                <div className="ncp-story-gallery">
+                    {stories.map((story, i) => (
+                        <div
+                            key={story.id}
+                            className="ncp-story-gallery-item"
+                            onClick={() => setSelectedStoryIndex(i)}
+                        >
+                            {story.type === "video" ? (
+                                <video src={story.url} muted />
+                            ) : (
+                                <img src={story.url} alt="" />
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </ScrollerThin>
 
             {selectedStoryIndex !== null && (
                 <StoryViewer

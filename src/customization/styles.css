@@ -181,50 +181,59 @@
 
 /* ── Story Gallery ─────────────────────────────────────────────────────────── */
 
-.ncp-story-gallery {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    row-gap: 14px !important;
-    column-gap: 14px !important;
-    gap: 14px !important;
-    padding: 10px 8px 24px 2px;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2)) transparent;
+.ncp-story-gallery-scroller {
+    height: 100% !important;
+    width: 100% !important;
+    min-height: 0 !important;
 }
 
-.ncp-story-gallery::-webkit-scrollbar {
+.ncp-story-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: 14px;
+    column-gap: 6px;
+    padding: 10px 8px 24px 2px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ncp-story-gallery::-webkit-scrollbar,
+.ncp-story-gallery-scroller::-webkit-scrollbar {
     width: 6px;
     height: 6px;
 }
 
-.ncp-story-gallery::-webkit-scrollbar-track {
+.ncp-story-gallery::-webkit-scrollbar-track,
+.ncp-story-gallery-scroller::-webkit-scrollbar-track {
     background: transparent;
 }
 
-.ncp-story-gallery::-webkit-scrollbar-thumb {
+.ncp-story-gallery::-webkit-scrollbar-thumb,
+.ncp-story-gallery-scroller::-webkit-scrollbar-thumb {
     background: var(--scrollbar-auto-thumb, rgba(255, 255, 255, 0.2));
     border-radius: 4px;
 }
 
-.ncp-story-gallery::-webkit-scrollbar-thumb:hover {
+.ncp-story-gallery::-webkit-scrollbar-thumb:hover,
+.ncp-story-gallery-scroller::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-auto-thumb-hover, rgba(255, 255, 255, 0.35));
 }
 
-.ncp-story-gallery::-webkit-scrollbar-corner {
+.ncp-story-gallery::-webkit-scrollbar-corner,
+.ncp-story-gallery-scroller::-webkit-scrollbar-corner {
     background: transparent;
 }
 
-.ncp-story-gallery::-webkit-scrollbar-button {
+.ncp-story-gallery::-webkit-scrollbar-button,
+.ncp-story-gallery-scroller::-webkit-scrollbar-button,
+.ncp-story-gallery-scroller [class*="scroller"]::-webkit-scrollbar-button {
     display: none !important;
     width: 0 !important;
     height: 0 !important;
 }
 
 .ncp-story-gallery-item {
+    width: calc((100% - 12px) / 3);
     aspect-ratio: 9 / 16;
     border-radius: 10px;
     overflow: hidden;
@@ -235,6 +244,7 @@
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     box-sizing: border-box;
     display: block;
+    flex-shrink: 0;
 }
 
 .ncp-story-gallery-item:hover {
