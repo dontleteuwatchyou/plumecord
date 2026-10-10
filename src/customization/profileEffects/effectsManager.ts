@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
+import { ChannelStore, FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
 import { getCachedEffectsConfig, getCachedPremiumSettings, profileCache, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
@@ -12,12 +12,41 @@ let observer: MutationObserver | null = null;
 let active = false;
 let scanTimer: ReturnType<typeof setTimeout> | null = null;
 
+export function cleanDuplicateText(str: string): string {
+    if (!str) return str;
+    const trimmed = str.trim();
+    const len = trimmed.length;
+    if (len >= 2 && len % 2 === 0) {
+        const half = len / 2;
+        if (trimmed.slice(0, half) === trimmed.slice(half)) {
+            return trimmed.slice(0, half);
+        }
+    }
+    return trimmed;
+}
+
 function getAuthorIdFromElement(el: HTMLElement): string | null {
     if (el.dataset.authorId) return el.dataset.authorId;
     if (el.dataset.userId) return el.dataset.userId;
 
+    // Check DM channel links: a[href*='/channels/@me/']
+    const channelLink = el.closest<HTMLAnchorElement>("a[href*='/channels/@me/']");
+    if (channelLink) {
+        const href = channelLink.getAttribute("href") || "";
+        const m = href.match(/\/channels\/@me\/(\d+)/);
+        if (m && ChannelStore) {
+            try {
+                const channel = ChannelStore.getChannel(m[1]);
+                if (channel) {
+                    const recId = channel.getRecipientId?.() || (Array.isArray(channel.recipients) && channel.recipients[0]);
+                    if (recId) return String(recId);
+                }
+            } catch {}
+        }
+    }
+
     const img = el.querySelector("img[src*='/avatars/']") ||
-        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='peopleListItem_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
+        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='peopleListItem_'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
     if (img) {
         const match = img.getAttribute("src")?.match(/\/avatars\/(\d+)\//);
         if (match) return match[1];
@@ -32,6 +61,8 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
                 if (props) {
                     if (props.user?.id) return String(props.user.id);
                     if (props.userId) return String(props.userId);
+                    if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
+                    if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
                     if (props.author?.id) return String(props.author.id);
                     if (props.message?.author?.id) return String(props.message.author.id);
                     if (props.member?.userId) return String(props.member.userId);
@@ -44,7 +75,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     } catch {}
 
     const container = el.closest<HTMLElement>(
-        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='peopleListItem'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
+        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='peopleListItem'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
     );
     if (container && container !== el) {
         try {
@@ -56,6 +87,8 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
                     if (props) {
                         if (props.user?.id) return String(props.user.id);
                         if (props.userId) return String(props.userId);
+                        if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
+                        if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
                         if (props.author?.id) return String(props.author.id);
                         if (props.message?.author?.id) return String(props.message.author.id);
                         if (props.member?.userId) return String(props.member.userId);
@@ -80,7 +113,7 @@ export function getElementRawText(el: HTMLElement): string {
         el.getAttribute("data-text") ||
         el.textContent ||
         "";
-    return raw.trim();
+    return cleanDuplicateText(raw);
 }
 
 function isForbiddenElement(el: HTMLElement): boolean {
@@ -163,19 +196,55 @@ interface TypewriterState {
 const activeTypewriters = new Map<HTMLElement, TypewriterState>();
 let typewriterTimer: ReturnType<typeof setInterval> | null = null;
 
+function findTextTargetElement(el: HTMLElement): HTMLElement {
+    let curr = el;
+    while (
+        curr.children.length === 1 &&
+        curr.firstElementChild instanceof HTMLElement &&
+        curr.firstElementChild.textContent?.trim() === curr.textContent?.trim()
+    ) {
+        curr = curr.firstElementChild;
+    }
+    return curr;
+}
+
 function updateElementText(el: HTMLElement, text: string) {
     const safeText = text || "\u200B";
-    for (let i = 0; i < el.childNodes.length; i++) {
-        const node = el.childNodes[i];
+    const target = findTextTargetElement(el);
+
+    if (target.children.length === 0) {
+        target.textContent = safeText;
+        return;
+    }
+
+    let updated = false;
+    for (let i = 0; i < target.childNodes.length; i++) {
+        const node = target.childNodes[i];
         if (node.nodeType === Node.TEXT_NODE) {
             node.nodeValue = safeText;
-            return;
+            updated = true;
+            for (let j = target.childNodes.length - 1; j > i; j--) {
+                if (target.childNodes[j].nodeType === Node.TEXT_NODE) {
+                    target.removeChild(target.childNodes[j]);
+                }
+            }
+            break;
         }
     }
-    if (el.children.length === 0) {
-        el.textContent = safeText;
-    } else {
-        el.insertBefore(document.createTextNode(safeText), el.firstChild);
+
+    if (!updated) {
+        let leaf = target;
+        while (leaf.children.length > 0) {
+            const childWithText = Array.from(leaf.children).find(
+                c => c instanceof HTMLElement && c.textContent?.trim()
+            ) as HTMLElement | undefined;
+            if (childWithText) {
+                leaf = childWithText;
+            } else {
+                break;
+            }
+        }
+        leaf.textContent = safeText;
     }
 }
 
@@ -251,7 +320,7 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
     if (activeTypewriters.has(nameEl)) {
         const state = activeTypewriters.get(nameEl);
         if (state) {
-            const originalText = nameEl.getAttribute("data-cpe-original-text") || state.fullText;
+            const originalText = cleanDuplicateText(nameEl.getAttribute("data-cpe-original-text") || state.fullText);
             updateElementText(nameEl, originalText);
         }
         nameEl.removeAttribute("data-cpe-original-text");
@@ -262,7 +331,7 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
     } else {
         const originalText = nameEl.getAttribute("data-cpe-original-text");
         if (originalText) {
-            updateElementText(nameEl, originalText);
+            updateElementText(nameEl, cleanDuplicateText(originalText));
             nameEl.removeAttribute("data-cpe-original-text");
         }
     }
@@ -295,7 +364,7 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     if (effectType !== "type" && activeTypewriters.has(nameEl)) {
         const state = activeTypewriters.get(nameEl);
         if (state) {
-            updateElementText(nameEl, state.fullText);
+            updateElementText(nameEl, cleanDuplicateText(state.fullText));
         }
         nameEl.removeAttribute("data-cpe-original-text");
         activeTypewriters.delete(nameEl);
@@ -322,13 +391,13 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     } else if (effectType === "type") {
         nameEl.classList.add("cpe-type-cursor");
         if (!activeTypewriters.has(nameEl)) {
-            const fullText = nameEl.getAttribute("data-cpe-original-text") || currentText;
+            const fullText = cleanDuplicateText(nameEl.getAttribute("data-cpe-original-text") || currentText);
             nameEl.setAttribute("data-cpe-original-text", fullText);
             activeTypewriters.set(nameEl, {
                 fullText,
                 currentIndex: fullText.length,
                 isDeleting: false,
-                pauseUntil: Date.now() + 1500
+                pauseUntil: Date.now() + 1800
             });
             startTypewriterLoop();
         }
@@ -565,6 +634,10 @@ export function scanAndApplyEffects() {
             removeNameEffectFromElement(el);
             continue;
         }
+        // Skip outer message wrappers if they contain another username element; we only style the inner target!
+        if (el.querySelector("[class*='username_'], [class*='usernameFont_'], [id^='message-username-']")) {
+            continue;
+        }
         // If an ancestor already has effect, don't nest effects on inner spans
         const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
         if (parentEffect) {
@@ -630,6 +703,66 @@ export function scanAndApplyEffects() {
         const txt = getElementRawText(el).toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
         const targetEl = getTargetNameElement(el);
+
+        if (isSelf) {
+            const effect = (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none")
+                ? ownConfig.memberListEffect
+                : ownConfig.nameEffect;
+            if (selfEffectsActive && effect && effect !== "none") {
+                applyNameEffectToElement(targetEl, effect, ownConfig.glowColor);
+            } else {
+                removeNameEffectFromElement(targetEl);
+            }
+        } else if (authorId) {
+            const cached = profileCache.get(authorId);
+            if (cached && cached.data?.effects) {
+                const effect = cached.data.effects.memberListEffect || cached.data.effects.nameEffect;
+                if (effect && effect !== "none") {
+                    applyNameEffectToElement(targetEl, effect, cached.data.effects.glowColor);
+                } else {
+                    removeNameEffectFromElement(targetEl);
+                }
+            } else if (!cached) {
+                void readUserPremiumData(authorId).then(data => {
+                    if (data?.effects) {
+                        const effect = data.effects.memberListEffect || data.effects.nameEffect;
+                        if (effect && effect !== "none") {
+                            applyNameEffectToElement(targetEl, effect, data.effects.glowColor);
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    // 6. Direct Messages (DM) Channel List
+    const dmNames = document.querySelectorAll<HTMLElement>(
+        "[class*='privateChannels_'] [class*='overflowTooltip_'], " +
+        "[class*='privateChannels_'] [class*='overflow_'], " +
+        "[class*='privateChannels_'] [class*='name__'], " +
+        "a[href^='/channels/@me/'] [class*='overflowTooltip_'], " +
+        "a[href^='/channels/@me/'] [class*='overflow_'], " +
+        "a[href^='/channels/@me/'] [class*='name__']"
+    );
+    for (const el of Array.from(dmNames)) {
+        if (isForbiddenElement(el)) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+        if (el.querySelector("[class*='overflowTooltip_'], [class*='overflow_']")) {
+            continue;
+        }
+        const parentEffect = el.parentElement?.closest("[data-nc-applied-effect], .cpe-glitch, .cpe-glow, .cpe-rainbow-letter, .cpe-type-cursor");
+        if (parentEffect) {
+            removeNameEffectFromElement(el);
+            continue;
+        }
+
+        const targetEl = getTargetNameElement(el);
+        const channelItem = el.closest<HTMLElement>("a[href^='/channels/@me/'], [class*='channel_'], [class*='interactive_']") || el;
+        const authorId = getAuthorIdFromElement(channelItem) || getAuthorIdFromElement(el);
+        const txt = getElementRawText(el).toLowerCase();
+        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
 
         if (isSelf) {
             const effect = (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none")
@@ -778,6 +911,8 @@ export function startProfileEffects() {
         FluxDispatcher.subscribe("USER_PROFILE_MODAL_OPEN", onUserProfileModalOpen);
         FluxDispatcher.subscribe("USER_POPOUT_OPEN", onUserProfileModalOpen);
         FluxDispatcher.subscribe("MODAL_PUSH", onModalPush);
+        FluxDispatcher.subscribe("CHANNEL_SELECT", debouncedScan);
+        FluxDispatcher.subscribe("PASSIVE_UPDATE_V2", debouncedScan);
     } catch {}
 
     if (typeof document !== "undefined") {
@@ -813,6 +948,8 @@ export function stopProfileEffects() {
         FluxDispatcher.unsubscribe("USER_PROFILE_MODAL_OPEN", onUserProfileModalOpen);
         FluxDispatcher.unsubscribe("USER_POPOUT_OPEN", onUserProfileModalOpen);
         FluxDispatcher.unsubscribe("MODAL_PUSH", onModalPush);
+        FluxDispatcher.unsubscribe("CHANNEL_SELECT", debouncedScan);
+        FluxDispatcher.unsubscribe("PASSIVE_UPDATE_V2", debouncedScan);
     } catch {}
 
     if (typeof document !== "undefined") {

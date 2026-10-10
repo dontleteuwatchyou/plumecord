@@ -7,7 +7,6 @@
 import "./styles.css";
 
 import { t } from "@api/i18n";
-import { addPatch } from "@api/PluginManager";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { React, UserStore } from "@webpack/common";
 
@@ -133,22 +132,6 @@ export function registerCustomizationPatches() {
     if (typeof Vencord !== "undefined") {
         (Vencord as any).Customization = globals;
     }
-
-    addPatch({
-        find: "#{intl::USER_PROFILE_ACTIVITY}",
-        replacement: {
-            match: /(\i)\.id!==\i\?\.id&&\i&&\(.{0,300}\.MUTUAL_GUILDS\}\)\)(?=,(\i))/,
-            replace: "$&,NightcordCustomizationGlobals.pushPremiumSections($2,$1)",
-        }
-    }, "NightcordCustomization", "NightcordCustomizationGlobals");
-
-    addPatch({
-        find: ".WIDGETS?",
-        replacement: {
-            match: /(\i)===\i\.\i\.WISHLIST/,
-            replace: "$1===\"MY_STORY\"||$1===\"FAV_SONGS\"?NightcordCustomizationGlobals.renderPremiumTab($1,arguments[0]):$&",
-        }
-    }, "NightcordCustomization", "NightcordCustomizationGlobals");
 }
 
 let initialized = false;
