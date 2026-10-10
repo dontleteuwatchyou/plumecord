@@ -11,6 +11,15 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Setting": {"en":"Setting","fr":"Setting","ar":"الإعدادات","es":"Ajustes","ru":"Настройки","zh":"设置"},
+    "Search servers...": {"en":"Search servers...","fr":"Rechercher des serveurs...","ar":"البحث عن خوادم...","es":"Buscar servidores...","ru":"Поиск серверов...","zh":"搜索服务器..."},
+    "Enable All": {"en":"Enable All","fr":"Activer tout","ar":"تفعيل الكل","es":"Activar todo","ru":"Включить все","zh":"全部启用"},
+    "Voice (All)": {"en":"Voice (All)","fr":"Vocal (Tout)","ar":"الصوت (الكل)","es":"Voz (Todo)","ru":"Голос (Все)","zh":"语音 (全部)"},
+    "Messages (All)": {"en":"Messages (All)","fr":"Messages (Tout)","ar":"الرسائل (الكل)","es":"Mensajes (Todo)","ru":"Сообщения (Все)","zh":"消息 (全部)"},
+    "servers enabled": {"en":"servers enabled","fr":"serveurs activés","ar":"خوادم مفعلة","es":"servidores activados","ru":"серверов включено","zh":"已启用服务器"},
+    "Log voice events for this server": {"en":"Log voice events for this server","fr":"Logger les événements vocaux pour ce serveur","ar":"تسجيل الأحداث الصوتية لهذا الخادم","es":"Registrar eventos de voz para este servidor","ru":"Логировать голосовые события для этого сервера","zh":"记录此服务器的语音事件"},
+    "Log message events for this server": {"en":"Log message events for this server","fr":"Logger les événements de messages pour ce serveur","ar":"تسجيل أحداث الرسائل لهذا الخادم","es":"Registrar eventos de mensajes para este servidor","ru":"Логировать события сообщений для этого сервера","zh":"记录此服务器的消息事件"},
+    "No actions active": {"en":"No actions active","fr":"Aucune action active","ar":"لا توجد إجراءات نشطة","es":"Sin actions activas","ru":"Нет активных действий","zh":"无活动操作"},
     "Fonts": {"en":"Fonts","fr":"Polices d'écriture","ar":"الخطوط","es":"Fuentes","ru":"Шрифты","zh":"字体"},
     "Nightcord Fonts": {"en":"Nightcord Fonts","fr":"Polices Nightcord","ar":"خطوط نايتكورد","es":"Fuentes de Nightcord","ru":"Шрифты Nightcord","zh":"Nightcord 字体"},
     "Client Typography & Fonts": {"en":"Client Typography & Fonts","fr":"Typographie & Polices du client","ar":"خطوط وخطوط العميل","es":"Tipografía y fuentes del cliente","ru":"Типографика и шрифты клиента","zh":"客户端排版与字体"},

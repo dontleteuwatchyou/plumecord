@@ -13,6 +13,7 @@ import definePlugin, { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
 import { findByProps, findByPropsLazy } from "@webpack";
 import { ChannelStore, ContextMenuApi, FluxDispatcher, Forms, GuildStore, IconUtils, Menu, MessageStore, NavigationRouter, React, Select, SelectedChannelStore, showToast, Toasts, useCallback, useEffect, useMemo, UserStore, useState } from "@webpack/common";
+import { Switch } from "@components/Switch";
 
 import { t, useTranslation } from "../autoTranslateNightcord";
 
@@ -108,6 +109,60 @@ export const settings = definePluginSettings({
 
 const DATA_STORE_KEY = "Nightcord_EventLogs";
 const MAX_PERSISTENT_LOGS = 1000;
+const GUILD_CONFIG_STORE_KEY = "Nightcord_EventLogs_GuildConfig";
+
+export interface GuildLogConfig {
+    enabled?: boolean;     // default true
+    messages?: boolean;    // default true
+    voice?: boolean;       // default true
+}
+
+export type GuildConfigMap = Record<string, GuildLogConfig>;
+
+let guildConfigs: GuildConfigMap = {};
+
+async function loadGuildConfigs() {
+    try {
+        const saved = await DataStore.get<GuildConfigMap>(GUILD_CONFIG_STORE_KEY);
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+            guildConfigs = saved;
+        }
+    } catch (e) {
+        console.error("[EventLogs] Error loading guild configs:", e);
+    }
+}
+
+function saveGuildConfigs() {
+    try {
+        DataStore.set(GUILD_CONFIG_STORE_KEY, guildConfigs).catch(() => {});
+    } catch {}
+}
+
+function getGuildConfig(guildId: string): { enabled: boolean; messages: boolean; voice: boolean; } {
+    const cfg = guildConfigs[guildId];
+    return {
+        enabled: cfg?.enabled ?? true,
+        messages: cfg?.messages ?? true,
+        voice: cfg?.voice ?? true,
+    };
+}
+
+function isGuildLoggingEnabled(guildId?: string): boolean {
+    if (!guildId) return true;
+    return getGuildConfig(guildId).enabled;
+}
+
+function isGuildMessagesEnabled(guildId?: string): boolean {
+    if (!guildId) return true;
+    const cfg = getGuildConfig(guildId);
+    return cfg.enabled && cfg.messages;
+}
+
+function isGuildVoiceEnabled(guildId?: string): boolean {
+    if (!guildId) return true;
+    const cfg = getGuildConfig(guildId);
+    return cfg.enabled && cfg.voice;
+}
 
 function formatTimestamp(ts: number): string {
     const d = new Date(ts);
@@ -592,6 +647,7 @@ function LogRow({ e, onClose }: { e: LogEntry; onClose?: () => void; }) {
 const FILTERS = [
     { key: "all", label: "All" }, { key: "delete", label: "Deleted" }, { key: "edit", label: "Edited" },
     { key: "vocal", label: "Voice" }, { key: "myvoice", label: "My Voice" }, { key: "friends", label: "Friends" }, { key: "ping", label: "Ping" },
+    { key: "settings", label: "Setting" },
 ];
 
 function applyFilter(entries: LogEntry[], f: string, q: string, guildId: string): LogEntry[] {
@@ -621,6 +677,240 @@ function applyFilter(entries: LogEntry[], f: string, q: string, guildId: string)
             l.realId?.includes(q) ||
             l.authorId?.includes(q);
     });
+}
+
+const MicIcon = () => (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+    </svg>
+);
+
+const MsgIcon = () => (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+        <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z" />
+    </svg>
+);
+
+const SearchIcon = () => (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.5, flexShrink: 0, marginLeft: 8 }}>
+        <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+    </svg>
+);
+
+function LogsSettingsView() {
+    const { t } = useTranslation();
+    const [search, setSearch] = useState("");
+    const [configVersion, setConfigVersion] = useState(0);
+
+    const guilds = useMemo(() => {
+        try {
+            const raw = GuildStore.getGuilds() || {};
+            const list = Object.values(raw) as any[];
+            return list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        } catch {
+            return [];
+        }
+    }, [configVersion]);
+
+    const filteredGuilds = useMemo(() => {
+        if (!search.trim()) return guilds;
+        const q = search.toLowerCase();
+        return guilds.filter(g => (g.name || "").toLowerCase().includes(q));
+    }, [guilds, search]);
+
+    const stats = useMemo(() => {
+        let enabled = 0;
+        for (const g of guilds) {
+            if (getGuildConfig(g.id).enabled) enabled++;
+        }
+        return { total: guilds.length, enabled };
+    }, [guilds, configVersion]);
+
+    const updateGuild = (id: string, partial: Partial<GuildLogConfig>) => {
+        const current = getGuildConfig(id);
+        guildConfigs[id] = { ...current, ...partial };
+        saveGuildConfigs();
+        setConfigVersion(v => v + 1);
+    };
+
+    const handleEnableAll = () => {
+        for (const g of guilds) {
+            guildConfigs[g.id] = { enabled: true, messages: true, voice: true };
+        }
+        saveGuildConfigs();
+        setConfigVersion(v => v + 1);
+    };
+
+    const handleDisableAll = () => {
+        for (const g of guilds) {
+            guildConfigs[g.id] = { enabled: false, messages: false, voice: false };
+        }
+        saveGuildConfigs();
+        setConfigVersion(v => v + 1);
+    };
+
+    const handleToggleAllVoice = () => {
+        const anyDisabled = guilds.some(g => getGuildConfig(g.id).enabled && !getGuildConfig(g.id).voice);
+        const target = anyDisabled;
+        for (const g of guilds) {
+            const cur = getGuildConfig(g.id);
+            guildConfigs[g.id] = { ...cur, voice: target };
+        }
+        saveGuildConfigs();
+        setConfigVersion(v => v + 1);
+    };
+
+    const handleToggleAllMessages = () => {
+        const anyDisabled = guilds.some(g => getGuildConfig(g.id).enabled && !getGuildConfig(g.id).messages);
+        const target = anyDisabled;
+        for (const g of guilds) {
+            const cur = getGuildConfig(g.id);
+            guildConfigs[g.id] = { ...cur, messages: target };
+        }
+        saveGuildConfigs();
+        setConfigVersion(v => v + 1);
+    };
+
+    return (
+        <div className="el-settings-view">
+            <div className="el-settings-toolbar">
+                <div className="el-settings-search-wrap">
+                    <SearchIcon />
+                    <input
+                        className="el-search-input el-settings-search-input"
+                        placeholder={t("Search servers...")}
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                    />
+                    {search && (
+                        <button className="el-clear" onClick={() => setSearch("")}>✕</button>
+                    )}
+                </div>
+
+                <div className="el-settings-actions">
+                    <button
+                        type="button"
+                        className="el-bulk-btn"
+                        onClick={handleEnableAll}
+                    >
+                        {t("Enable All")}
+                    </button>
+                    <button
+                        type="button"
+                        className="el-bulk-btn"
+                        onClick={handleDisableAll}
+                    >
+                        {t("Disable All")}
+                    </button>
+                    <button
+                        type="button"
+                        className="el-bulk-btn"
+                        onClick={handleToggleAllVoice}
+                    >
+                        {t("Voice (All)")}
+                    </button>
+                    <button
+                        type="button"
+                        className="el-bulk-btn"
+                        onClick={handleToggleAllMessages}
+                    >
+                        {t("Messages (All)")}
+                    </button>
+                </div>
+            </div>
+
+            <div className="el-settings-header-info">
+                <span className="el-settings-stats">
+                    {stats.enabled} / {stats.total} {t("servers enabled")}
+                </span>
+            </div>
+
+            <div className="el-servers-list">
+                {filteredGuilds.length === 0 ? (
+                    <div className="el-empty">{t("No servers found")}</div>
+                ) : (
+                    filteredGuilds.map(guild => {
+                        const cfg = getGuildConfig(guild.id);
+                        const iconUrl = guild.icon
+                            ? IconUtils?.getGuildIconURL?.({ id: guild.id, icon: guild.icon, size: 40 })
+                            : null;
+                        const acronym = (guild.name || "?")
+                            .split(/\s+/)
+                            .map((w: string) => w[0])
+                            .join("")
+                            .slice(0, 3)
+                            .toUpperCase();
+
+                        return (
+                            <div
+                                key={guild.id}
+                                className={`el-server-card ${!cfg.enabled ? "el-server-card--disabled" : ""}`}
+                            >
+                                <div className="el-server-left">
+                                    {iconUrl ? (
+                                        <img src={iconUrl} className="el-server-icon" alt="" />
+                                    ) : (
+                                        <div className="el-server-acronym">{acronym}</div>
+                                    )}
+                                    <div className="el-server-meta">
+                                        <span className="el-server-name" title={guild.name}>
+                                            {guild.name}
+                                        </span>
+                                        <span className="el-server-status">
+                                            {cfg.enabled
+                                                ? (
+                                                    (cfg.messages && cfg.voice)
+                                                        ? `${t("Messages")} · ${t("Voice")}`
+                                                        : cfg.messages
+                                                            ? t("Messages")
+                                                            : cfg.voice
+                                                                ? t("Voice")
+                                                                : t("No actions active")
+                                                )
+                                                : t("Disabled")}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="el-server-right">
+                                    <div className="el-action-chips">
+                                        <button
+                                            type="button"
+                                            className={`el-action-chip ${cfg.voice && cfg.enabled ? "el-action-chip--active" : ""}`}
+                                            disabled={!cfg.enabled}
+                                            onClick={() => updateGuild(guild.id, { voice: !cfg.voice })}
+                                            title={t("Log voice events for this server")}
+                                        >
+                                            <MicIcon />
+                                            <span>{t("Voice")}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`el-action-chip ${cfg.messages && cfg.enabled ? "el-action-chip--active" : ""}`}
+                                            disabled={!cfg.enabled}
+                                            onClick={() => updateGuild(guild.id, { messages: !cfg.messages })}
+                                            title={t("Log message events for this server")}
+                                        >
+                                            <MsgIcon />
+                                            <span>{t("Messages")}</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="el-server-switch-wrap">
+                                        <Switch
+                                            checked={cfg.enabled}
+                                            onChange={val => updateGuild(guild.id, { enabled: val })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
 }
 
 function LogsModal({ rootProps }: { rootProps: any; }) {
@@ -658,8 +948,8 @@ function LogsModal({ rootProps }: { rootProps: any; }) {
 
     // Debounce search à 200ms
     useEffect(() => {
-        const t = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 200);
-        return () => clearTimeout(t);
+        const tm = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 200);
+        return () => clearTimeout(tm);
     }, [search]);
 
     useEffect(() => { setPage(0); }, [filter, selectedGuild]);
@@ -741,7 +1031,7 @@ function LogsModal({ rootProps }: { rootProps: any; }) {
                                     className={`el-filter-btn ${filter === f.key ? "el-filter-btn--active" : ""}`}
                                     onClick={() => setFilter(f.key)}>
                                     {t(f.label)}
-                                    {tbUnread > 0 && (
+                                    {tbUnread > 0 && f.key !== "settings" && (
                                         <div style={{
                                             position: "absolute", top: -4, right: -4, background: "#ed4245", color: "white",
                                             fontSize: "9px", fontWeight: "bold", padding: "1px 4px", borderRadius: "8px", lineHeight: 1
@@ -751,42 +1041,50 @@ function LogsModal({ rootProps }: { rootProps: any; }) {
                             );
                         })}
                     </div>
-                    <div className="el-search-row">
-                        <div className="el-guild-select-wrap">
-                            <Select
-                                options={guildOptions}
-                                isSelected={(v: string) => selectedGuild === v}
-                                select={(v: string) => setSelectedGuild(v)}
-                                serialize={(v: string) => v}
-                                placeholder={t("All Servers")}
-                            />
+                    {filter !== "settings" && (
+                        <div className="el-search-row">
+                            <div className="el-guild-select-wrap">
+                                <Select
+                                    options={guildOptions}
+                                    isSelected={(v: string) => selectedGuild === v}
+                                    select={(v: string) => setSelectedGuild(v)}
+                                    serialize={(v: string) => v}
+                                    placeholder={t("All Servers")}
+                                />
+                            </div>
+                            <input className="el-search-input"
+                                placeholder={t("Filter...")} value={search} onChange={e => setSearch(e.target.value)} />
+                            {search && <button className="el-clear" onClick={() => setSearch("")}>✕</button>}
+                            <button className="el-clear-all" style={{ marginRight: 4 }} onClick={saveAsTxt} title={t("Save as .txt")}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></svg>
+                            </button>
+                            <button className="el-clear-all" onClick={clearLogs} title={t("Clear")}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z" /></svg>
+                            </button>
                         </div>
-                        <input className="el-search-input"
-                            placeholder={t("Filter...")} value={search} onChange={e => setSearch(e.target.value)} />
-                        {search && <button className="el-clear" onClick={() => setSearch("")}>✕</button>}
-                        <button className="el-clear-all" style={{ marginRight: 4 }} onClick={saveAsTxt} title={t("Save as .txt")}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></svg>
-                        </button>
-                        <button className="el-clear-all" onClick={clearLogs} title={t("Clear")}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12ZM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4Z" /></svg>
-                        </button>
-                    </div>
+                    )}
                 </div>
 
-                <div className="el-list">
-                    {slice.length === 0
-                        ? <div className="el-empty">{t("Aucun événement")}</div>
-                        : slice.map(e => <LogRow key={e.id} e={e} onClose={rootProps?.onClose} />)}
-                </div>
+                {filter === "settings" ? (
+                    <LogsSettingsView />
+                ) : (
+                    <>
+                        <div className="el-list">
+                            {slice.length === 0
+                                ? <div className="el-empty">{t("Aucun événement")}</div>
+                                : slice.map(e => <LogRow key={e.id} e={e} onClose={rootProps?.onClose} />)}
+                        </div>
 
-                {totalPages > 1 && (
-                    <div className="el-pagination">
-                        <button disabled={page === 0} onClick={() => setPage(0)}>«</button>
-                        <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹</button>
-                        <span>{page + 1} / {totalPages}</span>
-                        <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
-                        <button disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
-                    </div>
+                        {totalPages > 1 && (
+                            <div className="el-pagination">
+                                <button disabled={page === 0} onClick={() => setPage(0)}>«</button>
+                                <button disabled={page === 0} onClick={() => setPage(p => p - 1)}>‹</button>
+                                <span>{page + 1} / {totalPages}</span>
+                                <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>›</button>
+                                <button disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>»</button>
+                            </div>
+                        )}
+                    </>
                 )}
             </ModalContent>
         </ModalRoot>
@@ -855,6 +1153,8 @@ function subscribeToEvents() {
             cacheMsg(d.message);
             const meId = UserStore?.getCurrentUser?.()?.id;
             if (meId && d.message.mentions?.some((m: any) => m.id === meId)) {
+                const ch = chInfo(d.message.channel_id);
+                if (ch.guildId && !isGuildMessagesEnabled(ch.guildId)) return;
                 const a = authorFrom(d.message);
                 pushLog({
                     type: "ping",
@@ -863,7 +1163,7 @@ function subscribeToEvents() {
                     authorName: a.authorName,
                     authorAvatar: a.authorAvatar,
                     realId: d.message.id,
-                    ...chInfo(d.message.channel_id)
+                    ...ch
                 });
             }
         }
@@ -909,6 +1209,12 @@ function subscribeToEvents() {
             return;
         }
 
+        const ch = chInfo(m.channel_id);
+        if (ch.guildId && !isGuildMessagesEnabled(ch.guildId)) {
+            if (cached) cached.content = newC;
+            return;
+        }
+
         const a = authorFrom(m);
         if (settings.store.ignoreBots && a.isBot) {
             if (cached) cached.content = newC;
@@ -923,13 +1229,15 @@ function subscribeToEvents() {
             authorId: a.authorId ?? cached?.authorId,
             authorName: a.authorName !== "?" ? a.authorName : (cached?.authorName ?? "?"),
             authorAvatar: a.authorAvatar ?? cached?.authorAvatar ?? null,
-            ...chInfo(m.channel_id)
+            ...ch
         });
         if (cached) cached.content = newC;
         else cacheMsg(m);
     });
     sub("MESSAGE_DELETE", d => {
         if (d.mlDeleted) return;
+        const ch = chInfo(d.channelId);
+        if (ch.guildId && !isGuildMessagesEnabled(ch.guildId)) return;
         const cached = msgCache.get(d.id);
         let content = "", authorId = "", authorName = "?", authorAvatar: string | null = null;
         let attachments: LogAttachment[] = [];
@@ -1042,25 +1350,28 @@ function subscribeToEvents() {
             }
 
             const u = getUser(userId); const ch = getChannel(channelId ?? oldChannelId); const g = getGuild(guildId ?? ch?.guild_id);
-            const b = {
-                authorId: userId, authorName: u?.globalName ?? u?.username ?? userId, authorAvatar: u?.avatar ?? null,
-                channelId: channelId ?? oldChannelId, channelName: ch?.name, guildId: g?.id, guildName: g?.name,
-                isMyVoice
-            };
-            if (!oldChannelId && channelId) pushLog({ type: "voice_join", content: t("Joined"), ...b });
-            else if (oldChannelId && !channelId) {
+            const voiceActive = isGuildVoiceEnabled(g?.id);
+            if (voiceActive) {
+                const b = {
+                    authorId: userId, authorName: u?.globalName ?? u?.username ?? userId, authorAvatar: u?.avatar ?? null,
+                    channelId: channelId ?? oldChannelId, channelName: ch?.name, guildId: g?.id, guildName: g?.name,
+                    isMyVoice
+                };
+                if (!oldChannelId && channelId) pushLog({ type: "voice_join", content: t("Joined"), ...b });
+                else if (oldChannelId && !channelId) {
+                    const p = prevVS.get(userId);
+                    const content = (s.selfStream === false && p?.selfStream === true) ? t("Stream stopped") : t("Left");
+                    pushLog({ type: "voice_leave", content, ...b, channelId: oldChannelId });
+                }
+                else if (oldChannelId && channelId && oldChannelId !== channelId) { const oc = getChannel(oldChannelId); pushLog({ type: "voice_move", content: `${oc?.name ?? "?"} → ${ch?.name ?? "?"}`, ...b }); }
                 const p = prevVS.get(userId);
-                const content = (s.selfStream === false && p?.selfStream === true) ? t("Stream stopped") : t("Left");
-                pushLog({ type: "voice_leave", content, ...b, channelId: oldChannelId });
-            }
-            else if (oldChannelId && channelId && oldChannelId !== channelId) { const oc = getChannel(oldChannelId); pushLog({ type: "voice_move", content: `${oc?.name ?? "?"} → ${ch?.name ?? "?"}`, ...b }); }
-            const p = prevVS.get(userId);
-            if (p) {
-                if (s.selfMute !== p.selfMute) pushLog({ type: "voice_mute", content: s.selfMute ? t("Mic muted") : t("Mic unmuted"), ...b });
-                if (s.selfDeaf !== p.selfDeaf) pushLog({ type: "voice_deaf", content: s.selfDeaf ? t("Headphones muted") : t("Headphones unmuted"), ...b });
-                if (s.mute && !p.mute) pushLog({ type: "voice_mute_mod", content: t("Muted by staff"), ...b });
-                if (!s.mute && p.mute) pushLog({ type: "voice_mute_mod", content: t("Unmuted by staff"), ...b });
-                if (s.selfStream !== p.selfStream) pushLog({ type: "voice_stream", content: s.selfStream ? t("Stream started") : t("Stream stopped"), ...b });
+                if (p) {
+                    if (s.selfMute !== p.selfMute) pushLog({ type: "voice_mute", content: s.selfMute ? t("Mic muted") : t("Mic unmuted"), ...b });
+                    if (s.selfDeaf !== p.selfDeaf) pushLog({ type: "voice_deaf", content: s.selfDeaf ? t("Headphones muted") : t("Headphones unmuted"), ...b });
+                    if (s.mute && !p.mute) pushLog({ type: "voice_mute_mod", content: t("Muted by staff"), ...b });
+                    if (!s.mute && p.mute) pushLog({ type: "voice_mute_mod", content: t("Unmuted by staff"), ...b });
+                    if (s.selfStream !== p.selfStream) pushLog({ type: "voice_stream", content: s.selfStream ? t("Stream started") : t("Stream stopped"), ...b });
+                }
             }
             if (!channelId) prevVS.delete(userId);
             else prevVS.set(userId, s);
@@ -1084,15 +1395,20 @@ function subscribeToEvents() {
         const [type, content]: [LogType, string] = (t_type === 3 || t_type === 4) ? ["friend_request_cancel", t("Request cancelled")] : t_type === 2 ? ["unblock", t("Unblocked")] : ["friend_remove", t("Friend removed")];
         pushLog({ type, content, ...b });
     });
-    sub("GUILD_MEMBER_ADD", d => { const b = uInfo(d.user?.id); const g = getGuild(d.guildId); pushLog({ type: "guild_member_add", content: t("Joined"), ...b, guildId: d.guildId, guildName: g?.name }); });
+    sub("GUILD_MEMBER_ADD", d => {
+        if (!isGuildLoggingEnabled(d.guildId)) return;
+        const b = uInfo(d.user?.id); const g = getGuild(d.guildId);
+        pushLog({ type: "guild_member_add", content: t("Joined"), ...b, guildId: d.guildId, guildName: g?.name });
+    });
     sub("GUILD_MEMBER_REMOVE", d => {
+        if (!isGuildLoggingEnabled(d.guildId)) return;
         const b = uInfo(d.user?.id); const g = getGuild(d.guildId);
         pushLog({ type: "guild_member_remove", content: t("Left/Kick"), ...b, guildId: d.guildId, guildName: g?.name });
     });
     // GUILD_MEMBER_LIST_UPDATE: dispatche a tous les membres quand la liste change
     // Les ops DELETE = quelquun a quitte le serveur (visible sans perms admin)
     sub("GUILD_MEMBER_LIST_UPDATE", d => {
-        if (!d?.ops || !d.guildId) return;
+        if (!d?.ops || !d.guildId || !isGuildLoggingEnabled(d.guildId)) return;
         const g = getGuild(d.guildId);
         const meId = UserStore?.getCurrentUser?.()?.id;
         for (const op of d.ops) {
@@ -1120,6 +1436,7 @@ function subscribeToEvents() {
         }
     });
     sub("GUILD_BAN_ADD", d => {
+        if (!isGuildLoggingEnabled(d.guildId)) return;
         const userId = d.user?.id;
         if (!userId) return;
         const recentDupe = logs.find((l: any) =>
@@ -1133,6 +1450,7 @@ function subscribeToEvents() {
         pushLog({ type: "guild_ban", content: t("Banned"), ...b, guildId: d.guildId, guildName: g?.name });
     });
     sub("GUILD_BAN_REMOVE", d => {
+        if (!isGuildLoggingEnabled(d.guildId)) return;
         const userId = d.user?.id;
         if (!userId) return;
         const recentDupe = logs.find((l: any) =>
@@ -1147,7 +1465,7 @@ function subscribeToEvents() {
     });
 
     sub("GUILD_MEMBER_UPDATE", d => {
-        if (!d.guildId || !d.user?.id) return;
+        if (!d.guildId || !d.user?.id || !isGuildLoggingEnabled(d.guildId)) return;
         const b = uInfo(d.user.id); const g = getGuild(d.guildId);
         if (d.communicationDisabledUntil) {
             pushLog({ type: "guild_timeout", content: t("Exclu temporairement (Timeout)"), ...b, guildId: d.guildId, guildName: g?.name });
@@ -1185,6 +1503,7 @@ export default definePlugin({
     },
 
     start() {
+        void loadGuildConfigs();
         // Initialize current voice channel on start
         try {
             const vcId = (SelectedChannelStore as any)?.getVoiceChannelId?.();
@@ -1202,6 +1521,7 @@ export default definePlugin({
         window.addEventListener("beforeunload", savePersistLogs);
     },
     stop() {
+        saveGuildConfigs();
         window.removeEventListener("beforeunload", savePersistLogs);
         unsubs.forEach(fn => fn()); unsubs = [];
         // Save before clearing — cancel the debounce timers then immediately persist
