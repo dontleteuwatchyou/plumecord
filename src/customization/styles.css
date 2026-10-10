@@ -1000,23 +1000,25 @@
     max-height: none !important;
     text-overflow: clip !important;
     white-space: normal !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='header__00de6'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='heading-xxl'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayName_'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='displayNameContent_'] {
-    padding-top: 3px !important;
-    padding-bottom: 6px !important;
-    line-height: 1.35 !important;
+    line-height: 1.15 !important;
 }
 
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTag_'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='userTagUsername_'],
 [data-nc-profile-font]:not([data-nc-profile-font="none"]) [class*='usernameAndPronounsRow_'] {
-    padding-top: 2px !important;
-    padding-bottom: 4px !important;
-    line-height: 1.35 !important;
+    line-height: 1.2 !important;
+    display: inline-flex !important;
+    align-items: center !important;
 }
 
 /* 1. Gothic (UnifrakturMaguntia) */
@@ -1053,21 +1055,21 @@
 [data-nc-profile-font="signature"] [class*='displayNameContent_'],
 [data-nc-profile-font="signature"] [class*='nickname_'],
 [data-nc-profile-font="signature"] [class*='globalName_'] {
-    font-size: 34px !important;
-    line-height: 1.45 !important;
+    font-size: 32px !important;
+    line-height: 1.15 !important;
     letter-spacing: 0.5px !important;
-    padding-top: 6px !important;
-    padding-bottom: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 [data-nc-profile-font="signature"] [class*='userTag_'],
 [data-nc-profile-font="signature"] [class*='userTagUsername_'],
 [data-nc-profile-font="signature"] [class*='usernameAndPronounsRow_'],
 [data-nc-profile-font="signature"] [class*='nameTag_'] {
-    font-size: 22px !important;
-    line-height: 1.4 !important;
-    padding-top: 2px !important;
-    padding-bottom: 4px !important;
+    font-size: 20px !important;
+    line-height: 1.2 !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 [data-nc-profile-font="signature"] [class*='tabBarItem_'],
@@ -1158,23 +1160,23 @@
 [data-nc-profile-font="handwritten"] [class*='displayNameContent_'],
 [data-nc-profile-font="handwritten"] [class*='nickname_'],
 [data-nc-profile-font="handwritten"] [class*='globalName_'] {
-    font-size: 30px !important;
+    font-size: 28px !important;
     font-weight: 700 !important;
-    line-height: 1.4 !important;
+    line-height: 1.15 !important;
     letter-spacing: 0.3px !important;
-    padding-top: 4px !important;
-    padding-bottom: 6px !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 [data-nc-profile-font="handwritten"] [class*='userTag_'],
 [data-nc-profile-font="handwritten"] [class*='userTagUsername_'],
 [data-nc-profile-font="handwritten"] [class*='usernameAndPronounsRow_'],
 [data-nc-profile-font="handwritten"] [class*='nameTag_'] {
-    font-size: 19px !important;
+    font-size: 18px !important;
     font-weight: 600 !important;
-    line-height: 1.35 !important;
-    padding-top: 2px !important;
-    padding-bottom: 4px !important;
+    line-height: 1.2 !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
 [data-nc-profile-font="handwritten"] [class*='tabBarItem_'],
@@ -1235,7 +1237,8 @@
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
-    line-height: 1.25 !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
     max-height: none !important;
     text-overflow: clip !important;
 }
@@ -1244,7 +1247,8 @@
 .cpe-font-gothic,
 [data-cpe-font="gothic"] {
     font-family: 'UnifrakturMaguntia', 'MedievalSharp', cursive, serif !important;
-    font-size: 1.15em !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
@@ -1255,10 +1259,10 @@
 [data-cpe-font="signature"] {
     font-family: 'Alex Brush', 'Great Vibes', cursive !important;
     font-weight: 400 !important;
-    font-size: 1.4em !important;
-    line-height: 1.25 !important;
-    padding-top: 1px !important;
-    padding-bottom: 2px !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    padding: 0 !important;
+    margin: 0 !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
@@ -1268,8 +1272,9 @@
 .cpe-font-pixel,
 [data-cpe-font="pixel"] {
     font-family: 'Press Start 2P', 'VT323', monospace !important;
-    font-size: 0.82em !important;
-    letter-spacing: -0.5px !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    letter-spacing: normal !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
@@ -1279,7 +1284,8 @@
 .cpe-font-nerd,
 [data-cpe-font="nerd"] {
     font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
-    font-size: 1.05em !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
@@ -1289,8 +1295,8 @@
 .cpe-font-cyberpunk,
 [data-cpe-font="cyberpunk"] {
     font-family: 'Orbitron', sans-serif !important;
-    font-size: 1.05em !important;
-    letter-spacing: 0.5px !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
@@ -1301,16 +1307,17 @@
 [data-cpe-font="handwritten"] {
     font-family: 'Caveat', cursive !important;
     font-weight: 600 !important;
-    font-size: 1.25em !important;
-    line-height: 1.25 !important;
-    padding-top: 1px !important;
-    padding-bottom: 2px !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    padding: 0 !important;
+    margin: 0 !important;
     display: inline-block !important;
     vertical-align: baseline !important;
     overflow: visible !important;
 }
 
-/* Chat / member-list / DM safeguards for font effects */
+/* Chat / member-list / DM / conversation header safeguards for all font effects:
+   STRICTLY inherit font-size, line-height, and eliminate margins/paddings */
 [class*='message_'] [data-cpe-font],
 [class*='contents_'] [data-cpe-font],
 [class*='header_'] [data-cpe-font],
@@ -1318,10 +1325,16 @@
 [class*='peopleListItem_'] [data-cpe-font],
 [role='listitem'] [data-cpe-font],
 [class*='privateChannels_'] [data-cpe-font],
-a[href^='/channels/@me/'] [data-cpe-font] {
+[class*='channel_'] [data-cpe-font],
+[class*='interactive_'] [data-cpe-font],
+a[href^='/channels/@me/'] [data-cpe-font],
+[class*='chat_'] [data-cpe-font],
+[class*='messagesWrapper_'] [data-cpe-font],
+[class*='container_'] [data-cpe-font] {
     display: inline-block !important;
     vertical-align: baseline !important;
-    line-height: normal !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;

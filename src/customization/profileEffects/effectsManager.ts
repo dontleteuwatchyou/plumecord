@@ -117,9 +117,15 @@ export function getElementRawText(el: HTMLElement): string {
 }
 
 function isForbiddenElement(el: HTMLElement): boolean {
+    // Ensure conversation headers (e.g. top of DM, chat headers) are NEVER treated as profile headers
+    if (el.closest("[class*='chatContent_'] [class*='container_'], [class*='title_'][class*='container_'], [class*='chat_'] [class*='subtitleContainer_'], [class*='upperContainer_'], [class*='children_'] > [class*='title_']")) {
+        return true;
+    }
+
     const isProfileNameHeader =
-        el.matches("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']") ||
-        !!el.closest("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']");
+        (el.matches("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']") ||
+        !!el.closest("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']")) &&
+        !el.closest("[class*='chat_'], [class*='chatContent_'], [class*='messagesWrapper_']");
 
     const tag = el.tagName.toLowerCase();
     if (!isProfileNameHeader && ["h1", "h2", "h3", "h4", "h5", "h6", "label", "p", "button", "input", "textarea", "svg", "path"].includes(tag)) {
@@ -630,15 +636,13 @@ export function scanAndApplyEffects() {
         }
     }
 
-    // 4. Chat Usernames & Decorators
+    // 4. Chat Usernames & Decorators (strictly inside messages!)
     const chatNames = document.querySelectorAll<HTMLElement>(
         "[class*='message_'] [class*='username_'], " +
-        "[class*='contents_'] [class*='username_'], " +
-        "[class*='header_'] [class*='username_'], " +
-        "[id^='message-username-'], " +
-        "[class*='usernameFont_'], " +
-        "[class*='innerContainer_'], " +
-        "[data-username-with-effects]"
+        "[class*='message_'] [id^='message-username-'], " +
+        "[class*='message_'] [class*='usernameFont_'], " +
+        "[class*='message_'] [class*='innerContainer_'], " +
+        "[class*='message_'] [data-username-with-effects]"
     );
     for (const el of Array.from(chatNames)) {
         if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile'], [class*='peopleListItem_'], [class*='member_'], [role='listitem']")) {
