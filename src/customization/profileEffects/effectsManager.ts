@@ -17,7 +17,7 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     if (el.dataset.userId) return el.dataset.userId;
 
     const img = el.querySelector("img[src*='/avatars/']") ||
-        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout']")?.querySelector("img[src*='/avatars/']");
+        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='peopleListItem_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
     if (img) {
         const match = img.getAttribute("src")?.match(/\/avatars\/(\d+)\//);
         if (match) return match[1];
@@ -27,32 +27,40 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
         const fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
         if (fiberKey) {
             let fiber = (el as any)[fiberKey];
-            for (let i = 0; i < 20 && fiber; i++) {
-                const props = fiber.memoizedProps;
+            for (let i = 0; i < 40 && fiber; i++) {
+                const props = fiber.memoizedProps || fiber.pendingProps;
                 if (props) {
-                    if (props.message?.author?.id) return String(props.message.author.id);
-                    if (props.author?.id) return String(props.author.id);
                     if (props.user?.id) return String(props.user.id);
                     if (props.userId) return String(props.userId);
+                    if (props.author?.id) return String(props.author.id);
+                    if (props.message?.author?.id) return String(props.message.author.id);
+                    if (props.member?.userId) return String(props.member.userId);
+                    if (props.member?.user?.id) return String(props.member.user.id);
+                    if (props.recipient?.id) return String(props.recipient.id);
                 }
                 fiber = fiber.return;
             }
         }
     } catch {}
 
-    const container = el.closest<HTMLElement>("[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile']");
+    const container = el.closest<HTMLElement>(
+        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='peopleListItem'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
+    );
     if (container && container !== el) {
         try {
             const fiberKey = Object.keys(container).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
             if (fiberKey) {
                 let fiber = (container as any)[fiberKey];
-                for (let i = 0; i < 20 && fiber; i++) {
-                    const props = fiber.memoizedProps;
+                for (let i = 0; i < 40 && fiber; i++) {
+                    const props = fiber.memoizedProps || fiber.pendingProps;
                     if (props) {
-                        if (props.message?.author?.id) return String(props.message.author.id);
-                        if (props.author?.id) return String(props.author.id);
                         if (props.user?.id) return String(props.user.id);
                         if (props.userId) return String(props.userId);
+                        if (props.author?.id) return String(props.author.id);
+                        if (props.message?.author?.id) return String(props.message.author.id);
+                        if (props.member?.userId) return String(props.member.userId);
+                        if (props.member?.user?.id) return String(props.member.user.id);
+                        if (props.recipient?.id) return String(props.recipient.id);
                     }
                     fiber = fiber.return;
                 }
@@ -63,21 +71,42 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
     return null;
 }
 
+export function getElementRawText(el: HTMLElement): string {
+    const raw =
+        el.getAttribute("data-cpe-original-text") ||
+        el.getAttribute("data-cpe-text") ||
+        el.querySelector("[data-cpe-original-text]")?.getAttribute("data-cpe-original-text") ||
+        el.getAttribute("data-username-with-effects") ||
+        el.getAttribute("data-text") ||
+        el.textContent ||
+        "";
+    return raw.trim();
+}
+
 function isForbiddenElement(el: HTMLElement): boolean {
+    const isProfileNameHeader =
+        el.matches("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']") ||
+        !!el.closest("[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']");
+
     const tag = el.tagName.toLowerCase();
-    if (["h1", "h2", "h3", "h4", "h5", "h6", "label", "p", "button", "input", "textarea", "svg", "path"].includes(tag)) {
+    if (!isProfileNameHeader && ["h1", "h2", "h3", "h4", "h5", "h6", "label", "p", "button", "input", "textarea", "svg", "path"].includes(tag)) {
         return true;
     }
 
-    // Explicitly forbid username handles/tags (e.g. eaooe) — ONLY display names and chat usernames get effects!
+    // Explicitly forbid username handles/tags (e.g. eaooe) and wrapper containers with discriminators
     if (
-        el.matches("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_'], [class*='userTagDiscriminator_']") ||
-        el.closest("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_']")
+        el.matches("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_'], [class*='userTagDiscriminator_'], [class*='subText_'], [class*='nameTag_']") ||
+        el.closest("[class*='userTag_'], [class*='userTagUsername'], [class*='userTag'], [class*='discriminator_'], [class*='userTagDiscriminator_'], [class*='subText_']")
     ) {
         return true;
     }
 
-    const text = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+    // Disallow wrapper containers holding both username and discriminator directly
+    if (el.querySelector("[class*='discriminator_'], [class*='userTagDiscriminator_']")) {
+        return true;
+    }
+
+    const text = getElementRawText(el).toLowerCase();
     if (!text) return true;
 
     // Disallow common section headers
@@ -104,6 +133,13 @@ function isForbiddenElement(el: HTMLElement): boolean {
 }
 
 export function getTargetNameElement(el: HTMLElement): HTMLElement {
+    // If this element contains both a username and a discriminator (like in Friends List peopleListItem):
+    // Target strictly the display name span!
+    const usernameSpan = el.querySelector<HTMLElement>("[class*='username_']:not([class*='discriminator_'])");
+    if (usernameSpan && el.querySelector("[class*='discriminator_'], [class*='userTagDiscriminator_']")) {
+        return usernameSpan;
+    }
+
     const decorated = el.querySelector<HTMLElement>("[data-username-with-effects], [class*='innerContainer_']");
     if (decorated) return decorated;
     let curr = el;
@@ -128,11 +164,18 @@ const activeTypewriters = new Map<HTMLElement, TypewriterState>();
 let typewriterTimer: ReturnType<typeof setInterval> | null = null;
 
 function updateElementText(el: HTMLElement, text: string) {
-    const child = el.firstChild;
-    if (child && child.nodeType === Node.TEXT_NODE) {
-        child.nodeValue = text;
+    const safeText = text || "\u200B";
+    for (let i = 0; i < el.childNodes.length; i++) {
+        const node = el.childNodes[i];
+        if (node.nodeType === Node.TEXT_NODE) {
+            node.nodeValue = safeText;
+            return;
+        }
+    }
+    if (el.children.length === 0) {
+        el.textContent = safeText;
     } else {
-        el.textContent = text;
+        el.insertBefore(document.createTextNode(safeText), el.firstChild);
     }
 }
 
@@ -216,6 +259,12 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
         if (activeTypewriters.size === 0) {
             stopTypewriterLoop();
         }
+    } else {
+        const originalText = nameEl.getAttribute("data-cpe-original-text");
+        if (originalText) {
+            updateElementText(nameEl, originalText);
+            nameEl.removeAttribute("data-cpe-original-text");
+        }
     }
 }
 
@@ -225,20 +274,34 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
         return;
     }
 
-    const currentText = nameEl.getAttribute("data-username-with-effects") ||
-                        nameEl.getAttribute("data-text") ||
-                        nameEl.textContent?.trim() || "";
+    const currentText = getElementRawText(nameEl);
     if (!currentText) {
         removeNameEffectFromElement(nameEl);
         return;
     }
 
-    if (
+    const alreadyApplied =
         nameEl.dataset.ncAppliedEffect === effectType &&
         nameEl.dataset.ncGlowColor === glowColor &&
-        nameEl.getAttribute("data-cpe-text") === currentText
-    ) {
+        (effectType === "type"
+            ? activeTypewriters.has(nameEl)
+            : effectType === "glitch"
+                ? nameEl.getAttribute("data-cpe-text") === currentText
+                : true);
+    if (alreadyApplied) {
         return;
+    }
+
+    if (effectType !== "type" && activeTypewriters.has(nameEl)) {
+        const state = activeTypewriters.get(nameEl);
+        if (state) {
+            updateElementText(nameEl, state.fullText);
+        }
+        nameEl.removeAttribute("data-cpe-original-text");
+        activeTypewriters.delete(nameEl);
+        if (activeTypewriters.size === 0) {
+            stopTypewriterLoop();
+        }
     }
 
     nameEl.dataset.ncAppliedEffect = effectType;
@@ -312,7 +375,7 @@ export function scanAndApplyEffects() {
 
     // 1. All Display Names across Discord (Settings preview sizer, Account popout menu, User popouts, Profile modals)
     const allDisplayNames = document.querySelectorAll<HTMLElement>(
-        "[class*='displayNameContent_'], [class*='displayName_']"
+        "[class*='displayNameContent_'], [class*='displayName_'], [class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl']"
     );
     for (const el of Array.from(allDisplayNames)) {
         if (isForbiddenElement(el)) {
@@ -321,7 +384,7 @@ export function scanAndApplyEffects() {
         }
 
         const authorId = getAuthorIdFromElement(el);
-        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const txt = getElementRawText(el).toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) ||
                        (txt && userNames.has(txt)) ||
                        !!el.closest("[id='account'], [class*='accountProfile'], [class*='sizer_']");
@@ -356,12 +419,12 @@ export function scanAndApplyEffects() {
     for (const el of Array.from(profileElements)) {
         const authorId = getAuthorIdFromElement(el);
         const nameEls = el.querySelectorAll<HTMLElement>(
-            "[class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
+            "[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
         );
 
         let hasOwnName = false;
         for (const n of Array.from(nameEls)) {
-            const txt = (n.getAttribute("data-username-with-effects") || n.getAttribute("data-text") || n.textContent || "").trim().toLowerCase();
+            const txt = getElementRawText(n).toLowerCase();
             if (txt && userNames.has(txt)) {
                 hasOwnName = true;
                 break;
@@ -446,7 +509,7 @@ export function scanAndApplyEffects() {
         "[data-username-with-effects]"
     );
     for (const el of Array.from(chatNames)) {
-        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile']")) {
+        if (el.closest("[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='biteSize_'], [class*='panels_'], [id='account'], [class*='accountProfile'], [class*='peopleListItem_'], [class*='member_'], [role='listitem']")) {
             continue;
         }
         if (isForbiddenElement(el)) {
@@ -466,7 +529,7 @@ export function scanAndApplyEffects() {
 
         const targetEl = getTargetNameElement(el);
         const authorId = getAuthorIdFromElement(el);
-        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const txt = getElementRawText(el).toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
 
         if (isSelf) {
@@ -500,12 +563,12 @@ export function scanAndApplyEffects() {
         }
     }
 
-    // 5. Member List
+    // 5. Member List & Friends List
     const memberNames = document.querySelectorAll<HTMLElement>(
-        "[class*='member_'] [class*='name_'], " +
-        "[class*='member_'] [class*='username_'], " +
-        "[role='listitem'] [class*='name_'], " +
-        "[role='listitem'] [class*='username_']"
+        "[class*='member_'] [class*='name_']:not([class*='nameTag_']), " +
+        "[class*='member_'] [class*='username_']:not([class*='discriminator_']), " +
+        "[class*='peopleListItem_'] [class*='username_']:not([class*='discriminator_']), " +
+        "[role='listitem'] [class*='username_']:not([class*='discriminator_'])"
     );
     for (const el of Array.from(memberNames)) {
         if (isForbiddenElement(el)) {
@@ -513,9 +576,9 @@ export function scanAndApplyEffects() {
             continue;
         }
 
-        const memberItem = el.closest<HTMLElement>("[class*='member_'], [role='listitem']") || el;
-        const authorId = getAuthorIdFromElement(memberItem);
-        const txt = (el.getAttribute("data-username-with-effects") || el.getAttribute("data-text") || el.textContent || "").trim().toLowerCase();
+        const memberItem = el.closest<HTMLElement>("[class*='member_'], [class*='peopleListItem_'], [role='listitem']") || el;
+        const authorId = getAuthorIdFromElement(memberItem) || getAuthorIdFromElement(el);
+        const txt = getElementRawText(el).toLowerCase();
         const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
         const targetEl = getTargetNameElement(el);
 
