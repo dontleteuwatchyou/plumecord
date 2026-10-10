@@ -10,6 +10,7 @@ import { LangIcon } from "@components/LangIcon";
 import {
     BackupAndRestoreTab,
     ChangelogTab,
+    FontsTab,
     LanguageTab,
     PatchHelperTab,
     PluginsTab,
@@ -22,6 +23,16 @@ import {
 import { CreateThemeTab } from "@components/settings/tabs/createTheme/CreateThemeTab";
 import { PencilSparkleIcon } from "@components/settings/tabs/createTheme/PencilSparkleIcon";
 import { CustomizationIcon, CustomizationTab } from "customization";
+
+function FontIcon(props: IconProps) {
+    return (
+        <svg {...props} width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="4 7 4 4 20 4 20 7" />
+            <line x1="9" y1="20" x2="15" y2="20" />
+            <line x1="12" y1="4" x2="12" y2="20" />
+        </svg>
+    );
+}
 
 function StatusPulseIcon(props: IconProps) {
     return (
@@ -156,6 +167,7 @@ const settingsSectionMap: [string, string][] = [
     ["EquicordCloud", "equicord_cloud_panel"],
     ["EquicordBackupAndRestore", "equicord_backup_restore_panel"],
     ["EquicordPatchHelper", "equicord_patch_helper_panel"],
+    ["NightcordFonts", "nightcord_fonts_panel"],
     ["EquibopSettings", "equicord_equibop_settings_panel"],
 ];
 
@@ -280,6 +292,13 @@ export default definePlugin({
                 title: "Customization",
                 Component: CustomizationTab,
                 Icon: CustomizationIcon
+            }),
+            buildEntry({
+                key: "nightcord_fonts",
+                title: "Fonts",
+                panelTitle: "Nightcord Fonts",
+                Component: FontsTab,
+                Icon: FontIcon
             }),
             settings.store.showStatus && buildEntry({
                 key: "nightcord_status",

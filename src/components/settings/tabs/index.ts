@@ -20,4 +20,5 @@ export { default as CloudTab } from "./sync/CloudTab";
 export { default as UpdaterTab } from "./updater";
 export { default as VencordTab } from "./vencord";
 export { default as StatusTab } from "./StatusTab";
+export { default as FontsTab } from "./FontsTab";
 

@@ -216,11 +216,13 @@ function initTrayIpc() {
 
 import { ReactDOM } from "@webpack/common";
 import { initCustomization, registerCustomizationPatches } from "customization";
+import { initGlobalFont } from "customization/globalFonts/globalFontManager";
 
 async function init() {
     await onceReady;
 
     void initCustomization();
+    initGlobalFont();
 
     startAllPlugins(StartAt.WebpackReady);
     initUserPluginsEngine();
@@ -293,6 +295,7 @@ if ((window as any).__NIGHTCORD_INITIALIZED__) {
     registerCustomizationPatches();
     initPluginManager();
     initStyles();
+    initGlobalFont();
     startAllPlugins(StartAt.Init);
     init();
 
