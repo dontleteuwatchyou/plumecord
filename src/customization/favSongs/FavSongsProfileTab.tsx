@@ -5,8 +5,9 @@
  */
 
 import { t } from "@api/i18n";
-import { Button, React, useEffect, useRef, useState, UserStore } from "@webpack/common";
-import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
+import { classes } from "@utils/misc";
+import { Button, React, scrollerClasses, useEffect, useRef, useState, UserStore } from "@webpack/common";
+import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData, saveLocalFavSongs, syncOwnDataToCloud } from "../sync";
 import type { PremiumFavSong } from "../types";
 
 const MusicIcon = ({ size = 20 }: { size?: number; }) => (
@@ -93,13 +94,33 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
     const [isAuthenticated, setIsAuthenticated] = useState(true);
     const [isDraggingVolume, setIsDraggingVolume] = useState(false);
     const [isDraggingScrub, setIsDraggingScrub] = useState(false);
+    const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const volumeTrackRef = useRef<HTMLDivElement | null>(null);
     const scrubberTrackRef = useRef<HTMLDivElement | null>(null);
 
+    const songListRef = useRef<HTMLDivElement | null>(null);
+    const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const songsRef = useRef<PremiumFavSong[]>([]);
+    songsRef.current = songs;
+
+    const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+    const isDraggingRef = useRef(false);
+    const dragIndexRef = useRef<number | null>(null);
+    const didDragOccurRef = useRef(false);
+
     const currentUserId = UserStore.getCurrentUser()?.id;
     const isSelf = user?.id && String(user.id) === String(currentUserId);
+
+    useEffect(() => {
+        return () => {
+            if (longPressTimerRef.current) {
+                clearTimeout(longPressTimerRef.current);
+            }
+        };
+    }, []);
 
     const loadData = async () => {
         setLoading(true);
@@ -258,12 +279,121 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
         window.addEventListener("mouseup", onMouseUp);
     };
 
+    const handleItemMouseDown = (e: React.MouseEvent<HTMLDivElement>, index: number) => {
+        if (e.button !== 0) return;
+        const target = e.target as HTMLElement;
+        if (target.closest("button") || target.closest(".ncp-song-item-btn")) {
+            return;
+        }
+
+        dragStartPosRef.current = { x: e.clientX, y: e.clientY };
+        didDragOccurRef.current = false;
+
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+        }
+
+        longPressTimerRef.current = setTimeout(() => {
+            isDraggingRef.current = true;
+            dragIndexRef.current = index;
+            setDraggingIndex(index);
+
+            const handleWindowMouseMove = (moveEvt: MouseEvent) => {
+                if (!isDraggingRef.current || dragIndexRef.current === null) return;
+                moveEvt.preventDefault();
+                didDragOccurRef.current = true;
+
+                if (songListRef.current) {
+                    const listRect = songListRef.current.getBoundingClientRect();
+                    if (moveEvt.clientY < listRect.top + 45) {
+                        songListRef.current.scrollTop -= 10;
+                    } else if (moveEvt.clientY > listRect.bottom - 45) {
+                        songListRef.current.scrollTop += 10;
+                    }
+                }
+
+                const curY = moveEvt.clientY;
+                let targetIndex = dragIndexRef.current;
+                for (let idx = 0; idx < itemRefs.current.length; idx++) {
+                    const el = itemRefs.current[idx];
+                    if (!el) continue;
+                    const rect = el.getBoundingClientRect();
+                    if (curY >= rect.top && curY <= rect.bottom) {
+                        targetIndex = idx;
+                        break;
+                    } else if (idx === 0 && curY < rect.top) {
+                        targetIndex = 0;
+                        break;
+                    } else if (idx === itemRefs.current.length - 1 && curY > rect.bottom) {
+                        targetIndex = itemRefs.current.length - 1;
+                        break;
+                    }
+                }
+
+                if (targetIndex !== dragIndexRef.current && targetIndex >= 0 && targetIndex < songsRef.current.length) {
+                    const fromIdx = dragIndexRef.current;
+                    const nextSongs = [...songsRef.current];
+                    const [moved] = nextSongs.splice(fromIdx, 1);
+                    nextSongs.splice(targetIndex, 0, moved);
+
+                    dragIndexRef.current = targetIndex;
+                    setDraggingIndex(targetIndex);
+                    setSongs(nextSongs);
+                    songsRef.current = nextSongs;
+                }
+            };
+
+            const handleWindowMouseUp = async () => {
+                window.removeEventListener("mousemove", handleWindowMouseMove);
+                window.removeEventListener("mouseup", handleWindowMouseUp);
+
+                const wasDragging = isDraggingRef.current;
+                isDraggingRef.current = false;
+                setDraggingIndex(null);
+                dragIndexRef.current = null;
+
+                if (wasDragging) {
+                    didDragOccurRef.current = true;
+                    setTimeout(() => {
+                        didDragOccurRef.current = false;
+                    }, 120);
+
+                    if (isSelf) {
+                        await saveLocalFavSongs(songsRef.current);
+                        void syncOwnDataToCloud();
+                    }
+                }
+            };
+
+            window.addEventListener("mousemove", handleWindowMouseMove);
+            window.addEventListener("mouseup", handleWindowMouseUp, { once: true });
+        }, 280);
+    };
+
+    const handleItemMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (longPressTimerRef.current && !isDraggingRef.current && dragStartPosRef.current) {
+            const dx = Math.abs(e.clientX - dragStartPosRef.current.x);
+            const dy = Math.abs(e.clientY - dragStartPosRef.current.y);
+            if (dx > 8 || dy > 8) {
+                clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+            }
+        }
+    };
+
+    const handleItemMouseUp = () => {
+        if (longPressTimerRef.current && !isDraggingRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    };
+
     const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
     const volumePercent = Math.round((isMuted ? 0 : volume) * 100);
 
     if (isSelf && !isAuthenticated && songs.length === 0) {
         return (
-            <div className="ncp-profile-empty-state">
+            <div className="ncp-fav-songs-container ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner" style={{ gap: 16 }}>
                     <div className="ncp-profile-empty-icon" style={{ color: "#ffffff", opacity: 0.9 }}>
                         <MusicIcon size={36} />
@@ -293,7 +423,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
 
     if (loading) {
         return (
-            <div className="ncp-profile-empty-state">
+            <div className="ncp-fav-songs-container ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner">
                     <div className="ncp-profile-empty-title" style={{ fontSize: 14, fontWeight: 500, color: "var(--text-muted, #949ba4)" }}>
                         {t("Loading songs...")}
@@ -305,7 +435,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
 
     if (songs.length === 0) {
         return (
-            <div className="ncp-profile-empty-state">
+            <div className="ncp-fav-songs-container ncp-profile-empty-state">
                 <div className="ncp-profile-empty-inner">
                     <div className="ncp-profile-empty-icon" style={{ color: "#ffffff", opacity: 0.8 }}>
                         <MusicIcon size={36} />
@@ -345,14 +475,25 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
             />
 
             {/* Song List */}
-            <div className="ncp-song-list ncp-no-scrollbar">
-                {songs.map(song => {
+            <div
+                ref={songListRef}
+                className={classes("ncp-song-list", scrollerClasses?.thin, scrollerClasses?.fade)}
+            >
+                {songs.map((song, i) => {
                     const active = currentSong?.id === song.id;
+                    const isDraggingThis = draggingIndex === i;
                     return (
                         <div
                             key={song.id}
-                            className={`ncp-song-item${active ? " active" : ""}`}
-                            onClick={() => handlePlaySong(song)}
+                            ref={el => { itemRefs.current[i] = el; }}
+                            className={classes("ncp-song-item", active && "active", isDraggingThis && "dragging")}
+                            onMouseDown={e => handleItemMouseDown(e, i)}
+                            onMouseMove={handleItemMouseMove}
+                            onMouseUp={handleItemMouseUp}
+                            onClick={() => {
+                                if (didDragOccurRef.current) return;
+                                void handlePlaySong(song);
+                            }}
                         >
                             <div className="ncp-song-artwork-container">
                                 {song.artworkUrl ? (

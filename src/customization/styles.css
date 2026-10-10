@@ -293,30 +293,71 @@
 
 /* ── Favorite Songs Profile Tab & Player ───────────────────────────────────── */
 
+[role="tabpanel"]:has(.ncp-fav-songs-container),
+[class*="tabBarPanel_"]:has(.ncp-fav-songs-container),
+[class*="tabPanel_"]:has(.ncp-fav-songs-container) {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+}
+
 .ncp-fav-songs-container {
-    padding: 12px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    height: 100%;
-    width: 100%;
-    min-height: 0;
+    width: 100% !important;
+    min-height: 520px !important;
+    height: 100% !important;
+    max-height: calc(100vh - 220px) !important;
+    box-sizing: border-box !important;
+    padding: 8px 4px 16px 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    gap: 10px;
+    position: relative !important;
 }
 
 .ncp-song-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    overflow-y: auto;
-    max-height: 400px;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    padding-right: 2px;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+    padding-right: 4px !important;
+    padding-bottom: 24px !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent !important;
 }
 
 .ncp-song-list::-webkit-scrollbar {
-    display: none;
-    width: 0;
+    width: 8px !important;
+}
+
+.ncp-song-list::-webkit-scrollbar-track {
+    background: transparent !important;
+    border: none !important;
+}
+
+.ncp-song-list::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) !important;
+    border-radius: 4px !important;
+    border: 2px solid transparent !important;
+    background-clip: padding-box !important;
+    min-height: 40px !important;
+}
+
+.ncp-song-list::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thin-thumb-hover, rgba(255, 255, 255, 0.35)) !important;
+    border: 2px solid transparent !important;
+    background-clip: padding-box !important;
+}
+
+.ncp-song-list::-webkit-scrollbar-corner {
+    background: transparent !important;
 }
 
 .ncp-song-item {
@@ -326,12 +367,13 @@
     padding: 10px 14px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
-    transition: all 0.18s ease;
-    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: grab;
     border: 1px solid rgba(255, 255, 255, 0.07);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     user-select: none;
+    position: relative;
 }
 
 .ncp-song-item:hover {
@@ -343,6 +385,17 @@
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.25);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.ncp-song-item.dragging {
+    background: #36373d !important;
+    border: 1px solid #585962 !important;
+    opacity: 0.9 !important;
+    transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+    cursor: grabbing !important;
+    z-index: 100 !important;
+    user-select: none !important;
 }
 
 .ncp-song-artwork-container {
