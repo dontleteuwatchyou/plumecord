@@ -6,13 +6,10 @@
 
 import { t } from "@api/i18n";
 import { classes } from "@utils/misc";
-import { findCssClassesLazy } from "@webpack";
-import { Button, React, ScrollerThin, useEffect, useState, UserStore } from "@webpack/common";
+import { Button, React, scrollerClasses, useEffect, useState, UserStore } from "@webpack/common";
 import { isOAuthAuthenticated, promptDiscordOAuth, readUserPremiumData } from "../sync";
 import type { PremiumStory } from "../types";
 import { StoryViewer } from "./StoryViewer";
-
-const TabBarClasses = findCssClassesLazy("tabPanelScroller", "tabBarPanel");
 
 const CameraIcon = () => (
     <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
@@ -136,28 +133,24 @@ export function StoryGallery({ user }: { user: any }) {
     }
 
     return (
-        <>
-            <ScrollerThin
-                fade
-                className={classes("ncp-story-gallery-container", TabBarClasses.tabPanelScroller)}
-                style={{ height: "100%", width: "100%", flex: "1 1 auto", minHeight: 0 }}
-            >
-                <div className="ncp-story-gallery">
-                    {stories.map((story, i) => (
-                        <div
-                            key={story.id}
-                            className="ncp-story-gallery-item"
-                            onClick={() => setSelectedStoryIndex(i)}
-                        >
-                            {story.type === "video" ? (
-                                <video src={story.url} muted />
-                            ) : (
-                                <img src={story.url} alt="" />
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </ScrollerThin>
+        <div
+            className={classes("ncp-story-gallery-container", scrollerClasses?.thin, scrollerClasses?.fade)}
+        >
+            <div className="ncp-story-gallery">
+                {stories.map((story, i) => (
+                    <div
+                        key={story.id}
+                        className="ncp-story-gallery-item"
+                        onClick={() => setSelectedStoryIndex(i)}
+                    >
+                        {story.type === "video" ? (
+                            <video src={story.url} muted />
+                        ) : (
+                            <img src={story.url} alt="" />
+                        )}
+                    </div>
+                ))}
+            </div>
 
             {selectedStoryIndex !== null && (
                 <StoryViewer
@@ -166,6 +159,6 @@ export function StoryGallery({ user }: { user: any }) {
                     onClose={() => setSelectedStoryIndex(null)}
                 />
             )}
-        </>
+        </div>
     );
 }
