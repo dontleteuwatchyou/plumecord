@@ -18,14 +18,15 @@ import type { ProfileDrawingAvatarAnchor, ProfileDrawingData, ProfileDrawingStro
 export const PRESET_COLORS = [
     "#FFFFFF",
     "#5865F2",
+    "#38BDF8",
     "#57F287",
     "#FEE75C",
+    "#F97316",
     "#EB459E",
     "#ED4245",
     "#9B59B6",
-    "#1ABC9C",
-    "#34495E",
-    "#000000",
+    "#2DD4BF",
+    "#111214",
 ];
 
 export function getBrushCursor(color: string): string {
@@ -439,34 +440,13 @@ function updateInteractiveCanvasCursor() {
 
 // ─── Interactive Drawing Mode Engine ─────────────────────────────────────────
 
-let badgeElement: HTMLElement | null = null;
-
-function removeActiveBadge() {
-    if (badgeElement) {
-        badgeElement.remove();
-        badgeElement = null;
-    }
-}
-
-function createActiveBadge(container: HTMLElement) {
-    removeActiveBadge();
-    const badge = document.createElement("div");
-    badge.className = "nc-drawing-mode-badge";
-    badge.innerHTML = `
-        <span class="nc-drawing-badge-dot"></span>
-        <span class="nc-drawing-badge-text">${t("Drawing Mode Active")}</span>
-        <button type="button" class="nc-drawing-badge-done-btn">${t("Done Drawing")}</button>
-    `;
-
-    const doneBtn = badge.querySelector<HTMLButtonElement>(".nc-drawing-badge-done-btn");
-    doneBtn?.addEventListener("click", e => {
-        e.stopPropagation();
+function handleWindowKeyDown(e: KeyboardEvent) {
+    if (!isDrawingActive) return;
+    if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey) {
         e.preventDefault();
-        setDrawingMode(false);
-    });
-
-    container.appendChild(badge);
-    badgeElement = badge;
+        e.stopPropagation();
+        undoLastStroke();
+    }
 }
 
 export function setDrawingMode(active: boolean) {
@@ -475,8 +455,11 @@ export function setDrawingMode(active: boolean) {
     notifyListeners();
 
     if (active) {
+        window.removeEventListener("keydown", handleWindowKeyDown, true);
+        window.addEventListener("keydown", handleWindowKeyDown, true);
         attachInteractiveCanvas();
     } else {
+        window.removeEventListener("keydown", handleWindowKeyDown, true);
         detachInteractiveCanvas();
     }
 }
@@ -760,9 +743,6 @@ export function attachInteractiveCanvas(retries = 5) {
     canvas.addEventListener("contextmenu", handleBlockEvent, { capture: true, passive: false });
     canvas.addEventListener("dragstart", handleBlockEvent, { capture: true, passive: false });
 
-    createActiveBadge(previewEl);
-    showToast(t("Drawing mode active: draw on your profile preview!"), Toasts.Type.MESSAGE);
-
     // Setup ResizeObserver to keep canvas buffer sized accurately
     if (activeResizeObserver) {
         activeResizeObserver.disconnect();
@@ -777,11 +757,11 @@ export function attachInteractiveCanvas(retries = 5) {
 }
 
 export function detachInteractiveCanvas() {
+    window.removeEventListener("keydown", handleWindowKeyDown, true);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerCancel);
 
-    removeActiveBadge();
     if (activeResizeObserver) {
         activeResizeObserver.disconnect();
         activeResizeObserver = null;
