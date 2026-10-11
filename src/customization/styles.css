@@ -834,15 +834,20 @@
 
 /* ── Name & Profile Effects ────────────────────────────────────────────────── */
 
-.cpe-glow,
-.cpe-glow * {
+.cpe-glow {
     display: inline-block !important;
     vertical-align: baseline !important;
     color: var(--cpe-glow-color, #a78bfa) !important;
     -webkit-text-fill-color: var(--cpe-glow-color, #a78bfa) !important;
-    text-shadow: 0 0 1px rgba(0,0,0,0.8), 0 0 8px var(--cpe-glow-color, #a78bfa), 0 0 14px var(--cpe-glow-color, #a78bfa) !important;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7), 0 0 5px var(--cpe-glow-color, #a78bfa) !important;
     filter: none !important;
     transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.cpe-glow * {
+    color: inherit !important;
+    -webkit-text-fill-color: inherit !important;
+    text-shadow: none !important;
 }
 
 .cpe-glitch {

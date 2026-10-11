@@ -17,31 +17,11 @@
 }
 
 .smyn-gradient::after {
-    background-clip: text;
-    content: attr(data-text) / "";
-    inset: 0;
-    position: absolute;
-    filter: blur(4px);
-    opacity: 0;
-    text-indent: 0;
-    transition: opacity .1s ease-in-out;
-    text-wrap-style: balance;
-    z-index: -1;
+    display: none !important;
 }
 
-.smyn-gradient-unset-bg::after {
-    background: unset;
-    -webkit-text-fill-color: currentcolor;
-}
-
-.smyn-gradient-inherit-bg::after {
-    background: inherit;
-    -webkit-text-fill-color: transparent;
-}
-
-.smyn-gradient-hovered::after {
-    opacity: .7;
-    transition: opacity .1s ease-in-out;
+.smyn-gradient.smyn-gradient-hovered {
+    filter: drop-shadow(0 0 2px currentColor);
 }
 
 .smyn-modal-footer-container button {
@@ -61,17 +41,7 @@
 }
 
 .smyn-native-gradient-glow > [data-username-with-effects]::after {
-    background: inherit;
-    background-clip: text;
-    content: attr(data-username-with-effects) / "";
-    filter: blur(4px);
-    inset: 0;
-    opacity: 0;
-    position: absolute;
-    text-indent: 0;
-    transition: opacity .1s ease-in-out;
-    -webkit-text-fill-color: transparent;
-    z-index: -1;
+    display: none !important;
 }
 
 .smyn-native-gradient-glow-active > [data-username-with-effects],
@@ -81,9 +51,8 @@
     overflow: visible;
 }
 
-.smyn-native-gradient-glow-active > [data-username-with-effects]::after {
-    opacity: .7;
-    transition: opacity .1s ease-in-out;
+.smyn-native-gradient-glow-active > [data-username-with-effects] {
+    filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.35));
 }
 
 .smyn-native-effect.smyn-native-message-effect {
