@@ -13,7 +13,7 @@ import {
     saveLocalEffectsConfig,
     syncOwnDataToCloud
 } from "../sync";
-import type { ProfileDrawingData, ProfileDrawingStroke } from "../types";
+import type { ProfileDrawingAvatarAnchor, ProfileDrawingData, ProfileDrawingStroke } from "../types";
 
 export const PRESET_COLORS = [
     "#FFFFFF",
@@ -53,6 +53,7 @@ let isDrawingActive = false;
 let activeCanvas: HTMLCanvasElement | null = null;
 let currentActiveStroke: ProfileDrawingStroke | null = null;
 let activeResizeObserver: ResizeObserver | null = null;
+let currentAvatarAnchor: ProfileDrawingAvatarAnchor | null = null;
 
 const stateListeners = new Set<() => void>();
 
@@ -121,6 +122,17 @@ export async function initOwnDrawingStrokes() {
     const config = await getLocalEffectsConfig();
     if (config.profileDrawing && Array.isArray(config.profileDrawing.strokes)) {
         currentStrokes = [...config.profileDrawing.strokes];
+        if (config.profileDrawing.avatarAnchor) {
+            currentAvatarAnchor = { ...config.profileDrawing.avatarAnchor };
+        } else {
+            currentAvatarAnchor = {
+                cx: 66,
+                cy: 95,
+                size: 80,
+                cardWidth: 340,
+                cardHeight: 480,
+            };
+        }
         notifyListeners();
     }
 }
@@ -128,10 +140,34 @@ export async function initOwnDrawingStrokes() {
 export async function saveDrawing(): Promise<boolean> {
     try {
         const effects = await getLocalEffectsConfig();
+
+        // Refresh avatar anchor from active preview if available
+        const previewEl = findProfilePreviewElement();
+        if (previewEl) {
+            const av = getAvatarMetrics(previewEl);
+            const rect = previewEl.getBoundingClientRect();
+            if (av && rect.width > 0 && rect.height > 0) {
+                currentAvatarAnchor = {
+                    cx: av.cx,
+                    cy: av.cy,
+                    size: av.size,
+                    cardWidth: rect.width,
+                    cardHeight: rect.height,
+                };
+            }
+        }
+
         const drawingData: ProfileDrawingData = {
             enabled: true,
             strokes: [...currentStrokes],
             updatedAt: Date.now(),
+            avatarAnchor: currentAvatarAnchor || {
+                cx: 66,
+                cy: 95,
+                size: 80,
+                cardWidth: 340,
+                cardHeight: 480,
+            },
         };
 
         const updatedEffects = {
@@ -159,18 +195,108 @@ export async function saveDrawing(): Promise<boolean> {
     }
 }
 
+// ─── Avatar Metrics Detection ────────────────────────────────────────────────
+
+export function getAvatarMetrics(container: HTMLElement): { cx: number; cy: number; size: number } | null {
+    if (!container) return null;
+
+    const selectors = [
+        "[class*='avatar__']",
+        "[class*='avatarWrapper_']",
+        "[class*='avatar_'] [class*='wrapper_']",
+        "[class*='avatar_']",
+        "img[src*='/avatars/']",
+        "[class*='avatarStack_']",
+    ];
+
+    const containerRect = container.getBoundingClientRect();
+    if (containerRect.width <= 0 || containerRect.height <= 0) return null;
+
+    let bestAvatar: HTMLElement | null = null;
+    let maxScore = -1;
+
+    for (const sel of selectors) {
+        const matches = container.querySelectorAll<HTMLElement>(sel);
+        for (const el of Array.from(matches)) {
+            const r = el.getBoundingClientRect();
+            // Filter: must be reasonably sized (>= 48px) and in upper portion of card
+            const topOffset = r.top - containerRect.top;
+            if (r.width >= 48 && r.height >= 48 && topOffset >= 0 && topOffset < containerRect.height * 0.6) {
+                // Higher score for larger avatars near the top
+                const score = r.width * 10 - topOffset;
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestAvatar = el;
+                }
+            }
+        }
+        if (bestAvatar && maxScore > 600) break;
+    }
+
+    if (!bestAvatar) {
+        // Fallback for smaller preview avatar if >= 32px
+        const fallbacks = container.querySelectorAll<HTMLElement>("[class*='avatar_'], img[src*='/avatars/'], [class*='avatarStack_']");
+        for (const el of Array.from(fallbacks)) {
+            const r = el.getBoundingClientRect();
+            if (r.width >= 32 && r.height >= 32) {
+                bestAvatar = el;
+                break;
+            }
+        }
+    }
+
+    if (!bestAvatar) return null;
+
+    const avRect = bestAvatar.getBoundingClientRect();
+    const cx = (avRect.left + avRect.width / 2) - containerRect.left;
+    const cy = (avRect.top + avRect.height / 2) - containerRect.top;
+    const size = Math.max(avRect.width, avRect.height);
+
+    return { cx, cy, size };
+}
+
 // ─── Canvas Stroke Rendering ─────────────────────────────────────────────────
 
 export function drawStrokes(
     ctx: CanvasRenderingContext2D,
     strokes: ProfileDrawingStroke[],
     width: number,
-    height: number
+    height: number,
+    anchor?: ProfileDrawingAvatarAnchor | null,
+    targetAvatar?: { cx: number; cy: number; size: number } | null
 ) {
     if (!strokes || strokes.length === 0 || width <= 0 || height <= 0) return;
 
-    // Base coordinate reference width (340px standard card width)
-    const scaleFactor = Math.max(0.6, width / 340);
+    // Base reference anchor
+    const refAnchor = anchor || {
+        cx: 66,
+        cy: 95,
+        size: 80,
+        cardWidth: 340,
+        cardHeight: 480,
+    };
+
+    const hasAvatar = !!targetAvatar && targetAvatar.size > 0 && refAnchor.size > 0;
+    const scaleFactor = hasAvatar
+        ? (targetAvatar.size / refAnchor.size)
+        : Math.max(0.6, width / (refAnchor.cardWidth || 340));
+
+    const mapPoint = (nx: number, ny: number): [number, number] => {
+        const origX = nx * (refAnchor.cardWidth || 340);
+        const origY = ny * (refAnchor.cardHeight || 480);
+
+        if (hasAvatar && targetAvatar) {
+            const dx = origX - refAnchor.cx;
+            const dy = origY - refAnchor.cy;
+            const px = targetAvatar.cx + dx * scaleFactor;
+            const py = targetAvatar.cy + dy * scaleFactor;
+            return [px, py];
+        }
+
+        const px = origX * scaleFactor;
+        const py = origY * scaleFactor;
+        return [px, py];
+    };
 
     for (const stroke of strokes) {
         if (!stroke.points || stroke.points.length === 0) continue;
@@ -184,8 +310,7 @@ export function drawStrokes(
 
         if (stroke.points.length === 1) {
             const [nx, ny] = stroke.points[0];
-            const px = nx * width;
-            const py = ny * height;
+            const [px, py] = mapPoint(nx, ny);
             ctx.beginPath();
             ctx.arc(px, py, strokeWidth / 2, 0, Math.PI * 2);
             ctx.fill();
@@ -194,11 +319,13 @@ export function drawStrokes(
 
         ctx.beginPath();
         const [firstNx, firstNy] = stroke.points[0];
-        ctx.moveTo(firstNx * width, firstNy * height);
+        const [firstPx, firstPy] = mapPoint(firstNx, firstNy);
+        ctx.moveTo(firstPx, firstPy);
 
         for (let i = 1; i < stroke.points.length; i++) {
             const [nx, ny] = stroke.points[i];
-            ctx.lineTo(nx * width, ny * height);
+            const [px, py] = mapPoint(nx, ny);
+            ctx.lineTo(px, py);
         }
         ctx.stroke();
     }
@@ -258,11 +385,14 @@ export function renderDrawingOverlay(
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, width, height);
 
-    const strokesToDraw = interactive ? currentStrokes : (data.strokes || []);
-    drawStrokes(ctx, strokesToDraw, width, height);
+    const targetAvatar = getAvatarMetrics(container);
+    const anchor = interactive ? currentAvatarAnchor : (data?.avatarAnchor || currentAvatarAnchor);
+
+    const strokesToDraw = interactive ? currentStrokes : (data?.strokes || []);
+    drawStrokes(ctx, strokesToDraw, width, height, anchor, targetAvatar);
 
     if (interactive && currentActiveStroke) {
-        drawStrokes(ctx, [currentActiveStroke], width, height);
+        drawStrokes(ctx, [currentActiveStroke], width, height, anchor, targetAvatar);
     }
     ctx.restore();
 
@@ -578,6 +708,19 @@ export function attachInteractiveCanvas(retries = 5) {
         previewEl.style.position = "relative";
     }
     previewEl.style.overflow = "hidden";
+
+    // Capture the live avatar anchor from the preview card
+    const av = getAvatarMetrics(previewEl);
+    const rect = previewEl.getBoundingClientRect();
+    if (av && rect.width > 0 && rect.height > 0) {
+        currentAvatarAnchor = {
+            cx: av.cx,
+            cy: av.cy,
+            size: av.size,
+            cardWidth: rect.width,
+            cardHeight: rect.height,
+        };
+    }
 
     const canvas = renderDrawingOverlay(previewEl, { enabled: true, strokes: currentStrokes, updatedAt: Date.now() }, true);
     if (!canvas) return;

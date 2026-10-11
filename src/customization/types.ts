@@ -35,10 +35,19 @@ export interface ProfileDrawingStroke {
     points: Array<[number, number]>;
 }
 
+export interface ProfileDrawingAvatarAnchor {
+    cx: number;
+    cy: number;
+    size: number;
+    cardWidth: number;
+    cardHeight: number;
+}
+
 export interface ProfileDrawingData {
     enabled: boolean;
     strokes: ProfileDrawingStroke[];
     updatedAt: number;
+    avatarAnchor?: ProfileDrawingAvatarAnchor;
 }
 
 export interface ProfileEffectsConfig {
