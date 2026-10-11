@@ -49,8 +49,7 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         name: "Pacifico Script",
         description: "Warm and cheerful 1950s surf culture brush script",
         fontFamily: "'Pacifico', cursive",
-        fontSizeAdjust: 0.52,
-        previewFontSize: 17,
+        previewFontSize: 16,
     },
     cinzel: {
         id: "cinzel",
@@ -65,9 +64,8 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "Lively casual script with bouncing letters",
         fontFamily: "'Dancing Script', cursive",
         letterSpacing: "0.3px",
-        fontSizeAdjust: 0.56,
         fontWeight: 600,
-        previewFontSize: 20,
+        previewFontSize: 16,
     },
     playfair: {
         id: "playfair",
@@ -117,9 +115,8 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "Elegant cursive calligraphy handwriting",
         fontFamily: "'Alex Brush', 'Great Vibes', cursive",
         letterSpacing: "0.4px",
-        fontSizeAdjust: 0.60,
         fontWeight: 500,
-        previewFontSize: 21,
+        previewFontSize: 16,
     },
     pixel: {
         id: "pixel",
@@ -274,7 +271,6 @@ export function applyGlobalFont(config: GlobalFontConfig) {
     }
 
     const fontDef = config.fontId !== "custom" && config.fontId !== "none" ? GLOBAL_FONTS[config.fontId] : null;
-    const fontAdjust = fontDef?.fontSizeAdjust;
     const fontDefWeight = fontDef?.fontWeight;
     const fontCodeFamily = (config.fontId === "nerd" || config.fontId === "pixel" || config.fontId === "robotoMono")
         ? family
@@ -298,7 +294,6 @@ body,
 #app-mount *:not(svg):not(path):not(use):not(foreignObject):not(img):not(i):not([class*='icon']):not([class*='Icon']):not(.nc-font-sample):not(.nc-font-sample *) {
     font-family: ${family} !important;
     ${letterSpacing ? `letter-spacing: ${letterSpacing} !important;` : ""}
-    ${fontAdjust ? `font-size-adjust: ${fontAdjust} !important;` : ""}
     ${fontDefWeight ? `font-weight: ${fontDefWeight} !important;` : ""}
 }
 

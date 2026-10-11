@@ -366,25 +366,27 @@
     gap: 12px;
     padding: 10px 14px;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(10, 10, 14, 0.28) !important;
     transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease, box-shadow 0.15s ease;
     cursor: grab;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    backdrop-filter: blur(28px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
     user-select: none;
     position: relative;
 }
 
 .ncp-song-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
 }
 
 .ncp-song-item.active {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    backdrop-filter: blur(32px) saturate(200%) !important;
+    -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
 }
 
 .ncp-song-item.dragging {
@@ -525,16 +527,16 @@
 
 .ncp-player-bar {
     margin-top: auto;
-    background: rgba(18, 18, 22, 0.65);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(10, 10, 14, 0.32) !important;
+    backdrop-filter: blur(36px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(36px) saturate(190%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
     border-radius: 12px;
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45) !important;
     animation: ncp-fade-in 0.2s ease-out;
 }
 
@@ -1177,69 +1179,7 @@
 [data-nc-profile-font="signature"] [class*='displayNameContent_'],
 [data-nc-profile-font="signature"] [class*='nickname_'],
 [data-nc-profile-font="signature"] [class*='globalName_'] {
-    font-size: 32px !important;
-    line-height: 1.15 !important;
-    letter-spacing: 0.5px !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
-
-[data-nc-profile-font="signature"] [class*='userTag_'],
-[data-nc-profile-font="signature"] [class*='userTagUsername_'],
-[data-nc-profile-font="signature"] [class*='usernameAndPronounsRow_'],
-[data-nc-profile-font="signature"] [class*='nameTag_'] {
-    font-size: 20px !important;
-    line-height: 1.2 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
-
-[data-nc-profile-font="signature"] [class*='tabBarItem_'],
-[data-nc-profile-font="signature"] [class*='tabBar_'] [role='tab'],
-[data-nc-profile-font="signature"] [class*='tab_'] {
-    font-size: 20px !important;
-    line-height: 1.4 !important;
-    letter-spacing: 0.5px !important;
-}
-
-[data-nc-profile-font="signature"] [class*='section_'] h1,
-[data-nc-profile-font="signature"] [class*='section_'] h2,
-[data-nc-profile-font="signature"] [class*='section_'] h3,
-[data-nc-profile-font="signature"] [class*='section_'] h4,
-[data-nc-profile-font="signature"] [class*='section_'] [class*='title_'],
-[data-nc-profile-font="signature"] [class*='userInfoSection_'] h1,
-[data-nc-profile-font="signature"] [class*='userInfoSection_'] h2,
-[data-nc-profile-font="signature"] [class*='userInfoSection_'] h3,
-[data-nc-profile-font="signature"] [class*='userInfoSection_'] [class*='title_'],
-[data-nc-profile-font="signature"] [class*='heading-sm'],
-[data-nc-profile-font="signature"] [class*='heading-md'],
-[data-nc-profile-font="signature"] [class*='heading-lg'] {
-    font-size: 20px !important;
-    line-height: 1.4 !important;
-    letter-spacing: 0.5px !important;
-}
-
-[data-nc-profile-font="signature"] [class*='text-sm'],
-[data-nc-profile-font="signature"] [class*='text-md'],
-[data-nc-profile-font="signature"] [class*='text-xs'],
-[data-nc-profile-font="signature"] [class*='markup_'],
-[data-nc-profile-font="signature"] [class*='bio_'],
-[data-nc-profile-font="signature"] [class*='descriptionClamp_'],
-[data-nc-profile-font="signature"] [class*='lineClamp_'],
-[data-nc-profile-font="signature"] [class*='connectedAccountName_'],
-[data-nc-profile-font="signature"] [class*='note_'],
-[data-nc-profile-font="signature"] [class*='note_'] textarea,
-[data-nc-profile-font="signature"] [class*='aboutMe_'],
-[data-nc-profile-font="signature"] [class*='body_'],
-[data-nc-profile-font="signature"] .ncp-song-title,
-[data-nc-profile-font="signature"] .ncp-song-artist {
-    font-size: 19px !important;
-    line-height: 1.45 !important;
-}
-
-[data-nc-profile-font="signature"] [class*='button_'] {
-    font-size: 18px !important;
-    line-height: 1.4 !important;
+    letter-spacing: 0.3px !important;
 }
 
 /* 3. Pixel (Press Start 2P) */
