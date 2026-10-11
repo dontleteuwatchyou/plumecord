@@ -280,6 +280,7 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
     };
 
     const handleItemMouseDown = (e: React.MouseEvent<HTMLDivElement>, index: number) => {
+        if (!isSelf) return;
         if (e.button !== 0) return;
         const target = e.target as HTMLElement;
         if (target.closest("button") || target.closest(".ncp-song-item-btn")) {
@@ -486,10 +487,10 @@ export function FavSongsProfileTab({ user }: { user: any; }) {
                         <div
                             key={song.id}
                             ref={el => { itemRefs.current[i] = el; }}
-                            className={classes("ncp-song-item", active && "active", isDraggingThis && "dragging")}
-                            onMouseDown={e => handleItemMouseDown(e, i)}
-                            onMouseMove={handleItemMouseMove}
-                            onMouseUp={handleItemMouseUp}
+                            className={classes("ncp-song-item", active && "active", isDraggingThis && "dragging", isSelf && "is-self")}
+                            onMouseDown={isSelf ? e => handleItemMouseDown(e, i) : undefined}
+                            onMouseMove={isSelf ? handleItemMouseMove : undefined}
+                            onMouseUp={isSelf ? handleItemMouseUp : undefined}
                             onClick={() => {
                                 if (didDragOccurRef.current) return;
                                 void handlePlaySong(song);

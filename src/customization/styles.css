@@ -368,12 +368,16 @@
     border-radius: 8px;
     background: rgba(10, 10, 14, 0.28) !important;
     transition: background 0.18s ease, border-color 0.18s ease, transform 0.15s ease, box-shadow 0.15s ease;
-    cursor: grab;
+    cursor: pointer;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     backdrop-filter: blur(28px) saturate(180%) !important;
     -webkit-backdrop-filter: blur(28px) saturate(180%) !important;
     user-select: none;
     position: relative;
+}
+
+.ncp-song-item.is-self {
+    cursor: grab;
 }
 
 .ncp-song-item:hover {
