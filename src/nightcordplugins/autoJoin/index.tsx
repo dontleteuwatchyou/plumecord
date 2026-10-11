@@ -71,6 +71,8 @@ function parseAllowedUserIds(raw: string): { set: Set<string>; all: boolean; } {
 
 const pendingTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const lastJoinedTime = new Map<string, number>();
+const manuallyLeftChannels = new Set<string>();
+let lastUserChannel: string | null = null;
 let checkInterval: ReturnType<typeof setInterval> | null = null;
 let fluxSubscribed = false;
 
@@ -84,6 +86,35 @@ function getCurrentUserChannel(): string | null {
     }
 }
 
+function updateCurrentUserChannelTracker() {
+    const currentChannel = getCurrentUserChannel();
+    if (lastUserChannel && currentChannel !== lastUserChannel) {
+        // The user was in lastUserChannel and left or disconnected!
+        manuallyLeftChannels.add(lastUserChannel);
+    }
+    lastUserChannel = currentChannel;
+}
+
+function isChannelStillActiveWithCaller(channelId: string): boolean {
+    try {
+        const currentUserId = UserStore.getCurrentUser()?.id;
+        const all: any = VoiceStateStore?.getAllVoiceStates?.() ?? {};
+        for (const guildMap of Object.values(all) as any[]) {
+            if (!guildMap || typeof guildMap !== "object") continue;
+            for (const [userId, vs] of Object.entries(guildMap) as any[]) {
+                if (userId !== currentUserId && vs?.channelId === channelId) {
+                    return true;
+                }
+            }
+        }
+        const call = CallStore?.getCall?.(channelId);
+        if (call && Array.isArray(call.voiceStates) && call.voiceStates.some((vs: any) => vs?.userId !== currentUserId)) {
+            return true;
+        }
+    } catch {}
+    return false;
+}
+
 function joinChannel(channelId: string, callerId?: string) {
     const now = Date.now();
     const last = lastJoinedTime.get(channelId) ?? 0;
@@ -93,6 +124,8 @@ function joinChannel(channelId: string, callerId?: string) {
     const withVideo = Boolean(settings.store.video);
     const ch = ChannelStore?.getChannel?.(channelId);
     const guildId = ch?.guild_id ?? null;
+
+    lastUserChannel = channelId;
 
     // Instant microtask execution just like followUser to prevent dispatch-in-dispatch collision
     queueMicrotask(() => {
@@ -142,6 +175,9 @@ function scheduleOrJoin(channelId: string, callerId: string) {
     const currentChannel = getCurrentUserChannel();
     if (currentChannel === channelId) return;
 
+    // If the user intentionally hung up or left this ongoing call session, do not re-join!
+    if (manuallyLeftChannels.has(channelId)) return;
+
     const now = Date.now();
     const last = lastJoinedTime.get(channelId) ?? 0;
     if (now - last < 4000) return;
@@ -153,7 +189,9 @@ function scheduleOrJoin(channelId: string, callerId: string) {
     } else {
         const timeout = setTimeout(() => {
             pendingTimeouts.delete(channelId);
-            joinChannel(channelId, callerId);
+            if (!manuallyLeftChannels.has(channelId)) {
+                joinChannel(channelId, callerId);
+            }
         }, delayMs);
         pendingTimeouts.set(channelId, timeout);
     }
@@ -170,10 +208,20 @@ function isDMChannel(channelId: string): boolean {
 }
 
 function checkCallsAndVoice() {
+    updateCurrentUserChannelTracker();
+
     const currentUserId = UserStore.getCurrentUser()?.id;
     if (!currentUserId) return;
 
     const myChannel = getCurrentUserChannel();
+
+    // Clean up manually left channels if the call ended or the caller left
+    for (const chId of Array.from(manuallyLeftChannels)) {
+        if (!isChannelStillActiveWithCaller(chId)) {
+            manuallyLeftChannels.delete(chId);
+        }
+    }
+
     const { set: allowedSet, all: allowAll } = parseAllowedUserIds(settings.store.allowedUserIds);
     if (!allowAll && allowedSet.size === 0) return;
 
@@ -186,6 +234,7 @@ function checkCallsAndVoice() {
                 if (userId === currentUserId) continue;
                 const chId = vs?.channelId;
                 if (!chId || chId === myChannel) continue;
+                if (manuallyLeftChannels.has(chId)) continue;
 
                 if (isDMChannel(chId)) {
                     if (allowAll || allowedSet.has(userId)) {
@@ -202,7 +251,7 @@ function checkCallsAndVoice() {
         for (const userId of allowedSet) {
             try {
                 const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
-                if (vs?.channelId && vs.channelId !== myChannel && isDMChannel(vs.channelId)) {
+                if (vs?.channelId && vs.channelId !== myChannel && !manuallyLeftChannels.has(vs.channelId) && isDMChannel(vs.channelId)) {
                     scheduleOrJoin(vs.channelId, userId);
                     return;
                 }
@@ -216,6 +265,7 @@ function checkCallsAndVoice() {
         for (const call of calls) {
             const chId = call?.channelId;
             if (!chId || chId === myChannel) continue;
+            if (manuallyLeftChannels.has(chId)) continue;
             if (!isDMChannel(chId)) continue;
 
             // Check ringing or voice states
@@ -294,13 +344,33 @@ export default definePlugin({
         "user-context": ContextMenuPatch,
     },
     flux: {
+        VOICE_CHANNEL_SELECT(action: any) {
+            if (action?.channelId === null || action?.channelId === undefined) {
+                // User disconnected from voice channel
+                if (lastUserChannel) {
+                    manuallyLeftChannels.add(lastUserChannel);
+                }
+            } else if (action?.channelId) {
+                lastUserChannel = action.channelId;
+            }
+            updateCurrentUserChannelTracker();
+        },
         VOICE_STATE_UPDATE() {
             checkCallsAndVoice();
         },
         VOICE_STATE_UPDATES() {
             checkCallsAndVoice();
         },
-        CALL_CREATE() {
+        CALL_CREATE(event: any) {
+            const channelId =
+                event?.channelId ??
+                event?.channel_id ??
+                event?.call?.channel_id ??
+                event?.call?.channelId;
+            if (channelId) {
+                // A new incoming call is arriving, allow auto-join
+                manuallyLeftChannels.delete(channelId);
+            }
             checkCallsAndVoice();
         },
         CALL_UPDATE() {
@@ -312,13 +382,18 @@ export default definePlugin({
                 event?.channel_id ??
                 event?.call?.channel_id ??
                 event?.call?.channelId;
-            if (channelId && pendingTimeouts.has(channelId)) {
-                clearTimeout(pendingTimeouts.get(channelId)!);
-                pendingTimeouts.delete(channelId);
+            if (channelId) {
+                manuallyLeftChannels.delete(channelId);
+                if (pendingTimeouts.has(channelId)) {
+                    clearTimeout(pendingTimeouts.get(channelId)!);
+                    pendingTimeouts.delete(channelId);
+                }
             }
         },
     },
     start() {
+        lastUserChannel = getCurrentUserChannel();
+
         if (!fluxSubscribed) {
             fluxSubscribed = true;
             try { VoiceStateStore?.addChangeListener?.(checkCallsAndVoice); } catch {}
@@ -347,5 +422,7 @@ export default definePlugin({
         }
         pendingTimeouts.clear();
         lastJoinedTime.clear();
+        manuallyLeftChannels.clear();
+        lastUserChannel = null;
     },
 });
