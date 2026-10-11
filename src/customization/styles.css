@@ -1352,8 +1352,8 @@
 .cpe-font-signature,
 [data-cpe-font="signature"] {
     font-family: 'Alex Brush', 'Great Vibes', cursive !important;
-    font-weight: 400 !important;
-    font-size: inherit !important;
+    font-weight: 500 !important;
+    font-size: 1.25em !important;
     line-height: inherit !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -1486,6 +1486,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-font-sample-signature {
     font-family: 'Alex Brush', 'Great Vibes', cursive !important;
+    font-size: 21px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.4px !important;
 }
 
 .nc-font-sample-pixel {
@@ -1502,9 +1505,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-font-sample-handwritten {
     font-family: 'Caveat', cursive !important;
-    font-size: 22px !important;
-    font-weight: 650 !important;
-    letter-spacing: 0.3px !important;
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.2px !important;
 }
 
 .nc-font-sample-poppins {
@@ -1525,6 +1528,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-font-sample-dancingScript {
     font-family: 'Dancing Script', cursive !important;
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.3px !important;
 }
 
 .nc-font-sample-playfair {

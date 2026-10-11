@@ -18,6 +18,9 @@ export interface GlobalFontDefinition {
     fontFamily: string;
     previewText?: string;
     letterSpacing?: string;
+    fontSizeAdjust?: number;
+    fontWeight?: number | string;
+    previewFontSize?: number;
 }
 
 export const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Caveat:wght@500;600;700&family=Cinzel:wght@600;800&family=Comfortaa:wght@600;700&family=Creepster&family=Dancing+Script:wght@600;700&family=JetBrains+Mono:wght@500;700&family=Monoton&family=Orbitron:wght@600;800&family=Pacifico&family=Playfair+Display:wght@600;700&family=Poppins:wght@400;600;700&family=Press+Start+2P&family=Righteous&family=Roboto+Mono:wght@400;600&family=UnifrakturMaguntia&display=swap";
@@ -46,6 +49,8 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         name: "Pacifico Script",
         description: "Warm and cheerful 1950s surf culture brush script",
         fontFamily: "'Pacifico', cursive",
+        fontSizeAdjust: 0.52,
+        previewFontSize: 17,
     },
     cinzel: {
         id: "cinzel",
@@ -60,6 +65,9 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "Lively casual script with bouncing letters",
         fontFamily: "'Dancing Script', cursive",
         letterSpacing: "0.3px",
+        fontSizeAdjust: 0.56,
+        fontWeight: 600,
+        previewFontSize: 20,
     },
     playfair: {
         id: "playfair",
@@ -109,6 +117,9 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "Elegant cursive calligraphy handwriting",
         fontFamily: "'Alex Brush', 'Great Vibes', cursive",
         letterSpacing: "0.4px",
+        fontSizeAdjust: 0.60,
+        fontWeight: 500,
+        previewFontSize: 21,
     },
     pixel: {
         id: "pixel",
@@ -116,6 +127,7 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "8-bit retro arcade and gaming font",
         fontFamily: "'Press Start 2P', 'VT323', monospace",
         letterSpacing: "-0.5px",
+        previewFontSize: 11,
     },
     nerd: {
         id: "nerd",
@@ -136,6 +148,9 @@ export const GLOBAL_FONTS: Record<string, GlobalFontDefinition> = {
         description: "Natural artistic handwriting style",
         fontFamily: "'Caveat', cursive",
         letterSpacing: "0.2px",
+        fontSizeAdjust: 0.56,
+        fontWeight: 600,
+        previewFontSize: 20,
     },
     custom: {
         id: "custom",
@@ -257,7 +272,9 @@ export function applyGlobalFont(config: GlobalFontConfig) {
         document.head.appendChild(styleEl);
     }
 
-    const isHandwritten = config.fontId === "handwritten";
+    const fontDef = config.fontId !== "custom" && config.fontId !== "none" ? GLOBAL_FONTS[config.fontId] : null;
+    const fontAdjust = fontDef?.fontSizeAdjust;
+    const fontDefWeight = fontDef?.fontWeight;
     const fontCodeFamily = (config.fontId === "nerd" || config.fontId === "pixel" || config.fontId === "robotoMono")
         ? family
         : `'JetBrains Mono', 'Fira Code', ${family}, monospace`;
@@ -280,90 +297,16 @@ body,
 #app-mount *:not(svg):not(path):not(use):not(foreignObject):not(img):not(i):not([class*='icon']):not([class*='Icon']):not(.nc-font-sample):not(.nc-font-sample *) {
     font-family: ${family} !important;
     ${letterSpacing ? `letter-spacing: ${letterSpacing} !important;` : ""}
-    ${isHandwritten ? `
-    font-weight: 600 !important;
-    font-size-adjust: 0.58 !important;
-    ` : ""}
+    ${fontAdjust ? `font-size-adjust: ${fontAdjust} !important;` : ""}
+    ${fontDefWeight ? `font-weight: ${fontDefWeight} !important;` : ""}
 }
-
-${isHandwritten ? `
-/* ── Handwritten (Caveat) High-Legibility & Boosted Font Scale ── */
-#app-mount [class*="messageContent_"],
-#app-mount [class*="markup_"],
-#app-mount [class*="contents_"] > [class*="messageContent_"] {
-    font-size: 19.5px !important;
-    line-height: 1.45 !important;
-    font-weight: 600 !important;
-}
-
-#app-mount [class*="channelName_"],
-#app-mount [class*="name__"],
-#app-mount [class*="channelName__"],
-#app-mount [class*="mainContent_"] {
-    font-size: 17px !important;
-    font-weight: 600 !important;
-}
-
-#app-mount [class*="username_"],
-#app-mount [class*="member_"] [class*="name_"],
-#app-mount [class*="headerText_"],
-#app-mount [class*="displayName_"] {
-    font-size: 18px !important;
-    font-weight: 700 !important;
-}
-
-#app-mount [class*="textArea_"],
-#app-mount [class*="slateTextArea_"],
-#app-mount [class*="placeholder_"] {
-    font-size: 19px !important;
-    font-weight: 600 !important;
-}
-
-#app-mount h1,
-#app-mount h2,
-#app-mount h3,
-#app-mount [class*="title_"]:not([class*="nc-"]) {
-    font-size: 1.25em !important;
-    font-weight: 700 !important;
-}
-
-#app-mount button:not([class*="nc-"]):not([class*="tab_"]),
-#app-mount input:not([type="checkbox"]):not([type="radio"]),
-#app-mount select,
-#app-mount [class*="button_"] {
-    font-size: 16px !important;
-    font-weight: 600 !important;
-}
-
-#app-mount [class*="userProfile_"] [class*="nickname_"],
-#app-mount [class*="userProfile_"] [class*="globalName_"],
-#app-mount [class*="userPopout_"] [class*="nickname_"] {
-    font-size: 26px !important;
-    font-weight: 700 !important;
-}
-
-/* Settings, dialogs & cards size normalization when Caveat is active */
-#app-mount .nc-fonts-tab div,
-#app-mount .nc-fonts-tab span,
-#app-mount .nc-fonts-tab p {
-    font-weight: 600;
-}
-
-#app-mount .nc-fonts-tab input {
-    font-size: 16.5px !important;
-    font-weight: 600 !important;
-}
-
-#app-mount .nc-fonts-tab button {
-    font-size: 15.5px !important;
-    font-weight: 600 !important;
-` : ""}
 
 #app-mount code,
 #app-mount pre,
 #app-mount code *,
 #app-mount pre * {
     font-family: Consolas, "Courier New", Courier, monospace !important;
+    font-size-adjust: none !important;
 }
 
 /* Allow scalable client font sizing when customized */
