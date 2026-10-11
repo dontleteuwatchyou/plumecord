@@ -593,7 +593,7 @@ export function scanAndApplyEffects() {
     const processedContainers = new Set<HTMLElement>();
     for (const rawEl of Array.from(profileElements)) {
         const el = rawEl.closest<HTMLElement>(
-            "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='user-profile-popout'], .user-profile-popout, [class*='userPopout'], [class*='themeContainer_'], [id='account'], [class*='accountProfile']"
+            "[class*='outer_'][class*='theme-'], [class*='outer_'], [class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='user-profile-popout'], .user-profile-popout, [class*='userPopout'], [class*='themeContainer_'], [id='account'], [class*='accountProfile']"
         ) || rawEl;
 
         if (processedContainers.has(el)) continue;
