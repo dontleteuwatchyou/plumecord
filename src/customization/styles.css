@@ -1524,21 +1524,19 @@ a[href^='/channels/@me/'] [data-cpe-font],
 }
 
 .nc-drawing-switch-wrapper {
-    background: var(--background-secondary, #2b2d31);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    border-radius: 8px;
-    padding: 4px 14px;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
     box-sizing: border-box;
 }
 
 .nc-drawing-controls-panel {
-    background: var(--background-secondary, #2b2d31);
-    border-radius: 8px;
-    padding: 16px;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     width: 100%;
     box-sizing: border-box;
 }
@@ -1582,99 +1580,25 @@ a[href^='/channels/@me/'] [data-cpe-font],
     display: none !important;
 }
 
-.nc-drawing-size-pills-row {
-    display: flex;
-    gap: 6px;
-    width: 100%;
-    margin-top: 4px;
-    flex-wrap: wrap;
-    box-sizing: border-box;
-}
-
-.nc-drawing-size-pill {
-    flex: 1;
-    min-width: 42px;
-    padding: 4px 0;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-align: center;
-    background: var(--background-tertiary, #1e1f22);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    color: var(--text-muted, #949ba4);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.nc-drawing-size-pill:hover {
-    background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06));
-    color: var(--header-primary, #ffffff);
-    border-color: rgba(255, 255, 255, 0.2);
-}
-
-.nc-drawing-size-pill-active {
-    background: var(--brand-500, #5865f2) !important;
-    color: #ffffff !important;
-    border-color: var(--brand-500, #5865f2) !important;
-    box-shadow: 0 2px 6px rgba(88, 101, 242, 0.3);
-}
-
-.nc-drawing-palette-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 10px;
-    width: 100%;
-    box-sizing: border-box;
-    justify-items: center;
-}
-
-.nc-drawing-color-swatch {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.08);
-    cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-    padding: 0;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-}
-
-.nc-drawing-color-swatch:hover {
-    transform: scale(1.14);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-}
-
-.nc-drawing-color-swatch-active {
-    border-color: #ffffff !important;
-    box-shadow: 0 0 0 2px var(--background-secondary, #2b2d31), 0 0 0 4px var(--brand-500, #5865f2) !important;
-    transform: scale(1.08);
-}
-
-.nc-drawing-custom-color-label {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+/* Square color picker styling like customprofile */
+.nc-drawing-color-square {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
     cursor: pointer;
     position: relative;
     overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFFF00 60deg, #00FF00 120deg, #00FFFF 180deg, #0000FF 240deg, #FF00FF 300deg, #FF0000 360deg);
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
     box-sizing: border-box;
-    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+    flex-shrink: 0;
+    display: inline-block;
 }
 
-.nc-drawing-custom-color-label:hover {
-    transform: scale(1.14);
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
+.nc-drawing-color-square:hover {
+    transform: scale(1.05);
+    border-color: #ffffff;
 }
 
 .nc-drawing-native-color-picker {

@@ -370,6 +370,12 @@ export function renderDrawingOverlay(
         container.appendChild(canvas);
     }
 
+    // Remove any duplicate canvases inside container
+    const allCanvases = container.querySelectorAll<HTMLCanvasElement>(".nc-profile-drawing-overlay");
+    for (let i = 1; i < allCanvases.length; i++) {
+        allCanvases[i].remove();
+    }
+
     // Ensure container has relative/absolute positioning
     const compPos = window.getComputedStyle(container).position;
     if (compPos === "static") {
@@ -405,14 +411,18 @@ export function redrawAllProfiles() {
     const curUser = UserStore.getCurrentUser();
     const ownEffects = getCachedEffectsConfig();
 
-    const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='outer_'][class*='theme-'], [class*='outer_'], [class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='themeContainer_'], [class*='preview_']"
-    );
+    const rawElements = Array.from(document.querySelectorAll<HTMLElement>(
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='outer_'][class*='theme-'], [class*='outer_'], [class*='biteSize_'], [class*='fullSize_']"
+    ));
 
-    for (const el of Array.from(profileElements)) {
-        // Skip form editor tiles
-        if (el.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) continue;
+    // Filter out form editor panels and parent wrappers that contain another matched child card
+    const profileElements = rawElements.filter(el => {
+        if (el.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) return false;
+        // Skip if el contains any other matched candidate (ensures only the innermost card is targeted)
+        return !rawElements.some(other => other !== el && el.contains(other));
+    });
 
+    for (const el of profileElements) {
         const isSelf = !!el.closest("[id='account'], [class*='accountProfile']") ||
             el.querySelector(`img[src*='${curUser?.id}']`) !== null ||
             el.closest("[class*='preview_']") !== null;
@@ -469,35 +479,29 @@ function extractProfileCard(root: HTMLElement): HTMLElement | null {
     if (root.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) return null;
 
     const cardSelectors = [
-        "[class*='outer_'][class*='theme-']",
-        "[class*='outer_']",
         "[class*='userProfileOuter']",
         "[class*='userProfileModalOuter']",
         "[class*='userPopout']",
-        "[class*='biteSize_']",
-        "[class*='fullSize_']",
-        "[class*='themeContainer_']",
-        "[class*='preview_']",
+        "[class*='outer_'][class*='theme-']",
+        "[class*='outer_']",
+        "[class*='biteSize_'][class*='userProfile']",
+        "[class*='fullSize_'][class*='userProfile']"
     ];
 
     for (const sel of cardSelectors) {
-        const found = root.matches(sel) ? root : root.querySelector<HTMLElement>(sel);
-        if (found && found.clientWidth >= 180 && found.clientHeight >= 180) {
-            // If found has a more specific inner card (e.g. outer_ inside themeContainer_ or preview_)
-            const innerCard = found.querySelector<HTMLElement>(
-                "[class*='outer_'][class*='theme-'], [class*='outer_'], [class*='userProfileOuter']"
-            );
-            if (innerCard && innerCard.clientWidth >= 180 && innerCard.clientHeight >= 180) {
-                return innerCard;
+        const matches = root.querySelectorAll<HTMLElement>(sel);
+        for (const el of Array.from(matches)) {
+            if (el.clientWidth >= 180 && el.clientHeight >= 180) {
+                const hasInner = el.querySelector<HTMLElement>("[class*='outer_'], [class*='userProfileOuter']");
+                if (hasInner && hasInner !== el && hasInner.clientWidth >= 180 && hasInner.clientHeight >= 180) {
+                    return hasInner;
+                }
+                return el;
             }
-            return found;
         }
-    }
-
-    // Avatar-based fallback heuristic: does root contain an avatar and match profile dimensions?
-    const avatar = root.querySelector("img[src*='/avatars/'], [class*='avatar_'], [class*='avatarStack_']");
-    if (avatar && root.clientWidth >= 180 && root.clientHeight >= 180) {
-        return root;
+        if (root.matches(sel) && root.clientWidth >= 180 && root.clientHeight >= 180) {
+            return root;
+        }
     }
 
     return null;
@@ -527,8 +531,8 @@ export function findProfilePreviewElement(): HTMLElement | null {
 
     // 2. Open modals, popouts, or dialogs outside form scroller
     const dialogSelectors = [
-        "[class*='userPopout']",
         "[class*='userProfileModalOuter']",
+        "[class*='userPopout']",
         "[role='dialog'] [class*='outer_'][class*='theme-']",
         "[role='dialog'] [class*='outer_']",
         "[class*='layer_'] [class*='outer_'][class*='theme-']",
@@ -538,31 +542,24 @@ export function findProfilePreviewElement(): HTMLElement | null {
         const matches = document.querySelectorAll<HTMLElement>(sel);
         for (const el of Array.from(matches)) {
             if (el.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) continue;
-            const card = extractProfileCard(el) || (el.clientWidth >= 180 && el.clientHeight >= 180 ? el : null);
+            const card = extractProfileCard(el);
             if (card) return card;
         }
     }
 
-    // 3. Document-wide scan for profile cards outside the form column
+    // 3. Document-wide scan for innermost profile cards outside form column
     const globalCardSelectors = [
-        "[class*='previewContainer_'] [class*='outer_']",
-        "[class*='previewSection_'] [class*='outer_']",
-        "[class*='customizationSection_'] [class*='outer_']",
-        "[class*='preview_'] [class*='outer_']",
-        "[class*='outer_'][class*='theme-']",
         "[class*='userProfileOuter']",
         "[class*='userProfileModalOuter']",
         "[class*='userPopout']",
-        "[class*='biteSize_'][class*='userProfile']",
-        "[class*='biteSize_']",
-        "[class*='fullSize_']",
-        "[class*='themeContainer_']",
+        "[class*='outer_'][class*='theme-']",
+        "[class*='outer_']",
     ];
     for (const sel of globalCardSelectors) {
         const matches = document.querySelectorAll<HTMLElement>(sel);
         for (const el of Array.from(matches)) {
             if (el.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) continue;
-            const card = extractProfileCard(el) || (el.clientWidth >= 180 && el.clientHeight >= 180 ? el : null);
+            const card = extractProfileCard(el);
             if (card) return card;
         }
     }
@@ -572,6 +569,7 @@ export function findProfilePreviewElement(): HTMLElement | null {
 
 function handlePointerDown(e: PointerEvent) {
     if (!activeCanvas || !isDrawingActive) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -722,19 +720,14 @@ export function attachInteractiveCanvas(retries = 5) {
     (canvas.style as any).webkitUserSelect = "none";
 
     canvas.removeEventListener("pointerdown", handlePointerDown);
-    canvas.removeEventListener("pointermove", handlePointerMove);
-    canvas.removeEventListener("pointerup", handlePointerUp);
-    canvas.removeEventListener("pointercancel", handlePointerCancel);
     canvas.removeEventListener("mousedown", handleBlockEvent, true);
     canvas.removeEventListener("mouseup", handleBlockEvent, true);
     canvas.removeEventListener("click", handleBlockEvent, true);
     canvas.removeEventListener("contextmenu", handleBlockEvent, true);
     canvas.removeEventListener("dragstart", handleBlockEvent, true);
+    canvas.removeEventListener("selectstart", handleBlockEvent, true);
 
     canvas.addEventListener("pointerdown", handlePointerDown, { passive: false });
-    canvas.addEventListener("pointermove", handlePointerMove, { passive: false });
-    canvas.addEventListener("pointerup", handlePointerUp, { passive: false });
-    canvas.addEventListener("pointercancel", handlePointerCancel, { passive: false });
 
     // Block any native mouse/drag interactions at capture phase so they never leak to profile underneath
     canvas.addEventListener("mousedown", handleBlockEvent, { capture: true, passive: false });
@@ -742,6 +735,7 @@ export function attachInteractiveCanvas(retries = 5) {
     canvas.addEventListener("click", handleBlockEvent, { capture: true, passive: false });
     canvas.addEventListener("contextmenu", handleBlockEvent, { capture: true, passive: false });
     canvas.addEventListener("dragstart", handleBlockEvent, { capture: true, passive: false });
+    canvas.addEventListener("selectstart", handleBlockEvent, { capture: true, passive: false });
 
     // Setup ResizeObserver to keep canvas buffer sized accurately
     if (activeResizeObserver) {
@@ -776,6 +770,7 @@ export function detachInteractiveCanvas() {
         activeCanvas.removeEventListener("click", handleBlockEvent, true);
         activeCanvas.removeEventListener("contextmenu", handleBlockEvent, true);
         activeCanvas.removeEventListener("dragstart", handleBlockEvent, true);
+        activeCanvas.removeEventListener("selectstart", handleBlockEvent, true);
         activeCanvas.classList.remove("nc-profile-drawing-interactive");
         activeCanvas.style.cursor = "";
         activeCanvas.style.pointerEvents = "none";

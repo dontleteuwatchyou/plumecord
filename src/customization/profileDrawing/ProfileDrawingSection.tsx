@@ -14,7 +14,6 @@ import {
     getDrawingStrokes,
     initOwnDrawingStrokes,
     isDrawingModeActive,
-    PRESET_COLORS,
     saveDrawing,
     setActiveBrushColor,
     setActiveBrushSize,
@@ -78,27 +77,6 @@ const SaveIcon = ({ width = 16, height = 16 }: { width?: number; height?: number
     </svg>
 );
 
-const PipetteIcon = ({ width = 14, height = 14 }: { width?: number; height?: number }) => (
-    <svg
-        width={width}
-        height={height}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2.2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-    >
-        <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" />
-        <path d="m5 2 5 5" />
-        <path d="m2 5 5 5" />
-        <circle cx="21" cy="21" r="1" />
-    </svg>
-);
-
-const PRESET_SIZES = [2, 4, 8, 14, 22, 32];
-
 export function ProfileDrawingSection() {
     const [, setTick] = useState(0);
     const [saving, setSaving] = useState(false);
@@ -134,7 +112,7 @@ export function ProfileDrawingSection() {
             {/* Native Discord ON/OFF Switch */}
             <div className="nc-drawing-switch-wrapper">
                 <FormSwitch
-                    title={t("Mode dessin")}
+                    title={t("Drawing Mode")}
                     description={
                         isDrawing
                             ? t("Drawing mode active (Ctrl+Z to undo)")
@@ -150,30 +128,13 @@ export function ProfileDrawingSection() {
 
             {/* Controls Panel */}
             <div className="nc-drawing-controls-panel">
-                {/* 1. Brush Size Slider & Pill Presets */}
+                {/* 1. Brush Size Slider */}
                 <div className="nc-drawing-control-card">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <span className="nc-drawing-control-label">{t("Brush Size")}</span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span className="nc-drawing-size-badge">
-                                {currentSize}px
-                            </span>
-                            <span
-                                style={{
-                                    display: "inline-block",
-                                    width: Math.max(4, Math.min(24, currentSize)),
-                                    height: Math.max(4, Math.min(24, currentSize)),
-                                    borderRadius: "50%",
-                                    backgroundColor: currentColor,
-                                    border: "1.5px solid rgba(255, 255, 255, 0.6)",
-                                    boxShadow: `0 0 6px ${currentColor}55`,
-                                    transition: "width 0.1s ease, height 0.1s ease, background-color 0.1s ease",
-                                }}
-                            />
-                        </div>
+                        <span className="nc-drawing-size-badge">{currentSize}px</span>
                     </div>
 
-                    {/* Smooth Continuous Slider without tick marks */}
                     <div className="nc-drawing-slider-wrapper">
                         <Slider
                             minValue={1}
@@ -184,68 +145,23 @@ export function ProfileDrawingSection() {
                             stickToMarkers={false}
                         />
                     </div>
-
-                    {/* Quick Preset Size Pills */}
-                    <div className="nc-drawing-size-pills-row">
-                        {PRESET_SIZES.map(sz => (
-                            <button
-                                key={sz}
-                                type="button"
-                                className={`nc-drawing-size-pill ${currentSize === sz ? "nc-drawing-size-pill-active" : ""}`}
-                                onClick={() => setActiveBrushSize(sz)}
-                            >
-                                {sz}px
-                            </button>
-                        ))}
-                    </div>
                 </div>
 
-                {/* 2. Color Palette Grid (11 curated colors + 1 custom color picker in 6x2 grid) */}
+                {/* 2. Color Square */}
                 <div className="nc-drawing-control-card">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                         <span className="nc-drawing-control-label">{t("Color")}</span>
                         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", fontFamily: "monospace" }}>
                             {currentColor.toUpperCase()}
                         </span>
                     </div>
 
-                    <div className="nc-drawing-palette-grid">
-                        {PRESET_COLORS.map(color => {
-                            const isSelected = currentColor.toLowerCase() === color.toLowerCase();
-                            return (
-                                <button
-                                    key={color}
-                                    type="button"
-                                    className={`nc-drawing-color-swatch ${isSelected ? "nc-drawing-color-swatch-active" : ""}`}
-                                    style={{ backgroundColor: color }}
-                                    onClick={() => setActiveBrushColor(color)}
-                                    aria-label={color}
-                                    title={color}
-                                >
-                                    {isSelected && (
-                                        <span
-                                            style={{
-                                                display: "block",
-                                                width: 8,
-                                                height: 8,
-                                                borderRadius: "50%",
-                                                backgroundColor: ["#ffffff", "#fee75c", "#57f287"].includes(color.toLowerCase())
-                                                    ? "#111214"
-                                                    : "#ffffff",
-                                                boxShadow: "0 0 2px rgba(0,0,0,0.5)",
-                                            }}
-                                        />
-                                    )}
-                                </button>
-                            );
-                        })}
-
-                        {/* Custom Color Input */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <label
-                            className={`nc-drawing-custom-color-label ${!PRESET_COLORS.some(c => c.toLowerCase() === currentColor.toLowerCase()) ? "nc-drawing-color-swatch-active" : ""}`}
-                            title={t("Custom Color")}
+                            className="nc-drawing-color-square"
+                            style={{ backgroundColor: currentColor }}
+                            title={t("Choose Color")}
                         >
-                            <PipetteIcon width={14} height={14} />
                             <input
                                 type="color"
                                 value={currentColor}
@@ -277,7 +193,7 @@ export function ProfileDrawingSection() {
                             disabled={strokes.length === 0}
                         >
                             <UndoIcon />
-                            {t("Undo (Ctrl+Z)")}
+                            {t("Undo")}
                         </Button>
 
                         <Button
