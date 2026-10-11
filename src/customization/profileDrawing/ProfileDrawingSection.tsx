@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { t } from "@api/i18n";
-import { Button, React, useEffect, useState } from "@webpack/common";
+import { Button, React, Slider, useEffect, useState } from "@webpack/common";
+import { t } from "../../nightcordplugins/autoTranslateNightcord";
 import {
-    BRUSH_SIZES,
     clearAllStrokes,
     getActiveBrushColor,
     getActiveBrushSize,
@@ -77,7 +76,7 @@ const ClearIcon = ({ width = 14, height = 14 }: { width?: number; height?: numbe
     </svg>
 );
 
-const SaveIcon = ({ width = 14, height = 14 }: { width?: number; height?: number }) => (
+const SaveIcon = ({ width = 16, height = 16 }: { width?: number; height?: number }) => (
     <svg
         width={width}
         height={height}
@@ -133,89 +132,122 @@ export function ProfileDrawingSection() {
                 <h3
                     className="text-sm/medium_cf4812 defaultColor__5345c labelHeading__96e81"
                     data-text-variant="text-sm/medium"
-                    style={{ color: "var(--header-primary)" }}
+                    style={{ color: "var(--header-primary)", fontWeight: 600 }}
                 >
                     {t("Pinceau")}
                 </h3>
             </div>
 
-            {/* Toggle Tile */}
+            {/* Native Discord Style Toggle Tile */}
             <div
                 className={`tile__4e9aa bar__4e9aa nc-drawing-toggle-tile ${isDrawing ? "nc-drawing-toggle-tile-active" : ""}`}
                 role="button"
                 tabIndex={0}
                 onClick={handleToggleDrawing}
             >
-                <div className="tileButton__4e9aa">
-                    <div className="content__4e9aa" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div
-                            className="nc-drawing-tool-icon-wrapper"
-                            style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 8,
-                                background: isDrawing ? "var(--brand-500)" : "var(--background-secondary-alt)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                color: isDrawing ? "#ffffff" : "var(--interactive-normal)",
-                            }}
-                        >
-                            <BrushIcon width={20} height={20} />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                            <span
+                <div className="tileButton__4e9aa" style={{ width: "100%" }}>
+                    <div className="content__4e9aa" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                            <div
+                                className="nc-drawing-tool-icon-wrapper"
                                 style={{
-                                    fontSize: 14,
-                                    fontWeight: 600,
-                                    color: isDrawing ? "var(--brand-500)" : "var(--header-primary)",
+                                    width: 36,
+                                    height: 36,
+                                    minWidth: 36,
+                                    borderRadius: 8,
+                                    background: isDrawing ? "var(--brand-500)" : "var(--background-secondary-alt)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    color: isDrawing ? "#ffffff" : "var(--interactive-normal)",
+                                    transition: "all 0.15s ease",
                                 }}
                             >
-                                {isDrawing ? t("Done Drawing") : t("Draw on Profile")}
-                            </span>
-                            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                {strokes.length > 0
-                                    ? `${strokes.length} trait(s) tracé(s)`
-                                    : t("Draw freely on your profile preview. Your drawing will be visible to everyone on your profile!")}
-                            </span>
+                                <BrushIcon width={20} height={20} />
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                                <span
+                                    style={{
+                                        fontSize: 14,
+                                        fontWeight: 600,
+                                        color: isDrawing ? "var(--brand-500)" : "var(--header-primary)",
+                                    }}
+                                >
+                                    {isDrawing ? t("Done Drawing") : t("Draw on Profile")}
+                                </span>
+                                <span
+                                    style={{
+                                        fontSize: 12,
+                                        color: "var(--text-muted)",
+                                        whiteSpace: "nowrap",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                    }}
+                                >
+                                    {isDrawing
+                                        ? t("Drawing Mode Active")
+                                        : strokes.length > 0
+                                        ? `${strokes.length} ${t("stroke(s) drawn")}`
+                                        : t("Draw freely on your profile preview. Your drawing will be visible to everyone on your profile!")}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div
+                            style={{
+                                padding: "4px 8px",
+                                borderRadius: 12,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                background: isDrawing ? "var(--brand-500)" : "var(--background-modifier-selected, rgba(255,255,255,0.08))",
+                                color: isDrawing ? "#ffffff" : "var(--text-muted)",
+                                marginLeft: 8,
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            {isDrawing ? t("Active") : t("Inactive")}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Controls Container */}
+            {/* Discord Native Controls Panel */}
             <div className="nc-drawing-controls-panel">
-                {/* 4 Brush Tip Sizes */}
+                {/* 1. Brush Size Slider & Live Dot Preview */}
                 <div className="nc-drawing-control-row">
-                    <span className="nc-drawing-control-label">{t("Brush Size")}</span>
-                    <div className="nc-drawing-sizes-list">
-                        {BRUSH_SIZES.map(item => {
-                            const isSelected = currentSize === item.size;
-                            return (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    className={`nc-drawing-size-btn ${isSelected ? "nc-drawing-size-btn-active" : ""}`}
-                                    onClick={() => setActiveBrushSize(item.size)}
-                                    title={t(item.label)}
-                                    aria-label={t(item.label)}
-                                >
-                                    <span
-                                        className="nc-drawing-size-dot"
-                                        style={{
-                                            width: Math.max(4, item.size),
-                                            height: Math.max(4, item.size),
-                                            backgroundColor: isSelected ? "var(--brand-500)" : "var(--text-muted)",
-                                        }}
-                                    />
-                                    <span className="nc-drawing-size-text">{item.size}px</span>
-                                </button>
-                            );
-                        })}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span className="nc-drawing-control-label">{t("Brush Size")}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--header-primary)" }}>
+                                {currentSize}px
+                            </span>
+                            <span
+                                style={{
+                                    display: "inline-block",
+                                    width: Math.max(4, Math.min(22, currentSize)),
+                                    height: Math.max(4, Math.min(22, currentSize)),
+                                    borderRadius: "50%",
+                                    backgroundColor: currentColor,
+                                    border: "1px solid rgba(255, 255, 255, 0.4)",
+                                    boxShadow: "0 0 4px rgba(0,0,0,0.4)",
+                                    transition: "width 0.1s ease, height 0.1s ease, background-color 0.1s ease",
+                                }}
+                            />
+                        </div>
                     </div>
+
+                    <Slider
+                        markers={[1, 4, 8, 14, 22, 32]}
+                        minValue={1}
+                        maxValue={32}
+                        initialValue={currentSize}
+                        onValueChange={(val: number) => setActiveBrushSize(Math.max(1, Math.round(val)))}
+                        onValueRender={(val: number) => `${Math.round(val)}px`}
+                        stickToMarkers={false}
+                    />
                 </div>
 
-                {/* Color Palette + Custom Picker */}
+                {/* 2. Color Palette + Custom Native Color Picker */}
                 <div className="nc-drawing-control-row">
                     <span className="nc-drawing-control-label">{t("Color")}</span>
                     <div className="nc-drawing-palette">
@@ -233,10 +265,11 @@ export function ProfileDrawingSection() {
                                 />
                             );
                         })}
+
                         {/* Custom Color Input */}
                         <label
                             className="nc-drawing-custom-color-label"
-                            title="Couleur personnalisée"
+                            title={t("Custom Color")}
                             style={{
                                 background: `conic-gradient(from 180deg at 50% 50%, #FF0000 0deg, #FFFF00 60deg, #00FF00 120deg, #00FFFF 180deg, #0000FF 240deg, #FF00FF 300deg, #FF0000 360deg)`,
                             }}
@@ -251,39 +284,40 @@ export function ProfileDrawingSection() {
                     </div>
                 </div>
 
-                {/* Actions: Undo, Clear, Save */}
-                <div className="nc-drawing-actions-row">
+                {/* 3. Action Buttons (Well Framed & Non-Truncating) */}
+                <div className="nc-drawing-actions-container">
                     <Button
-                        size={Button.Sizes.SMALL}
-                        color={Button.Colors.PRIMARY}
-                        onClick={undoLastStroke}
-                        disabled={strokes.length === 0}
-                    >
-                        <UndoIcon />
-                        {t("Undo")}
-                    </Button>
-
-                    <Button
-                        size={Button.Sizes.SMALL}
-                        color={Button.Colors.RED}
-                        onClick={clearAllStrokes}
-                        disabled={strokes.length === 0}
-                    >
-                        <ClearIcon />
-                        {t("Clear")}
-                    </Button>
-
-                    <div style={{ flex: 1 }} />
-
-                    <Button
-                        size={Button.Sizes.SMALL}
+                        size={Button.Sizes.MEDIUM}
                         color={Button.Colors.BRAND}
                         onClick={handleSave}
                         submitting={saving}
+                        className="nc-drawing-save-btn"
                     >
                         <SaveIcon />
                         {t("Save Drawing")}
                     </Button>
+
+                    <div className="nc-drawing-subactions-grid">
+                        <Button
+                            size={Button.Sizes.SMALL}
+                            color={Button.Colors.PRIMARY}
+                            onClick={undoLastStroke}
+                            disabled={strokes.length === 0}
+                        >
+                            <UndoIcon />
+                            {t("Undo")}
+                        </Button>
+
+                        <Button
+                            size={Button.Sizes.SMALL}
+                            color={Button.Colors.RED}
+                            onClick={clearAllStrokes}
+                            disabled={strokes.length === 0}
+                        >
+                            <ClearIcon />
+                            {t("Clear")}
+                        </Button>
+                    </div>
                 </div>
             </div>
         </div>

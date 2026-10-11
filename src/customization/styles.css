@@ -1497,8 +1497,7 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-profile-drawing-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
+    inset: 0;
     width: 100%;
     height: 100%;
     pointer-events: none;
@@ -1509,25 +1508,27 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-profile-drawing-interactive {
     pointer-events: auto !important;
-    z-index: 1000 !important;
+    z-index: 99999 !important;
     touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .nc-drawing-mode-badge {
     position: absolute;
-    top: 12px;
+    top: 14px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1001;
+    z-index: 100000 !important;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     background: var(--background-floating, #111214);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.15));
     border-radius: 20px;
     padding: 6px 14px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    pointer-events: auto;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    pointer-events: auto !important;
 }
 
 .nc-drawing-badge-dot {
@@ -1550,7 +1551,7 @@ a[href^='/channels/@me/'] [data-cpe-font],
     color: #ffffff;
     border: none;
     border-radius: 12px;
-    padding: 2px 10px;
+    padding: 3px 12px;
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
@@ -1566,6 +1567,8 @@ a[href^='/channels/@me/'] [data-cpe-font],
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nc-drawing-toggle-tile {
@@ -1574,7 +1577,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
     border-radius: 8px;
     background: var(--background-secondary, #2b2d31);
     transition: background-color 0.15s ease, border-color 0.15s ease;
-    padding: 10px 12px;
+    padding: 10px 14px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nc-drawing-toggle-tile:hover {
@@ -1587,69 +1592,31 @@ a[href^='/channels/@me/'] [data-cpe-font],
 }
 
 .nc-drawing-controls-panel {
-    background: var(--background-secondary-alt, #1e1f22);
+    background: var(--background-secondary, #2b2d31);
     border-radius: 8px;
-    padding: 12px 14px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+    gap: 16px;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nc-drawing-control-row {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nc-drawing-control-label {
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--header-secondary, #b5bac1);
     text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-.nc-drawing-sizes-list {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
-}
-
-.nc-drawing-size-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 4px;
-    background: var(--background-primary, #313338);
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.nc-drawing-size-btn:hover {
-    background: var(--background-modifier-hover, rgba(255, 255, 255, 0.06));
-    border-color: rgba(255, 255, 255, 0.2);
-}
-
-.nc-drawing-size-btn-active {
-    background: rgba(88, 101, 242, 0.15);
-    border-color: var(--brand-500, #5865f2);
-}
-
-.nc-drawing-size-dot {
-    border-radius: 50%;
-    display: inline-block;
-    transition: background-color 0.15s ease;
-}
-
-.nc-drawing-size-text {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-normal, #dbdee1);
+    letter-spacing: 0.04em;
 }
 
 .nc-drawing-palette {
@@ -1657,6 +1624,8 @@ a[href^='/channels/@me/'] [data-cpe-font],
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .nc-drawing-color-swatch {
@@ -1665,8 +1634,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
     border-radius: 50%;
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
     padding: 0;
+    box-sizing: border-box;
 }
 
 .nc-drawing-color-swatch:hover {
@@ -1691,6 +1661,7 @@ a[href^='/channels/@me/'] [data-cpe-font],
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.3);
     transition: transform 0.15s ease;
+    box-sizing: border-box;
 }
 
 .nc-drawing-custom-color-label:hover {
@@ -1705,11 +1676,25 @@ a[href^='/channels/@me/'] [data-cpe-font],
     cursor: pointer;
 }
 
-.nc-drawing-actions-row {
+.nc-drawing-actions-container {
     display: flex;
-    align-items: center;
+    flex-direction: column;
     gap: 8px;
-    margin-top: 4px;
+    width: 100%;
+    margin-top: 2px;
+    box-sizing: border-box;
+}
+
+.nc-drawing-save-btn {
+    width: 100% !important;
+}
+
+.nc-drawing-subactions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 

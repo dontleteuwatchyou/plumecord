@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { t } from "@api/i18n";
 import { showToast, Toasts, UserStore } from "@webpack/common";
+import { t } from "../../nightcordplugins/autoTranslateNightcord";
 import {
     getCachedEffectsConfig,
     getLocalEffectsConfig,
@@ -15,22 +15,16 @@ import {
 } from "../sync";
 import type { ProfileDrawingData, ProfileDrawingStroke } from "../types";
 
-export const BRUSH_SIZES = [
-    { id: "fine", label: "Fine", size: 2 },
-    { id: "medium", label: "Medium", size: 5 },
-    { id: "thick", label: "Thick", size: 10 },
-    { id: "extra", label: "Extra Thick", size: 18 },
-] as const;
-
 export const PRESET_COLORS = [
     "#FFFFFF",
     "#5865F2",
-    "#00F0FF",
     "#57F287",
     "#FEE75C",
     "#EB459E",
     "#ED4245",
-    "#A855F7",
+    "#9B59B6",
+    "#1ABC9C",
+    "#34495E",
     "#000000",
 ];
 
@@ -54,10 +48,11 @@ export function getBrushCursor(color: string): string {
 
 let currentStrokes: ProfileDrawingStroke[] = [];
 let activeBrushColor = "#FFFFFF";
-let activeBrushSize = 5;
+let activeBrushSize = 6;
 let isDrawingActive = false;
 let activeCanvas: HTMLCanvasElement | null = null;
 let currentActiveStroke: ProfileDrawingStroke | null = null;
+let activeResizeObserver: ResizeObserver | null = null;
 
 const stateListeners = new Set<() => void>();
 
@@ -97,7 +92,7 @@ export function getActiveBrushSize(): number {
 }
 
 export function setActiveBrushSize(size: number) {
-    activeBrushSize = size;
+    activeBrushSize = Math.max(1, Math.min(60, size));
     notifyListeners();
 }
 
@@ -209,6 +204,19 @@ export function drawStrokes(
     }
 }
 
+function syncCanvasDimensions(canvas: HTMLCanvasElement, container: HTMLElement): { width: number; height: number; } {
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(rect.width || container.clientWidth || 300));
+    const height = Math.max(1, Math.round(rect.height || container.clientHeight || 400));
+
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+    }
+    return { width, height };
+}
+
 // ─── Drawing Overlay Renderer on Any Profile Container ───────────────────────
 
 export function renderDrawingOverlay(
@@ -240,16 +248,9 @@ export function renderDrawingOverlay(
         container.style.position = "relative";
     }
 
-    const rect = container.getBoundingClientRect();
+    const { width, height } = syncCanvasDimensions(canvas, container);
+
     const dpr = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
-
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-    }
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
 
@@ -278,6 +279,9 @@ export function redrawAllProfiles() {
     );
 
     for (const el of Array.from(profileElements)) {
+        // Skip form editor tiles
+        if (el.closest("[class*='content__523e1'], [class*='scroller__523e1']")) continue;
+
         const isSelf = !!el.closest("[id='account'], [class*='accountProfile']") ||
             el.querySelector(`img[src*='${curUser?.id}']`) !== null ||
             el.closest("[class*='preview_']") !== null;
@@ -327,6 +331,7 @@ function createActiveBadge(container: HTMLElement) {
     const doneBtn = badge.querySelector<HTMLButtonElement>(".nc-drawing-badge-done-btn");
     doneBtn?.addEventListener("click", e => {
         e.stopPropagation();
+        e.preventDefault();
         setDrawingMode(false);
     });
 
@@ -347,23 +352,47 @@ export function setDrawingMode(active: boolean) {
 }
 
 export function findProfilePreviewElement(): HTMLElement | null {
-    // Look for profile preview in settings or modal
-    const candidates = [
-        "[class*='preview_'] [class*='userProfileOuter']",
-        "[class*='preview_'] [class*='themeContainer_']",
-        "[class*='preview_']",
-        "[class*='userProfileOuter'][class*='theme-']",
+    // 1. Search inside editing panel / modal / settings first
+    const containers: (Element | null)[] = [
+        document.querySelector("#user-profile-editing-panel"),
+        document.querySelector("[class*='editingPanel_']"),
+        document.querySelector("[role='dialog']:has([class*='content__523e1'])"),
+        document.querySelector("[role='dialog']:has([class*='scroller__523e1'])"),
+        document.querySelector("[class*='standardSidebarView_']"),
+        document.body,
+    ];
+
+    const cardSelectors = [
+        "[class*='previewContainer_'] [class*='userProfileOuter']",
+        "[class*='previewContainer_'] [class*='userProfileModalOuter']",
+        "[class*='previewContainer_'] [class*='biteSize_']",
+        "[class*='previewSection_'] [class*='userProfileOuter']",
+        "[class*='customizationSection_'] [class*='userProfileOuter']",
         "[class*='userProfileOuter']",
         "[class*='userProfileModalOuter']",
+        "[class*='biteSize_'][class*='userProfile']",
+        "[class*='biteSize_']",
+        "[class*='fullSize_']",
+        "[class*='themeContainer_']",
+        "[class*='profileCard_']",
         "[class*='userPopout']",
     ];
 
-    for (const sel of candidates) {
-        const el = document.querySelector<HTMLElement>(sel);
-        if (el && el.clientWidth > 100 && el.clientHeight > 100) {
-            return el;
+    for (const container of containers) {
+        if (!container) continue;
+        for (const sel of cardSelectors) {
+            const matches = container.querySelectorAll<HTMLElement>(sel);
+            for (const el of Array.from(matches)) {
+                // NEVER pick elements inside the left form / scroller column!
+                if (el.closest("[class*='content__523e1'], [class*='scroller__523e1']")) continue;
+                // Exclude miniature tiles (must be full profile card)
+                if (el.clientWidth >= 200 && el.clientHeight >= 200) {
+                    return el;
+                }
+            }
         }
     }
+
     return null;
 }
 
@@ -375,7 +404,9 @@ function handlePointerDown(e: PointerEvent) {
     const rect = activeCanvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    activeCanvas.setPointerCapture?.(e.pointerId);
+    try {
+        activeCanvas.setPointerCapture(e.pointerId);
+    } catch {}
 
     const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
@@ -400,33 +431,63 @@ function handlePointerMove(e: PointerEvent) {
     const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
-    currentActiveStroke.points.push([nx, ny]);
-    redrawActiveCanvases();
-}
-
-function handlePointerUp(e: PointerEvent) {
-    if (!activeCanvas || !isDrawingActive || !currentActiveStroke) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (currentActiveStroke.points.length > 0) {
-        currentStrokes.push(currentActiveStroke);
-        currentActiveStroke = null;
-        notifyListeners();
+    // Smooth filtering: avoid duplicating identical point
+    const lastPoint = currentActiveStroke.points[currentActiveStroke.points.length - 1];
+    if (!lastPoint || Math.abs(lastPoint[0] - nx) > 0.001 || Math.abs(lastPoint[1] - ny) > 0.001) {
+        currentActiveStroke.points.push([nx, ny]);
         redrawActiveCanvases();
     }
 }
 
-function handlePointerCancel() {
+function handlePointerUp(e: PointerEvent) {
+    if (!activeCanvas || !isDrawingActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+        activeCanvas.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    if (currentActiveStroke) {
+        if (currentActiveStroke.points.length > 0) {
+            currentStrokes.push(currentActiveStroke);
+            notifyListeners();
+        }
+        currentActiveStroke = null;
+        redrawActiveCanvases();
+    }
+}
+
+function handlePointerCancel(e: PointerEvent) {
+    try {
+        activeCanvas?.releasePointerCapture(e.pointerId);
+    } catch {}
     if (currentActiveStroke) {
         currentActiveStroke = null;
         redrawActiveCanvases();
     }
 }
 
-export function attachInteractiveCanvas() {
+function handleBlockEvent(e: Event) {
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+export function attachInteractiveCanvas(retries = 4) {
     const previewEl = findProfilePreviewElement();
-    if (!previewEl) return;
+    if (!previewEl) {
+        if (retries > 0) {
+            setTimeout(() => {
+                if (isDrawingActive) attachInteractiveCanvas(retries - 1);
+            }, 120);
+        }
+        return;
+    }
+
+    const compPos = window.getComputedStyle(previewEl).position;
+    if (compPos === "static") {
+        previewEl.style.position = "relative";
+    }
 
     const canvas = renderDrawingOverlay(previewEl, { enabled: true, strokes: currentStrokes, updatedAt: Date.now() }, true);
     if (!canvas) return;
@@ -435,22 +496,62 @@ export function attachInteractiveCanvas() {
     canvas.classList.add("nc-profile-drawing-interactive");
     canvas.style.cursor = getBrushCursor(activeBrushColor);
     canvas.style.pointerEvents = "auto";
+    canvas.style.position = "absolute";
+    canvas.style.inset = "0";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.zIndex = "99999";
+    canvas.style.touchAction = "none";
+    canvas.style.userSelect = "none";
+    (canvas.style as any).webkitUserSelect = "none";
 
-    canvas.addEventListener("pointerdown", handlePointerDown);
-    canvas.addEventListener("pointermove", handlePointerMove);
-    canvas.addEventListener("pointerup", handlePointerUp);
-    canvas.addEventListener("pointercancel", handlePointerCancel);
+    canvas.removeEventListener("pointerdown", handlePointerDown);
+    canvas.removeEventListener("pointermove", handlePointerMove);
+    canvas.removeEventListener("pointerup", handlePointerUp);
+    canvas.removeEventListener("pointercancel", handlePointerCancel);
+    canvas.removeEventListener("mousedown", handleBlockEvent);
+    canvas.removeEventListener("click", handleBlockEvent);
+    canvas.removeEventListener("contextmenu", handleBlockEvent);
+
+    canvas.addEventListener("pointerdown", handlePointerDown, { passive: false });
+    canvas.addEventListener("pointermove", handlePointerMove, { passive: false });
+    canvas.addEventListener("pointerup", handlePointerUp, { passive: false });
+    canvas.addEventListener("pointercancel", handlePointerCancel, { passive: false });
+
+    // Block any native mouse interactions so they never leak to profile underneath
+    canvas.addEventListener("mousedown", handleBlockEvent, { passive: false });
+    canvas.addEventListener("click", handleBlockEvent, { passive: false });
+    canvas.addEventListener("contextmenu", handleBlockEvent, { passive: false });
 
     createActiveBadge(previewEl);
+
+    // Setup ResizeObserver to keep canvas buffer sized accurately
+    if (activeResizeObserver) {
+        activeResizeObserver.disconnect();
+    }
+    activeResizeObserver = new ResizeObserver(() => {
+        if (activeCanvas && isDrawingActive && previewEl) {
+            syncCanvasDimensions(activeCanvas, previewEl);
+            redrawActiveCanvases();
+        }
+    });
+    activeResizeObserver.observe(previewEl);
 }
 
 export function detachInteractiveCanvas() {
     removeActiveBadge();
+    if (activeResizeObserver) {
+        activeResizeObserver.disconnect();
+        activeResizeObserver = null;
+    }
     if (activeCanvas) {
         activeCanvas.removeEventListener("pointerdown", handlePointerDown);
         activeCanvas.removeEventListener("pointermove", handlePointerMove);
         activeCanvas.removeEventListener("pointerup", handlePointerUp);
         activeCanvas.removeEventListener("pointercancel", handlePointerCancel);
+        activeCanvas.removeEventListener("mousedown", handleBlockEvent);
+        activeCanvas.removeEventListener("click", handleBlockEvent);
+        activeCanvas.removeEventListener("contextmenu", handleBlockEvent);
         activeCanvas.classList.remove("nc-profile-drawing-interactive");
         activeCanvas.style.cursor = "";
         activeCanvas.style.pointerEvents = "none";
