@@ -44,6 +44,11 @@ export const DEFAULT_EFFECTS_CONFIG: ProfileEffectsConfig = {
     chatUsernameEffect: "none",
     memberListEffect: "none",
     profileFont: "none",
+    profileDrawing: {
+        enabled: true,
+        strokes: [],
+        updatedAt: 0,
+    },
 };
 
 // ─── Settings Store ──────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { React, Select, TextInput, useEffect, useState, UserStore } from "@webpa
 import { triggerEffectsUpdate } from "../profileEffects/effectsManager";
 import { getCachedEffectsConfig, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
+import { ProfileDrawingSection } from "../profileDrawing/ProfileDrawingSection";
 
 function TypewriterPreview({ text }: { text: string }) {
     const [displayed, setDisplayed] = useState("");
@@ -268,6 +269,10 @@ export function ProfileEffectsSettingsSection() {
                     >
                         {t("All texts, bio, notes, tabs, and details will be displayed using this font on your profile.")}
                     </div>
+                </div>
+
+                <div style={{ marginTop: 24 }}>
+                    <ProfileDrawingSection />
                 </div>
             </div>
         </div>

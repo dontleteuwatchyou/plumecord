@@ -11,6 +11,20 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Pinceau": {"en":"Brush","fr":"Pinceau","ar":"فرشاة الرسم","es":"Pincel","ru":"Кисть","zh":"画笔"},
+    "Profile Drawing": {"en":"Profile Drawing","fr":"Dessin de profil","ar":"رسم الملف الشخصي","es":"Dibujo de perfil","ru":"Рисунок профиля","zh":"个人资料涂鸦"},
+    "Draw freely on your profile preview. Your drawing will be visible to everyone on your profile!": {"en":"Draw freely on your profile preview. Your drawing will be visible to everyone on your profile!","fr":"Dessinez librement sur l'aperçu de votre profil. Votre dessin sera visible par tout le monde sur votre profil !","ar":"ارسم بحرية على معاينة ملفك الشخصي. سيكون رسمك مرئياً للجميع على ملفك!","es":"Dibuja libremente en la vista previa de tu perfil. ¡Tu dibujo será visible para todos en tu perfil!","ru":"Рисуйте свободно на превью вашего профиля. Ваш рисунок будет виден всем в вашем профиле!","zh":"在个人资料预览上自由涂鸦。所有人都能在您的个人资料上看到！"},
+    "Draw on Profile": {"en":"Draw on Profile","fr":"Dessiner sur le profil","ar":"الرسم على الملف الشخصي","es":"Dibujar en el perfil","ru":"Рисовать на профиле","zh":"在个人资料上涂鸦"},
+    "Done Drawing": {"en":"Done Drawing","fr":"Terminer le dessin","ar":"إنهاء الرسم","es":"Finalizar dibujo","ru":"Завершить рисование","zh":"完成涂鸦"},
+    "Drawing Mode Active": {"en":"Drawing Mode Active","fr":"Mode dessin actif","ar":"وضع الرسم نشط","es":"Modo dibujo activo","ru":"Режим рисования активен","zh":"涂鸦模式已激活"},
+    "Brush Size": {"en":"Brush Size","fr":"Taille du pinceau","ar":"حجم الفرشاة","es":"Tamaño del pincel","ru":"Размер кисти","zh":"画笔大小"},
+    "Save Drawing": {"en":"Save Drawing","fr":"Enregistrer le dessin","ar":"حفظ الرسم","es":"Guardar dibujo","ru":"Сохранить рисунок","zh":"保存涂鸦"},
+    "Drawing saved and synced successfully!": {"en":"Drawing saved and synced successfully!","fr":"Dessin enregistré et synchronisé avec succès !","ar":"تم حفظ الرسم ومزامنته بنجاح!","es":"¡Dibujo guardado y sincronizado con éxito!","ru":"Рисунок успешно сохранен и синхронизирован!","zh":"涂鸦已成功保存并同步！"},
+    "Failed to save drawing": {"en":"Failed to save drawing","fr":"Échec de l'enregistrement du dessin","ar":"فشل حفظ الرسم","es":"Error al guardar el dibujo","ru":"Не удалось сохранить рисунок","zh":"保存涂鸦失败"},
+    "Fine": {"en":"Fine","fr":"Fin","ar":"دقيق","es":"Fino","ru":"Тонкий","zh":"细"},
+    "Medium": {"en":"Medium","fr":"Moyen","ar":"متوسط","es":"Medio","ru":"Средний","zh":"中"},
+    "Thick": {"en":"Thick","fr":"Épais","ar":"سميك","es":"Grueso","ru":"Толстый","zh":"粗"},
+    "Extra Thick": {"en":"Extra Thick","fr":"Très épais","ar":"سميك جداً","es":"Muy grueso","ru":"Очень толстый","zh":"极粗"},
     "AutoJoin": {"en":"AutoJoin","fr":"Auto-Rejoindre","ar":"الانضمام التلقائي","es":"Unirse automáticamente","ru":"Авто-присоединение","zh":"自动加入"},
     "Automatically and instantly answers incoming calls from specified users.": {"en":"Automatically and instantly answers incoming calls from specified users.","fr":"Répond automatiquement et instantanément aux appels entrants des utilisateurs spécifiés.","ar":"الرد تلقائياً وفورياً على المكالمات الواردة من المستخدمين المحددين.","es":"Responde de forma automática e instantánea a las llamadas entrantes de los usuarios especificados.","ru":"Автоматически и мгновенно отвечает на входящие звонки от указанных пользователей.","zh":"自动且即时接听指定用户的来电。"},
     "Allowed User IDs": {"en":"Allowed User IDs","fr":"IDs des utilisateurs autorisés","ar":"معرفات المستخدمين المسموح بهم","es":"IDs de usuarios permitidos","ru":"Разрешенные ID пользователей","zh":"允许的用户 ID"},

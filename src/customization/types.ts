@@ -29,6 +29,18 @@ export type ProfileFontType = "none" | "gothic" | "signature" | "pixel" | "nerd"
 
 export type UsernameEffectType = "none" | "glow" | "glitch" | "rainbow" | "type" | "gothic" | "signature" | "pixel" | "nerd" | "cyberpunk" | "handwritten";
 
+export interface ProfileDrawingStroke {
+    color: string;
+    size: number;
+    points: Array<[number, number]>;
+}
+
+export interface ProfileDrawingData {
+    enabled: boolean;
+    strokes: ProfileDrawingStroke[];
+    updatedAt: number;
+}
+
 export interface ProfileEffectsConfig {
     enabled?: boolean;
     mode: "preset" | "gif";
@@ -44,6 +56,7 @@ export interface ProfileEffectsConfig {
     chatUsernameEffect: UsernameEffectType;
     memberListEffect: UsernameEffectType;
     profileFont?: ProfileFontType;
+    profileDrawing?: ProfileDrawingData;
 }
 
 export interface NightcordPremiumPayload {

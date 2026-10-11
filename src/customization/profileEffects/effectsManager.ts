@@ -5,6 +5,8 @@
  */
 
 import { ChannelStore, FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
+import { startDrawingInjector, stopDrawingInjector } from "../profileDrawing/drawingInjector";
+import { isDrawingModeActive, renderDrawingOverlay } from "../profileDrawing/drawingManager";
 import { getCachedEffectsConfig, getCachedPremiumSettings, profileCache, readUserPremiumData } from "../sync";
 import type { ProfileEffectsConfig } from "../types";
 
@@ -617,6 +619,12 @@ export function scanAndApplyEffects() {
             const targetFont = (selfEffectsActive && ownConfig.profileFont) ? ownConfig.profileFont : "none";
             applyProfileFont(el, targetFont);
 
+            if (ownConfig.profileDrawing && ownConfig.profileDrawing.enabled && ownConfig.profileDrawing.strokes?.length > 0) {
+                renderDrawingOverlay(el, ownConfig.profileDrawing);
+            } else if (!isDrawingModeActive()) {
+                el.querySelector(".nc-profile-drawing-overlay:not(.nc-profile-drawing-interactive)")?.remove();
+            }
+
             if (selfEffectsActive) {
                 void injectBackground(el, ownConfig);
                 for (const n of Array.from(nameEls)) {
@@ -642,6 +650,11 @@ export function scanAndApplyEffects() {
             if (cached && cached.data?.effects) {
                 applyProfileFont(el, cached.data.effects.profileFont || "none");
                 if (cached.data.effects.showBanner) void injectBackground(el, cached.data.effects);
+                if (cached.data.effects.profileDrawing && cached.data.effects.profileDrawing.enabled && cached.data.effects.profileDrawing.strokes?.length > 0) {
+                    renderDrawingOverlay(el, cached.data.effects.profileDrawing);
+                } else {
+                    el.querySelector(".nc-profile-drawing-overlay")?.remove();
+                }
                 if (cached.data.effects.nameEffect && cached.data.effects.nameEffect !== "none") {
                     for (const n of Array.from(nameEls)) {
                         if (!isForbiddenElement(n)) {
@@ -655,14 +668,19 @@ export function scanAndApplyEffects() {
                 }
             } else if (cached) {
                 applyProfileFont(el, "none");
+                el.querySelector(".nc-profile-drawing-overlay")?.remove();
             } else if (!cached) {
                 void readUserPremiumData(authorId).then(data => {
                     if (!data?.effects) {
                         applyProfileFont(el, "none");
+                        el.querySelector(".nc-profile-drawing-overlay")?.remove();
                         return;
                     }
                     applyProfileFont(el, data.effects.profileFont || "none");
                     if (data.effects.showBanner) void injectBackground(el, data.effects);
+                    if (data.effects.profileDrawing && data.effects.profileDrawing.enabled && data.effects.profileDrawing.strokes?.length > 0) {
+                        renderDrawingOverlay(el, data.effects.profileDrawing);
+                    }
                     if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
                         for (const n of Array.from(nameEls)) {
                             if (!isForbiddenElement(n)) {
@@ -994,11 +1012,13 @@ export function startProfileEffects() {
         document.addEventListener("click", onDocumentClick, true);
     }
 
+    startDrawingInjector();
     triggerEffectsUpdate();
 }
 
 export function stopProfileEffects() {
     active = false;
+    stopDrawingInjector();
     if (observer) {
         observer.disconnect();
         observer = null;
@@ -1035,6 +1055,7 @@ export function stopProfileEffects() {
     }
 
     document.querySelectorAll(".cpe-bg-layer").forEach(el => el.remove());
+    document.querySelectorAll(".nc-profile-drawing-overlay").forEach(el => el.remove());
     document.querySelectorAll("[data-nc-applied-effect], [data-cpe-font], [class*='cpe-font-'], .cpe-glow, .cpe-glitch, .cpe-rainbow-letter, .cpe-type-cursor").forEach(el => {
         removeNameEffectFromElement(el as HTMLElement);
     });
