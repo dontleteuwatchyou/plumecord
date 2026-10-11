@@ -247,8 +247,8 @@ export function ProfileEffectsSettingsSection() {
                     <div
                         data-nc-profile-font={cfg.profileFont || "none"}
                         style={{
-                            fontSize: cfg.profileFont === "signature" ? 24 : cfg.profileFont === "handwritten" ? 20 : 16,
-                            fontWeight: cfg.profileFont === "signature" ? 400 : 600,
+                            fontSize: cfg.profileFont === "signature" ? 24 : cfg.profileFont === "handwritten" ? 24 : 16,
+                            fontWeight: cfg.profileFont === "signature" ? 400 : 700,
                             color: "var(--header-primary, #ffffff)",
                             lineHeight: 1.4
                         }}
@@ -258,7 +258,8 @@ export function ProfileEffectsSettingsSection() {
                     <div
                         data-nc-profile-font={cfg.profileFont || "none"}
                         style={{
-                            fontSize: cfg.profileFont === "signature" ? 18 : cfg.profileFont === "handwritten" ? 16 : 13,
+                            fontSize: cfg.profileFont === "signature" ? 18 : cfg.profileFont === "handwritten" ? 18 : 13,
+                            fontWeight: cfg.profileFont === "handwritten" ? 600 : undefined,
                             color: "var(--text-muted, #949ba4)",
                             lineHeight: 1.4
                         }}

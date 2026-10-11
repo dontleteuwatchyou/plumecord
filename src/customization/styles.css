@@ -1254,7 +1254,7 @@
 [data-nc-profile-font="handwritten"] [class*='displayNameContent_'],
 [data-nc-profile-font="handwritten"] [class*='nickname_'],
 [data-nc-profile-font="handwritten"] [class*='globalName_'] {
-    font-size: 28px !important;
+    font-size: 32px !important;
     font-weight: 700 !important;
     line-height: 1.15 !important;
     letter-spacing: 0.3px !important;
@@ -1266,7 +1266,7 @@
 [data-nc-profile-font="handwritten"] [class*='userTagUsername_'],
 [data-nc-profile-font="handwritten"] [class*='usernameAndPronounsRow_'],
 [data-nc-profile-font="handwritten"] [class*='nameTag_'] {
-    font-size: 18px !important;
+    font-size: 22px !important;
     font-weight: 600 !important;
     line-height: 1.2 !important;
     padding: 0 !important;
@@ -1276,7 +1276,7 @@
 [data-nc-profile-font="handwritten"] [class*='tabBarItem_'],
 [data-nc-profile-font="handwritten"] [class*='tabBar_'] [role='tab'],
 [data-nc-profile-font="handwritten"] [class*='tab_'] {
-    font-size: 18px !important;
+    font-size: 21px !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
 }
@@ -1400,8 +1400,8 @@
 .cpe-font-handwritten,
 [data-cpe-font="handwritten"] {
     font-family: 'Caveat', cursive !important;
-    font-weight: 600 !important;
-    font-size: inherit !important;
+    font-weight: 700 !important;
+    font-size: 1.25em !important;
     line-height: inherit !important;
     padding: 0 !important;
     margin: 0 !important;
@@ -1502,6 +1502,9 @@ a[href^='/channels/@me/'] [data-cpe-font],
 
 .nc-font-sample-handwritten {
     font-family: 'Caveat', cursive !important;
+    font-size: 22px !important;
+    font-weight: 650 !important;
+    letter-spacing: 0.3px !important;
 }
 
 .nc-font-sample-poppins {

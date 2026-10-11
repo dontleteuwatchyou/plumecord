@@ -174,8 +174,8 @@ export default function FontsTab() {
                                 >
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                         <div style={{
-                                            fontSize: 15,
-                                            fontWeight: 600,
+                                            fontSize: font.id === "handwritten" ? 17 : 15,
+                                            fontWeight: font.id === "handwritten" ? 700 : 600,
                                             color: "var(--header-primary, #ffffff)"
                                         }}>
                                             {t(font.name)}
@@ -187,7 +187,7 @@ export default function FontsTab() {
                                         />
                                     </div>
 
-                                    <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", lineHeight: 1.35 }}>
+                                    <div style={{ fontSize: font.id === "handwritten" ? 13.5 : 12, color: "var(--text-muted, #949ba4)", lineHeight: 1.35 }}>
                                         {t(font.description)}
                                     </div>
 
@@ -200,7 +200,14 @@ export default function FontsTab() {
                                             background: "var(--background-tertiary, #1e1f22)",
                                             borderRadius: 6,
                                             fontFamily: font.fontFamily || "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                                            fontSize: font.id === "pixel" ? 11 : (font.id === "signature" || font.id === "dancingScript" || font.id === "pacifico") ? 18 : 14,
+                                            fontSize: font.id === "pixel"
+                                                ? 11
+                                                : font.id === "handwritten"
+                                                    ? 22
+                                                    : (font.id === "signature" || font.id === "dancingScript" || font.id === "pacifico")
+                                                        ? 18
+                                                        : 14,
+                                            fontWeight: font.id === "handwritten" ? 650 : undefined,
                                             color: "var(--header-primary, #ffffff)",
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
