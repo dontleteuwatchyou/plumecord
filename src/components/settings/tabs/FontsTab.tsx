@@ -158,6 +158,7 @@ export default function FontsTab() {
                             return (
                                 <div
                                     key={font.id}
+                                    onClick={() => handleToggleFont(font.id, isSelected)}
                                     style={{
                                         background: "var(--background-secondary, #2b2d31)",
                                         border: isSelected
@@ -169,7 +170,8 @@ export default function FontsTab() {
                                         display: "flex",
                                         flexDirection: "column",
                                         gap: 10,
-                                        boxShadow: "none"
+                                        boxShadow: "none",
+                                        cursor: "pointer"
                                     }}
                                 >
                                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -180,11 +182,13 @@ export default function FontsTab() {
                                         }}>
                                             {t(font.name)}
                                         </div>
-                                        <FormSwitch
-                                            value={isSelected}
-                                            onChange={() => handleToggleFont(font.id, isSelected)}
-                                            hideBorder
-                                        />
+                                        <div onClick={e => e.stopPropagation()}>
+                                            <FormSwitch
+                                                value={isSelected}
+                                                onChange={() => handleToggleFont(font.id, isSelected)}
+                                                hideBorder
+                                            />
+                                        </div>
                                     </div>
 
                                     <div style={{ fontSize: 12, color: "var(--text-muted, #949ba4)", lineHeight: 1.35 }}>

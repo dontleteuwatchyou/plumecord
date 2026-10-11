@@ -186,10 +186,12 @@ export function ProfileEffectsSettingsSection() {
                                         : undefined
                                 }
                                 style={{
-                                    "--cpe-glow-color": cfg.glowColor || "#a78bfa",
-                                    color: "var(--header-primary, #ffffff)",
+                                    "--cpe-glow-color": cfg.glowColor || "#ffffff",
+                                    color: cfg.nameEffect === "glow"
+                                        ? (cfg.glowColor || "#ffffff")
+                                        : "var(--header-primary, #ffffff)",
                                     WebkitTextFillColor: cfg.nameEffect === "glow"
-                                        ? (cfg.glowColor || "#a78bfa")
+                                        ? (cfg.glowColor || "#ffffff")
                                         : cfg.nameEffect === "rainbow"
                                         ? "transparent"
                                         : "var(--header-primary, #ffffff)"

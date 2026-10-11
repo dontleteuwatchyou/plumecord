@@ -834,19 +834,42 @@
 
 /* ── Name & Profile Effects ────────────────────────────────────────────────── */
 
-.cpe-glow {
+.cpe-glow,
+.cpe-glow [data-username-with-effects],
+.cpe-glow [class*='innerContainer_'],
+.cpe-glow span,
+[data-username-with-effects].cpe-glow,
+[class*='username_']:has(.cpe-glow),
+:where([class*='message_'], [class*='header_'], [class*='contents_'], [class*='member_'], [class*='userProfileOuter']) .cpe-glow,
+:where([class*='message_'], [class*='header_'], [class*='contents_'], [class*='member_'], [class*='userProfileOuter']) .cpe-glow * {
     display: inline-block !important;
     vertical-align: baseline !important;
-    color: var(--cpe-glow-color, #a78bfa) !important;
-    -webkit-text-fill-color: var(--cpe-glow-color, #a78bfa) !important;
-    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7), 0 0 5px var(--cpe-glow-color, #a78bfa) !important;
+    background: transparent !important;
+    background-image: none !important;
+    -webkit-background-clip: border-box !important;
+    background-clip: border-box !important;
+    color: var(--cpe-glow-color, #ffffff) !important;
+    -webkit-text-fill-color: var(--cpe-glow-color, #ffffff) !important;
     filter: none !important;
     transition: color 0.15s ease, text-shadow 0.15s ease;
 }
 
+.cpe-glow,
+.cpe-glow [data-username-with-effects],
+[data-username-with-effects].cpe-glow {
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7), 0 0 5px var(--cpe-glow-color, #ffffff) !important;
+}
+
 .cpe-glow * {
-    color: inherit !important;
-    -webkit-text-fill-color: inherit !important;
+    text-shadow: none !important;
+}
+
+.cpe-glow::before,
+.cpe-glow::after,
+.cpe-glow *::before,
+.cpe-glow *::after {
+    background: transparent !important;
+    background-image: none !important;
     text-shadow: none !important;
 }
 
@@ -1440,34 +1463,6 @@ a[href^='/channels/@me/'] [data-cpe-font],
     overflow: visible !important;
 }
 
-/* ── Preserve Native Discord Typography in Nightcord Settings ────────────── */
-#app-mount .vc-settings-tab:not(.nc-font-sample),
-#app-mount .vc-settings-tab *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount .nc-fonts-tab:not(.nc-font-sample),
-#app-mount .nc-fonts-tab *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount .vc-settings-modal:not(.nc-font-sample),
-#app-mount .vc-settings-modal *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount [class*="vc-settings"]:not(.nc-font-sample),
-#app-mount [class*="vc-settings"] *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount [class*="contentColumn"]:has(.vc-settings-tab):not(.nc-font-sample),
-#app-mount [class*="contentColumn"]:has(.vc-settings-tab) *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount [class*="contentRegion"]:has(.vc-settings-tab):not(.nc-font-sample),
-#app-mount [class*="contentRegion"]:has(.vc-settings-tab) *:not(.nc-font-sample):not(.nc-font-sample *),
-#app-mount [data-item-id*="equicord"],
-#app-mount [data-item-id*="equicord"] *,
-#app-mount [data-item-id*="nightcord"],
-#app-mount [data-item-id*="nightcord"] *,
-#app-mount [data-item-id*="vencord"],
-#app-mount [data-item-id*="vencord"] *,
-#app-mount [aria-controls*="equicord"],
-#app-mount [aria-controls*="equicord"] *,
-#app-mount [aria-controls*="nightcord"],
-#app-mount [aria-controls*="nightcord"] *,
-#app-mount [aria-controls*="vencord"],
-#app-mount [aria-controls*="vencord"] * {
-    font-family: "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
-    letter-spacing: normal !important;
-}
 
 #app-mount .vc-settings-tab code,
 #app-mount .vc-settings-tab pre,

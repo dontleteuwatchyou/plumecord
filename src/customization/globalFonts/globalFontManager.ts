@@ -227,6 +227,7 @@ export function applyGlobalFont(config: GlobalFontConfig) {
     if (typeof document === "undefined") return;
 
     cachedConfig = { ...config };
+    const scale = typeof config.scale === "number" ? config.scale : 1.0;
 
     if (!document.documentElement || !document.head) {
         if (document.readyState === "loading") {

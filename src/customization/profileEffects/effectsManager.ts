@@ -326,9 +326,30 @@ export function removeNameEffectFromElement(nameEl: HTMLElement) {
         "cpe-glow", "cpe-glitch", "cpe-rainbow-letter", "cpe-type-cursor",
         "cpe-font-gothic", "cpe-font-signature", "cpe-font-pixel", "cpe-font-nerd", "cpe-font-cyberpunk", "cpe-font-handwritten"
     );
-    nameEl.removeAttribute("data-cpe-text");
-    nameEl.removeAttribute("data-cpe-font");
     nameEl.style.removeProperty("--cpe-glow-color");
+    nameEl.style.removeProperty("color");
+    nameEl.style.removeProperty("-webkit-text-fill-color");
+    nameEl.style.removeProperty("background-image");
+    nameEl.style.removeProperty("background");
+    nameEl.style.removeProperty("-webkit-background-clip");
+    nameEl.style.removeProperty("background-clip");
+    nameEl.style.removeProperty("text-shadow");
+
+    const innerDecorations = nameEl.querySelectorAll<HTMLElement>("[data-username-with-effects], [class*='innerContainer_'], span");
+    for (const inn of Array.from(innerDecorations)) {
+        inn.style.removeProperty("color");
+        inn.style.removeProperty("-webkit-text-fill-color");
+        inn.style.removeProperty("background-image");
+        inn.style.removeProperty("background");
+        inn.style.removeProperty("-webkit-background-clip");
+        inn.style.removeProperty("background-clip");
+    }
+
+    const parentUsername = nameEl.closest<HTMLElement>("[class*='username_']");
+    if (parentUsername && parentUsername !== nameEl) {
+        parentUsername.style.removeProperty("color");
+        parentUsername.style.removeProperty("-webkit-text-fill-color");
+    }
 
     if (activeTypewriters.has(nameEl)) {
         const state = activeTypewriters.get(nameEl);
@@ -397,11 +418,32 @@ export function applyNameEffectToElement(nameEl: HTMLElement, effectType: string
     );
     nameEl.removeAttribute("data-cpe-text");
     nameEl.removeAttribute("data-cpe-font");
-    nameEl.style.removeProperty("--cpe-glow-color");
-
     if (effectType === "glow") {
         nameEl.classList.add("cpe-glow");
         nameEl.style.setProperty("--cpe-glow-color", glowColor);
+        nameEl.style.setProperty("color", glowColor, "important");
+        nameEl.style.setProperty("-webkit-text-fill-color", glowColor, "important");
+        nameEl.style.setProperty("background-image", "none", "important");
+        nameEl.style.setProperty("background", "transparent", "important");
+        nameEl.style.setProperty("-webkit-background-clip", "border-box", "important");
+        nameEl.style.setProperty("background-clip", "border-box", "important");
+        nameEl.style.setProperty("text-shadow", `0 0 2px rgba(0, 0, 0, 0.7), 0 0 5px ${glowColor}`, "important");
+
+        const innerDecorations = nameEl.querySelectorAll<HTMLElement>("[data-username-with-effects], [class*='innerContainer_'], span");
+        for (const inn of Array.from(innerDecorations)) {
+            inn.style.setProperty("color", glowColor, "important");
+            inn.style.setProperty("-webkit-text-fill-color", glowColor, "important");
+            inn.style.setProperty("background-image", "none", "important");
+            inn.style.setProperty("background", "transparent", "important");
+            inn.style.setProperty("-webkit-background-clip", "border-box", "important");
+            inn.style.setProperty("background-clip", "border-box", "important");
+        }
+
+        const parentUsername = nameEl.closest<HTMLElement>("[class*='username_']");
+        if (parentUsername && parentUsername !== nameEl) {
+            parentUsername.style.setProperty("color", glowColor, "important");
+            parentUsername.style.setProperty("-webkit-text-fill-color", glowColor, "important");
+        }
     } else if (effectType === "glitch") {
         nameEl.classList.add("cpe-glitch");
         nameEl.setAttribute("data-cpe-text", currentText);
