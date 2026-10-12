@@ -12,9 +12,9 @@ const logger = new Logger("GroqManager");
 const DS_API_KEY = "groq-shared-api-key";
 
 const GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "gemma2-9b-it",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 ] as const;
 
 let currentModelIdx = 0;
@@ -181,6 +181,14 @@ async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
 
         if (!res.ok) {
             const body = await res.text().catch(() => "");
+            // Handle model decommissioned or model not found error
+            if (res.status === 400 || res.status === 404 || body.includes("model_not_found") || body.includes("model_decommissioned")) {
+                logger.warn(`Model ${model} is not available on Groq (${res.status}). Switching to next model...`);
+                markModelRateLimited(model, 3600_000); // 1 hour cooldown for unavailable model
+                if (attempt < maxRetries) {
+                    return _groqChat({ ...opts, forceModel: undefined }, attempt + 1);
+                }
+            }
             throw new Error(`Groq API ${res.status}: ${body.slice(0, 200)}`);
         }
 

@@ -137,8 +137,8 @@ export async function correctText(text: string): Promise<string> {
             ],
             temperature: 0.1,
             maxTokens: Math.max(256, Math.min(1024, text.length * 2)),
-            forceModel: "llama-3.1-8b-instant",
-            timeoutMs: 3500,
+            forceModel: "qwen/qwen3.8-27b",
+            timeoutMs: 4000,
             immediate: true,
         });
 
@@ -158,6 +158,8 @@ export async function correctText(text: string): Promise<string> {
         if (
             (clean.startsWith('"') && clean.endsWith('"')) ||
             (clean.startsWith("«") && clean.endsWith("»")) ||
+            (clean.startsWith("“") && clean.endsWith("”")) ||
+            (clean.startsWith("”") && clean.endsWith("”")) ||
             (clean.startsWith("'") && clean.endsWith("'"))
         ) {
             clean = clean.slice(1, -1).trim();
@@ -271,11 +273,15 @@ export default definePlugin({
     settings,
 
     start() {
-        getGroqKey().then(k => {
-            if (k && !settings.store.customApiKey) {
-                settings.store.customApiKey = k;
-            }
-        }).catch(() => { });
+        if (settings.store.customApiKey?.trim()) {
+            setGroqKey(settings.store.customApiKey.trim()).catch(() => { });
+        } else {
+            getGroqKey().then(k => {
+                if (k && !settings.store.customApiKey) {
+                    settings.store.customApiKey = k;
+                }
+            }).catch(() => { });
+        }
     },
 
     chatBarButton: {

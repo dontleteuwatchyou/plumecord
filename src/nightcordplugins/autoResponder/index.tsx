@@ -34,7 +34,11 @@ const settings = definePluginSettings({
                 gap: "12px",
                 color: "#FFFFFF"
             }}>
-                <span style={{ fontSize: "24px" }}>⚠️</span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--status-warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
                 <div>
                     <div style={{ fontWeight: "bold", color: "var(--status-warning)" }}>{t("API Key Required")}</div>
                     <div style={{ fontSize: "13px", marginTop: "4px" }}>
@@ -96,7 +100,7 @@ const settings = definePluginSettings({
 
 const DS_STYLE_KEY = "auto-responder-global-style";
 
-let lastMessageId = "";
+const _recentMessageIds = new Set<string>();
 const cachedGlobalStyle = "";
 const _pendingResponderTimers = new Set<ReturnType<typeof setTimeout>>();
 
@@ -104,21 +108,34 @@ async function handleMessage(message: any) {
     if (!settings.store.isActive) return;
 
     const currentUser = UserStore.getCurrentUser();
-    if (!currentUser || message.author.id === currentUser.id) return;
+    const authorId = message.author?.id || message.authorId;
+    if (!currentUser || !authorId || authorId === currentUser.id) return;
+    if (message.author?.bot) return;
 
-    // Vérification de la blacklist utilisateurs
-    const blacklistedUsers = settings.store.blacklistedUsers?.split(",").map((id: string) => id.trim()) || [];
-    if (blacklistedUsers.includes(message.author.id)) {
+    const channelId = message.channel_id || message.channelId;
+    if (!channelId) return;
+
+    const channel = ChannelStore.getChannel(channelId);
+    if (!channel) return;
+    const isDM = channel.type === 1 || (typeof channel.isDM === "function" && channel.isDM());
+    if (!isDM) return;
+
+    if (!message.content || typeof message.content !== "string" || !message.content.trim()) return;
+
+    // Check blacklisted users
+    const blacklistedUsers = settings.store.blacklistedUsers?.split(",").map((id: string) => id.trim()).filter(Boolean) || [];
+    if (blacklistedUsers.includes(authorId)) {
         return;
     }
 
-    if (message.id === lastMessageId) return;
-
-    const channel = ChannelStore.getChannel(message.channel_id);
-    // RESTRICTION STRICTE : Uniquement les DMs (Type 1)
-    if (!channel || channel.type !== 1) return;
-
-    lastMessageId = message.id;
+    if (message.id && _recentMessageIds.has(message.id)) return;
+    if (message.id) {
+        _recentMessageIds.add(message.id);
+        if (_recentMessageIds.size > 200) {
+            const first = _recentMessageIds.values().next().value;
+            if (first) _recentMessageIds.delete(first);
+        }
+    }
 
     try {
         const apiKey = await getGroqKey();
@@ -132,7 +149,6 @@ async function handleMessage(message: any) {
                     cancelText: "Cancel",
                     onConfirm: () => {
                         const { openModal } = findByPropsLazy("openModal");
-                        // Logique pour ouvrir les settings NightcordAI si possible
                     }
                 });
             } catch (e) {
@@ -144,33 +160,36 @@ async function handleMessage(message: any) {
         // Récupération de l'historique récent pour la cohérence
         let localHistory = "";
         try {
-            const msgs = MessageStore.getMessages(message.channel_id).toArray().slice(-15);
+            const rawMsgs = MessageStore.getMessages(channelId);
+            const msgsArray = typeof rawMsgs?.toArray === "function" ? rawMsgs.toArray() : Array.isArray(rawMsgs) ? rawMsgs : [];
+            const msgs = msgsArray.slice(-15);
             localHistory = msgs.map((m: any) => {
-                const author = m.author.id === currentUser.id ? "MOI" : "L'AMI";
-                return `${author}: ${m.content}`;
-            }).join("\n");
+                const aId = m.author?.id || m.authorId;
+                const author = aId === currentUser.id ? "MOI" : "L'AMI";
+                return `${author}: ${m.content || ""}`;
+            }).filter(Boolean).join("\n");
         } catch { }
 
         const prompt = `Tu es l'utilisateur (MOI). Réponds au dernier message de L'AMI.
         
 MES INFOS PERSONNELLES :
-${settings.store.personalInfo}
+${settings.store.personalInfo || "Aucune"}
 
 MES INSTRUCTIONS :
-${settings.store.customInstructions}
+${settings.store.customInstructions || "Aucune"}
 
 LISTE NOIRE :
-${settings.store.blacklistedWords}
+${settings.store.blacklistedWords || "Aucune"}
 
 HISTORIQUE :
-${localHistory}
+${localHistory || `L'AMI: ${message.content}`}
 
 LATEST MESSAGE : "${message.content}"
 
 RÈGLES DE COMPORTEMENT (CRUCIAL) :
 1. RÉPONSES COURTES : Fais des réponses concises (1 ou 2 phrases max). Ne fais pas de longs paragraphes.
-2. DISCRÉTION DES INFOS : N'utilise mes infos personnelles (ex: Paris) que si c'est pertinent. Ne ramène pas tout à Paris à chaque message.
-3. STYLE ÉCRIT NATUREL : À l'écrit, on ne dit pas "heu..." ou "attends" quand on calcule. On donne juste le résultat ou on continue la phrase. Supprime toute trace d'hésitation orale.
+2. DISCRÉTION DES INFOS : N'utilise mes infos personnelles que si c'est pertinent.
+3. STYLE ÉCRIT NATUREL : À l'écrit, supprime toute trace d'hésitation orale.
 4. HUMAIN : Parle comme un pote sur Discord (langage SMS léger autorisé si mon style le permet).
 
 MISSION :
@@ -182,26 +201,39 @@ Réponds de manière naturelle. NE RENVOIE QUE LE TEXTE DE TA RÉPONSE.`;
                 { role: "user", content: prompt }
             ],
             temperature: 0.7,
-            maxTokens: 500
+            maxTokens: 500,
+            forceModel: "qwen/qwen3.8-27b"
         });
 
         if (reply && !reply.startsWith("❌")) {
-            // Délai réaliste : base fixe + temps proportionnel à la longueur du message
-            const baseDelay = Math.floor(Math.random() * (settings.store.delayMax - settings.store.delayMin + 1) + settings.store.delayMin);
-            const extraDelay = reply.length > 100 ? 2 : 0; // +2s si message long
-            const totalDelay = (baseDelay + extraDelay) * 1000;
+            let cleanReply = reply.trim();
+            if (
+                (cleanReply.startsWith('"') && cleanReply.endsWith('"')) ||
+                (cleanReply.startsWith("«") && cleanReply.endsWith("»")) ||
+                (cleanReply.startsWith("“") && cleanReply.endsWith("”")) ||
+                (cleanReply.startsWith("”") && cleanReply.endsWith("”")) ||
+                (cleanReply.startsWith("'") && cleanReply.endsWith("'"))
+            ) {
+                cleanReply = cleanReply.slice(1, -1).trim();
+            }
+
+            const min = Math.max(1, settings.store.delayMin ?? 3);
+            const max = Math.max(min, settings.store.delayMax ?? 8);
+            const baseDelay = Math.floor(Math.random() * (max - min + 1) + min);
+            const totalDelay = baseDelay * 1000;
 
             try {
                 const TypingActions = findByPropsLazy("startTyping");
-                TypingActions.startTyping(message.channel_id);
+                TypingActions?.startTyping?.(channelId);
             } catch { }
 
             const _t = setTimeout(async () => {
                 _pendingResponderTimers.delete(_t);
+                if (!settings.store.isActive) return;
                 try {
                     await RestAPI.post({
-                        url: `/channels/${message.channel_id}/messages`,
-                        body: { content: reply }
+                        url: `/channels/${channelId}/messages`,
+                        body: { content: cleanReply }
                     });
                 } catch (e) {
                     console.error("[AutoResponder] Post error:", e);
