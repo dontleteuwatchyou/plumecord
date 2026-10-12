@@ -124,14 +124,30 @@ function openImage(url: string, width: number, height?: number) {
     }
 }
 
-function hasMenuItemById(children: any[], ids: string[]): boolean {
-    if (!Array.isArray(children)) return false;
-    for (const child of children) {
-        if (!child) continue;
-        const id = child.props?.id ?? child.key;
-        if (typeof id === "string" && ids.includes(id)) return true;
-        if (Array.isArray(child.props?.children) && hasMenuItemById(child.props.children, ids)) {
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+
+const SaveFallbackIcon = () => (
+    <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M12 2a1 1 0 0 1 1 1v10.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V3a1 1 0 0 1 1-1ZM3 20a1 1 0 1 0 0 2h18a1 1 0 1 0 0-2H3Z" />
+    </svg>
+);
+
+function hasMenuItem(node: any, ids: string[], labels: string[] = []): boolean {
+    if (!node) return false;
+    if (Array.isArray(node)) {
+        return node.some(item => hasMenuItem(item, ids, labels));
+    }
+    if (typeof node === "object") {
+        const id = node.props?.id ?? node.key;
+        if (typeof id === "string" && ids.some(targetId => id === targetId || id.includes(targetId))) {
             return true;
+        }
+        const label = node.props?.label;
+        if (typeof label === "string" && labels.includes(label)) {
+            return true;
+        }
+        if (node.props?.children) {
+            return hasMenuItem(node.props.children, ids, labels);
         }
     }
     return false;
@@ -142,25 +158,43 @@ const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, pr
     const media = resolveDiscordMedia(props);
     if (!media?.url) return;
 
-    const alreadyHasSave = hasMenuItemById(children, [
-        "save-image",
-        "fastpfp-save-image",
-        "fastpfp-save-image-msg",
-        "viewicons-save-media"
-    ]);
+    const alreadyHasSave = Boolean(
+        findGroupChildrenByChildId(["save-image", "fastpfp-save-image", "fastpfp-save-image-msg", "viewicons-save-media"], children, true) ||
+        hasMenuItem(
+            children,
+            ["save-image", "fastpfp-save-image", "fastpfp-save-image-msg", "viewicons-save-media"],
+            ["Save Image", t("Save Image"), "Save Video", t("Save Video")]
+        )
+    );
     if (alreadyHasSave) return;
 
-    const alreadyHasCopy = hasMenuItemById(children, [
-        "copy-image",
-        "fastpfp-copy-image",
-        "fastpfp-copy-image-msg",
-        "viewicons-copy-image"
-    ]);
+    // For standard non-blob images in chat where Discord already provides native media link options,
+    // Discord already renders its own Copy Image / Save Image with icons.
+    const hasNativeImageGroup = Boolean(
+        findGroupChildrenByChildId(["copy-native-link", "open-native-link"], children, true)
+    );
+    if (!media.isVideo && hasNativeImageGroup && !media.url.startsWith("blob:") && !media.url.startsWith("data:")) {
+        return;
+    }
+
+    const alreadyHasCopy = Boolean(
+        findGroupChildrenByChildId(["copy-image", "fastpfp-copy-image", "fastpfp-copy-image-msg", "viewicons-copy-image"], children, true) ||
+        hasMenuItem(
+            children,
+            ["copy-image", "fastpfp-copy-image", "fastpfp-copy-image-msg", "viewicons-copy-image"],
+            ["Copy Image", t("Copy Image")]
+        )
+    );
 
     const group = findGroupChildrenByChildId("copy-native-link", children)
         ?? findGroupChildrenByChildId("open-native-link", children)
         ?? findGroupChildrenByChildId("copy-link", children)
         ?? findGroupChildrenByChildId("copy-image", children);
+
+    const SaveIconComp = (media.isVideo
+        ? (iconsModule?.DownloadIcon || iconsModule?.VideoIcon || iconsModule?.ImageIcon)
+        : (iconsModule?.ImageIcon || iconsModule?.DownloadIcon)) || ImageIcon || SaveFallbackIcon;
+    const CopyIconComp = iconsModule?.ImageIcon || ImageIcon || SaveFallbackIcon;
 
     const items: React.ReactElement[] = [];
     if (!media.isVideo && !alreadyHasCopy) {
@@ -169,6 +203,12 @@ const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, pr
                 key="viewicons-copy-image"
                 id="viewicons-copy-image"
                 label={t("Copy Image")}
+                icon={CopyIconComp}
+                iconLeft={CopyIconComp}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: CopyIconComp
+                }}
                 action={() => void copyMediaImage(media.url)}
             />
         );
@@ -178,6 +218,12 @@ const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, pr
             key="viewicons-save-media"
             id="viewicons-save-media"
             label={t(media.isVideo ? "Save Video" : "Save Image")}
+            icon={SaveIconComp}
+            iconLeft={SaveIconComp}
+            leadingAccessory={{
+                type: "icon",
+                icon: SaveIconComp
+            }}
             action={() => void saveMediaFile(media.url, media.filename, media.isVideo)}
         />
     );
@@ -197,6 +243,13 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
     const cleanedUrl = normalizeDiscordMediaUrl(src);
     const isVideo = isVideoUrl(cleanedUrl) || isVideoUrl(src);
 
+    const SaveIconComp = (isVideo
+        ? (iconsModule?.DownloadIcon || iconsModule?.VideoIcon || iconsModule?.ImageIcon)
+        : (iconsModule?.ImageIcon || iconsModule?.DownloadIcon)) || ImageIcon || SaveFallbackIcon;
+    const CopyIconComp = iconsModule?.ImageIcon || ImageIcon || SaveFallbackIcon;
+    const LinkIconComp = iconsModule?.LinkIcon || ImageIcon;
+    const OpenIconComp = iconsModule?.WindowLaunchIcon || iconsModule?.LaunchIcon || ImageIcon;
+
     return (
         <Menu.Menu
             navId="image-context"
@@ -209,18 +262,36 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                     <Menu.MenuItem
                         id="copy-image"
                         label={t("Copy Image")}
+                        icon={CopyIconComp}
+                        iconLeft={CopyIconComp}
+                        leadingAccessory={{
+                            type: "icon",
+                            icon: CopyIconComp
+                        }}
                         action={() => void copyMediaImage(cleanedUrl)}
                     />
                 )}
                 <Menu.MenuItem
                     id="save-image"
                     label={t(isVideo ? "Save Video" : "Save Image")}
+                    icon={SaveIconComp}
+                    iconLeft={SaveIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: SaveIconComp
+                    }}
                     action={() => void saveMediaFile(cleanedUrl, undefined, isVideo)}
                 />
                 <Menu.MenuSeparator />
                 <Menu.MenuItem
                     id="copy-native-link"
                     label={t("Copy Link")}
+                    icon={LinkIconComp}
+                    iconLeft={LinkIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: LinkIconComp
+                    }}
                     action={() => {
                         copyToClipboard(cleanedUrl);
                         Toasts.show(Toasts.create(t("Link copied!"), Toasts.Type.SUCCESS));
@@ -229,6 +300,12 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                 <Menu.MenuItem
                     id="open-native-link"
                     label={t("Open Link")}
+                    icon={OpenIconComp}
+                    iconLeft={OpenIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: OpenIconComp
+                    }}
                     action={() => window.open(cleanedUrl, "_blank")}
                 />
             </Menu.MenuGroup>

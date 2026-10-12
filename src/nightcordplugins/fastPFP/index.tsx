@@ -43,14 +43,31 @@ const uploadImageToProfile = async (url: string, type: "avatar" | "banner") => {
     }
 };
 
-function hasMenuItemById(children: any[], ids: string[]): boolean {
-    if (!Array.isArray(children)) return false;
-    for (const child of children) {
-        if (!child) continue;
-        const id = child.props?.id ?? child.key;
-        if (typeof id === "string" && ids.includes(id)) return true;
-        if (Array.isArray(child.props?.children) && hasMenuItemById(child.props.children, ids)) {
+import { iconsModule } from "@plugins/_core/concatenatedModules";
+import { ImageIcon } from "@components/Icons";
+
+const SaveFallbackIcon = () => (
+    <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
+        <path fill="currentColor" d="M12 2a1 1 0 0 1 1 1v10.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V3a1 1 0 0 1 1-1ZM3 20a1 1 0 1 0 0 2h18a1 1 0 1 0 0-2H3Z" />
+    </svg>
+);
+
+function hasMenuItem(node: any, ids: string[], labels: string[] = []): boolean {
+    if (!node) return false;
+    if (Array.isArray(node)) {
+        return node.some(item => hasMenuItem(item, ids, labels));
+    }
+    if (typeof node === "object") {
+        const id = node.props?.id ?? node.key;
+        if (typeof id === "string" && ids.some(targetId => id === targetId || id.includes(targetId))) {
             return true;
+        }
+        const label = node.props?.label;
+        if (typeof label === "string" && labels.includes(label)) {
+            return true;
+        }
+        if (node.props?.children) {
+            return hasMenuItem(node.props.children, ids, labels);
         }
     }
     return false;
@@ -69,11 +86,42 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
         ?? findGroupChildrenByChildId("copy-link", children)
         ?? findGroupChildrenByChildId("save-image", children);
 
-    if (hasMenuItemById(children, ["fastpfp-avatar", "fastpfp-save-image-msg"])) return;
+    if (hasMenuItem(children, ["fastpfp-avatar", "fastpfp-save-image-msg"])) return;
 
-    const hasSaveAlready = hasMenuItemById(children, ["save-image", "viewicons-save-media", "fastpfp-save-image"]);
-    const hasCopyAlready = hasMenuItemById(children, ["copy-image", "viewicons-copy-image", "fastpfp-copy-image"]);
-    const hasOpenAlready = hasMenuItemById(children, ["open-native-link", "fastpfp-open-link"]);
+    const hasNativeImageGroup = Boolean(
+        findGroupChildrenByChildId(["copy-native-link", "open-native-link"], children, true)
+    );
+
+    const hasSaveAlready = Boolean(
+        (!isVideo && hasNativeImageGroup && !url.startsWith("blob:") && !url.startsWith("data:")) ||
+        findGroupChildrenByChildId(["save-image", "viewicons-save-media", "fastpfp-save-image"], children, true) ||
+        hasMenuItem(
+            children,
+            ["save-image", "viewicons-save-media", "fastpfp-save-image"],
+            ["Save Image", t("Save Image"), "Save Video", t("Save Video")]
+        )
+    );
+    const hasCopyAlready = Boolean(
+        (!isVideo && hasNativeImageGroup && !url.startsWith("blob:") && !url.startsWith("data:")) ||
+        findGroupChildrenByChildId(["copy-image", "viewicons-copy-image", "fastpfp-copy-image"], children, true) ||
+        hasMenuItem(
+            children,
+            ["copy-image", "viewicons-copy-image", "fastpfp-copy-image"],
+            ["Copy Image", t("Copy Image")]
+        )
+    );
+    const hasOpenAlready = Boolean(
+        hasNativeImageGroup ||
+        findGroupChildrenByChildId(["open-native-link", "fastpfp-open-link"], children, true) ||
+        hasMenuItem(children, ["open-native-link", "fastpfp-open-link"], ["Open Link", t("Open Link")])
+    );
+
+    const UserIconComp = iconsModule?.UserIcon || iconsModule?.ImageIcon || ImageIcon;
+    const SaveIconComp = (isVideo
+        ? (iconsModule?.DownloadIcon || iconsModule?.VideoIcon || iconsModule?.ImageIcon)
+        : (iconsModule?.ImageIcon || iconsModule?.DownloadIcon)) || ImageIcon || SaveFallbackIcon;
+    const CopyIconComp = iconsModule?.ImageIcon || ImageIcon || SaveFallbackIcon;
+    const OpenIconComp = iconsModule?.WindowLaunchIcon || iconsModule?.LaunchIcon || ImageIcon;
 
     const items: React.ReactElement[] = [];
 
@@ -83,12 +131,24 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                 label={t("Add To PFP")}
                 key="fastpfp-avatar"
                 id="fastpfp-avatar"
+                icon={UserIconComp}
+                iconLeft={UserIconComp}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: UserIconComp
+                }}
                 action={() => void uploadImageToProfile(url, "avatar")}
             />,
             <Menu.MenuItem
                 label={t("Add To Banner")}
                 key="fastpfp-banner"
                 id="fastpfp-banner"
+                icon={CopyIconComp}
+                iconLeft={CopyIconComp}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: CopyIconComp
+                }}
                 action={() => void uploadImageToProfile(url, "banner")}
             />
         );
@@ -104,6 +164,12 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     label={t("Copy Image")}
                     key="fastpfp-copy-image-msg"
                     id="fastpfp-copy-image-msg"
+                    icon={CopyIconComp}
+                    iconLeft={CopyIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: CopyIconComp
+                    }}
                     action={() => void copyMediaImage(url)}
                 />
             );
@@ -114,6 +180,12 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     label={t(isVideo ? "Save Video" : "Save Image")}
                     key="fastpfp-save-image-msg"
                     id="fastpfp-save-image-msg"
+                    icon={SaveIconComp}
+                    iconLeft={SaveIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: SaveIconComp
+                    }}
                     action={() => void saveMediaFile(url, filename, isVideo)}
                 />
             );
@@ -124,6 +196,12 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     label={t("Open Link")}
                     key="fastpfp-open-link-msg"
                     id="fastpfp-open-link-msg"
+                    icon={OpenIconComp}
+                    iconLeft={OpenIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: OpenIconComp
+                    }}
                     action={() => openLink(url)}
                 />
             );
@@ -154,9 +232,33 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
 
     if (children.some(child => child?.props?.id === "fastpfp-group")) return;
 
-    const hasSaveAlready = hasMenuItemById(children, ["save-image", "viewicons-save-media", "fastpfp-save-image-msg"]);
-    const hasCopyAlready = hasMenuItemById(children, ["copy-image", "viewicons-copy-image", "fastpfp-copy-image-msg"]);
-    const hasOpenAlready = hasMenuItemById(children, ["open-native-link", "fastpfp-open-link-msg"]);
+    const hasSaveAlready = Boolean(
+        findGroupChildrenByChildId(["save-image", "viewicons-save-media", "fastpfp-save-image-msg"], children, true) ||
+        hasMenuItem(
+            children,
+            ["save-image", "viewicons-save-media", "fastpfp-save-image-msg"],
+            ["Save Image", t("Save Image"), "Save Video", t("Save Video")]
+        )
+    );
+    const hasCopyAlready = Boolean(
+        findGroupChildrenByChildId(["copy-image", "viewicons-copy-image", "fastpfp-copy-image-msg"], children, true) ||
+        hasMenuItem(
+            children,
+            ["copy-image", "viewicons-copy-image", "fastpfp-copy-image-msg"],
+            ["Copy Image", t("Copy Image")]
+        )
+    );
+    const hasOpenAlready = Boolean(
+        findGroupChildrenByChildId(["open-native-link", "fastpfp-open-link-msg"], children, true) ||
+        hasMenuItem(children, ["open-native-link", "fastpfp-open-link-msg"], ["Open Link", t("Open Link")])
+    );
+
+    const UserIconComp = iconsModule?.UserIcon || iconsModule?.ImageIcon || ImageIcon;
+    const SaveIconComp = (isVideo
+        ? (iconsModule?.DownloadIcon || iconsModule?.VideoIcon || iconsModule?.ImageIcon)
+        : (iconsModule?.ImageIcon || iconsModule?.DownloadIcon)) || ImageIcon || SaveFallbackIcon;
+    const CopyIconComp = iconsModule?.ImageIcon || ImageIcon || SaveFallbackIcon;
+    const OpenIconComp = iconsModule?.WindowLaunchIcon || iconsModule?.LaunchIcon || ImageIcon;
 
     const items: React.ReactElement[] = [];
 
@@ -166,12 +268,24 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                 label={t("Add To PFP")}
                 key="fastpfp-avatar"
                 id="fastpfp-avatar"
+                icon={UserIconComp}
+                iconLeft={UserIconComp}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: UserIconComp
+                }}
                 action={() => void uploadImageToProfile(url, "avatar")}
             />,
             <Menu.MenuItem
                 label={t("Add To Banner")}
                 key="fastpfp-banner"
                 id="fastpfp-banner"
+                icon={CopyIconComp}
+                iconLeft={CopyIconComp}
+                leadingAccessory={{
+                    type: "icon",
+                    icon: CopyIconComp
+                }}
                 action={() => void uploadImageToProfile(url, "banner")}
             />
         );
@@ -187,6 +301,12 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     label={t("Copy Image")}
                     key="fastpfp-copy-image"
                     id="fastpfp-copy-image"
+                    icon={CopyIconComp}
+                    iconLeft={CopyIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: CopyIconComp
+                    }}
                     action={() => void copyMediaImage(url)}
                 />
             );
@@ -197,6 +317,12 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     label={t(isVideo ? "Save Video" : "Save Image")}
                     key="fastpfp-save-image"
                     id="fastpfp-save-image"
+                    icon={SaveIconComp}
+                    iconLeft={SaveIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: SaveIconComp
+                    }}
                     action={() => void saveMediaFile(url, filename, isVideo)}
                 />
             );
@@ -207,6 +333,12 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     label={t("Open Link")}
                     key="fastpfp-open-link"
                     id="fastpfp-open-link"
+                    icon={OpenIconComp}
+                    iconLeft={OpenIconComp}
+                    leadingAccessory={{
+                        type: "icon",
+                        icon: OpenIconComp
+                    }}
                     action={() => openLink(url)}
                 />
             );
@@ -232,4 +364,5 @@ export default definePlugin({
         "image-context": imageContextMenuPatch
     }
 });
+
 
