@@ -22,9 +22,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import { ImageIcon } from "@components/Icons";
+import { copyMediaImage, isVideoUrl, normalizeDiscordMediaUrl, resolveDiscordMedia, saveMediaFile } from "@plugins/fileUpload/utils/getMediaUrl";
 import { copyToClipboard } from "@utils/clipboard";
 import { Devs } from "@utils/constants";
 import { openImageModal } from "@utils/discord";
@@ -123,22 +124,112 @@ function openImage(url: string, width: number, height?: number) {
     }
 }
 
+function hasMenuItemById(children: any[], ids: string[]): boolean {
+    if (!Array.isArray(children)) return false;
+    for (const child of children) {
+        if (!child) continue;
+        const id = child.props?.id ?? child.key;
+        if (typeof id === "string" && ids.includes(id)) return true;
+        if (Array.isArray(child.props?.children) && hasMenuItemById(child.props.children, ids)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
+    if (!props) return;
+    const media = resolveDiscordMedia(props);
+    if (!media?.url) return;
+
+    const alreadyHasSave = hasMenuItemById(children, [
+        "save-image",
+        "fastpfp-save-image",
+        "fastpfp-save-image-msg",
+        "viewicons-save-media"
+    ]);
+    if (alreadyHasSave) return;
+
+    const alreadyHasCopy = hasMenuItemById(children, [
+        "copy-image",
+        "fastpfp-copy-image",
+        "fastpfp-copy-image-msg",
+        "viewicons-copy-image"
+    ]);
+
+    const group = findGroupChildrenByChildId("copy-native-link", children)
+        ?? findGroupChildrenByChildId("open-native-link", children)
+        ?? findGroupChildrenByChildId("copy-link", children)
+        ?? findGroupChildrenByChildId("copy-image", children);
+
+    const items: React.ReactElement[] = [];
+    if (!media.isVideo && !alreadyHasCopy) {
+        items.push(
+            <Menu.MenuItem
+                key="viewicons-copy-image"
+                id="viewicons-copy-image"
+                label={t("Copy Image")}
+                action={() => void copyMediaImage(media.url)}
+            />
+        );
+    }
+    items.push(
+        <Menu.MenuItem
+            key="viewicons-save-media"
+            id="viewicons-save-media"
+            label={t(media.isVideo ? "Save Video" : "Save Image")}
+            action={() => void saveMediaFile(media.url, media.filename, media.isVideo)}
+        />
+    );
+
+    if (group) {
+        group.unshift(...items);
+    } else {
+        children.unshift(
+            <Menu.MenuGroup key="viewicons-media-group" id="viewicons-media-group">
+                {items}
+            </Menu.MenuGroup>
+        );
+    }
+};
+
 function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElement | null }) {
+    const cleanedUrl = normalizeDiscordMediaUrl(src);
+    const isVideo = isVideoUrl(cleanedUrl) || isVideoUrl(src);
+
     return (
         <Menu.Menu
             navId="image-context"
             onClose={() => ContextMenuApi.closeContextMenu()}
             aria-label={t("Image Options")}
-            contextMenuAPIArguments={[{ src, target }]}
+            contextMenuAPIArguments={[{ src: cleanedUrl, target }]}
         >
             <Menu.MenuGroup id="copy-native-link">
+                {!isVideo && (
+                    <Menu.MenuItem
+                        id="copy-image"
+                        label={t("Copy Image")}
+                        action={() => void copyMediaImage(cleanedUrl)}
+                    />
+                )}
                 <Menu.MenuItem
-                    id="copy-image-link"
+                    id="save-image"
+                    label={t(isVideo ? "Save Video" : "Save Image")}
+                    action={() => void saveMediaFile(cleanedUrl, undefined, isVideo)}
+                />
+                <Menu.MenuSeparator />
+                <Menu.MenuItem
+                    id="copy-native-link"
                     label={t("Copy Link")}
                     action={() => {
-                        copyToClipboard(src);
-                        Toasts.show(Toasts.create("Copied image link!", Toasts.Type.SUCCESS));
+                        copyToClipboard(cleanedUrl);
+                        Toasts.show(Toasts.create(t("Link copied!"), Toasts.Type.SUCCESS));
                     }}
+                />
+                <Menu.MenuItem
+                    id="open-native-link"
+                    label={t("Open Link")}
+                    action={() => window.open(cleanedUrl, "_blank")}
                 />
             </Menu.MenuGroup>
         </Menu.Menu>
@@ -154,46 +245,51 @@ function setupModalContextMenuListener() {
         const target = e.target as HTMLElement | null;
         if (!target) return;
 
-        // Strict check: Ignore normal UI elements like user profiles, popouts, member lists, server bar, channels, chat messages
-        const isStandardUi = target.closest?.("[class*='userPopout'], [class*='userProfile'], [class*='member'], [class*='guild'], [class*='channel'], [class*='sidebar'], [class*='chatContent']");
-        const mediaViewerModal = target.closest?.("[class*='mediaViewer'], [class*='carouselModal'], [class*='imageWrapper']");
+        // Only ever activate inside an explicit fullscreen modal dialog
+        const fullscreenDialog = target.closest?.("[role='dialog'], [class*='carouselModal'], [class*='mediaViewerModal']") as HTMLElement | null;
+        if (!fullscreenDialog) return;
 
-        // If it's standard UI and NOT a fullscreen media viewer, do nothing (let native context menus open)
-        if (isStandardUi && !mediaViewerModal) return;
-
-        // Must be explicitly inside a fullscreen media/carousel viewer modal
-        if (!mediaViewerModal) {
-            const isFullscreenModal = target.closest?.("[role='dialog'][class*='modal']");
-            if (!isFullscreenModal) return;
-
-            const hasFullscreenImage = isFullscreenModal.querySelector?.("[class*='mediaViewer'], [class*='imageWrapper'], img[src*='cdn.discordapp.com'], img[src*='media.discordapp.net']");
-            if (!hasFullscreenImage) return;
+        // Never hijack user profiles, popouts, settings, or standard chat content
+        if (target.closest?.("[class*='chatContent'], [class*='messageListItem'], [class*='userPopout'], [class*='userProfile'], [class*='profileModal'], [class*='settings']")) {
+            return;
         }
 
-        let imgSrc: string | null = null;
+        const isMediaModal = fullscreenDialog.matches?.("[class*='carouselModal'], [class*='mediaViewerModal']")
+            || Boolean(fullscreenDialog.querySelector?.("[class*='mediaViewer'], [class*='carouselModal'], [class*='imageWrapper'] img, video"));
+        if (!isMediaModal) return;
 
-        if (target instanceof HTMLImageElement && target.src) {
-            imgSrc = target.src;
-        } else {
-            const imgTag = (target.querySelector?.("img") || target.closest?.("[class*='mediaViewer'], [class*='imageWrapper'], [role='dialog']")?.querySelector?.("img")) as HTMLImageElement | null;
-            if (imgTag?.src) imgSrc = imgTag.src;
-        }
+        const media = resolveDiscordMedia({ target });
+        let mediaSrc: string | null = media?.url ?? null;
 
-        if (!imgSrc) {
-            const bg = target.style?.backgroundImage || (window.getComputedStyle ? window.getComputedStyle(target).backgroundImage : "");
-            if (bg && bg.includes("url(")) {
-                const match = bg.match(/url\(["']?(.*?)["']?\)/);
-                if (match?.[1]) imgSrc = match[1];
+        if (!mediaSrc) {
+            if (target instanceof HTMLImageElement && target.src) {
+                mediaSrc = target.src;
+            } else if (target instanceof HTMLVideoElement && (target.currentSrc || target.src)) {
+                mediaSrc = target.currentSrc || target.src;
+            } else {
+                const mediaTag = (target.querySelector?.("video, img") ||
+                    fullscreenDialog.querySelector?.("video, img")) as HTMLImageElement | HTMLVideoElement | null;
+                if (mediaTag && "src" in mediaTag && mediaTag.src) {
+                    mediaSrc = mediaTag.src;
+                }
             }
         }
 
-        if (imgSrc) {
+        if (!mediaSrc) {
+            const bg = target.style?.backgroundImage || (window.getComputedStyle ? window.getComputedStyle(target).backgroundImage : "");
+            if (bg && bg.includes("url(")) {
+                const match = bg.match(/url\(["']?(.*?)["']?\)/);
+                if (match?.[1]) mediaSrc = match[1];
+            }
+        }
+
+        if (mediaSrc) {
             e.preventDefault();
             e.stopPropagation();
 
             ContextMenuApi.openContextMenu(e as any, () => (
                 <ImageModalContextMenu
-                    src={imgSrc!}
+                    src={mediaSrc!}
                     target={target}
                 />
             ));
@@ -575,7 +671,9 @@ export default definePlugin({
 
     contextMenus: {
         "guild-context": GuildContext,
-        "gdm-context": GroupDMContext
+        "gdm-context": GroupDMContext,
+        "message": mediaDownloadContextMenuPatch,
+        "image-context": mediaDownloadContextMenuPatch
     },
 
     patches: [
