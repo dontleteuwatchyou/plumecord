@@ -9,9 +9,11 @@ import "./styles.css";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { definePluginSettings } from "@api/Settings";
 import { proxyLazy } from "@utils/lazy";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType, StartAt } from "@utils/types";
 import { findAll, filters, findByCodeLazy, findByProps, findStore, waitFor } from "@webpack";
 import {
+    Button,
     ChannelActionCreators,
     ChannelStore,
     ComponentDispatch,
@@ -22,6 +24,7 @@ import {
     React,
     SelectedChannelStore,
     showToast,
+    Text,
     Toasts,
     UploadManager,
     UserStore
@@ -35,10 +38,14 @@ import {
     deleteSavedMessage,
     getAttachmentUrl,
     getSavedMessages,
+    isMessagesLoaded,
+    loadAttachmentBlobUrl,
     loadSavedMessages,
+    mediaBlobUrlCache,
     Native,
     SAVED_MESSAGES_CHANNEL_ID,
     SAVED_MESSAGES_USER_ID,
+    SavedAttachment,
     SavedMessage,
     storeListeners
 } from "./store";
@@ -261,15 +268,251 @@ let unpatchPermissionStore: (() => void) | null = null;
 let unpatchRelationshipStore: (() => void) | null = null;
 let unpatchSelectedChannelStore: (() => void) | null = null;
 let unpatchAvatarFns: (() => void)[] = [];
+let unpatchMediaSanitizers: (() => void)[] = [];
+
+function formatFileSize(bytes: number): string {
+    if (!bytes || bytes <= 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function triggerMediaDownload(url: string, filename: string) {
+    try {
+        const cleanUrl = url.split(/[?#]/)[0];
+        const a = document.createElement("a");
+        a.href = cleanUrl;
+        a.download = filename || "attachment";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch { }
+}
+
+function openImageLightboxModal(url: string, filename: string) {
+    const cleanUrl = url.split(/[?#]/)[0];
+    openModal(modalProps => (
+        <ModalRoot {...modalProps} size={ModalSize.LARGE}>
+            <ModalHeader separator={false} style={{ padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <Text variant="heading-md/semibold" style={{ color: "var(--header-primary, #ffffff)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {filename || t("Saved Messages")}
+                </Text>
+                <ModalCloseButton onClick={modalProps.onClose} />
+            </ModalHeader>
+            <ModalContent style={{ padding: "0 24px 20px 24px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img
+                    src={cleanUrl}
+                    alt={filename || ""}
+                    style={{
+                        maxWidth: "100%",
+                        maxHeight: "72vh",
+                        objectFit: "contain",
+                        borderRadius: 8,
+                        display: "block"
+                    }}
+                />
+            </ModalContent>
+            <ModalFooter style={{ padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Button
+                    color={Button.Colors.PRIMARY}
+                    onClick={() => triggerMediaDownload(cleanUrl, filename)}
+                >
+                    {t("Download")}
+                </Button>
+                <Button
+                    color={Button.Colors.BRAND}
+                    onClick={modalProps.onClose}
+                >
+                    {t("Close")}
+                </Button>
+            </ModalFooter>
+        </ModalRoot>
+    ));
+}
+
+function SavedMessageAttachmentItem({ att, totalCount }: { att: SavedAttachment; totalCount: number }) {
+    const [blobUrl, setBlobUrl] = React.useState<string>(() => {
+        if (att.mediaId && mediaBlobUrlCache.has(att.mediaId)) return mediaBlobUrlCache.get(att.mediaId)!;
+        if (att.id && mediaBlobUrlCache.has(att.id)) return mediaBlobUrlCache.get(att.id)!;
+        return getAttachmentUrl(att);
+    });
+
+    React.useEffect(() => {
+        let mounted = true;
+        if (!blobUrl) {
+            loadAttachmentBlobUrl(att).then(resolved => {
+                if (mounted && resolved) {
+                    setBlobUrl(resolved);
+                }
+            });
+        }
+        return () => { mounted = false; };
+    }, [att.mediaId, att.id, blobUrl]);
+
+    const isImg = att.isImage || att.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(att.filename || "");
+    const isVid = att.isVideo || att.contentType?.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/i.test(att.filename || "");
+    const isAud = att.isAudio || att.contentType?.startsWith("audio/") || /\.(mp3|ogg|wav|m4a|flac|aac)$/i.test(att.filename || "");
+
+    const cleanSrc = blobUrl ? blobUrl.split(/[?#]/)[0] : "";
+
+    if (isImg) {
+        if (!cleanSrc) {
+            return null;
+        }
+        const isGrid = totalCount > 1;
+        return (
+            <div
+                style={{
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    display: "inline-block",
+                    maxWidth: isGrid ? 260 : 520,
+                    maxHeight: isGrid ? 220 : 360,
+                    background: "transparent",
+                    cursor: "pointer"
+                }}
+                onClick={() => openImageLightboxModal(cleanSrc, att.filename)}
+            >
+                <img
+                    src={cleanSrc}
+                    alt={att.filename || ""}
+                    className="nc-saved-attachment-img"
+                    style={{
+                        maxWidth: isGrid ? 260 : 520,
+                        maxHeight: isGrid ? 220 : 360,
+                        width: "auto",
+                        height: "auto",
+                        objectFit: isGrid ? "cover" : "contain",
+                        display: "block",
+                        borderRadius: 8,
+                        cursor: "pointer"
+                    }}
+                />
+            </div>
+        );
+    }
+
+    if (isVid && cleanSrc) {
+        return (
+            <div className="nc-saved-attachment-card" style={{ maxWidth: 520 }}>
+                <video
+                    src={cleanSrc}
+                    controls
+                    preload="metadata"
+                    className="nc-saved-attachment-video"
+                />
+            </div>
+        );
+    }
+
+    if (isAud && cleanSrc) {
+        return (
+            <div className="nc-saved-attachment-card" style={{ padding: "8px 12px", maxWidth: 440 }}>
+                <div className="nc-saved-attachment-file-name" style={{ marginBottom: 4 }}>
+                    {att.filename}
+                </div>
+                <audio src={cleanSrc} controls className="nc-saved-attachment-audio" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="nc-saved-attachment-card" style={{ maxWidth: 440 }}>
+            <div className="nc-saved-attachment-file">
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--header-secondary, #b5bac1)" strokeWidth="2" style={{ flexShrink: 0 }}>
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" strokeLinecap="round" strokeLinejoin="round" />
+                        <polyline points="14 2 14 8 20 8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <div style={{ minWidth: 0 }}>
+                        <div className="nc-saved-attachment-file-name">{att.filename}</div>
+                        <div className="nc-saved-attachment-file-size">{formatFileSize(att.size)}</div>
+                    </div>
+                </div>
+                {cleanSrc && (
+                    <Button
+                        size={Button.Sizes.SMALL}
+                        color={Button.Colors.PRIMARY}
+                        onClick={() => triggerMediaDownload(cleanSrc, att.filename)}
+                    >
+                        {t("Download")}
+                    </Button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function SavedMessageAttachments({ message }: { message: any }) {
+    const [, forceUpdate] = React.useState(0);
+
+    React.useEffect(() => {
+        const listener = () => forceUpdate(n => n + 1);
+        storeListeners.add(listener);
+        return () => { storeListeners.delete(listener); };
+    }, []);
+
+    const msgId = message?.id;
+    const savedMsg = React.useMemo(() => {
+        const all = getSavedMessages();
+        return all.find(m => m.id === msgId);
+    }, [msgId, message]);
+
+    const attachments: SavedAttachment[] = React.useMemo(() => {
+        if (savedMsg?.attachments?.length) {
+            return savedMsg.attachments;
+        }
+        if (Array.isArray(message?.attachments) && message.attachments.length > 0) {
+            return message.attachments.map((a: any) => ({
+                id: a.id,
+                filename: a.filename || "attachment",
+                contentType: a.content_type || a.contentType || "image/png",
+                size: a.size || 0,
+                dataUrl: a.url || a.proxy_url,
+                mediaId: a.mediaId || a.id,
+                width: a.width,
+                height: a.height,
+                isImage: Boolean(a.content_type?.startsWith("image/") || a.contentType?.startsWith("image/") || a.width),
+                isVideo: Boolean(a.content_type?.startsWith("video/") || a.contentType?.startsWith("video/")),
+                isAudio: Boolean(a.content_type?.startsWith("audio/") || a.contentType?.startsWith("audio/")),
+            }));
+        }
+        return [];
+    }, [savedMsg, message?.attachments]);
+
+    if (!attachments.length) return null;
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                marginTop: 6,
+                maxWidth: 550
+            }}
+        >
+            {attachments.map((att, idx) => (
+                <SavedMessageAttachmentItem
+                    key={att.id || att.mediaId || idx}
+                    att={att}
+                    totalCount={attachments.length}
+                />
+            ))}
+        </div>
+    );
+}
 
 function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
     const attachments: any[] = [];
 
     for (const att of msg.attachments || []) {
-        const url = getAttachmentUrl(att);
+        const rawUrl = getAttachmentUrl(att);
+        const url = rawUrl ? rawUrl.split(/[?#]/)[0] : "";
         const isImg = att.isImage || att.contentType?.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(att.filename || "");
         attachments.push({
             id: att.id,
+            mediaId: att.mediaId,
             filename: att.filename,
             size: att.size,
             url,
@@ -319,6 +562,11 @@ function convertSavedMessageToDiscordMessage(msg: SavedMessage): any {
 }
 
 export function injectMessages() {
+    if (!isMessagesLoaded()) {
+        loadSavedMessages().then(() => injectMessages());
+        return;
+    }
+
     const messages = getSavedMessages();
     const discordRecords = messages.map(convertSavedMessageToDiscordMessage);
 
@@ -385,11 +633,9 @@ export function SavedMessagesBanner() {
             }
         };
         storeListeners.add(listener);
-        loadSavedMessages().then(() => {
-            if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
-                injectMessages();
-            }
-        });
+        if (!isMessagesLoaded()) {
+            loadSavedMessages();
+        }
 
         return () => { storeListeners.delete(listener); };
     }, []);
@@ -493,6 +739,14 @@ export default definePlugin({
                 match: /privateChannelIds:([^,]+)(?=,listRef:)/,
                 replace: "privateChannelIds:$self.injectSavedMessagesDm($1)"
             }
+        },
+        // Direct instant attachment renderer for Saved Messages (bypasses Discord's slow CDN MediaMosaic skeleton)
+        {
+            find: "this.renderAttachments(",
+            replacement: {
+                match: /renderAttachments\((\i)\)\{/,
+                replace: "renderAttachments($1){if($self.isSavedMessage($1))return $self.renderSavedAttachments($1);"
+            }
         }
     ],
 
@@ -513,6 +767,23 @@ export default definePlugin({
         return false;
     },
 
+    isSavedMessage(message: any) {
+        if (!message) return false;
+        const chId = message.channel_id || message.channelId;
+        if (chId === SAVED_MESSAGES_CHANNEL_ID) return true;
+        const authorId = message.author?.id;
+        if (authorId === SAVED_MESSAGES_USER_ID) return true;
+        return false;
+    },
+
+    renderSavedAttachments(message: any) {
+        return (
+            <ErrorBoundary noop>
+                <SavedMessageAttachments message={message} />
+            </ErrorBoundary>
+        );
+    },
+
     renderBanner() {
         return (
             <ErrorBoundary noop>
@@ -526,24 +797,33 @@ export default definePlugin({
 
         const text = messageObj?.content || options?.content || "";
         const files: (File | any)[] = [];
+        const seenFiles = new Set<any>();
+
+        const addFileUnique = (fileObj: any) => {
+            if (!fileObj || seenFiles.has(fileObj)) return;
+            seenFiles.add(fileObj);
+            files.push(fileObj);
+        };
 
         if (Array.isArray(options?.uploads)) {
             for (const u of options.uploads) {
-                if (u?.item?.file) files.push(u.item.file);
-                else if (u?.file) files.push(u.file);
+                if (u?.item?.file) addFileUnique(u.item.file);
+                else if (u?.file) addFileUnique(u.file);
             }
         }
 
-        try {
-            const uploadStore = findStore("UploadStore") as any;
-            if (uploadStore?.getUploads) {
-                const draftUploads = uploadStore.getUploads(channelId, DraftType.Channel) || [];
-                for (const u of draftUploads) {
-                    if (u?.item?.file) files.push(u.item.file);
-                    else if (u?.file) files.push(u.file);
+        if (files.length === 0) {
+            try {
+                const uploadStore = findStore("UploadStore") as any;
+                if (uploadStore?.getUploads) {
+                    const draftUploads = uploadStore.getUploads(channelId, DraftType.Channel) || [];
+                    for (const u of draftUploads) {
+                        if (u?.item?.file) addFileUnique(u.item.file);
+                        else if (u?.file) addFileUnique(u.file);
+                    }
                 }
-            }
-        } catch { }
+            } catch { }
+        }
 
         // Clear chat input text and attached drafts immediately
         try {
@@ -595,7 +875,7 @@ export default definePlugin({
             } catch { }
         }, 50);
 
-        // Save locally
+        // Save locally & render in 0ms
         try {
             const savedMsg = await addSavedMessage(text, files);
             const discordRecord = convertSavedMessageToDiscordMessage(savedMsg);
@@ -619,6 +899,69 @@ export default definePlugin({
     },
 
     start() {
+        // Strip query parameters (?format=webp&width=...) from blob: URLs so Chromium's BlobURLLoader never fails
+        try {
+            const cleanBlobStr = (val: string): string => {
+                if (typeof val !== "string") return val;
+                if (val.startsWith("blob:")) return val.split(/[?#]/)[0];
+                if (val.includes("blob:")) return val.replace(/blob:([^\s,"'?#]+)[?#][^\s,"']*/g, "blob:$1");
+                return val;
+            };
+
+            const origUrlToString = URL.prototype.toString;
+            URL.prototype.toString = function() {
+                if (this.protocol === "blob:") return "blob:" + this.pathname;
+                return origUrlToString.call(this);
+            };
+            unpatchMediaSanitizers.push(() => { URL.prototype.toString = origUrlToString; });
+
+            const hrefDesc = Object.getOwnPropertyDescriptor(URL.prototype, "href");
+            if (hrefDesc?.get && hrefDesc.configurable) {
+                const origHrefGet = hrefDesc.get;
+                Object.defineProperty(URL.prototype, "href", {
+                    ...hrefDesc,
+                    get() {
+                        if (this.protocol === "blob:") return "blob:" + this.pathname;
+                        return origHrefGet.call(this);
+                    }
+                });
+                unpatchMediaSanitizers.push(() => { Object.defineProperty(URL.prototype, "href", hrefDesc); });
+            }
+
+            const imgSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
+            if (imgSrcDesc?.set && imgSrcDesc.configurable) {
+                const origImgSrcSet = imgSrcDesc.set;
+                Object.defineProperty(HTMLImageElement.prototype, "src", {
+                    ...imgSrcDesc,
+                    set(val: string) {
+                        origImgSrcSet.call(this, cleanBlobStr(val));
+                    }
+                });
+                unpatchMediaSanitizers.push(() => { Object.defineProperty(HTMLImageElement.prototype, "src", imgSrcDesc); });
+            }
+
+            const imgSrcsetDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "srcset");
+            if (imgSrcsetDesc?.set && imgSrcsetDesc.configurable) {
+                const origImgSrcsetSet = imgSrcsetDesc.set;
+                Object.defineProperty(HTMLImageElement.prototype, "srcset", {
+                    ...imgSrcsetDesc,
+                    set(val: string) {
+                        origImgSrcsetSet.call(this, cleanBlobStr(val));
+                    }
+                });
+                unpatchMediaSanitizers.push(() => { Object.defineProperty(HTMLImageElement.prototype, "srcset", imgSrcsetDesc); });
+            }
+
+            const origSetAttr = Element.prototype.setAttribute;
+            Element.prototype.setAttribute = function(name: string, value: string) {
+                if ((name === "src" || name === "srcset") && typeof value === "string" && value.includes("blob:")) {
+                    value = cleanBlobStr(value);
+                }
+                return origSetAttr.call(this, name, value);
+            };
+            unpatchMediaSanitizers.push(() => { Element.prototype.setAttribute = origSetAttr; });
+        } catch { }
+
         loadSavedMessages().then(() => {
             if (!isDmClosedSafe()) {
                 reinjectSavedMessages();
@@ -1213,6 +1556,30 @@ export default definePlugin({
             };
         }
 
+        // Runtime prototype patch on MessageAccessories.prototype.renderAttachments for instant active rendering
+        try {
+            const selfPlugin = this;
+            const patchProto = (mod: any) => {
+                const proto = mod?.prototype || mod?.default?.prototype;
+                if (proto && typeof proto.renderAttachments === "function" && !proto.renderAttachments.__savedMessagesPatched) {
+                    const origRenderAtt = proto.renderAttachments;
+                    proto.renderAttachments = function(msg: any) {
+                        if (selfPlugin.isSavedMessage(msg)) {
+                            return selfPlugin.renderSavedAttachments(msg);
+                        }
+                        return origRenderAtt.apply(this, arguments as any);
+                    };
+                    proto.renderAttachments.__savedMessagesPatched = true;
+                    unpatchMediaSanitizers.push(() => {
+                        proto.renderAttachments = origRenderAtt;
+                        delete proto.renderAttachments.__savedMessagesPatched;
+                    });
+                }
+            };
+            findAll(m => m?.prototype?.renderAttachments || m?.default?.prototype?.renderAttachments).forEach(patchProto);
+            waitFor(m => Boolean(m?.prototype?.renderAttachments || m?.default?.prototype?.renderAttachments), patchProto);
+        } catch { }
+
         if (SelectedChannelStore.getChannelId() === SAVED_MESSAGES_CHANNEL_ID) {
             setTimeout(() => {
                 onChannelChange();
@@ -1245,5 +1612,8 @@ export default definePlugin({
 
         unpatchAvatarFns.forEach(fn => { try { fn(); } catch { } });
         unpatchAvatarFns = [];
+
+        unpatchMediaSanitizers.forEach(fn => { try { fn(); } catch { } });
+        unpatchMediaSanitizers = [];
     }
 });

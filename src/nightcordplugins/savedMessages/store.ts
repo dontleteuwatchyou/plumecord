@@ -58,13 +58,19 @@ export const Native = (window as any).VencordNative?.pluginHelpers?.SavedMessage
 
 let savedMessagesCache: SavedMessage[] = [];
 let isLoaded = false;
+let loadPromise: Promise<SavedMessage[]> | null = null;
 
 // High-speed Blob URL cache for instant image/video loading
 export const mediaBlobUrlCache = new Map<string, string>();
+const inFlightMediaReads = new Map<string, Promise<string>>();
 
 export const storeListeners = new Set<() => void>();
 export function notifyStoreChange() {
     storeListeners.forEach(fn => { try { fn(); } catch { } });
+}
+
+export function isMessagesLoaded(): boolean {
+    return isLoaded;
 }
 
 export function isVaultUnlocked(): boolean {
@@ -94,7 +100,7 @@ export function getDecryptedMessages(): SavedMessage[] {
 
 export function createBlobUrlFromData(data: string, contentType = "application/octet-stream"): string {
     if (!data) return "";
-    if (data.startsWith("blob:")) return data;
+    if (data.startsWith("blob:")) return data.split(/[?#]/)[0];
 
     try {
         let cleanB64 = data;
@@ -119,44 +125,80 @@ export function createBlobUrlFromData(data: string, contentType = "application/o
         return URL.createObjectURL(blob);
     } catch (e) {
         console.warn("[SavedMessages] createBlobUrlFromData error:", e);
-        if (data.startsWith("data:")) return data;
+        if (data.startsWith("data:")) return data.split(/[?#]/)[0];
         return `data:${contentType || "image/png"};base64,${data.replace(/\s+/g, "")}`;
     }
 }
 
-export function getAttachmentUrl(att: SavedAttachment): string {
+export async function loadAttachmentBlobUrl(att: SavedAttachment): Promise<string> {
     if (!att) return "";
 
-    const mediaKey = att.mediaId || att.id;
-    if (mediaKey && mediaBlobUrlCache.has(mediaKey)) {
-        return mediaBlobUrlCache.get(mediaKey)!;
-    }
     if (att.mediaId && mediaBlobUrlCache.has(att.mediaId)) {
         return mediaBlobUrlCache.get(att.mediaId)!;
+    }
+    if (att.id && mediaBlobUrlCache.has(att.id)) {
+        return mediaBlobUrlCache.get(att.id)!;
     }
 
     if (att.dataUrl) {
         const blobUrl = createBlobUrlFromData(att.dataUrl, att.contentType);
         if (blobUrl) {
-            if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
             if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
+            if (att.id) mediaBlobUrlCache.set(att.id, blobUrl);
             return blobUrl;
         }
     }
 
-    // If not yet cached, trigger async background load from native storage
     if (att.mediaId && Native?.readMediaFile) {
-        Native.readMediaFile(att.mediaId).then(b64 => {
-            if (b64) {
-                const blobUrl = createBlobUrlFromData(b64, att.contentType);
-                if (blobUrl) {
-                    if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
-                    if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
-                    notifyStoreChange();
+        if (inFlightMediaReads.has(att.mediaId)) {
+            return inFlightMediaReads.get(att.mediaId)!;
+        }
+        const readTask = Native.readMediaFile(att.mediaId)
+            .then(b64 => {
+                if (b64) {
+                    const blobUrl = createBlobUrlFromData(b64, att.contentType);
+                    if (blobUrl) {
+                        if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
+                        if (att.id) mediaBlobUrlCache.set(att.id, blobUrl);
+                        return blobUrl;
+                    }
                 }
-            }
-        }).catch(() => { });
+                return "";
+            })
+            .catch(() => "")
+            .finally(() => {
+                inFlightMediaReads.delete(att.mediaId);
+            });
+        inFlightMediaReads.set(att.mediaId, readTask);
+        return readTask;
     }
+
+    return "";
+}
+
+export function getAttachmentUrl(att: SavedAttachment): string {
+    if (!att) return "";
+
+    if (att.mediaId && mediaBlobUrlCache.has(att.mediaId)) {
+        return mediaBlobUrlCache.get(att.mediaId)!;
+    }
+    if (att.id && mediaBlobUrlCache.has(att.id)) {
+        return mediaBlobUrlCache.get(att.id)!;
+    }
+
+    if (att.dataUrl) {
+        const blobUrl = createBlobUrlFromData(att.dataUrl, att.contentType);
+        if (blobUrl) {
+            if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
+            if (att.id) mediaBlobUrlCache.set(att.id, blobUrl);
+            return blobUrl;
+        }
+    }
+
+    // Trigger async load if not yet in cache
+    loadAttachmentBlobUrl(att).then(url => {
+        if (url) notifyStoreChange();
+    });
 
     return "";
 }
@@ -164,37 +206,15 @@ export function getAttachmentUrl(att: SavedAttachment): string {
 export async function preloadMediaAttachments(messages: SavedMessage[]): Promise<void> {
     if (!Array.isArray(messages)) return;
 
-    const loadTasks: Promise<void>[] = [];
+    const loadTasks: Promise<string>[] = [];
 
     for (const msg of messages) {
         for (const att of msg.attachments || []) {
             if (!att) continue;
-            const mediaKey = att.mediaId || att.id;
-            if (mediaKey && mediaBlobUrlCache.has(mediaKey)) continue;
-
-            // 1. If att.dataUrl exists, convert to blob url immediately (synchronous!)
-            if (att.dataUrl) {
-                const blobUrl = createBlobUrlFromData(att.dataUrl, att.contentType);
-                if (blobUrl) {
-                    if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
-                    if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
-                    continue;
-                }
+            if ((att.mediaId && mediaBlobUrlCache.has(att.mediaId)) || (att.id && mediaBlobUrlCache.has(att.id))) {
+                continue;
             }
-
-            // 2. If stored on disk, load asynchronously from native storage
-            if (att.mediaId && Native?.readMediaFile) {
-                const task = Native.readMediaFile(att.mediaId).then(b64 => {
-                    if (b64) {
-                        const blobUrl = createBlobUrlFromData(b64, att.contentType);
-                        if (blobUrl) {
-                            if (mediaKey) mediaBlobUrlCache.set(mediaKey, blobUrl);
-                            if (att.mediaId) mediaBlobUrlCache.set(att.mediaId, blobUrl);
-                        }
-                    }
-                }).catch(() => { });
-                loadTasks.push(task);
-            }
+            loadTasks.push(loadAttachmentBlobUrl(att));
         }
     }
 
@@ -205,50 +225,63 @@ export async function preloadMediaAttachments(messages: SavedMessage[]): Promise
 
 // ─── Direct Local Storage ───────────────────────────────────────────────────
 
-export async function loadSavedMessages(): Promise<SavedMessage[]> {
-    let loadedMessages: SavedMessage[] | null = null;
+export async function loadSavedMessages(force = false): Promise<SavedMessage[]> {
+    if (isLoaded && !force) {
+        await preloadMediaAttachments(savedMessagesCache);
+        return [...savedMessagesCache];
+    }
 
-    try {
-        if (Native?.readVaultFile) {
-            const diskContent = await Native.readVaultFile();
-            if (diskContent) {
-                try {
-                    const parsed = JSON.parse(diskContent);
-                    if (Array.isArray(parsed?.messages)) {
-                        loadedMessages = parsed.messages;
-                    } else if (Array.isArray(parsed)) {
-                        loadedMessages = parsed;
-                    }
-                } catch (err) {
-                    console.error("[SavedMessages] Failed to parse vault file:", err);
-                }
-            }
-        }
-    } catch { }
+    if (loadPromise && !force) {
+        return loadPromise;
+    }
 
-    if (!loadedMessages) {
+    loadPromise = (async () => {
+        let loadedMessages: SavedMessage[] | null = null;
+
         try {
-            const dsContent = await DataStore.get<any>(DATASTORE_KEY);
-            if (dsContent) {
-                if (Array.isArray(dsContent?.messages)) {
-                    loadedMessages = dsContent.messages;
-                } else if (Array.isArray(dsContent)) {
-                    loadedMessages = dsContent;
+            if (Native?.readVaultFile) {
+                const diskContent = await Native.readVaultFile();
+                if (diskContent) {
+                    try {
+                        const parsed = JSON.parse(diskContent);
+                        if (Array.isArray(parsed?.messages)) {
+                            loadedMessages = parsed.messages;
+                        } else if (Array.isArray(parsed)) {
+                            loadedMessages = parsed;
+                        }
+                    } catch (err) {
+                        console.error("[SavedMessages] Failed to parse vault file:", err);
+                    }
                 }
             }
         } catch { }
-    }
 
-    if (Array.isArray(loadedMessages)) {
-        savedMessagesCache = loadedMessages;
-    }
+        if (!loadedMessages) {
+            try {
+                const dsContent = await DataStore.get<any>(DATASTORE_KEY);
+                if (dsContent) {
+                    if (Array.isArray(dsContent?.messages)) {
+                        loadedMessages = dsContent.messages;
+                    } else if (Array.isArray(dsContent)) {
+                        loadedMessages = dsContent;
+                    }
+                }
+            } catch { }
+        }
 
-    // Preload all media attachments so blob URLs are ready synchronously before injection
-    await preloadMediaAttachments(savedMessagesCache);
+        if (Array.isArray(loadedMessages)) {
+            savedMessagesCache = loadedMessages;
+        }
 
-    isLoaded = true;
-    notifyStoreChange();
-    return [...savedMessagesCache];
+        await preloadMediaAttachments(savedMessagesCache);
+
+        isLoaded = true;
+        loadPromise = null;
+        notifyStoreChange();
+        return [...savedMessagesCache];
+    })();
+
+    return loadPromise;
 }
 
 async function persistCurrentMessages(): Promise<void> {
@@ -313,8 +346,20 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
         await loadSavedMessages();
     }
 
-    const savedAttachments: SavedAttachment[] = [];
+    const uniqueFiles: (File | Blob | any)[] = [];
+    const seenFiles = new Set<any>();
     for (const f of files) {
+        const actual = f?.file || f?.item?.file || f;
+        if (actual && !seenFiles.has(actual)) {
+            seenFiles.add(actual);
+            uniqueFiles.push(f);
+        }
+    }
+
+    const savedAttachments: SavedAttachment[] = [];
+    const backgroundSaveTasks: Promise<void>[] = [];
+
+    for (const f of uniqueFiles) {
         try {
             const actualFile: File | Blob = f.file || f.item?.file || f;
             const filename = (f.name || f.filename || (actualFile as File)?.name || "attachment").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -325,35 +370,40 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
             const isVideo = contentType.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/i.test(filename);
             const isAudio = contentType.startsWith("audio/") || /\.(mp3|ogg|wav|m4a|flac|aac)$/i.test(filename);
 
+            const attId = generateSnowflake();
+            const mediaId = `media_${Date.now()}_${attId}_${filename}`;
+
+            // Create instantaneous native Blob URL directly from the File/Blob in 0ms!
+            let blobUrl = "";
+            if (actualFile instanceof Blob) {
+                blobUrl = URL.createObjectURL(actualFile);
+            } else if (typeof (f as any)?.dataUrl === "string") {
+                blobUrl = createBlobUrlFromData((f as any).dataUrl, contentType);
+            }
+
+            if (blobUrl) {
+                mediaBlobUrlCache.set(mediaId, blobUrl);
+                mediaBlobUrlCache.set(attId, blobUrl);
+            }
+
             let width: number | undefined;
             let height: number | undefined;
-            if (isImage && typeof createImageBitmap === "function") {
+            if (isImage && typeof createImageBitmap === "function" && actualFile instanceof Blob) {
                 try {
-                    const bitmap = await createImageBitmap(actualFile);
-                    width = bitmap.width;
-                    height = bitmap.height;
-                    bitmap.close();
+                    const bitmap = await Promise.race([
+                        createImageBitmap(actualFile),
+                        new Promise<null>(r => setTimeout(() => r(null), 120))
+                    ]);
+                    if (bitmap) {
+                        width = bitmap.width;
+                        height = bitmap.height;
+                        bitmap.close();
+                    }
                 } catch { }
             }
 
-            const b64 = await fileToBase64(actualFile);
-            const mediaId = `media_${Date.now()}_${generateSnowflake()}_${filename}`;
-
-            // Save media file to dedicated disk directory
-            try {
-                if (Native?.saveMediaFile) {
-                    await Native.saveMediaFile(mediaId, b64);
-                }
-            } catch { }
-
-            // Create instantaneous native Blob URL in memory
-            const blobUrl = createBlobUrlFromData(b64, contentType);
-            if (blobUrl) {
-                mediaBlobUrlCache.set(mediaId, blobUrl);
-            }
-
             savedAttachments.push({
-                id: generateSnowflake(),
+                id: attId,
                 filename,
                 contentType,
                 size,
@@ -365,6 +415,16 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
                 isVideo,
                 isAudio
             });
+
+            // Offload Base64 encoding and disk write asynchronously so UI renders in 0ms
+            if (actualFile instanceof Blob && Native?.saveMediaFile) {
+                backgroundSaveTasks.push(
+                    fileToBase64(actualFile)
+                        .then(b64 => Native.saveMediaFile!(mediaId, b64))
+                        .then(() => { })
+                        .catch(e => console.error("[SavedMessages] Background media save failed:", e))
+                );
+            }
         } catch (err) {
             console.error("[SavedMessages] Failed to process attachment:", err);
         }
@@ -394,8 +454,9 @@ export async function addSavedMessage(content: string, files: (File | Blob | any
     };
 
     savedMessagesCache.unshift(savedMsg);
-    await persistCurrentMessages();
-    notifyStoreChange();
+
+    // Persist asynchronously in background without blocking message rendering
+    Promise.allSettled(backgroundSaveTasks).then(() => persistCurrentMessages()).catch(() => { });
 
     return savedMsg;
 }
