@@ -27,6 +27,79 @@ export function cleanDuplicateText(str: string): string {
     return trimmed;
 }
 
+const PROFILE_INNER_LIST_OR_TAB_SELECTOR =
+    "[role='tabpanel'], [class*='tabBarPanel'], [class*='listScroller'], [class*='listRow'], [class*='mutual'], [class*='friend_'], [class*='friendsRow'], [class*='peopleListItem'], [role='listitem'], [class*='activity'], [class*='connectedAccount']";
+
+const PROFILE_CARD_SELECTOR =
+    "[class*='userProfileModalOuter'], [class*='userProfileOuter'], [class*='userPopoutOuter'], [class*='userPopout_'], [class*='user-profile-popout'], .user-profile-popout, [class*='biteSize_'], [class*='fullSize_'], [class*='outer_'][class*='theme-'], [id='account'], [class*='accountProfileCard_'], [class*='accountProfile_']";
+
+function extractUserIdFromAvatarSrc(src: string | null | undefined): string | null {
+    if (!src) return null;
+    const match = src.match(/\/users\/(\d+)\/avatars\//) || src.match(/\/avatars\/(\d+)\//);
+    return match ? match[1] : null;
+}
+
+function extractUserIdFromFiber(el: Element | null): string | null {
+    if (!el) return null;
+    try {
+        const fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (!fiberKey) return null;
+        let fiber = (el as any)[fiberKey];
+        let fallbackCurrentUserId: string | null = null;
+        for (let i = 0; i < 45 && fiber; i++) {
+            const props = fiber.memoizedProps || fiber.pendingProps;
+            if (props) {
+                if (props.user?.id) return String(props.user.id);
+                if (props.displayProfile?.userId) return String(props.displayProfile.userId);
+                if (props.profile?.userId) return String(props.profile.userId);
+                if (props.userId) return String(props.userId);
+                if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
+                if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
+                if (props.author?.id) return String(props.author.id);
+                if (props.message?.author?.id) return String(props.message.author.id);
+                if (props.member?.userId) return String(props.member.userId);
+                if (props.member?.user?.id) return String(props.member.user.id);
+                if (props.recipient?.id) return String(props.recipient.id);
+                if (!fallbackCurrentUserId && props.currentUser?.id) {
+                    fallbackCurrentUserId = String(props.currentUser.id);
+                }
+            }
+            fiber = fiber.return;
+        }
+        return fallbackCurrentUserId;
+    } catch {}
+    return null;
+}
+
+function getProfileCardOwnerId(cardEl: HTMLElement): string | null {
+    if (cardEl.dataset.authorId) return cardEl.dataset.authorId;
+    if (cardEl.dataset.userId) return cardEl.dataset.userId;
+
+    // 1. Check React Fiber on the card element itself (walks UP the component tree, never into tab children)
+    const directFiberId = extractUserIdFromFiber(cardEl);
+    if (directFiberId) return directFiberId;
+
+    // 2. Check React Fiber on profile header elements outside of any tabpanel or list
+    const headerCandidates = cardEl.querySelectorAll<HTMLElement>(
+        "[class*='avatar_'], [class*='avatarWrapper_'], [class*='header_'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [class*='nickname_'], [class*='userTag_']"
+    );
+    for (const candidate of Array.from(headerCandidates)) {
+        if (candidate.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) continue;
+        const headerFiberId = extractUserIdFromFiber(candidate);
+        if (headerFiberId) return headerFiberId;
+    }
+
+    // 3. Check avatar images strictly in the profile header (never inside tabpanels or mutual friend lists)
+    const imgs = cardEl.querySelectorAll<HTMLImageElement>("img[src*='/avatars/']");
+    for (const img of Array.from(imgs)) {
+        if (img.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) continue;
+        const id = extractUserIdFromAvatarSrc(img.getAttribute("src"));
+        if (id) return id;
+    }
+
+    return null;
+}
+
 function getAuthorIdFromElement(el: HTMLElement): string | null {
     if (el.dataset.authorId) return el.dataset.authorId;
     if (el.dataset.userId) return el.dataset.userId;
@@ -47,62 +120,43 @@ function getAuthorIdFromElement(el: HTMLElement): string | null {
         }
     }
 
-    const img = el.querySelector("img[src*='/avatars/']") ||
-        el.closest("[class*='message_'], [class*='member_'], [class*='userProfile'], [class*='userPopout'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_'], [class*='peopleListItem_'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem']")?.querySelector("img[src*='/avatars/']");
-    if (img) {
-        const match = img.getAttribute("src")?.match(/\/avatars\/(\d+)\//);
-        if (match) return match[1];
+    const insideListItem = el.closest<HTMLElement>(
+        "[class*='message_'], [class*='member_'], [class*='peopleListItem'], [class*='listRow'], [class*='friend_'], [class*='channel_'], [role='listitem']"
+    );
+
+    // If this element is part of a profile card (and not inside a list/tab row), resolve the profile card owner
+    if (!insideListItem && !el.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) {
+        const profileCard = el.closest<HTMLElement>(PROFILE_CARD_SELECTOR);
+        if (profileCard) {
+            return getProfileCardOwnerId(profileCard);
+        }
     }
 
-    try {
-        const fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
-        if (fiberKey) {
-            let fiber = (el as any)[fiberKey];
-            for (let i = 0; i < 40 && fiber; i++) {
-                const props = fiber.memoizedProps || fiber.pendingProps;
-                if (props) {
-                    if (props.user?.id) return String(props.user.id);
-                    if (props.userId) return String(props.userId);
-                    if (props.currentUser?.id) return String(props.currentUser.id);
-                    if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
-                    if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
-                    if (props.author?.id) return String(props.author.id);
-                    if (props.message?.author?.id) return String(props.message.author.id);
-                    if (props.member?.userId) return String(props.member.userId);
-                    if (props.member?.user?.id) return String(props.member.user.id);
-                    if (props.recipient?.id) return String(props.recipient.id);
-                }
-                fiber = fiber.return;
-            }
-        }
-    } catch {}
+    // Check React Fiber on the element itself first
+    const selfFiberId = extractUserIdFromFiber(el);
+    if (selfFiberId) return selfFiberId;
+
+    if (insideListItem) {
+        const itemFiberId = extractUserIdFromFiber(insideListItem);
+        if (itemFiberId) return itemFiberId;
+
+        const itemImg = insideListItem.querySelector<HTMLImageElement>("img[src*='/avatars/']");
+        const itemImgId = extractUserIdFromAvatarSrc(itemImg?.getAttribute("src"));
+        if (itemImgId) return itemImgId;
+    }
+
+    const directImg = el.querySelector<HTMLImageElement>("img[src*='/avatars/']");
+    if (directImg && (insideListItem || !directImg.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR))) {
+        const id = extractUserIdFromAvatarSrc(directImg.getAttribute("src"));
+        if (id) return id;
+    }
 
     const container = el.closest<HTMLElement>(
-        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='user-profile-popout'], [class*='themeContainer_'], [class*='outer_'], [class*='userInfo_'], [class*='peopleListItem'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
+        "[class*='message_'], [class*='member_'], [class*='userPopout'], [class*='userProfile'], [class*='user-profile-popout'], [class*='outer_'], [class*='userInfo_'], [class*='peopleListItem'], [class*='channel_'], a[href*='/channels/@me/'], [class*='interactive_'], [role='listitem'], [role='dialog'], [class*='modalRoot'], [class*='root_']"
     );
     if (container && container !== el) {
-        try {
-            const fiberKey = Object.keys(container).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
-            if (fiberKey) {
-                let fiber = (container as any)[fiberKey];
-                for (let i = 0; i < 40 && fiber; i++) {
-                    const props = fiber.memoizedProps || fiber.pendingProps;
-                    if (props) {
-                        if (props.user?.id) return String(props.user.id);
-                        if (props.userId) return String(props.userId);
-                        if (props.currentUser?.id) return String(props.currentUser.id);
-                        if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
-                        if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
-                        if (props.author?.id) return String(props.author.id);
-                        if (props.message?.author?.id) return String(props.message.author.id);
-                        if (props.member?.userId) return String(props.member.userId);
-                        if (props.member?.user?.id) return String(props.member.user.id);
-                        if (props.recipient?.id) return String(props.recipient.id);
-                    }
-                    fiber = fiber.return;
-                }
-            }
-        } catch {}
+        const containerFiberId = extractUserIdFromFiber(container);
+        if (containerFiberId) return containerFiberId;
     }
 
     return null;
@@ -559,9 +613,8 @@ export function scanAndApplyEffects() {
 
         const authorId = getAuthorIdFromElement(el);
         const txt = getElementRawText(el).toLowerCase();
-        const isSelf = (authorId && authorId === curUser.id) ||
-                       (txt && userNames.has(txt)) ||
-                       !!el.closest("[id='account'], [class*='accountProfile'], [class*='sizer_']");
+        const isAccountOrSizer = !!el.closest("[id='account'], [class*='accountProfile'], [class*='sizer_']");
+        const isSelf = isAccountOrSizer || (authorId ? authorId === curUser.id : (!!txt && userNames.has(txt)));
 
         const targetEl = getTargetNameElement(el);
 
@@ -587,25 +640,48 @@ export function scanAndApplyEffects() {
 
     // 2. Profile Popouts, Modals and Live Previews (Banners, Nicknames & Profile Fonts)
     const profileElements = document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='themeContainer_'], [class*='outer_'][class*='theme-'], [class*='profile_'], [class*='biteSize_'], [class*='fullSize_'], [class*='preview_'], [id='account'], [class*='accountProfile'], [class*='profileContentInner_']"
+        `${PROFILE_CARD_SELECTOR}, [class*='preview_']`
     );
 
     const processedContainers = new Set<HTMLElement>();
     for (const rawEl of Array.from(profileElements)) {
-        const el = rawEl.closest<HTMLElement>(
-            "[class*='outer_'][class*='theme-'], [class*='outer_'], [class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='user-profile-popout'], .user-profile-popout, [class*='userPopout'], [class*='themeContainer_'], [id='account'], [class*='accountProfile']"
-        ) || rawEl;
+        if (rawEl.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) {
+            rawEl.querySelector(".nc-profile-drawing-overlay")?.remove();
+            continue;
+        }
+
+        let el = rawEl.closest<HTMLElement>(PROFILE_CARD_SELECTOR) || rawEl;
+        while (el.parentElement) {
+            const outerMatch = el.parentElement.closest<HTMLElement>(PROFILE_CARD_SELECTOR);
+            if (!outerMatch || outerMatch.closest("[class*='content__523e1'], [class*='scroller__523e1']")) break;
+            el = outerMatch;
+        }
+
+        if (el.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) {
+            el.querySelector(".nc-profile-drawing-overlay")?.remove();
+            continue;
+        }
 
         if (processedContainers.has(el)) continue;
         processedContainers.add(el);
 
-        const authorId = getAuthorIdFromElement(el);
-        const nameEls = el.querySelectorAll<HTMLElement>(
+        // Clean up any stray drawing overlays that might have been placed inside inner tab panels or list rows
+        for (const strayCanvas of Array.from(el.querySelectorAll<HTMLElement>(".nc-profile-drawing-overlay"))) {
+            if (strayCanvas.parentElement !== el || strayCanvas.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) {
+                if (!strayCanvas.classList.contains("nc-profile-drawing-interactive")) {
+                    strayCanvas.remove();
+                }
+            }
+        }
+
+        const authorId = getProfileCardOwnerId(el);
+        const rawNameEls = el.querySelectorAll<HTMLElement>(
             "[class*='header__00de6'], [class*='heading-xxl'], [data-text-variant*='heading-xxl'], [data-text-variant*='heading-lg/bold'], [class*='displayNameContent_'], [class*='displayName_'], [class*='nickname'], [class*='globalName']"
         );
+        const nameEls = Array.from(rawNameEls).filter(n => !n.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR));
 
         let hasOwnName = false;
-        for (const n of Array.from(nameEls)) {
+        for (const n of nameEls) {
             const txt = getElementRawText(n).toLowerCase();
             if (txt && userNames.has(txt)) {
                 hasOwnName = true;
@@ -613,7 +689,8 @@ export function scanAndApplyEffects() {
             }
         }
 
-        const isSelf = (authorId && authorId === curUser.id) || hasOwnName || !!el.closest("[id='account'], [class*='accountProfile']");
+        const isAccountOrPreview = !!el.closest("[id='account'], [class*='accountProfile'], [class*='preview_'], [class*='profileCustomizationPreview']");
+        const isSelf = isAccountOrPreview || (authorId ? authorId === curUser.id : hasOwnName);
 
         if (isSelf) {
             const targetFont = (selfEffectsActive && ownConfig.profileFont) ? ownConfig.profileFont : "none";
@@ -627,7 +704,7 @@ export function scanAndApplyEffects() {
 
             if (selfEffectsActive) {
                 void injectBackground(el, ownConfig);
-                for (const n of Array.from(nameEls)) {
+                for (const n of nameEls) {
                     if (isForbiddenElement(n)) {
                         removeNameEffectFromElement(n);
                         continue;
@@ -641,7 +718,7 @@ export function scanAndApplyEffects() {
                 }
             } else {
                 el.querySelector(".cpe-bg-layer")?.remove();
-                for (const n of Array.from(nameEls)) {
+                for (const n of nameEls) {
                     removeNameEffectFromElement(getTargetNameElement(n));
                 }
             }
@@ -656,13 +733,13 @@ export function scanAndApplyEffects() {
                     el.querySelector(".nc-profile-drawing-overlay")?.remove();
                 }
                 if (cached.data.effects.nameEffect && cached.data.effects.nameEffect !== "none") {
-                    for (const n of Array.from(nameEls)) {
+                    for (const n of nameEls) {
                         if (!isForbiddenElement(n)) {
                             applyNameEffectToElement(getTargetNameElement(n), cached.data.effects.nameEffect, cached.data.effects.glowColor);
                         }
                     }
                 } else {
-                    for (const n of Array.from(nameEls)) {
+                    for (const n of nameEls) {
                         removeNameEffectFromElement(getTargetNameElement(n));
                     }
                 }
@@ -671,6 +748,7 @@ export function scanAndApplyEffects() {
                 el.querySelector(".nc-profile-drawing-overlay")?.remove();
             } else if (!cached) {
                 void readUserPremiumData(authorId).then(data => {
+                    if (!el.isConnected || getProfileCardOwnerId(el) !== authorId) return;
                     if (!data?.effects) {
                         applyProfileFont(el, "none");
                         el.querySelector(".nc-profile-drawing-overlay")?.remove();
@@ -680,15 +758,22 @@ export function scanAndApplyEffects() {
                     if (data.effects.showBanner) void injectBackground(el, data.effects);
                     if (data.effects.profileDrawing && data.effects.profileDrawing.enabled && data.effects.profileDrawing.strokes?.length > 0) {
                         renderDrawingOverlay(el, data.effects.profileDrawing);
+                    } else {
+                        el.querySelector(".nc-profile-drawing-overlay")?.remove();
                     }
                     if (data.effects.nameEffect && data.effects.nameEffect !== "none") {
-                        for (const n of Array.from(nameEls)) {
+                        for (const n of nameEls) {
                             if (!isForbiddenElement(n)) {
                                 applyNameEffectToElement(getTargetNameElement(n), data.effects.nameEffect, data.effects.glowColor);
                             }
                         }
                     }
                 });
+            }
+        } else {
+            // Unknown non-self profile card: ensure no stale drawing overlay remains
+            if (!isDrawingModeActive()) {
+                el.querySelector(".nc-profile-drawing-overlay:not(.nc-profile-drawing-interactive)")?.remove();
             }
         }
     }
@@ -744,7 +829,7 @@ export function scanAndApplyEffects() {
         const targetEl = getTargetNameElement(el);
         const authorId = getAuthorIdFromElement(el);
         const txt = getElementRawText(el).toLowerCase();
-        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+        const isSelf = authorId ? authorId === curUser.id : (!!txt && userNames.has(txt));
 
         if (isSelf) {
             const effect = (ownConfig.chatUsernameEffect && ownConfig.chatUsernameEffect !== "none")
@@ -793,7 +878,7 @@ export function scanAndApplyEffects() {
         const memberItem = el.closest<HTMLElement>("[class*='member_'], [class*='peopleListItem_'], [role='listitem']") || el;
         const authorId = getAuthorIdFromElement(memberItem) || getAuthorIdFromElement(el);
         const txt = getElementRawText(el).toLowerCase();
-        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+        const isSelf = authorId ? authorId === curUser.id : (!!txt && userNames.has(txt));
         const targetEl = getTargetNameElement(el);
 
         if (isSelf) {
@@ -854,7 +939,7 @@ export function scanAndApplyEffects() {
         const channelItem = el.closest<HTMLElement>("a[href^='/channels/@me/'], [class*='channel_'], [class*='interactive_']") || el;
         const authorId = getAuthorIdFromElement(channelItem) || getAuthorIdFromElement(el);
         const txt = getElementRawText(el).toLowerCase();
-        const isSelf = (authorId && authorId === curUser.id) || (txt && userNames.has(txt));
+        const isSelf = authorId ? authorId === curUser.id : (!!txt && userNames.has(txt));
 
         if (isSelf) {
             const effect = (ownConfig.memberListEffect && ownConfig.memberListEffect !== "none")

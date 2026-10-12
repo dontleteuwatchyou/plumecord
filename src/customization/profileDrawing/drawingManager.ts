@@ -198,6 +198,9 @@ export async function saveDrawing(): Promise<boolean> {
 
 // ─── Avatar Metrics Detection ────────────────────────────────────────────────
 
+const PROFILE_INNER_LIST_OR_TAB_SELECTOR =
+    "[role='tabpanel'], [class*='tabBarPanel'], [class*='listScroller'], [class*='listRow'], [class*='mutual'], [class*='friend_'], [class*='friendsRow'], [class*='peopleListItem'], [role='listitem'], [class*='activity'], [class*='connectedAccount']";
+
 export function getAvatarMetrics(container: HTMLElement): { cx: number; cy: number; size: number } | null {
     if (!container) return null;
 
@@ -207,6 +210,7 @@ export function getAvatarMetrics(container: HTMLElement): { cx: number; cy: numb
         "[class*='avatar_'] [class*='wrapper_']",
         "[class*='avatar_']",
         "img[src*='/avatars/']",
+        "img[src*='/embed/avatars/']",
         "[class*='avatarStack_']",
     ];
 
@@ -219,6 +223,7 @@ export function getAvatarMetrics(container: HTMLElement): { cx: number; cy: numb
     for (const sel of selectors) {
         const matches = container.querySelectorAll<HTMLElement>(sel);
         for (const el of Array.from(matches)) {
+            if (el.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) continue;
             const r = el.getBoundingClientRect();
             // Filter: must be reasonably sized (>= 48px) and in upper portion of card
             const topOffset = r.top - containerRect.top;
@@ -236,8 +241,9 @@ export function getAvatarMetrics(container: HTMLElement): { cx: number; cy: numb
 
     if (!bestAvatar) {
         // Fallback for smaller preview avatar if >= 32px
-        const fallbacks = container.querySelectorAll<HTMLElement>("[class*='avatar_'], img[src*='/avatars/'], [class*='avatarStack_']");
+        const fallbacks = container.querySelectorAll<HTMLElement>("[class*='avatar_'], img[src*='/avatars/'], img[src*='/embed/avatars/'], [class*='avatarStack_']");
         for (const el of Array.from(fallbacks)) {
+            if (el.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) continue;
             const r = el.getBoundingClientRect();
             if (r.width >= 32 && r.height >= 32) {
                 bestAvatar = el;
@@ -353,6 +359,10 @@ export function renderDrawingOverlay(
     interactive = false
 ): HTMLCanvasElement | null {
     if (!container) return null;
+    if (container.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) {
+        container.querySelector(".nc-profile-drawing-overlay")?.remove();
+        return null;
+    }
 
     let canvas = container.querySelector<HTMLCanvasElement>(".nc-profile-drawing-overlay");
 
@@ -412,20 +422,24 @@ export function redrawAllProfiles() {
     const ownEffects = getCachedEffectsConfig();
 
     const rawElements = Array.from(document.querySelectorAll<HTMLElement>(
-        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='outer_'][class*='theme-'], [class*='outer_'], [class*='biteSize_'], [class*='fullSize_']"
+        "[class*='userProfileOuter'], [class*='userProfileModalOuter'], [class*='userPopout'], [class*='user-profile-popout'], .user-profile-popout, [class*='outer_'][class*='theme-'], [class*='biteSize_'], [class*='fullSize_']"
     ));
 
-    // Filter out form editor panels and parent wrappers that contain another matched child card
+    // Filter out form editor panels, inner tab/list items, and inner cards contained inside an outer profile card
     const profileElements = rawElements.filter(el => {
         if (el.closest("[class*='content__523e1'], [class*='scroller__523e1'], #user-profile-editing-panel")) return false;
-        // Skip if el contains any other matched candidate (ensures only the innermost card is targeted)
-        return !rawElements.some(other => other !== el && el.contains(other));
+        if (el.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)) return false;
+        return !rawElements.some(other => other !== el && other.contains(el) && !other.closest("[class*='content__523e1'], [class*='scroller__523e1']"));
     });
 
     for (const el of profileElements) {
-        const isSelf = !!el.closest("[id='account'], [class*='accountProfile']") ||
-            el.querySelector(`img[src*='${curUser?.id}']`) !== null ||
-            el.closest("[class*='preview_']") !== null;
+        const headerSelfAvatar = curUser?.id
+            ? Array.from(el.querySelectorAll<HTMLImageElement>(`img[src*='${curUser.id}']`)).some(
+                img => !img.closest(PROFILE_INNER_LIST_OR_TAB_SELECTOR)
+            )
+            : false;
+
+        const isSelf = !!el.closest("[id='account'], [class*='accountProfile'], [class*='preview_']") || headerSelfAvatar;
 
         if (isSelf && ownEffects.profileDrawing) {
             renderDrawingOverlay(el, ownEffects.profileDrawing);
