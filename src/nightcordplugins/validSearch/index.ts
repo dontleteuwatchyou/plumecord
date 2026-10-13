@@ -26,7 +26,7 @@ import {
 
 import { t } from "../autoTranslateNightcord";
 
-const RelationshipActions = findByPropsLazy("cancelFriendRequest", "addRelationship") as any;
+const RelationshipActions = findByPropsLazy("removeFriend", "sendFriendRequest") as any;
 
 export const settings = definePluginSettings({
     searchById: {
@@ -188,76 +188,149 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
     if (!USERNAME_REGEX.test(cleanQuery)) return;
     if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
 
+    // Check if user is already present in extraUsersCache
+    for (const [_, u] of extraUsersCache.entries()) {
+        if (u?.username?.toLowerCase() === cleanQuery) return;
+    }
+
     clearTimeout(strangerResolveTimer);
     strangerResolveTimer = setTimeout(async () => {
         if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
         resolvingUsernames.add(cleanQuery);
 
+        try { switcher?.forceUpdate?.(); } catch {}
+
         let resolvedUser: any = null;
+        let resolveUserPromise: ((user: any) => void) | null = null;
+
+        const userPromise = new Promise<any>((resolve) => {
+            resolveUserPromise = resolve;
+        });
+
+        const waitTimer = setTimeout(() => {
+            if (resolveUserPromise) {
+                resolveUserPromise(null);
+                resolveUserPromise = null;
+            }
+        }, 3000);
+
         const onRelAdd = (event: any) => {
-            const u = event?.relationship?.user || event?.user;
-            if (u && (u.username?.toLowerCase() === cleanQuery || u.id)) {
-                resolvedUser = u;
+            const rel = event?.relationship || event;
+            const u = rel?.user || event?.user;
+            if (u?.id) {
+                const uName = (u.username || "").toLowerCase();
+                if (uName === cleanQuery || rel?.type === 4 || rel?.type === "4") {
+                    resolvedUser = u;
+                    clearTimeout(waitTimer);
+                    if (resolveUserPromise) {
+                        resolveUserPromise(u);
+                        resolveUserPromise = null;
+                    }
+                }
+            }
+        };
+
+        const onRelUpdate = (event: any) => {
+            const rel = event?.relationship || event;
+            const u = rel?.user || event?.user;
+            if (u?.id) {
+                const uName = (u.username || "").toLowerCase();
+                if (uName === cleanQuery) {
+                    resolvedUser = u;
+                    clearTimeout(waitTimer);
+                    if (resolveUserPromise) {
+                        resolveUserPromise(u);
+                        resolveUserPromise = null;
+                    }
+                }
             }
         };
 
         try {
             FluxDispatcher.subscribe("RELATIONSHIP_ADD", onRelAdd);
-            FluxDispatcher.subscribe("RELATIONSHIP_UPDATE", onRelAdd);
+            FluxDispatcher.subscribe("RELATIONSHIP_UPDATE", onRelUpdate);
 
             let queryUsername = cleanQuery;
-            let queryDiscrim: string | null = null;
+            let queryDiscrim: number | undefined = undefined;
             if (cleanQuery.includes("#")) {
                 const parts = cleanQuery.split("#");
                 queryUsername = parts[0];
-                queryDiscrim = parts[1] || null;
+                if (parts[1]) {
+                    const parsed = parseInt(parts[1], 10);
+                    if (!isNaN(parsed) && parsed > 0) {
+                        queryDiscrim = parsed;
+                    }
+                }
             }
 
-            try {
-                const res = await RestAPI.post({
-                    url: "/users/@me/relationships",
-                    body: {
+            const body: Record<string, any> = { username: queryUsername };
+            if (queryDiscrim !== undefined) {
+                body.discriminator = queryDiscrim;
+            }
+
+            let requestDispatched = false;
+            if (typeof RelationshipActions?.sendFriendRequest === "function") {
+                try {
+                    await RelationshipActions.sendFriendRequest({
                         username: queryUsername,
                         discriminator: queryDiscrim,
-                    },
-                });
-                if (res?.body?.id) {
-                    resolvedUser = res.body;
-                }
-            } catch {
-                failedUsernames.add(cleanQuery);
-            }
-
-            if (!resolvedUser) {
-                await new Promise(r => setTimeout(r, 120));
-            }
-
-            if (resolvedUser?.id) {
-                // Instantly cancel outgoing friend request so no pending request remains
-                try {
-                    if (typeof RelationshipActions?.cancelFriendRequest === "function") {
-                        await RelationshipActions.cancelFriendRequest(resolvedUser.id);
-                    } else {
-                        await RestAPI.del({ url: `/users/@me/relationships/${resolvedUser.id}` });
+                    });
+                    requestDispatched = true;
+                } catch (e: any) {
+                    const code = e?.body?.code || e?.status;
+                    if (code === 80004) {
+                        failedUsernames.add(cleanQuery);
                     }
-                } catch {}
+                }
+            }
 
-                extraUsersCache.set(resolvedUser.id, resolvedUser);
+            if (!requestDispatched && !failedUsernames.has(cleanQuery)) {
+                try {
+                    await RestAPI.post({
+                        url: "/users/@me/relationships",
+                        body,
+                    });
+                } catch (e: any) {
+                    const code = e?.body?.code || e?.status;
+                    if (code === 80004) {
+                        failedUsernames.add(cleanQuery);
+                    }
+                }
+            }
+
+            const finalUser = await userPromise;
+            const targetUser = finalUser || resolvedUser;
+
+            if (targetUser?.id) {
+                // Instantly cancel outgoing friend request so no trace remains
+                try {
+                    await RestAPI.del({ url: `/users/@me/relationships/${targetUser.id}` });
+                } catch {
+                    try {
+                        if (typeof RelationshipActions?.cancelFriendRequest === "function") {
+                            await RelationshipActions.cancelFriendRequest(targetUser.id);
+                        } else if (typeof RelationshipActions?.removeFriend === "function") {
+                            await RelationshipActions.removeFriend(targetUser.id);
+                        }
+                    } catch {}
+                }
+
+                extraUsersCache.set(targetUser.id, targetUser);
                 FluxDispatcher.dispatch({
                     type: "USER_UPDATE",
-                    user: resolvedUser,
+                    user: targetUser,
                 });
-
-                try { switcher?.forceUpdate?.(); } catch {}
             }
         } catch {
-            failedUsernames.add(cleanQuery);
+            // Ignore unexpected exceptions
         } finally {
+            clearTimeout(waitTimer);
             FluxDispatcher.unsubscribe("RELATIONSHIP_ADD", onRelAdd);
-            FluxDispatcher.unsubscribe("RELATIONSHIP_UPDATE", onRelAdd);
+            FluxDispatcher.unsubscribe("RELATIONSHIP_UPDATE", onRelUpdate);
             resolvingUsernames.delete(cleanQuery);
+            try { switcher?.forceUpdate?.(); } catch {}
         }
-    }, 120);
+    }, 200);
 }
 
 function getAllCachedUsersWithNicks(): Array<{ user: any; nicks: Set<string> }> {
@@ -575,6 +648,9 @@ export default definePlugin({
         activeSwitcher = switcher;
 
         const query = (switcher.state.query ?? "").trim();
+        if (!query) {
+            failedUsernames.clear();
+        }
         const currentResults = Array.isArray(switcher.props.results) ? switcher.props.results : [];
 
         switcher.props.results = this.enhanceResults(query, currentResults, switcher);
@@ -588,6 +664,9 @@ export default definePlugin({
             switcher.props.onSelect = async function(result: any) {
                 if (result?.type === "USER" && result?.record?.id) {
                     const userId = result.record.id;
+                    if (userId === "100000000000000000" || userId === "0") {
+                        return;
+                    }
 
                     const existingDm = ChannelStore.getDMFromUserId(userId);
                     if (existingDm) {
@@ -709,9 +788,23 @@ export default definePlugin({
         // Trigger background search across joined guilds
         triggerGuildMembersSearch(cleanQuery, switcher);
 
-        // If no items matched locally and query is a valid username pattern, attempt stranger resolution
-        if (extraItems.length === 0 && results.filter(r => r?.type === "USER").length === 0) {
+        // Check if we already have an exact username match in results or extraItems
+        const hasExactMatch = results.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery)) ||
+            extraItems.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery));
+
+        // If no exact match and query is a valid username pattern, attempt stranger resolution
+        if (!hasExactMatch && USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 2) {
             triggerStrangerResolution(cleanQuery, switcher);
+
+            if (resolvingUsernames.has(cleanQuery)) {
+                extraItems.push({
+                    type: "USER",
+                    record: createDummyUserRecord("100000000000000000", cleanQuery, `@${cleanQuery} (${t("Searching user...")})`),
+                    score: 55000,
+                    comparator: cleanQuery,
+                    sortable: cleanQuery,
+                });
+            }
         }
 
         if (extraItems.length === 0) return results;
