@@ -385,10 +385,23 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
     if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
     if (pendingResolutions.has(cleanQuery)) return;
 
-    // Check if user is already present in extraUsersCache
+    // Check if user is already present in extraUsersCache or UserStore
     for (const [_, u] of extraUsersCache.entries()) {
-        if (u?.username?.toLowerCase() === cleanQuery) return;
+        if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) return;
     }
+    try {
+        const users = (UserStore as any).getUsers?.() ?? (UserStore as any)._users;
+        if (users instanceof Map) {
+            for (const u of users.values()) {
+                if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) return;
+            }
+        } else if (typeof users === "object" && users) {
+            for (const id of Object.keys(users)) {
+                const u = users[id];
+                if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) return;
+            }
+        }
+    } catch {}
 
     clearTimeout(strangerResolveTimer);
     strangerResolveTimer = setTimeout(async () => {
@@ -674,6 +687,75 @@ function createDummyUserRecord(id: string, username: string, label: string): any
     };
 }
 
+function extractUserFromResult(r: any): any {
+    if (!r) return null;
+    const rec = r.record;
+    if (rec) {
+        if (rec.username) return rec;
+        if (rec.user?.username) return rec.user;
+        if (rec.recipientId) {
+            const u = UserStore.getUser(rec.recipientId);
+            if (u) return u;
+        }
+        if (Array.isArray(rec.recipients) && rec.recipients.length > 0) {
+            const u = UserStore.getUser(rec.recipients[0]);
+            if (u) return u;
+        }
+    }
+    return null;
+}
+
+function hasMatchingUser(cleanQuery: string, results: any[], extraItems: any[]): boolean {
+    if (!cleanQuery) return true;
+
+    // 1. Check all results (native + extra)
+    for (const r of [...results, ...extraItems]) {
+        const u = extractUserFromResult(r);
+        if (u) {
+            const uName = (u.username || "").toLowerCase();
+            const tag = (u.tag || "").toLowerCase();
+            if (uName === cleanQuery || tag === cleanQuery) {
+                return true;
+            }
+        }
+        const comp = (r?.comparator || "").toLowerCase();
+        const sort = (r?.sortable || "").toLowerCase();
+        if (comp === cleanQuery || sort === cleanQuery || comp.endsWith(` ${cleanQuery}`) || comp.includes(cleanQuery)) {
+            if (r?.type === "USER" || r?.record?.isDM?.() || r?.record?.recipientId) {
+                return true;
+            }
+        }
+    }
+
+    // 2. Check extraUsersCache
+    for (const u of extraUsersCache.values()) {
+        if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+            return true;
+        }
+    }
+
+    // 3. Check UserStore
+    try {
+        const users = (UserStore as any).getUsers?.() ?? (UserStore as any)._users;
+        if (users instanceof Map) {
+            for (const u of users.values()) {
+                if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+                    return true;
+                }
+            }
+        } else if (typeof users === "object" && users) {
+            for (const id of Object.keys(users)) {
+                const u = users[id];
+                if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+                    return true;
+                }
+            }
+        }
+    } catch {}
+
+    return false;
+}
+
 export default definePlugin({
     name: "ValidSearch",
     description: "Find any user in Quick Switcher by User ID or username, including blocked users and users without mutual servers.",
@@ -913,20 +995,19 @@ export default definePlugin({
         // Trigger background search across joined guilds
         triggerGuildMembersSearch(cleanQuery, switcher);
 
-        // Check if we already have an exact username match in results or extraItems
-        const hasExactMatch = results.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery)) ||
-            extraItems.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery));
-
-        // If no exact match and query is a valid username pattern, attempt stranger resolution in background
-        if (!hasExactMatch && USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 3) {
+        // Check if matching user is already present in results, extraItems, cache, or UserStore
+        if (hasMatchingUser(cleanQuery, results, extraItems)) {
+            clearTimeout(strangerResolveTimer);
+        } else if (USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 3) {
             triggerStrangerResolution(cleanQuery, switcher);
         }
 
-        // Re-score all USER items in native results so exact handle matches consistently rank highest
+        // Re-score all user/DM items in native results so exact handle matches consistently rank highest
         for (const r of results) {
-            if (r?.type === "USER" && r?.record) {
-                const isBlocked = RelationshipStore.isBlocked?.(r.record.id);
-                r.score = Math.max(r.score ?? 0, computeScore(r.record, cleanQuery, isBlocked));
+            const u = extractUserFromResult(r);
+            if (u?.id) {
+                const isBlocked = RelationshipStore.isBlocked?.(u.id);
+                r.score = Math.max(r.score ?? 0, computeScore(u, cleanQuery, isBlocked));
             }
         }
 
@@ -938,15 +1019,20 @@ export default definePlugin({
                 return scoreB - scoreA;
             }
             // Secondary tie-breaker: exact username match first
-            const isExactA = a.record?.username?.toLowerCase() === cleanQuery ? 1 : 0;
-            const isExactB = b.record?.username?.toLowerCase() === cleanQuery ? 1 : 0;
+            const userA = extractUserFromResult(a);
+            const userB = extractUserFromResult(b);
+            const isExactA = userA?.username?.toLowerCase() === cleanQuery ? 1 : 0;
+            const isExactB = userB?.username?.toLowerCase() === cleanQuery ? 1 : 0;
             if (isExactB !== isExactA) {
                 return isExactB - isExactA;
             }
             // Shorter username first
-            const lenA = (a.record?.username || "").length;
-            const lenB = (b.record?.username || "").length;
-            return lenA - lenB;
+            const lenA = (userA?.username || a.record?.username || "").length;
+            const lenB = (userB?.username || b.record?.username || "").length;
+            if (lenA && lenB) {
+                return lenA - lenB;
+            }
+            return 0;
         });
         return combined.slice(0, 100);
     },
