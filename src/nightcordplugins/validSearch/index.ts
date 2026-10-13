@@ -917,26 +917,9 @@ export default definePlugin({
         const hasExactMatch = results.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery)) ||
             extraItems.some(r => r?.type === "USER" && (r?.record?.username?.toLowerCase() === cleanQuery || r?.record?.tag?.toLowerCase() === cleanQuery));
 
-        // If no exact match and query is a valid username pattern, attempt stranger resolution
-        if (!hasExactMatch && USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 2) {
-            if (cleanQuery.length >= 3) {
-                triggerStrangerResolution(cleanQuery, switcher);
-            }
-
-            const isResolving = resolvingUsernames.has(cleanQuery);
-            const label = isResolving
-                ? `@${cleanQuery} (${t("Searching user...")})`
-                : `@${cleanQuery} (${t("Search user")})`;
-
-            extraItems.push({
-                type: "USER",
-                record: createDummyUserRecord("100000000000000000", cleanQuery, label),
-                score: 550000,
-                comparator: cleanQuery,
-                sortable: cleanQuery,
-                __isStrangerPlaceholder: true,
-                __targetUsername: cleanQuery,
-            });
+        // If no exact match and query is a valid username pattern, attempt stranger resolution in background
+        if (!hasExactMatch && USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 3) {
+            triggerStrangerResolution(cleanQuery, switcher);
         }
 
         // Re-score all USER items in native results so exact handle matches consistently rank highest
