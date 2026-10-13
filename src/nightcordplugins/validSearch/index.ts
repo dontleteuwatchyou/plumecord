@@ -78,6 +78,7 @@ let lastStrangerResolveTime = 0;
 let captchaCooldownUntil = 0;
 let boundOnChunk: ((event: any) => void) | null = null;
 let boundOnChunkBatch: ((event: any) => void) | null = null;
+let switcherObserver: MutationObserver | null = null;
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_.]{2,32}$/;
 
@@ -88,12 +89,22 @@ async function openUserFallbackProfile(userId: string) {
         fetchUserProfile(userId, {}, false).catch(() => {});
     } catch {}
 
+    if (!UserStore.getUser(userId)) {
+        try {
+            if (typeof UserUtils?.getUser === "function") {
+                await UserUtils.getUser(userId);
+            }
+        } catch {}
+    }
+
     try {
         if (typeof UserProfileActions?.openUserProfileModal === "function") {
+            const guildId = SelectedGuildStore?.getGuildId?.();
             UserProfileActions.openUserProfileModal({
                 userId,
+                guildId,
                 analyticsLocation: {
-                    page: "Quick Switcher",
+                    page: guildId ? "Guild Channel" : "Quick Switcher",
                     section: "Profile Popout",
                 },
             });
@@ -212,7 +223,7 @@ function triggerGuildMembersSearch(cleanQuery: string, switcher?: any) {
     }, 80);
 }
 
-async function resolveStranger(cleanQuery: string, switcher?: any): Promise<any> {
+async function resolveStranger(cleanQuery: string, switcher?: any, isManual = false): Promise<any> {
     if (!settings.store.resolveStrangers) return null;
     if (!USERNAME_REGEX.test(cleanQuery)) return null;
 
@@ -221,14 +232,17 @@ async function resolveStranger(cleanQuery: string, switcher?: any): Promise<any>
         if (u?.username?.toLowerCase() === cleanQuery) return u;
     }
 
-    if (failedUsernames.has(cleanQuery)) return null;
+    if (isManual) {
+        failedUsernames.delete(cleanQuery);
+        captchaCooldownUntil = 0;
+    } else {
+        if (failedUsernames.has(cleanQuery)) return null;
+        if (Date.now() < captchaCooldownUntil) return null;
+    }
 
     // Reuse in-flight resolution if already active
     const existingPromise = pendingResolutions.get(cleanQuery);
     if (existingPromise) return existingPromise;
-
-    // If captcha cooldown is active, skip automated background resolution
-    if (Date.now() < captchaCooldownUntil) return null;
 
     resolvingUsernames.add(cleanQuery);
     try { switcher?.forceUpdate?.(); } catch {}
@@ -458,6 +472,141 @@ async function handleStrangerSelect(username: string, switcher?: any) {
         }
     } catch {
         showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
+    }
+}
+
+
+async function performAdvancedSearch(switcher?: any) {
+    const input = document.querySelector<HTMLInputElement>(".quickswitcher_ac6cb0 .input_ac6cb0");
+    const rawQuery = (switcher?.state?.query ?? input?.value ?? "").trim();
+
+    if (!rawQuery) {
+        showToast(t("Please enter a username to search."), Toasts.Type.NORMAL);
+        return;
+    }
+
+    const cleanQuery = rawQuery.toLowerCase().replace(/^@/, "").trim();
+    if (cleanQuery.length < 2) {
+        showToast(t("Username too short."), Toasts.Type.NORMAL);
+        return;
+    }
+
+    const btn = document.querySelector<HTMLElement>("#nightcord-validsearch-btn");
+    if (btn) btn.classList.add("loading");
+
+    // 1. Check if user already exists in extraUsersCache or UserStore
+    let targetUser = extraUsersCache.get(cleanQuery);
+    if (!targetUser) {
+        for (const u of extraUsersCache.values()) {
+            if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+                targetUser = u;
+                break;
+            }
+        }
+    }
+    if (!targetUser) {
+        try {
+            const users = (UserStore as any).getUsers?.() ?? (UserStore as any)._users;
+            if (users instanceof Map) {
+                for (const u of users.values()) {
+                    if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+                        targetUser = u;
+                        break;
+                    }
+                }
+            } else if (typeof users === "object" && users) {
+                for (const id of Object.keys(users)) {
+                    const u = users[id];
+                    if (u?.username?.toLowerCase() === cleanQuery || u?.tag?.toLowerCase() === cleanQuery) {
+                        targetUser = u;
+                        break;
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    if (targetUser?.id) {
+        if (btn) btn.classList.remove("loading");
+        try { switcher?.props?.onClose?.(); } catch {}
+        try { switcher?.props?.close?.(); } catch {}
+        setTimeout(async () => {
+            await openUserFallbackProfile(targetUser.id);
+        }, 120);
+        return;
+    }
+
+    // 2. User not cached: resolve stranger on demand
+    try {
+        showToast(t("Resolving user profile..."), Toasts.Type.NORMAL);
+        const resolved = await resolveStranger(cleanQuery, switcher, true);
+        if (btn) btn.classList.remove("loading");
+
+        if (resolved?.id) {
+            try { switcher?.props?.onClose?.(); } catch {}
+            try { switcher?.props?.close?.(); } catch {}
+            setTimeout(async () => {
+                await openUserFallbackProfile(resolved.id);
+            }, 120);
+        } else {
+            showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
+        }
+    } catch {
+        if (btn) btn.classList.remove("loading");
+        showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
+    }
+}
+
+function mountSearchButton(switcher?: any) {
+    const container = document.querySelector<HTMLElement>(".quickswitcher_ac6cb0");
+    if (!container) return;
+
+    if (getComputedStyle(container).position === "static") {
+        container.style.position = "relative";
+    }
+
+    const input = container.querySelector<HTMLInputElement>(".input_ac6cb0");
+    if (input) {
+        input.style.paddingRight = "48px";
+    }
+
+    let btn = container.querySelector<HTMLElement>("#nightcord-validsearch-btn");
+    if (!btn) {
+        btn = document.createElement("div");
+        btn.id = "nightcord-validsearch-btn";
+        btn.className = "nightcord-validsearch-btn";
+        btn.setAttribute("role", "button");
+        btn.setAttribute("tabindex", "0");
+        btn.setAttribute("aria-label", t("Advanced User Search"));
+        btn.setAttribute("title", t("Advanced User Search"));
+
+        btn.innerHTML = '<svg class="vc-ic-save-icon" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24"><path fill="var(--control-critical-primary-border-default)" d="M12 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM11.53 11A9.53 9.53 0 0 0 2 20.53c0 .81.66 1.47 1.47 1.47h.22c.24 0 .44-.17.5-.4.29-1.12.84-2.17 1.32-2.91.14-.21.43-.1.4.15l-.26 2.61c-.02.3.2.55.5.55h6.4a.5.5 0 0 0 .35-.85l-.02-.03a3 3 0 1 1 4.24-4.24l.53.52c.2.2.5.2.7 0l1.8-1.8c.17-.17.2-.43.06-.62A9.52 9.52 0 0 0 12.47 11h-.94Z"></path><path fill="var(--control-critical-primary-border-default)" d="M23.7 17.7a1 1 0 1 0-1.4-1.4L18 20.58l-2.3-2.3a1 1 0 0 0-1.4 1.42l3 3a1 1 0 0 0 1.4 0l5-5Z"></path></svg>';
+
+        // Prevent input from losing focus when clicking button
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+        });
+
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await performAdvancedSearch(switcher || activeSwitcher);
+        });
+
+        btn.addEventListener("keydown", async (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                await performAdvancedSearch(switcher || activeSwitcher);
+            }
+        });
+
+        container.appendChild(btn);
+    }
+
+    if (input) {
+        const top = input.offsetTop + input.offsetHeight / 2;
+        btn.style.top = top + "px";
+        btn.style.transform = "translateY(-50%)";
     }
 }
 
@@ -773,6 +922,52 @@ export default definePlugin({
     ],
 
     start() {
+        const style = document.createElement("style");
+        style.id = "nightcord-validsearch-css";
+        style.textContent = `
+.nightcord-validsearch-btn {
+    position: absolute;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    z-index: 100;
+    transition: background-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+    user-select: none;
+    box-sizing: border-box;
+}
+.nightcord-validsearch-btn:hover {
+    background-color: var(--background-modifier-hover);
+    transform: translateY(-50%) scale(1.06);
+}
+.nightcord-validsearch-btn:active {
+    background-color: var(--background-modifier-active);
+    transform: translateY(-50%) scale(0.94);
+}
+.nightcord-validsearch-btn.loading {
+    opacity: 0.6;
+    pointer-events: none;
+    animation: nightcord-spin 1s linear infinite;
+}
+@keyframes nightcord-spin {
+    from { transform: translateY(-50%) rotate(0deg); }
+    to { transform: translateY(-50%) rotate(360deg); }
+}
+`;
+        document.head.appendChild(style);
+
+        switcherObserver = new MutationObserver(() => {
+            const qs = document.querySelector(".quickswitcher_ac6cb0");
+            if (qs) {
+                mountSearchButton(activeSwitcher);
+            }
+        });
+        switcherObserver.observe(document.body, { childList: true, subtree: true });
+
         // 1. Subscribe to Gateway member chunks
         boundOnChunk = (event: any) => {
             const members = event?.members;
@@ -824,6 +1019,13 @@ export default definePlugin({
     },
 
     stop() {
+        if (switcherObserver) {
+            switcherObserver.disconnect();
+            switcherObserver = null;
+        }
+        document.getElementById("nightcord-validsearch-css")?.remove();
+        document.getElementById("nightcord-validsearch-btn")?.remove();
+
         if (boundOnChunk) {
             try { FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK", boundOnChunk); } catch {}
             boundOnChunk = null;
@@ -846,6 +1048,7 @@ export default definePlugin({
     prepareProps(switcher: any) {
         if (!switcher || !switcher.state) return;
         activeSwitcher = switcher;
+        mountSearchButton(switcher);
 
         const query = (switcher.state.query ?? "").trim();
         if (!query) {
@@ -995,12 +1198,8 @@ export default definePlugin({
         // Trigger background search across joined guilds
         triggerGuildMembersSearch(cleanQuery, switcher);
 
-        // Check if matching user is already present in results, extraItems, cache, or UserStore
-        if (hasMatchingUser(cleanQuery, results, extraItems)) {
-            clearTimeout(strangerResolveTimer);
-        } else if (USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 3) {
-            triggerStrangerResolution(cleanQuery, switcher);
-        }
+        // Stranger resolution is triggered exclusively on-demand via the advanced search button
+        clearTimeout(strangerResolveTimer);
 
         // Re-score all user/DM items in native results so exact handle matches consistently rank highest
         for (const r of results) {
