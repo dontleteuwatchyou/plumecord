@@ -526,28 +526,46 @@ async function performAdvancedSearch(switcher?: any) {
         } catch {}
     }
 
+    const applyFoundUser = (user: any) => {
+        if (!user?.id) return;
+        extraUsersCache.set(user.id, user);
+        try {
+            FluxDispatcher.dispatch({
+                type: "USER_UPDATE",
+                user,
+            });
+        } catch {}
+
+        const sw = switcher || activeSwitcher;
+        if (sw) {
+            try {
+                if (sw.props) {
+                    sw.props.selectedIndex = 0;
+                }
+                if (typeof sw.forceUpdate === "function") {
+                    sw.forceUpdate();
+                } else if (typeof sw.setState === "function") {
+                    sw.setState((s: any) => ({ ...s }));
+                }
+            } catch {}
+        }
+        input?.focus();
+    };
+
     if (targetUser?.id) {
         if (btn) btn.classList.remove("loading");
-        try { switcher?.props?.onClose?.(); } catch {}
-        try { switcher?.props?.close?.(); } catch {}
-        setTimeout(async () => {
-            await openUserFallbackProfile(targetUser.id);
-        }, 120);
+        applyFoundUser(targetUser);
         return;
     }
 
     // 2. User not cached: resolve stranger on demand
     try {
         showToast(t("Resolving user profile..."), Toasts.Type.NORMAL);
-        const resolved = await resolveStranger(cleanQuery, switcher, true);
+        const resolved = await resolveStranger(cleanQuery, switcher || activeSwitcher, true);
         if (btn) btn.classList.remove("loading");
 
         if (resolved?.id) {
-            try { switcher?.props?.onClose?.(); } catch {}
-            try { switcher?.props?.close?.(); } catch {}
-            setTimeout(async () => {
-                await openUserFallbackProfile(resolved.id);
-            }, 120);
+            applyFoundUser(resolved);
         } else {
             showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
         }
