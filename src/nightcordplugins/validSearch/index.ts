@@ -71,11 +71,35 @@ let activeSwitcher: any = null;
 let lastServerQuery = "";
 let serverSearchTimer: any = null;
 let strangerResolveTimer: any = null;
-let unpatchOpenPrivateChannel: (() => void) | null = null;
 let boundOnChunk: ((event: any) => void) | null = null;
 let boundOnChunkBatch: ((event: any) => void) | null = null;
 
 const USERNAME_REGEX = /^[a-zA-Z0-9_.]{2,32}$/;
+
+async function openUserFallbackProfile(userId: string) {
+    if (!userId || userId === "0" || userId === "100000000000000000") return;
+
+    try {
+        fetchUserProfile(userId, {}, false).catch(() => {});
+    } catch {}
+
+    try {
+        if (typeof UserProfileActions?.openUserProfileModal === "function") {
+            UserProfileActions.openUserProfileModal({
+                userId,
+                analyticsLocation: {
+                    page: "Quick Switcher",
+                    section: "Profile Popout",
+                },
+            });
+            return;
+        }
+    } catch {}
+
+    try {
+        await openUserProfile(userId);
+    } catch {}
+}
 
 async function fetchAndCacheUser(userId: string, switcher?: any): Promise<any> {
     if (fetchingIds.has(userId) || failedIds.has(userId)) return null;
@@ -580,50 +604,9 @@ export default definePlugin({
             FluxDispatcher.subscribe("GUILD_MEMBERS_CHUNK", boundOnChunk);
             FluxDispatcher.subscribe("GUILD_MEMBERS_CHUNK_BATCH", boundOnChunkBatch);
         } catch {}
-
-        // 2. Patch openPrivateChannel fallback
-        try {
-            const origOpen = ChannelActionCreators.openPrivateChannel;
-            if (typeof origOpen === "function" && !(origOpen as any).__validSearchPatched) {
-                ChannelActionCreators.openPrivateChannel = async function(arg: any, ...rest: any[]) {
-                    const targetId = typeof arg === "string" ? arg : (arg?.recipientId || arg?.userId || arg?.id || arg?.recipientIds?.[0]);
-                    let res: any;
-                    let failed = false;
-                    try {
-                        res = await origOpen.apply(this, [arg, ...rest]);
-                    } catch {
-                        failed = true;
-                    }
-                    if ((failed || (!res && targetId && !ChannelStore.getDMFromUserId(targetId))) && settings.store.fallbackToProfile) {
-                        if (targetId) {
-                            try {
-                                await openUserProfile(targetId);
-                            } catch {
-                                try {
-                                    UserProfileActions.openUserProfileModal({
-                                        userId: targetId,
-                                        analyticsLocation: { page: "DM Channel", section: "Profile Popout" },
-                                    });
-                                } catch {}
-                            }
-                        }
-                    }
-                    return res;
-                };
-                (ChannelActionCreators.openPrivateChannel as any).__validSearchPatched = true;
-                unpatchOpenPrivateChannel = () => {
-                    ChannelActionCreators.openPrivateChannel = origOpen;
-                };
-            }
-        } catch {}
     },
 
     stop() {
-        if (unpatchOpenPrivateChannel) {
-            unpatchOpenPrivateChannel();
-            unpatchOpenPrivateChannel = null;
-        }
-
         if (boundOnChunk) {
             try { FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK", boundOnChunk); } catch {}
             boundOnChunk = null;
@@ -673,23 +656,26 @@ export default definePlugin({
                         return origOnSelect.call(this, result);
                     }
 
+                    // Close the Quick Switcher modal first so it doesn't conflict with the profile modal
+                    try { switcher.props?.onClose?.(); } catch {}
+                    try { switcher.props?.close?.(); } catch {}
+
                     if (settings.store.fallbackToProfile) {
-                        try {
-                            const ch = await ChannelActionCreators.openPrivateChannel(userId);
-                            if (ch) return origOnSelect.call(this, result);
-                        } catch {}
-                        try {
-                            await openUserProfile(userId);
-                        } catch {
+                        setTimeout(async () => {
+                            let opened = false;
                             try {
-                                UserProfileActions.openUserProfileModal({
-                                    userId,
-                                    analyticsLocation: { page: "DM Channel", section: "Profile Popout" },
-                                });
-                            } catch {}
-                        }
-                        try { switcher.props?.close?.(); } catch {}
-                        try { switcher.props?.onClose?.(); } catch {}
+                                const ch = await ChannelActionCreators.openPrivateChannel(userId);
+                                if (ch || ChannelStore.getDMFromUserId(userId)) {
+                                    opened = true;
+                                }
+                            } catch {
+                                opened = false;
+                            }
+
+                            if (!opened) {
+                                await openUserFallbackProfile(userId);
+                            }
+                        }, 100);
                         return;
                     }
                 }
