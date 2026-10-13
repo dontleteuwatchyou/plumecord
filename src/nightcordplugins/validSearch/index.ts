@@ -479,30 +479,73 @@ function matchesQuery(user: any, cleanQuery: string, nicks?: Set<string>): boole
 }
 
 function computeScore(user: any, cleanQuery: string, isBlocked?: boolean, nicks?: Set<string>): number {
+    if (!user) return 0;
     const username = (user.username || "").toLowerCase();
     const globalName = (user.globalName || user.global_name || "").toLowerCase();
+    const tag = (user.tag || "").toLowerCase();
     const id = user.id || "";
 
-    let score = 10000;
-    let exactNick = false;
-    let prefixNick = false;
+    // 1. Exact match by User ID
+    if (id === cleanQuery) {
+        return 1000000;
+    }
 
+    // 2. Exact match by handle / username (Pomelo handle is the true unique identifier)
+    if (username === cleanQuery || tag === cleanQuery) {
+        return globalName === cleanQuery ? 600000 : 500000;
+    }
+
+    // 3. Exact match by global name
+    if (globalName === cleanQuery) {
+        return 350000;
+    }
+
+    // 4. Exact match by nickname
     if (nicks) {
         for (const n of nicks) {
-            const lower = n.toLowerCase();
-            if (lower === cleanQuery) exactNick = true;
-            else if (lower.startsWith(cleanQuery)) prefixNick = true;
+            if (n.toLowerCase() === cleanQuery) return 300000;
         }
     }
 
-    if (username === cleanQuery || globalName === cleanQuery || exactNick || id === cleanQuery) {
-        score = 60000;
-    } else if (username.startsWith(cleanQuery) || globalName.startsWith(cleanQuery) || prefixNick) {
-        score = 30000;
+    // 5. Username starts with query (closer length = higher score)
+    if (username.startsWith(cleanQuery)) {
+        const penalty = Math.min((username.length - cleanQuery.length) * 100, 20000);
+        return 200000 - penalty;
     }
 
+    // 6. Global name starts with query
+    if (globalName.startsWith(cleanQuery)) {
+        const penalty = Math.min((globalName.length - cleanQuery.length) * 100, 20000);
+        return 160000 - penalty;
+    }
+
+    // 7. Nickname starts with query
+    if (nicks) {
+        for (const n of nicks) {
+            if (n.toLowerCase().startsWith(cleanQuery)) return 130000;
+        }
+    }
+
+    // 8. Username contains query
+    if (username.includes(cleanQuery)) {
+        return 90000;
+    }
+
+    // 9. Global name contains query
+    if (globalName.includes(cleanQuery)) {
+        return 70000;
+    }
+
+    // 10. Nickname contains query
+    if (nicks) {
+        for (const n of nicks) {
+            if (n.toLowerCase().includes(cleanQuery)) return 50000;
+        }
+    }
+
+    let score = 20000;
     if (isBlocked) {
-        score += 500;
+        score -= 5000;
     }
 
     return score;
@@ -793,10 +836,32 @@ export default definePlugin({
             }
         }
 
-        if (extraItems.length === 0) return results;
+        // Re-score all USER items in native results so exact handle matches consistently rank highest
+        for (const r of results) {
+            if (r?.type === "USER" && r?.record) {
+                const isBlocked = RelationshipStore.isBlocked?.(r.record.id);
+                r.score = Math.max(r.score ?? 0, computeScore(r.record, cleanQuery, isBlocked));
+            }
+        }
 
         const combined = [...results, ...extraItems];
-        combined.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+        combined.sort((a, b) => {
+            const scoreA = a.score ?? 0;
+            const scoreB = b.score ?? 0;
+            if (scoreB !== scoreA) {
+                return scoreB - scoreA;
+            }
+            // Secondary tie-breaker: exact username match first
+            const isExactA = a.record?.username?.toLowerCase() === cleanQuery ? 1 : 0;
+            const isExactB = b.record?.username?.toLowerCase() === cleanQuery ? 1 : 0;
+            if (isExactB !== isExactA) {
+                return isExactB - isExactA;
+            }
+            // Shorter username first
+            const lenA = (a.record?.username || "").length;
+            const lenB = (b.record?.username || "").length;
+            return lenA - lenB;
+        });
         return combined.slice(0, 100);
     },
 });
