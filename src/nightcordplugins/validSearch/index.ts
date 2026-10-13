@@ -203,6 +203,7 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
 
         try {
             FluxDispatcher.subscribe("RELATIONSHIP_ADD", onRelAdd);
+            FluxDispatcher.subscribe("RELATIONSHIP_UPDATE", onRelAdd);
 
             let queryUsername = cleanQuery;
             let queryDiscrim: string | null = null;
@@ -253,9 +254,10 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
             failedUsernames.add(cleanQuery);
         } finally {
             FluxDispatcher.unsubscribe("RELATIONSHIP_ADD", onRelAdd);
+            FluxDispatcher.unsubscribe("RELATIONSHIP_UPDATE", onRelAdd);
             resolvingUsernames.delete(cleanQuery);
         }
-    }, 280);
+    }, 120);
 }
 
 function getAllCachedUsersWithNicks(): Array<{ user: any; nicks: Set<string> }> {
@@ -410,26 +412,30 @@ function computeScore(user: any, cleanQuery: string, isBlocked?: boolean, nicks?
 }
 
 function createDummyUserRecord(id: string, username: string, label: string): any {
+    const safeId = /^\d{17,20}$/.test(id) ? id : "0";
     const URec: any = UserStore.getCurrentUser()?.constructor;
-    if (URec) {
-        return new URec({
-            id,
-            username,
-            globalName: label,
-            global_name: label,
-            discriminator: "0",
-            avatar: null,
-            bot: false,
-        });
+    if (URec && safeId !== "0") {
+        try {
+            return new URec({
+                id: safeId,
+                username,
+                globalName: label,
+                global_name: label,
+                discriminator: "0",
+                avatar: null,
+                bot: false,
+            });
+        } catch {}
     }
 
     return {
-        id,
+        id: safeId,
         username,
         globalName: label,
         global_name: label,
         tag: username,
         discriminator: "0",
+        avatar: null,
         getAvatarURL: () => (IconUtils as any)?.getDefaultAvatarURL?.("0") || "",
         isSystemUser: () => false,
         isStaff: () => false,
@@ -581,20 +587,7 @@ export default definePlugin({
             const origOnSelect = switcher.props.onSelect;
             switcher.props.onSelect = async function(result: any) {
                 if (result?.type === "USER" && result?.record?.id) {
-                    let userId = result.record.id;
-
-                    // If user was a placeholder search item, resolve before opening
-                    if (userId.startsWith("search-")) {
-                        const targetName = result.record.username;
-                        const cached = Array.from(extraUsersCache.values()).find(u => (u.username || "").toLowerCase() === targetName.toLowerCase());
-                        if (cached?.id) {
-                            userId = cached.id;
-                        } else {
-                            try {
-                                await fetchUserProfile(userId, {}, false);
-                            } catch {}
-                        }
-                    }
+                    const userId = result.record.id;
 
                     const existingDm = ChannelStore.getDMFromUserId(userId);
                     if (existingDm) {
@@ -719,17 +712,6 @@ export default definePlugin({
         // If no items matched locally and query is a valid username pattern, attempt stranger resolution
         if (extraItems.length === 0 && results.filter(r => r?.type === "USER").length === 0) {
             triggerStrangerResolution(cleanQuery, switcher);
-
-            if (USERNAME_REGEX.test(cleanQuery) && !failedUsernames.has(cleanQuery)) {
-                const placeholder = createDummyUserRecord("search-" + cleanQuery, cleanQuery, t("Searching user..."));
-                extraItems.push({
-                    type: "USER",
-                    record: placeholder,
-                    score: 40000,
-                    comparator: cleanQuery,
-                    sortable: cleanQuery,
-                });
-            }
         }
 
         if (extraItems.length === 0) return results;
