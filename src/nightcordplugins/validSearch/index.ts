@@ -19,6 +19,8 @@ import {
     RelationshipStore,
     RestAPI,
     SelectedGuildStore,
+    showToast,
+    Toasts,
     UserProfileActions,
     UserStore,
     UserUtils,
@@ -65,12 +67,15 @@ const fetchingIds = new Set<string>();
 const failedIds = new Set<string>();
 const resolvingUsernames = new Set<string>();
 const failedUsernames = new Set<string>();
+const pendingResolutions = new Map<string, Promise<any>>();
 const extraUsersCache = new Map<string, any>();
 
 let activeSwitcher: any = null;
 let lastServerQuery = "";
 let serverSearchTimer: any = null;
 let strangerResolveTimer: any = null;
+let lastStrangerResolveTime = 0;
+let captchaCooldownUntil = 0;
 let boundOnChunk: ((event: any) => void) | null = null;
 let boundOnChunkBatch: ((event: any) => void) | null = null;
 
@@ -207,23 +212,28 @@ function triggerGuildMembersSearch(cleanQuery: string, switcher?: any) {
     }, 80);
 }
 
-function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
-    if (!settings.store.resolveStrangers) return;
-    if (!USERNAME_REGEX.test(cleanQuery)) return;
-    if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
+async function resolveStranger(cleanQuery: string, switcher?: any): Promise<any> {
+    if (!settings.store.resolveStrangers) return null;
+    if (!USERNAME_REGEX.test(cleanQuery)) return null;
 
     // Check if user is already present in extraUsersCache
     for (const [_, u] of extraUsersCache.entries()) {
-        if (u?.username?.toLowerCase() === cleanQuery) return;
+        if (u?.username?.toLowerCase() === cleanQuery) return u;
     }
 
-    clearTimeout(strangerResolveTimer);
-    strangerResolveTimer = setTimeout(async () => {
-        if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
-        resolvingUsernames.add(cleanQuery);
+    if (failedUsernames.has(cleanQuery)) return null;
 
-        try { switcher?.forceUpdate?.(); } catch {}
+    // Reuse in-flight resolution if already active
+    const existingPromise = pendingResolutions.get(cleanQuery);
+    if (existingPromise) return existingPromise;
 
+    // If captcha cooldown is active, skip automated background resolution
+    if (Date.now() < captchaCooldownUntil) return null;
+
+    resolvingUsernames.add(cleanQuery);
+    try { switcher?.forceUpdate?.(); } catch {}
+
+    const promise = (async () => {
         let resolvedUser: any = null;
         let resolveUserPromise: ((user: any) => void) | null = null;
 
@@ -231,12 +241,13 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
             resolveUserPromise = resolve;
         });
 
+        // 6-second timeout for stranger resolution
         const waitTimer = setTimeout(() => {
             if (resolveUserPromise) {
                 resolveUserPromise(null);
                 resolveUserPromise = null;
             }
-        }, 3000);
+        }, 6000);
 
         const onRelAdd = (event: any) => {
             const rel = event?.relationship || event;
@@ -287,10 +298,7 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
                 }
             }
 
-            const body: Record<string, any> = { username: queryUsername };
-            if (queryDiscrim !== undefined) {
-                body.discriminator = queryDiscrim;
-            }
+            lastStrangerResolveTime = Date.now();
 
             let requestDispatched = false;
             if (typeof RelationshipActions?.sendFriendRequest === "function") {
@@ -305,11 +313,16 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
                     if (code === 80004) {
                         failedUsernames.add(cleanQuery);
                     }
+                    if (e?.body?.captcha_key || e?.body?.captcha_sitekey || e?.status === 400 || e?.status === 429) {
+                        captchaCooldownUntil = Date.now() + 25000;
+                    }
                 }
             }
 
             if (!requestDispatched && !failedUsernames.has(cleanQuery)) {
                 try {
+                    const body: Record<string, any> = { username: queryUsername };
+                    if (queryDiscrim !== undefined) body.discriminator = queryDiscrim;
                     await RestAPI.post({
                         url: "/users/@me/relationships",
                         body,
@@ -318,6 +331,9 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
                     const code = e?.body?.code || e?.status;
                     if (code === 80004) {
                         failedUsernames.add(cleanQuery);
+                    }
+                    if (e?.body?.captcha_key || e?.body?.captcha_sitekey || e?.status === 400 || e?.status === 429) {
+                        captchaCooldownUntil = Date.now() + 25000;
                     }
                 }
             }
@@ -344,17 +360,92 @@ function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
                     type: "USER_UPDATE",
                     user: targetUser,
                 });
+                return targetUser;
             }
+            return null;
         } catch {
-            // Ignore unexpected exceptions
+            return null;
         } finally {
             clearTimeout(waitTimer);
             FluxDispatcher.unsubscribe("RELATIONSHIP_ADD", onRelAdd);
             FluxDispatcher.unsubscribe("RELATIONSHIP_UPDATE", onRelUpdate);
             resolvingUsernames.delete(cleanQuery);
+            pendingResolutions.delete(cleanQuery);
             try { switcher?.forceUpdate?.(); } catch {}
         }
-    }, 200);
+    })();
+
+    pendingResolutions.set(cleanQuery, promise);
+    return promise;
+}
+
+function triggerStrangerResolution(cleanQuery: string, switcher?: any) {
+    if (!settings.store.resolveStrangers) return;
+    if (cleanQuery.length < 3 || !USERNAME_REGEX.test(cleanQuery)) return;
+    if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
+    if (pendingResolutions.has(cleanQuery)) return;
+
+    // Check if user is already present in extraUsersCache
+    for (const [_, u] of extraUsersCache.entries()) {
+        if (u?.username?.toLowerCase() === cleanQuery) return;
+    }
+
+    clearTimeout(strangerResolveTimer);
+    strangerResolveTimer = setTimeout(async () => {
+        if (resolvingUsernames.has(cleanQuery) || failedUsernames.has(cleanQuery)) return;
+        if (Date.now() - lastStrangerResolveTime < 2500) {
+            clearTimeout(strangerResolveTimer);
+            strangerResolveTimer = setTimeout(() => {
+                triggerStrangerResolution(cleanQuery, switcher);
+            }, 1500);
+            return;
+        }
+
+        if (Date.now() < captchaCooldownUntil) return;
+
+        await resolveStranger(cleanQuery, switcher);
+    }, 800);
+}
+
+async function handleStrangerSelect(username: string, switcher?: any) {
+    if (!username) return;
+    const clean = username.toLowerCase().trim();
+
+    // Close switcher modal first so it doesn't conflict with the profile modal
+    try { switcher?.props?.onClose?.(); } catch {}
+    try { switcher?.props?.close?.(); } catch {}
+
+    // Check cache first
+    let user = extraUsersCache.get(clean);
+    if (!user) {
+        for (const [_, u] of extraUsersCache.entries()) {
+            if (u?.username?.toLowerCase() === clean) {
+                user = u;
+                break;
+            }
+        }
+    }
+
+    if (user?.id) {
+        await openUserFallbackProfile(user.id);
+        return;
+    }
+
+    // Not cached: resolve on demand with toast feedback
+    try {
+        showToast(t("Resolving user profile..."), Toasts.Type.NORMAL);
+    } catch {}
+
+    try {
+        const resolved = await resolveStranger(clean, switcher);
+        if (resolved?.id) {
+            await openUserFallbackProfile(resolved.id);
+        } else {
+            showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
+        }
+    } catch {
+        showToast(t("User not found or verification required."), Toasts.Type.FAILURE);
+    }
 }
 
 function getAllCachedUsersWithNicks(): Array<{ user: any; nicks: Set<string> }> {
@@ -689,9 +780,13 @@ export default definePlugin({
         if (switcher.props.onSelect && !switcher.props.onSelect.__validSearchPatched) {
             const origOnSelect = switcher.props.onSelect;
             switcher.props.onSelect = async function(result: any) {
-                if (result?.type === "USER" && result?.record?.id) {
+                if (result?.type === "USER" && result?.record) {
                     const userId = result.record.id;
-                    if (userId === "100000000000000000" || userId === "0") {
+                    const isStrangerPlaceholder = userId === "100000000000000000" || userId === "0" || result.__isStrangerPlaceholder;
+
+                    if (isStrangerPlaceholder) {
+                        const targetUsername = result.__targetUsername || result.record.username || query;
+                        await handleStrangerSelect(targetUsername, switcher);
                         return;
                     }
 
@@ -824,17 +919,24 @@ export default definePlugin({
 
         // If no exact match and query is a valid username pattern, attempt stranger resolution
         if (!hasExactMatch && USERNAME_REGEX.test(cleanQuery) && cleanQuery.length >= 2) {
-            triggerStrangerResolution(cleanQuery, switcher);
-
-            if (resolvingUsernames.has(cleanQuery)) {
-                extraItems.push({
-                    type: "USER",
-                    record: createDummyUserRecord("100000000000000000", cleanQuery, `@${cleanQuery} (${t("Searching user...")})`),
-                    score: 55000,
-                    comparator: cleanQuery,
-                    sortable: cleanQuery,
-                });
+            if (cleanQuery.length >= 3) {
+                triggerStrangerResolution(cleanQuery, switcher);
             }
+
+            const isResolving = resolvingUsernames.has(cleanQuery);
+            const label = isResolving
+                ? `@${cleanQuery} (${t("Searching user...")})`
+                : `@${cleanQuery} (${t("Search user")})`;
+
+            extraItems.push({
+                type: "USER",
+                record: createDummyUserRecord("100000000000000000", cleanQuery, label),
+                score: 550000,
+                comparator: cleanQuery,
+                sortable: cleanQuery,
+                __isStrangerPlaceholder: true,
+                __targetUsername: cleanQuery,
+            });
         }
 
         // Re-score all USER items in native results so exact handle matches consistently rank highest
