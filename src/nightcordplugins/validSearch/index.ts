@@ -587,6 +587,7 @@ export default definePlugin({
     name: "ValidSearch",
     description: "Find any user in Quick Switcher by User ID or username, including blocked users and users without mutual servers.",
     authors: [{ name: "Nightcord", id: 0n }],
+    enabledByDefault: true,
     settings,
     patches: [
         {

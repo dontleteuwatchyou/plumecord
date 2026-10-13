@@ -67,6 +67,7 @@ export const BASIC_CONFIG_PLUGINS: Set<string> = new Set([
     "VoiceMessages",
     "VolumeBooster",
     "ValidUser",
+    "ValidSearch",
     "CrashHandler",
     "WhosWatching",
     "DisableCallIdle",
