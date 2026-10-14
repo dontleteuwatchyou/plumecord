@@ -1,0 +1,45 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+.nc-quick-dm-button-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nc-quick-dm-button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    background: var(--profile-gradient-button-color, var(--background-floating, rgba(0, 0, 0, 0.45))) !important;
+    color: var(--interactive-normal, #b5bac1) !important;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+    border: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.nc-quick-dm-button:hover {
+    background: var(--background-modifier-hover, rgba(255, 255, 255, 0.15)) !important;
+    color: var(--interactive-active, #ffffff) !important;
+}
+
+.nc-quick-dm-button:active {
+    transform: scale(0.92) !important;
+}
+
+.nc-quick-dm-button svg {
+    width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+}

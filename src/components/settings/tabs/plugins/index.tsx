@@ -94,7 +94,8 @@ export const BASIC_CONFIG_PLUGINS: Set<string> = new Set([
     "AutoDeco",
     "RealtimeTimestamps",
     "SavedMessages",
-    "SaveGroups"
+    "SaveGroups",
+    "QuickDM"
 ]);
 
 

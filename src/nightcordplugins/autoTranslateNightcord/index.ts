@@ -11,6 +11,10 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "QuickDM": {"en":"QuickDM","fr":"QuickDM","ar":"QuickDM","es":"QuickDM","ru":"QuickDM","zh":"QuickDM"},
+    "Quick DM": {"en":"Quick DM","fr":"MP rapide","ar":"رسائل مباشرة سريعة","es":"MD rápido","ru":"Быстрые ЛС","zh":"快捷私信"},
+    "Adds a quick DM button with a keyboard icon to user profile popouts to open direct messages instantly.": {"en":"Adds a quick DM button with a keyboard icon to user profile popouts to open direct messages instantly.","fr":"Ajoute un bouton de message privé avec une icône de clavier sur les profils réduits pour ouvrir directement les MP.","ar":"يضيف زر رسالة مباشرة مع أيقونة لوحة مفاتيح في الملفات الشخصية المنبثقة لفتح الرسائل المباشرة فوراً.","es":"Añade un botón de mensaje directo con icono de teclado en los perfiles emergentes para abrir MDs al instante.","ru":"Добавляет кнопку быстрых ЛС с иконкой клавиатуры во всплывающие профили для мгновенного перехода в диалог.","zh":"在用户个人资料弹窗中添加带有键盘图标的快捷私信按钮，可即时打开私信。"},
+    "Direct Message": {"en":"Direct Message","fr":"Message privé","ar":"رسالة مباشرة","es":"Mensaje directo","ru":"Личное сообщение","zh":"私信"},
     "Reveal API key": {"en":"Reveal API key","fr":"Afficher la clé API","ar":"إظهار مفتاح API","es":"Mostrar clave API","ru":"Показать API ключ","zh":"显示 API 密钥"},
     "Hide API key": {"en":"Hide API key","fr":"Masquer la clé API","ar":"إخفاء مفتاح API","es":"Ocultar clave API","ru":"Скрыть API ключ","zh":"隐藏 API 密钥"},
     "ValidSearch": {"en":"ValidSearch","fr":"ValidSearch","ar":"ValidSearch","es":"ValidSearch","ru":"ValidSearch","zh":"ValidSearch"},
