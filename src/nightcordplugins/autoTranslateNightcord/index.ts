@@ -11,6 +11,8 @@ export type SupportedLang = "en" | "fr" | "ar" | "es" | "ru" | "zh";
 export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
+    "Reveal API key": {"en":"Reveal API key","fr":"Afficher la clé API","ar":"إظهار مفتاح API","es":"Mostrar clave API","ru":"Показать API ключ","zh":"显示 API 密钥"},
+    "Hide API key": {"en":"Hide API key","fr":"Masquer la clé API","ar":"إخفاء مفتاح API","es":"Ocultar clave API","ru":"Скрыть API ключ","zh":"隐藏 API 密钥"},
     "ValidSearch": {"en":"ValidSearch","fr":"ValidSearch","ar":"ValidSearch","es":"ValidSearch","ru":"ValidSearch","zh":"ValidSearch"},
     "Valid Search": {"en":"Valid Search","fr":"Recherche valide","ar":"بحث صالح","es":"Búsqueda válida","ru":"Действительный поиск","zh":"有效搜索"},
     "Find any user in Quick Switcher by User ID or username, including blocked users and users without mutual servers.": {"en":"Find any user in Quick Switcher by User ID or username, including blocked users and users without mutual servers.","fr":"Trouve n'importe quel utilisateur dans le sélecteur rapide par identifiant ou pseudo, y compris les utilisateurs bloqués et sans serveur commun.","ar":"العثور على أي مستخدم في أداة التبديل السريع عبر المعرف أو الاسم، بما في ذلك المستخدمون المحظورون ودون خوادم مشتركة.","es":"Encuentra cualquier usuario en el selector rápido por ID o nombre, incluidos usuarios bloqueados y sin servidores en común.","ru":"Находите любого пользователя в Быстром переключателе по ID или имени, включая заблокированных пользователей и без общих серверов.","zh":"通过用户ID或用户名在快速切换器中查找任何用户，包括已屏蔽用户和无共同服务器的用户。"},

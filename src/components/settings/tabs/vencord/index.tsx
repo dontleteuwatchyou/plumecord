@@ -18,7 +18,7 @@ import { Divider } from "@components/Divider";
 import { Flex } from "@components/Flex";
 import { FormSwitch } from "@components/FormSwitch";
 import { Heading } from "@components/Heading";
-import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, DiscordIcon, RestartIcon, WebsiteIcon } from "@components/Icons";
+import { HeartIcon, GithubIcon, LogIcon, OwnerCrownIcon, PaintbrushIcon, DiscordIcon, RestartIcon, WebsiteIcon, EyeIcon, EyeSlashIcon } from "@components/Icons";
 
 import { Notice } from "@components/Notice";
 import { Paragraph } from "@components/Paragraph";
@@ -222,6 +222,7 @@ function StealthModeButton() {
 
 function GroqApiKeySection() {
     const [key, setKey] = React.useState("");
+    const [keyRevealed, setKeyRevealed] = React.useState(false);
 
     React.useEffect(() => {
         getGroqKey().then(stored => {
@@ -269,12 +270,25 @@ function GroqApiKeySection() {
                 <Paragraph className={Margins.bottom8} style={{ color: "var(--text-muted)", fontSize: 14 }}>
                     {t("Groq API Key (console.groq.com/keys) — shared with AutoCorrect and VoiceDictation")}
                 </Paragraph>
-                <TextInput
-                    value={key}
-                    placeholder="gsk_••••••••••••••••••••••••••••••••••"
-                    type="password"
-                    onChange={handleChange}
-                />
+                <div className="nc-api-key-container">
+                    <div className={`nc-api-key-input-wrapper ${!keyRevealed ? "nc-blurred-api-key" : ""}`}>
+                        <TextInput
+                            value={key}
+                            placeholder="gsk_••••••••••••••••••••••••••••••••••"
+                            type="text"
+                            onChange={handleChange}
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        className="nc-api-key-toggle-btn"
+                        title={keyRevealed ? t("Hide API key") : t("Reveal API key")}
+                        aria-label={keyRevealed ? t("Hide API key") : t("Reveal API key")}
+                        onClick={() => setKeyRevealed(!keyRevealed)}
+                    >
+                        {keyRevealed ? <EyeSlashIcon width={18} height={18} /> : <EyeIcon width={18} height={18} />}
+                    </button>
+                </div>
             </div>
         </div>
     );

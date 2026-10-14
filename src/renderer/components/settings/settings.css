@@ -70,3 +70,80 @@
     flex-direction: column;
     justify-content: flex-start;
 }
+
+/* Blurred API Key inputs and fallbacks */
+.nc-api-key-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.nc-api-key-input-wrapper {
+    flex: 1;
+    width: 100%;
+    position: relative;
+}
+
+.nc-api-key-input-wrapper input {
+    padding-right: 40px !important;
+}
+
+.nc-blurred-api-key input,
+.nc-blurred-api-key textarea,
+input.nc-blurred-api-key {
+    filter: blur(6px) !important;
+    user-select: none !important;
+    transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nc-blurred-api-key:hover input,
+.nc-blurred-api-key:focus-within input,
+.nc-blurred-api-key:hover textarea,
+.nc-blurred-api-key:focus-within textarea,
+input.nc-blurred-api-key:hover,
+input.nc-blurred-api-key:focus {
+    filter: blur(0px) !important;
+    user-select: text !important;
+}
+
+.nc-api-key-toggle-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--interactive-normal);
+    border-radius: 4px;
+    transition: color 0.15s ease, background-color 0.15s ease;
+    z-index: 2;
+}
+
+.nc-api-key-toggle-btn:hover {
+    color: var(--interactive-active);
+    background-color: var(--background-modifier-hover);
+}
+
+.nc-api-key-toggle-btn:active {
+    color: var(--interactive-active);
+    background-color: var(--background-modifier-active);
+}
+
+/* Fallback for any other API key inputs in settings */
+input[placeholder*="gsk_"]:not(:hover):not(:focus),
+input[placeholder*="API Key"]:not(:hover):not(:focus),
+input[placeholder*="apiKey"]:not(:hover):not(:focus),
+input[name*="apiKey"]:not(:hover):not(:focus),
+input[name*="api_key"]:not(:hover):not(:focus),
+input[id*="apiKey"]:not(:hover):not(:focus),
+input[id*="api_key"]:not(:hover):not(:focus) {
+    filter: blur(6px);
+    transition: filter 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
