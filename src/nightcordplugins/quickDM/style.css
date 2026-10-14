@@ -21,12 +21,12 @@
     min-height: 32px !important;
     border-radius: 50% !important;
     cursor: pointer !important;
-    background: rgba(0, 0, 0, 0.35) !important;
+    background: rgba(0, 0, 0, 0.6) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     color: #ffffff !important;
-    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    transition: transform 0.1s ease, border-color 0.15s ease !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
     outline: none !important;
     padding: 0 !important;
     box-sizing: border-box !important;
@@ -34,7 +34,7 @@
 
 .nc-quick-dm-button:hover {
     background: rgba(0, 0, 0, 0.6) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
     color: #ffffff !important;
 }
 
@@ -58,13 +58,14 @@
 /* Tooltip Portal & Box */
 .nc-quick-dm-tooltip-portal {
     pointer-events: none !important;
-    animation: nc-quick-dm-tooltip-anim 0.12s ease-out !important;
+    animation: nc-quick-dm-tooltip-anim 0.12s cubic-bezier(0.2, 0, 0, 1) !important;
+    z-index: 100000 !important;
 }
 
 @keyframes nc-quick-dm-tooltip-anim {
     from {
         opacity: 0;
-        transform: translate(-50%, -90%) scale(0.95);
+        transform: translate(-50%, -85%) scale(0.95);
     }
     to {
         opacity: 1;
