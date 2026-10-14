@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -9,13 +9,29 @@ import ErrorBoundary from "@components/ErrorBoundary";
 import { classNameFactory } from "@utils/css";
 import { classes } from "@utils/misc";
 import { Channel } from "@vencord/discord-types";
-import { findByPropsLazy, findCssClassesLazy } from "@webpack";
-import { ChannelRouter, ChannelStore, Parser, PermissionsBits, PermissionStore, React, showToast, Toasts, Tooltip, useMemo, UserStore, UserSummaryItem, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { findCssClassesLazy } from "@webpack";
+import {
+    ChannelActions,
+    ChannelRouter,
+    ChannelStore,
+    closeAllModals,
+    NavigationRouter,
+    Parser,
+    PermissionsBits,
+    PermissionStore,
+    React,
+    Tooltip,
+    useMemo,
+    UserStore,
+    UserSummaryItem,
+    useStateFromStores,
+    VoiceStateStore
+} from "@webpack/common";
 import { PropsWithChildren } from "react";
 
-const cl = classNameFactory("vc-uvs-");
+import { t } from "../autoTranslateNightcord";
 
-const { selectVoiceChannel } = findByPropsLazy("selectVoiceChannel", "selectChannel");
+const cl = classNameFactory("vc-uvs-");
 
 const ActionButtonClasses = findCssClassesLazy("actionButton", "highlight");
 
@@ -81,6 +97,44 @@ function DeafIcon(props: IconProps) {
     );
 }
 
+export function openVoiceChannelWithoutJoining(channel: Channel) {
+    if (!channel?.id) return;
+
+    // 1. Close any active modals (such as the User Profile Modal)
+    try {
+        closeAllModals();
+    } catch {}
+
+    // 2. Clear click timers
+    clearTimeout(clickTimers.get(channel.id));
+    clickTimers.delete(channel.id);
+
+    // 3. Navigate route to the voice channel
+    const guildId = channel.guild_id;
+    if (guildId) {
+        try {
+            NavigationRouter.transitionToGuild(guildId, channel.id);
+        } catch {
+            NavigationRouter.transitionTo(`/channels/${guildId}/${channel.id}`);
+        }
+    } else {
+        NavigationRouter.transitionTo(`/channels/@me/${channel.id}`);
+    }
+
+    // 4. Update selected channel in stores without connecting to voice audio
+    try {
+        if (typeof ChannelActions?.selectChannel === "function") {
+            ChannelActions.selectChannel(channel.id);
+        }
+    } catch {}
+
+    try {
+        if (typeof ChannelRouter?.transitionToChannel === "function") {
+            ChannelRouter.transitionToChannel(channel.id);
+        }
+    } catch {}
+}
+
 interface VoiceChannelTooltipProps {
     channel: Channel;
     isLocked: boolean;
@@ -96,8 +150,18 @@ function VoiceChannelTooltip({ channel, isLocked }: VoiceChannelTooltipProps) {
 
     const Icon = isLocked ? LockedSpeakerIcon : SpeakerIcon;
     return (
-        <>
-            <BaseText size="sm" weight="bold">In Voice Chat</BaseText>
+        <div
+            className={cl("tooltip-wrapper")}
+            onClickCapture={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openVoiceChannelWithoutJoining(channel);
+            }}
+            role="button"
+            tabIndex={0}
+            title={t("Click to preview voice channel")}
+        >
+            <BaseText size="sm" weight="bold">{t("In Voice Chat")}</BaseText>
             <BaseText size="sm" weight="bold">{Parser.parse(`<#${channel.id}>`)}</BaseText>
             <div className={cl("vc-members")}>
                 <Icon size={18} />
@@ -108,7 +172,10 @@ function VoiceChannelTooltip({ channel, isLocked }: VoiceChannelTooltipProps) {
                     size={18}
                 />
             </div>
-        </>
+            <BaseText size="xs" color="text-muted" className={cl("preview-hint")}>
+                {t("Click to preview voice channel")}
+            </BaseText>
+        </div>
     );
 }
 
@@ -146,24 +213,7 @@ export const VoiceChannelIndicator = ErrorBoundary.wrap(({ userId, isProfile, is
         e.stopPropagation();
 
         if (channel == null || channelId == null) return;
-
-        clearTimeout(clickTimers.get(channelId));
-        clickTimers.delete(channelId);
-
-        if (e.detail > 1) {
-            if (!isDM && !PermissionStore.can(PermissionsBits.CONNECT, channel)) {
-                showToast("You cannot join the user's Voice Channel", Toasts.Type.FAILURE);
-                return;
-            }
-
-            selectVoiceChannel(channelId);
-        } else {
-            const timeoutId = setTimeout(() => {
-                ChannelRouter.transitionToChannel(channelId);
-                clickTimers.delete(channelId);
-            }, 250);
-            clickTimers.set(channelId, timeoutId);
-        }
+        openVoiceChannelWithoutJoining(channel);
     }
 
     const IconComponent =
