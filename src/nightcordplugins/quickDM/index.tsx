@@ -8,17 +8,107 @@ import "./style.css";
 
 import { openPrivateChannel } from "@utils/discord";
 import definePlugin from "@utils/types";
-import { UserStore } from "@webpack/common";
+import {
+    ChannelActionCreators,
+    ChannelStore,
+    createRoot,
+    NavigationRouter,
+    React,
+    Tooltip,
+    UserStore
+} from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 
-const KEYBOARD_SVG = `
-<svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24">
-    <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm4 2a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1ZM6 11a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1ZM7 15a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H7Z" />
-</svg>
-`;
-
+const mountedRoots = new Map<HTMLElement, ReturnType<typeof createRoot>>();
 let observer: MutationObserver | null = null;
+
+async function triggerDM(userId: string) {
+    if (!userId) return;
+
+    // Dismiss popout
+    try {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
+    } catch {}
+
+    try {
+        const existingDmId = ChannelStore?.getDMFromUserId?.(userId);
+        if (existingDmId) {
+            NavigationRouter?.transitionTo?.(`/channels/@me/${existingDmId}`);
+            return;
+        }
+
+        if (typeof ChannelActionCreators?.openPrivateChannel === "function") {
+            await ChannelActionCreators.openPrivateChannel({
+                recipientIds: [userId],
+                navigateToChannel: true
+            });
+            return;
+        }
+    } catch (err) {
+        console.warn("[QuickDM] Error opening private channel with object:", err);
+    }
+
+    try {
+        if (typeof ChannelActionCreators?.openPrivateChannel === "function") {
+            await ChannelActionCreators.openPrivateChannel([userId]);
+            return;
+        }
+    } catch {}
+
+    try {
+        openPrivateChannel(userId);
+    } catch {}
+}
+
+function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass: string; }) {
+    const handleClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerDM(userId);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerDM(userId);
+        }
+    };
+
+    return (
+        <Tooltip text={t("Direct Message")} position="top">
+            {(tooltipProps: any) => (
+                <div
+                    {...tooltipProps}
+                    className={`nc-quick-dm-button ${siblingClass}`.trim()}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t("Direct Message")}
+                    onClick={handleClick}
+                    onKeyDown={handleKeyDown}
+                >
+                    <svg
+                        aria-hidden="true"
+                        role="img"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            fill="#ffffff"
+                            fillRule="evenodd"
+                            clipRule="evenodd"
+                            d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm4 2a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1ZM6 11a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1ZM7 15a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H7Z"
+                        />
+                    </svg>
+                </div>
+            )}
+        </Tooltip>
+    );
+}
 
 function extractUserIdFromFiber(el: Element | null): string | null {
     if (!el) return null;
@@ -29,15 +119,13 @@ function extractUserIdFromFiber(el: Element | null): string | null {
         for (let i = 0; i < 45 && fiber; i++) {
             const props = fiber.memoizedProps || fiber.pendingProps;
             if (props) {
-                if (props.user?.id) return String(props.user.id);
-                if (props.displayProfile?.userId) return String(props.displayProfile.userId);
-                if (props.profile?.userId) return String(props.profile.userId);
-                if (props.userId) return String(props.userId);
-                if (props.channel?.getRecipientId?.()) return String(props.channel.getRecipientId());
-                if (props.channel?.recipients?.[0]) return String(props.channel.recipients[0]);
-                if (props.author?.id) return String(props.author.id);
-                if (props.member?.userId) return String(props.member.userId);
-                if (props.member?.user?.id) return String(props.member.user.id);
+                if (props.user?.id && /^\d{17,20}$/.test(String(props.user.id))) return String(props.user.id);
+                if (props.displayProfile?.userId && /^\d{17,20}$/.test(String(props.displayProfile.userId))) return String(props.displayProfile.userId);
+                if (props.profile?.userId && /^\d{17,20}$/.test(String(props.profile.userId))) return String(props.profile.userId);
+                if (props.member?.userId && /^\d{17,20}$/.test(String(props.member.userId))) return String(props.member.userId);
+                if (props.member?.user?.id && /^\d{17,20}$/.test(String(props.member.user.id))) return String(props.member.user.id);
+                if (props.author?.id && /^\d{17,20}$/.test(String(props.author.id))) return String(props.author.id);
+                if (typeof props.userId === "string" && /^\d{17,20}$/.test(props.userId)) return props.userId;
             }
             fiber = fiber.return;
         }
@@ -46,18 +134,24 @@ function extractUserIdFromFiber(el: Element | null): string | null {
 }
 
 function getPopoutUserId(popout: HTMLElement): string | null {
-    const fiberId = extractUserIdFromFiber(popout);
-    if (fiberId) return fiberId;
+    const avatar = popout.querySelector<HTMLElement>("[class*='avatar_'], [class*='avatarStack_'], [class*='wrapper_'][role='img']");
+    if (avatar) {
+        const aid = extractUserIdFromFiber(avatar);
+        if (aid) return aid;
+    }
 
-    const header = popout.querySelector<HTMLElement>("[class*='header_'], [class*='avatar_'], [class*='displayName_']");
+    const header = popout.querySelector<HTMLElement>("[class*='header_']");
     if (header) {
         const hid = extractUserIdFromFiber(header);
         if (hid) return hid;
     }
 
+    const fiberId = extractUserIdFromFiber(popout);
+    if (fiberId) return fiberId;
+
     const avatarImg = popout.querySelector<HTMLImageElement>("img[src*='/avatars/']");
     if (avatarImg) {
-        const match = avatarImg.src.match(/\/avatars\/(\d+)\//);
+        const match = avatarImg.src.match(/\/avatars\/(\d{17,20})\//);
         if (match) return match[1];
     }
 
@@ -89,50 +183,43 @@ function injectQuickDMButton(popout: HTMLElement) {
     if (userId === currentUserId) return;
 
     const siblingBtn = wrapper.querySelector<HTMLElement>("[class*='bannerButton_']");
-    let btnClass = "nc-quick-dm-button";
+    let btnClass = "";
     if (siblingBtn) {
         const classes = Array.from(siblingBtn.classList).filter(c => !c.startsWith("nc-"));
-        btnClass = classes.join(" ") + " nc-quick-dm-button";
+        btnClass = classes.join(" ");
     }
 
     const span = document.createElement("span");
     span.className = "nc-quick-dm-button-wrapper";
-
-    const btn = document.createElement("div");
-    btn.className = btnClass;
-    btn.setAttribute("role", "button");
-    btn.setAttribute("tabindex", "0");
-    btn.setAttribute("aria-label", t("Direct Message"));
-    btn.setAttribute("title", t("Direct Message"));
-    btn.innerHTML = KEYBOARD_SVG;
-
-    const handleAction = (e: Event) => {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-            openPrivateChannel(userId);
-        } catch (err) {
-            console.error("[QuickDM] Failed to open DM:", err);
-        }
-    };
-
-    btn.addEventListener("click", handleAction);
-    btn.addEventListener("keydown", (e: KeyboardEvent) => {
-        if (e.key === "Enter" || e.key === " ") {
-            handleAction(e);
-        }
-    });
-
-    span.appendChild(btn);
 
     if (wrapper.firstChild) {
         wrapper.insertBefore(span, wrapper.firstChild);
     } else {
         wrapper.appendChild(span);
     }
+
+    if (typeof createRoot === "function") {
+        try {
+            const root = createRoot(span);
+            mountedRoots.set(span, root);
+            root.render(<QuickDMButton userId={userId} siblingClass={btnClass} />);
+        } catch (err) {
+            console.error("[QuickDM] Error rendering QuickDMButton root:", err);
+        }
+    }
+}
+
+function cleanupDisconnectedRoots() {
+    for (const [spanEl, r] of mountedRoots.entries()) {
+        if (!document.body.contains(spanEl)) {
+            try { r.unmount(); } catch {}
+            mountedRoots.delete(spanEl);
+        }
+    }
 }
 
 function scanPopouts() {
+    cleanupDisconnectedRoots();
     const popouts = document.querySelectorAll<HTMLElement>(
         "[class*='user-profile-popout'], [class*='userPopout'], .user-profile-popout, [class*='biteSize_'], [class*='outer_'][class*='themeContainer_']"
     );
@@ -163,6 +250,11 @@ export default definePlugin({
     stop() {
         observer?.disconnect();
         observer = null;
+        for (const [spanEl, r] of mountedRoots.entries()) {
+            try { r.unmount(); } catch {}
+            spanEl.remove();
+        }
+        mountedRoots.clear();
         const buttons = document.querySelectorAll(".nc-quick-dm-button-wrapper");
         for (const btn of Array.from(buttons)) {
             btn.remove();

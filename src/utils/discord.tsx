@@ -92,7 +92,13 @@ export function getCurrentGuild(): Guild | undefined {
 }
 
 export function openPrivateChannel(userId: string) {
-    ChannelActionCreators.openPrivateChannel(userId);
+    if (typeof ChannelActionCreators?.openPrivateChannel === "function") {
+        try {
+            return ChannelActionCreators.openPrivateChannel({ recipientIds: [userId], navigateToChannel: true });
+        } catch {
+            return ChannelActionCreators.openPrivateChannel([userId]);
+        }
+    }
 }
 
 export const enum Theme {

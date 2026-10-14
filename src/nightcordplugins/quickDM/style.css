@@ -20,9 +20,11 @@
     min-height: 32px !important;
     border-radius: 50% !important;
     cursor: pointer !important;
-    background: var(--profile-gradient-button-color, var(--background-floating, rgba(0, 0, 0, 0.45))) !important;
-    color: var(--interactive-normal, #b5bac1) !important;
-    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease !important;
+    background: rgba(0, 0, 0, 0.35) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    color: #ffffff !important;
+    transition: background-color 0.15s ease, transform 0.1s ease !important;
     border: none !important;
     outline: none !important;
     padding: 0 !important;
@@ -30,8 +32,8 @@
 }
 
 .nc-quick-dm-button:hover {
-    background: var(--background-modifier-hover, rgba(255, 255, 255, 0.15)) !important;
-    color: var(--interactive-active, #ffffff) !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    color: #ffffff !important;
 }
 
 .nc-quick-dm-button:active {
@@ -42,4 +44,11 @@
     width: 16px !important;
     height: 16px !important;
     display: block !important;
+    color: #ffffff !important;
+    fill: #ffffff !important;
+}
+
+.nc-quick-dm-button svg path {
+    fill: #ffffff !important;
+    color: #ffffff !important;
 }
