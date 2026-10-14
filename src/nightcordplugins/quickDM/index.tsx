@@ -8,17 +8,24 @@ import "./style.css";
 
 import { openPrivateChannel } from "@utils/discord";
 import definePlugin from "@utils/types";
+import { findComponentByCodeLazy } from "@webpack";
 import {
     ChannelActionCreators,
     ChannelStore,
     createRoot,
     NavigationRouter,
     React,
-    ReactDOM,
     UserStore
 } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
+
+const Tooltip = findComponentByCodeLazy("VoidTooltip cannot find DOM node") as React.ComponentType<{
+    text: string | (() => React.ReactNode);
+    position?: "top" | "bottom" | "left" | "right";
+    color?: string;
+    children: (props: Record<string, any>) => React.ReactNode;
+}>;
 
 const mountedRoots = new Map<HTMLElement, ReturnType<typeof createRoot>>();
 let observer: MutationObserver | null = null;
@@ -62,29 +69,7 @@ async function triggerDM(userId: string) {
 }
 
 function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass: string; }) {
-    const [visible, setVisible] = React.useState(false);
-    const [rect, setRect] = React.useState<DOMRect | null>(null);
-    const btnRef = React.useRef<HTMLDivElement>(null);
-    const timeoutRef = React.useRef<any>(null);
-
-    const handleMouseEnter = () => {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-            if (btnRef.current) {
-                setRect(btnRef.current.getBoundingClientRect());
-                setVisible(true);
-            }
-        }, 50);
-    };
-
-    const handleMouseLeave = () => {
-        clearTimeout(timeoutRef.current);
-        setVisible(false);
-    };
-
     const handleClick = (e: React.MouseEvent) => {
-        clearTimeout(timeoutRef.current);
-        setVisible(false);
         e.preventDefault();
         e.stopPropagation();
         triggerDM(userId);
@@ -92,19 +77,11 @@ function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass:
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" || e.key === " ") {
-            clearTimeout(timeoutRef.current);
-            setVisible(false);
             e.preventDefault();
             e.stopPropagation();
             triggerDM(userId);
         }
     };
-
-    React.useEffect(() => {
-        return () => {
-            clearTimeout(timeoutRef.current);
-        };
-    }, []);
 
     // Combine exact native bannerButton classes from Discord
     const combinedClass = [
@@ -119,57 +96,44 @@ function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass:
         .join(" ");
 
     return (
-        <>
-            <div
-                ref={btnRef}
-                className={combinedClass}
-                aria-label={t("Direct Message")}
-                aria-disabled="false"
-                aria-busy="false"
-                role="button"
-                tabIndex={0}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                onClick={handleClick}
-                onKeyDown={handleKeyDown}
-            >
-                <svg
-                    aria-hidden="true"
-                    role="img"
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                >
-                    <path
-                        fill="currentColor"
-                        fillRule="evenodd"
-                        clipRule="evenodd"
-                        d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm4 2a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1ZM6 11a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1ZM7 15a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H7Z"
-                    />
-                </svg>
-            </div>
-            {visible && rect && ReactDOM?.createPortal && ReactDOM.createPortal(
+        <Tooltip text={t("Direct Message")} position="top">
+            {(tooltipProps: Record<string, any>) => (
                 <div
-                    className="nc-quick-dm-tooltip-portal"
-                    style={{
-                        position: "fixed",
-                        left: `${rect.left + rect.width / 2}px`,
-                        top: `${rect.top - 8}px`,
-                        transform: "translate(-50%, -100%)",
-                        pointerEvents: "none",
-                        zIndex: 100000
+                    {...tooltipProps}
+                    className={combinedClass}
+                    aria-label={t("Direct Message")}
+                    aria-disabled="false"
+                    aria-busy="false"
+                    role="button"
+                    tabIndex={0}
+                    onClick={e => {
+                        tooltipProps?.onClick?.(e);
+                        handleClick(e);
+                    }}
+                    onKeyDown={e => {
+                        tooltipProps?.onKeyDown?.(e);
+                        handleKeyDown(e);
                     }}
                 >
-                    <div className="nc-quick-dm-tooltip-box">
-                        {t("Direct Message")}
-                        <div className="nc-quick-dm-tooltip-pointer" />
-                    </div>
-                </div>,
-                document.body
+                    <svg
+                        aria-hidden="true"
+                        role="img"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            fill="currentColor"
+                            fillRule="evenodd"
+                            clipRule="evenodd"
+                            d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm4 2a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1ZM6 11a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1ZM7 15a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H7Z"
+                        />
+                    </svg>
+                </div>
             )}
-        </>
+        </Tooltip>
     );
 }
 
