@@ -24,8 +24,8 @@
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     color: #ffffff !important;
-    transition: background-color 0.15s ease, transform 0.1s ease !important;
-    border: none !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
     outline: none !important;
     padding: 0 !important;
     box-sizing: border-box !important;
@@ -33,6 +33,7 @@
 
 .nc-quick-dm-button:hover {
     background: rgba(0, 0, 0, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
     color: #ffffff !important;
 }
 
