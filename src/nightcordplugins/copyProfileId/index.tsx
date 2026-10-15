@@ -48,8 +48,9 @@ function CopyProfileIdButton({
         }
     };
 
+    const cleanBtnClass = buttonClass.replace(/\bhasText_[a-zA-Z0-9]+\b/g, "").trim();
     const combinedBtnClass = [
-        buttonClass,
+        cleanBtnClass,
         "nc-copy-profile-id-button"
     ]
         .filter(Boolean)
@@ -58,8 +59,10 @@ function CopyProfileIdButton({
         .filter((c, i, a) => a.indexOf(c) === i)
         .join(" ");
 
+    const label = t("Copy User ID");
+
     return (
-        <Tooltip text={t("Copy User ID")} position="top">
+        <Tooltip text={label} position="top" aria-label={label}>
             {(tooltipProps: Record<string, any>) => (
                 <button
                     {...tooltipProps}
@@ -67,7 +70,7 @@ function CopyProfileIdButton({
                     role="button"
                     className={combinedBtnClass}
                     type="button"
-                    aria-label={t("Copy User ID")}
+                    aria-label={label}
                     onClick={e => {
                         tooltipProps?.onClick?.(e);
                         handleClick(e);
@@ -112,10 +115,11 @@ function extractUserIdFromFiber(el: Element | null): string | null {
         const fiberKey = Object.keys(el).find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
         if (!fiberKey) return null;
         let fiber = (el as any)[fiberKey];
-        for (let i = 0; i < 45 && fiber; i++) {
+        for (let i = 0; i < 60 && fiber; i++) {
             const props = fiber.memoizedProps || fiber.pendingProps;
             if (props) {
                 if (props.user?.id && /^\d{17,20}$/.test(String(props.user.id))) return String(props.user.id);
+                if (props.currentUser?.id && /^\d{17,20}$/.test(String(props.currentUser.id))) return String(props.currentUser.id);
                 if (props.displayProfile?.userId && /^\d{17,20}$/.test(String(props.displayProfile.userId))) return String(props.displayProfile.userId);
                 if (props.profile?.userId && /^\d{17,20}$/.test(String(props.profile.userId))) return String(props.profile.userId);
                 if (props.member?.userId && /^\d{17,20}$/.test(String(props.member.userId))) return String(props.member.userId);
@@ -129,50 +133,76 @@ function extractUserIdFromFiber(el: Element | null): string | null {
     return null;
 }
 
-function getPopoutUserId(popout: HTMLElement): string | null {
-    const buttons = popout.querySelector<HTMLElement>("[class*='profileButtons_'], .profileButtons__9c3be");
-    if (buttons) {
-        const bid = extractUserIdFromFiber(buttons);
-        if (bid) return bid;
+function getPopoutUserId(container: HTMLElement): string | null {
+    // 1. Check fiber on container itself
+    let id = extractUserIdFromFiber(container);
+    if (id) return id;
+
+    // 2. Check child buttons fiber
+    const buttons = container.querySelectorAll("button");
+    for (const btn of Array.from(buttons)) {
+        id = extractUserIdFromFiber(btn);
+        if (id) return id;
     }
 
-    const avatar = popout.querySelector<HTMLElement>("[class*='avatar_'], [class*='avatarStack_'], [class*='wrapper_'][role='img']");
-    if (avatar) {
-        const aid = extractUserIdFromFiber(avatar);
-        if (aid) return aid;
+    // 3. Find closest popout/modal/body root
+    const root = container.closest<HTMLElement>(
+        "[class*='userProfile_'], [class*='userPopout_'], [class*='biteSize_'], [class*='fullSize_'], [class*='modal_'], [class*='profileBody_'], [role='dialog'], [class*='themeContainer_'], [class*='root_']"
+    ) || container.parentElement?.parentElement;
+
+    if (root) {
+        id = extractUserIdFromFiber(root);
+        if (id) return id;
+
+        const avatar = root.querySelector<HTMLElement>("[class*='avatar_'], [class*='avatarStack_'], [class*='wrapper_'][role='img']");
+        if (avatar) {
+            id = extractUserIdFromFiber(avatar);
+            if (id) return id;
+        }
+
+        const header = root.querySelector<HTMLElement>("[class*='header_']");
+        if (header) {
+            id = extractUserIdFromFiber(header);
+            if (id) return id;
+        }
+
+        const avatarImg = root.querySelector<HTMLImageElement>("img[src*='/avatars/']");
+        if (avatarImg) {
+            const match = avatarImg.src.match(/\/avatars\/(\d{17,20})\//);
+            if (match) return match[1];
+        }
     }
 
-    const header = popout.querySelector<HTMLElement>("[class*='header_']");
-    if (header) {
-        const hid = extractUserIdFromFiber(header);
-        if (hid) return hid;
-    }
-
-    const fiberId = extractUserIdFromFiber(popout);
-    if (fiberId) return fiberId;
-
-    const avatarImg = popout.querySelector<HTMLImageElement>("img[src*='/avatars/']");
-    if (avatarImg) {
-        const match = avatarImg.src.match(/\/avatars\/(\d{17,20})\//);
+    const globalAvatar = document.querySelector<HTMLImageElement>(
+        "[role='dialog'] img[src*='/avatars/'], [class*='themeContainer_'] img[src*='/avatars/'], [class*='userProfile_'] img[src*='/avatars/']"
+    );
+    if (globalAvatar) {
+        const match = globalAvatar.src.match(/\/avatars\/(\d{17,20})\//);
         if (match) return match[1];
     }
 
     return null;
 }
 
-function injectCopyIdButton(popout: HTMLElement) {
-    const profileButtons = popout.querySelector<HTMLElement>("[class*='profileButtons_'], .profileButtons__9c3be");
-    if (!profileButtons) return;
+function injectCopyIdButton(profileButtons: HTMLElement) {
     if (profileButtons.querySelector(".nc-copy-profile-id-wrapper")) return;
 
-    const userId = getPopoutUserId(popout);
+    const userId = getPopoutUserId(profileButtons);
     if (!userId) return;
 
-    const messageBtn = profileButtons.querySelector<HTMLButtonElement>(
-        "button[aria-label='Message'], button[aria-label*='message' i], button[aria-label*='Message' i], button:has(svg path[d^='M12 22a10'])"
-    );
+    const buttons = Array.from(profileButtons.querySelectorAll<HTMLButtonElement>("button"));
+    let messageBtn = buttons.find(b => {
+        const label = b.getAttribute("aria-label")?.toLowerCase() || "";
+        return label.includes("message") || label.includes("envoyer");
+    });
+    if (!messageBtn) {
+        messageBtn = buttons.find(b => b.querySelector("svg path[d*='12 22a10'], svg path[d*='M12 22']"));
+    }
+    if (!messageBtn && buttons.length >= 2) {
+        messageBtn = buttons[1];
+    }
 
-    const siblingBtn = messageBtn ?? profileButtons.querySelector<HTMLButtonElement>("button[class*='button_']");
+    const siblingBtn = messageBtn ?? buttons[0];
     const btnClass = siblingBtn?.className || "button_a22cb0 sm_a22cb0 secondary_a22cb0";
     const wrapperClass = siblingBtn?.querySelector("[class*='buttonChildrenWrapper_']")?.className || "buttonChildrenWrapper_a22cb0";
     const childrenClass = siblingBtn?.querySelector("[class*='buttonChildren_']")?.className || "buttonChildren_a22cb0";
@@ -183,6 +213,8 @@ function injectCopyIdButton(popout: HTMLElement) {
     if (messageBtn) {
         const targetEl = messageBtn.closest("span") ?? messageBtn;
         targetEl.insertAdjacentElement("afterend", span);
+    } else if (buttons.length > 0) {
+        buttons[0].insertAdjacentElement("afterend", span);
     } else {
         profileButtons.appendChild(span);
     }
@@ -214,13 +246,13 @@ function cleanupDisconnectedRoots() {
     }
 }
 
-function scanPopouts() {
+function scanProfileButtons() {
     cleanupDisconnectedRoots();
-    const popouts = document.querySelectorAll<HTMLElement>(
-        "[class*='user-profile-popout'], [class*='userPopout'], .user-profile-popout, [class*='biteSize_'], [class*='outer_'][class*='themeContainer_']"
+    const buttonContainers = document.querySelectorAll<HTMLElement>(
+        "[class*='profileButtons_'], .profileButtons__9c3be"
     );
-    for (const popout of Array.from(popouts)) {
-        injectCopyIdButton(popout);
+    for (const container of Array.from(buttonContainers)) {
+        injectCopyIdButton(container);
     }
 }
 
@@ -236,9 +268,9 @@ export default definePlugin({
     enabledByDefault: true,
 
     start() {
-        scanPopouts();
+        scanProfileButtons();
         observer = new MutationObserver(() => {
-            scanPopouts();
+            scanProfileButtons();
         });
         observer.observe(document.body, { childList: true, subtree: true });
     },

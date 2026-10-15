@@ -95,7 +95,8 @@ export const BASIC_CONFIG_PLUGINS: Set<string> = new Set([
     "RealtimeTimestamps",
     "SavedMessages",
     "SaveGroups",
-    "QuickDM"
+    "QuickDM",
+    "CopyProfileId"
 ]);
 
 
