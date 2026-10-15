@@ -1,0 +1,17 @@
+/*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+.nc-copy-profile-id-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nc-copy-profile-id-button .vc-ic-save-icon {
+    width: 16px !important;
+    height: 16px !important;
+    display: block !important;
+}
