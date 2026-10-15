@@ -116,6 +116,7 @@ function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass:
                     }}
                 >
                     <svg
+                        className="icon_a22cb0"
                         aria-hidden="true"
                         role="img"
                         xmlns="http://www.w3.org/2000/svg"
@@ -126,9 +127,7 @@ function QuickDMButton({ userId, siblingClass }: { userId: string; siblingClass:
                     >
                         <path
                             fill="currentColor"
-                            fillRule="evenodd"
-                            clipRule="evenodd"
-                            d="M2 5a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5Zm4 2a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-1ZM6 11a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H6Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H9Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1Zm3 0a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1h-1ZM7 15a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1a1 1 0 0 0 1-1v-1a1 1 0 0 0-1-1H7Z"
+                            d="M12 22a10 10 0 1 0-8.45-4.64c.13.19.11.44-.04.61l-2.06 2.37A1 1 0 0 0 2.2 22H12Z"
                         />
                     </svg>
                 </div>
@@ -257,7 +256,7 @@ function scanPopouts() {
 
 export default definePlugin({
     name: "QuickDM",
-    description: "Adds a quick DM button with a keyboard icon to user profile popouts to open direct messages instantly.",
+    description: "Adds a quick DM button to user profile popouts to open direct messages instantly.",
     authors: [
         {
             name: "Nightcord",
