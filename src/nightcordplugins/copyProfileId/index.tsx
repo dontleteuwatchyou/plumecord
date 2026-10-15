@@ -8,22 +8,15 @@ import "./style.css";
 
 import { copyToClipboard } from "@utils/clipboard";
 import definePlugin from "@utils/types";
-import { findComponentByCodeLazy } from "@webpack";
 import {
     createRoot,
     React,
     showToast,
-    Toasts
+    Toasts,
+    Tooltip
 } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
-
-const Tooltip = findComponentByCodeLazy("VoidTooltip cannot find DOM node") as React.ComponentType<{
-    text: string | (() => React.ReactNode);
-    position?: "top" | "bottom" | "left" | "right";
-    color?: string;
-    children: (props: Record<string, any>) => React.ReactNode;
-}>;
 
 const mountedRoots = new Map<HTMLElement, ReturnType<typeof createRoot>>();
 let observer: MutationObserver | null = null;
