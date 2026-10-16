@@ -76,7 +76,17 @@ function CopyProfileIdButton({
             {(tooltipProps: Record<string, any>) => (
                 <button
                     {...tooltipProps}
-                    ref={btnRef}
+                    ref={(node: HTMLButtonElement | null) => {
+                        (btnRef as any).current = node;
+                        if (node && buttonStyle) {
+                            node.style.cssText = buttonStyle;
+                        }
+                        if (typeof tooltipProps?.ref === "function") {
+                            tooltipProps.ref(node);
+                        } else if (tooltipProps?.ref && typeof tooltipProps.ref === "object") {
+                            tooltipProps.ref.current = node;
+                        }
+                    }}
                     data-mana-component="button"
                     role="button"
                     className={combinedBtnClass}
