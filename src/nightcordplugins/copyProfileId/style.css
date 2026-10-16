@@ -14,16 +14,20 @@
     width: 16px !important;
     height: 16px !important;
     display: block !important;
-    color: #ffffff !important;
-    fill: #ffffff !important;
+    color: currentColor !important;
 }
 
 .nc-copy-profile-id-button .vc-ic-save-icon path {
-    fill: #ffffff !important;
-    color: #ffffff !important;
+    fill: currentColor !important;
 }
 
-.nc-copy-profile-id-button:hover .vc-ic-save-icon path {
-    fill: #ffffff !important;
-    color: #ffffff !important;
+/* Ensure high contrast black on light profiles / light themes */
+.theme-light .nc-copy-profile-id-button .vc-ic-save-icon,
+[data-theme="light"] .nc-copy-profile-id-button .vc-ic-save-icon {
+    color: var(--interactive-normal, #2e3338) !important;
+}
+
+.theme-light .nc-copy-profile-id-button:hover .vc-ic-save-icon,
+[data-theme="light"] .nc-copy-profile-id-button:hover .vc-ic-save-icon {
+    color: var(--interactive-hover, #060607) !important;
 }
