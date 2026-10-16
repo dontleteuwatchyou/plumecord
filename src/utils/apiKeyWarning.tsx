@@ -4,11 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import { Button, React } from "@webpack/common";
-
-import Plugins from "~plugins";
 
 function ApiKeyWarningModal({ pluginName, onClose }: { pluginName: string; onClose: () => void; }) {
     return (
@@ -62,8 +59,15 @@ function ApiKeyWarningModal({ pluginName, onClose }: { pluginName: string; onClo
                         color={Button.Colors.BRAND}
                         onClick={() => {
                             onClose();
-                            const plugin = Plugins.NightcordAI;
-                            if (plugin) openPluginModal(plugin);
+                            try {
+                                const { openPluginModal } = require("@components/settings/tabs/plugins/PluginModal");
+                                const pluginModule = require("~plugins");
+                                const plugins = pluginModule.default ?? pluginModule;
+                                const plugin = plugins.NightcordAI;
+                                if (plugin) openPluginModal(plugin);
+                            } catch (e) {
+                                console.error("Failed to open NightcordAI settings:", e);
+                            }
                         }}
                     >
                         Open NightcordAI Settings

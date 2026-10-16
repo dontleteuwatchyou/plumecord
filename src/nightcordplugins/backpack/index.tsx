@@ -12,8 +12,6 @@ import ErrorBoundary from "@components/ErrorBoundary";
 import { EquicordDevs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { ContextMenuApi,Menu, Popout, React, Tooltip, useEffect, useRef, useState } from "@webpack/common";
-import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
-import plugins from "~plugins";
 
 const STORE_KEY = "Backpack_packedButtons";
 
@@ -110,10 +108,17 @@ function BackpackPopout({ chatBarProps, closePopout }: { chatBarProps: ChatBarPr
                             }}
                             onContextMenu={e => {
                                 if (e.defaultPrevented) return;
-                                const plugin = plugins[id] ?? plugins[id.toLowerCase()] ?? Object.values(plugins).find(p => p.name.toLowerCase() === id.toLowerCase());
-                                if (plugin) {
-                                    e.preventDefault();
-                                    openPluginModal(plugin);
+                                try {
+                                    const { openPluginModal } = require("@components/settings/tabs/plugins/PluginModal");
+                                    const pluginModule = require("~plugins");
+                                    const allPlugins = pluginModule.default ?? pluginModule;
+                                    const plugin = allPlugins[id] ?? allPlugins[id.toLowerCase()] ?? Object.values(allPlugins).find((p: any) => p?.name?.toLowerCase() === id.toLowerCase());
+                                    if (plugin) {
+                                        e.preventDefault();
+                                        openPluginModal(plugin);
+                                    }
+                                } catch (err) {
+                                    console.error("Failed to open plugin modal from backpack:", err);
                                 }
                             }}
                         >
