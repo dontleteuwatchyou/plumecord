@@ -14,4 +14,16 @@
     width: 16px !important;
     height: 16px !important;
     display: block !important;
+    color: #ffffff !important;
+    fill: #ffffff !important;
+}
+
+.nc-copy-profile-id-button .vc-ic-save-icon path {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+}
+
+.nc-copy-profile-id-button:hover .vc-ic-save-icon path {
+    fill: #ffffff !important;
+    color: #ffffff !important;
 }

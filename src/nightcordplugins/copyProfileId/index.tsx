@@ -24,14 +24,24 @@ let observer: MutationObserver | null = null;
 function CopyProfileIdButton({
     userId,
     buttonClass,
+    buttonStyle,
     wrapperClass,
     childrenClass
 }: {
     userId: string;
     buttonClass: string;
+    buttonStyle?: string;
     wrapperClass: string;
     childrenClass: string;
 }) {
+    const btnRef = React.useRef<HTMLButtonElement>(null);
+
+    React.useEffect(() => {
+        if (btnRef.current && buttonStyle) {
+            btnRef.current.style.cssText = buttonStyle;
+        }
+    }, [buttonStyle]);
+
     const handleClick = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -66,6 +76,7 @@ function CopyProfileIdButton({
             {(tooltipProps: Record<string, any>) => (
                 <button
                     {...tooltipProps}
+                    ref={btnRef}
                     data-mana-component="button"
                     role="button"
                     className={combinedBtnClass}
@@ -93,11 +104,11 @@ function CopyProfileIdButton({
                                 viewBox="0 0 24 24"
                             >
                                 <path
-                                    fill="var(--control-critical-primary-background-default)"
+                                    fill="currentColor"
                                     d="M16.32 14.72a1 1 0 0 1 0-1.41l2.51-2.51a3.98 3.98 0 0 0-5.62-5.63l-2.52 2.51a1 1 0 0 1-1.41-1.41l2.52-2.52a5.98 5.98 0 0 1 8.45 8.46l-2.52 2.51a1 1 0 0 1-1.41 0ZM7.68 9.29a1 1 0 0 1 0 1.41l-2.52 2.51a3.98 3.98 0 1 0 5.63 5.63l2.51-2.52a1 1 0 0 1 1.42 1.42l-2.52 2.51a5.98 5.98 0 0 1-8.45-8.45l2.51-2.51a1 1 0 0 1 1.42 0Z"
                                 />
                                 <path
-                                    fill="var(--control-critical-primary-background-default)"
+                                    fill="currentColor"
                                     d="M14.7 10.7a1 1 0 0 0-1.4-1.4l-4 4a1 1 0 1 0 1.4 1.4l4-4Z"
                                 />
                             </svg>
@@ -202,10 +213,26 @@ function injectCopyIdButton(profileButtons: HTMLElement) {
         messageBtn = buttons[1];
     }
 
-    const siblingBtn = messageBtn ?? buttons[0];
-    const btnClass = siblingBtn?.className || "button_a22cb0 sm_a22cb0 secondary_a22cb0";
-    const wrapperClass = siblingBtn?.querySelector("[class*='buttonChildrenWrapper_']")?.className || "buttonChildrenWrapper_a22cb0";
-    const childrenClass = siblingBtn?.querySelector("[class*='buttonChildren_']")?.className || "buttonChildren_a22cb0";
+    // Target the 3 dots / more button, or any secondary button to match its exact style and theme
+    const moreBtn = buttons.find(b =>
+        b.getAttribute("aria-haspopup") === "menu" ||
+        b.getAttribute("aria-label")?.toLowerCase().includes("more") ||
+        b.getAttribute("aria-label")?.toLowerCase().includes("plus") ||
+        b.querySelector("svg path[d*='M4 12'], svg path[d*='4 14a2'], svg path[d*='M12 14a2']")
+    ) || buttons.find(b => !b.className.includes("primary")) || buttons[buttons.length - 1];
+
+    const templateBtn = moreBtn ?? buttons[buttons.length - 1] ?? buttons[0];
+    let btnClass = templateBtn?.className || "button_a22cb0 sm_a22cb0 secondary_a22cb0";
+    // Always use secondary button styling matching the 3 dots button, never primary
+    btnClass = btnClass.replace(/\bprimary_[a-zA-Z0-9]+\b/g, "secondary_a22cb0");
+    btnClass = btnClass.replace(/\bhasText_[a-zA-Z0-9]+\b/g, "");
+    if (!btnClass.includes("secondary_")) {
+        btnClass += " secondary_a22cb0";
+    }
+
+    const wrapperClass = templateBtn?.querySelector("[class*='buttonChildrenWrapper_']")?.className || "buttonChildrenWrapper_a22cb0";
+    const childrenClass = templateBtn?.querySelector("[class*='buttonChildren_']")?.className || "buttonChildren_a22cb0";
+    const buttonStyle = templateBtn?.getAttribute("style") || undefined;
 
     const span = document.createElement("span");
     span.className = "nc-copy-profile-id-wrapper";
@@ -227,6 +254,7 @@ function injectCopyIdButton(profileButtons: HTMLElement) {
                 <CopyProfileIdButton
                     userId={userId}
                     buttonClass={btnClass}
+                    buttonStyle={buttonStyle}
                     wrapperClass={wrapperClass}
                     childrenClass={childrenClass}
                 />
