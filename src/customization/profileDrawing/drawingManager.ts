@@ -47,7 +47,9 @@ export function getBrushCursor(color: string): string {
 
 // ─── Drawing Manager State ───────────────────────────────────────────────────
 
-let currentStrokes: ProfileDrawingStroke[] = [];
+let currentStrokes: ProfileDrawingStroke[] = getCachedEffectsConfig().profileDrawing?.strokes
+    ? [...getCachedEffectsConfig().profileDrawing!.strokes]
+    : [];
 let activeBrushColor = "#FFFFFF";
 let activeBrushSize = 6;
 let isDrawingActive = false;
@@ -102,43 +104,9 @@ export function isDrawingModeActive(): boolean {
     return isDrawingActive;
 }
 
-export function undoLastStroke() {
-    if (currentStrokes.length > 0) {
-        currentStrokes.pop();
-        notifyListeners();
-        redrawActiveCanvases();
-    }
-}
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function clearAllStrokes() {
-    if (currentStrokes.length > 0) {
-        currentStrokes = [];
-        notifyListeners();
-        redrawActiveCanvases();
-    }
-}
-
-// Initialize own strokes from config
-export async function initOwnDrawingStrokes() {
-    const config = await getLocalEffectsConfig();
-    if (config.profileDrawing && Array.isArray(config.profileDrawing.strokes)) {
-        currentStrokes = [...config.profileDrawing.strokes];
-        if (config.profileDrawing.avatarAnchor) {
-            currentAvatarAnchor = { ...config.profileDrawing.avatarAnchor };
-        } else {
-            currentAvatarAnchor = {
-                cx: 66,
-                cy: 95,
-                size: 80,
-                cardWidth: 340,
-                cardHeight: 480,
-            };
-        }
-        notifyListeners();
-    }
-}
-
-export async function saveDrawing(): Promise<boolean> {
+export async function autoSaveDrawing(): Promise<boolean> {
     try {
         const effects = await getLocalEffectsConfig();
 
@@ -159,7 +127,7 @@ export async function saveDrawing(): Promise<boolean> {
         }
 
         const drawingData: ProfileDrawingData = {
-            enabled: true,
+            enabled: currentStrokes.length > 0,
             strokes: [...currentStrokes],
             updatedAt: Date.now(),
             avatarAnchor: currentAvatarAnchor || {
@@ -185,16 +153,56 @@ export async function saveDrawing(): Promise<boolean> {
             }
         }
 
-        void syncOwnDataToCloud();
-        showToast(t("Drawing saved and synced successfully!"), Toasts.Type.SUCCESS);
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(() => {
+            void syncOwnDataToCloud();
+        }, 300);
+
         redrawAllProfiles();
         return true;
     } catch (e) {
-        console.error("[ProfileDrawing] Failed to save drawing:", e);
-        showToast(t("Failed to save drawing"), Toasts.Type.DANGER);
+        console.error("[ProfileDrawing] Auto-save failed:", e);
         return false;
     }
 }
+
+export function undoLastStroke() {
+    if (currentStrokes.length > 0) {
+        currentStrokes.pop();
+        notifyListeners();
+        redrawActiveCanvases();
+        void autoSaveDrawing();
+    }
+}
+
+export function clearAllStrokes() {
+    currentStrokes = [];
+    notifyListeners();
+    redrawActiveCanvases();
+    void autoSaveDrawing();
+}
+
+// Initialize own strokes from config
+export async function initOwnDrawingStrokes() {
+    const config = await getLocalEffectsConfig();
+    if (config.profileDrawing && Array.isArray(config.profileDrawing.strokes)) {
+        currentStrokes = [...config.profileDrawing.strokes];
+        if (config.profileDrawing.avatarAnchor) {
+            currentAvatarAnchor = { ...config.profileDrawing.avatarAnchor };
+        } else {
+            currentAvatarAnchor = {
+                cx: 66,
+                cy: 95,
+                size: 80,
+                cardWidth: 340,
+                cardHeight: 480,
+            };
+        }
+        notifyListeners();
+    }
+}
+
+export const saveDrawing = autoSaveDrawing;
 
 // ─── Avatar Metrics Detection ────────────────────────────────────────────────
 
@@ -652,6 +660,7 @@ function handlePointerUp(e: PointerEvent) {
         if (currentActiveStroke.points.length > 0) {
             currentStrokes.push(currentActiveStroke);
             notifyListeners();
+            void autoSaveDrawing();
         }
         currentActiveStroke = null;
         redrawActiveCanvases();

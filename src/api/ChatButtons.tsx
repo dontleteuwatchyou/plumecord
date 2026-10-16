@@ -12,11 +12,26 @@ import { classes } from "@utils/misc";
 import { IconComponent } from "@utils/types";
 import { Channel } from "@vencord/discord-types";
 import { findCssClassesLazy } from "@webpack";
-import { Clickable, Tooltip, useEffect, useState, Popout, useRef } from "@webpack/common";
-import { HTMLProps, JSX, MouseEventHandler, ReactNode } from "react";
+import { Clickable, Tooltip, useEffect, useState, Popout, useRef, React } from "@webpack/common";
+import type { HTMLProps, JSX, MouseEventHandler, ReactNode } from "react";
+
+import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
+import plugins from "~plugins";
 
 import { addCompactListener, addStealthListener, isCompactModeEnabled, isStealthModeEnabled, removeCompactListener, removeStealthListener, toggleCompactMode } from "./HeaderBar";
 import { useSettings } from "./Settings";
+
+export const CurrentChatPluginContext = React.createContext<string | null>(null);
+
+function resolvePlugin(id?: string | null) {
+    if (!id) return null;
+    return (
+        plugins[id] ??
+        plugins[id.toLowerCase()] ??
+        plugins[id.charAt(0).toUpperCase() + id.slice(1)] ??
+        Object.values(plugins).find(p => p.name.toLowerCase() === id.toLowerCase())
+    );
+}
 
 const ButtonWrapperClasses = findCssClassesLazy("button", "buttonWrapper", "notificationDot");
 const ChannelTextAreaClasses = findCssClassesLazy("buttonContainer", "channelTextArea", "button");
@@ -140,9 +155,23 @@ function VencordChatBarButtons(props: ChatBarProps) {
                 .filter(([key]) => chatBarButtons[key]?.enabled !== false && !BackpackedButtons.has(key))
                 .sort(([a], [b]) => (a === "Backpack" ? -1 : b === "Backpack" ? 1 : 0))
                 .map(([key, { render: Button }]) => (
-                    <ErrorBoundary noop key={key} onError={e => logger.error(`Failed to render ${key}`, e.error)}>
-                        <Button {...props} isMainChat={analyticsName === "normal"} isAnyChat={["normal", "sidebar"].includes(analyticsName)} />
-                    </ErrorBoundary>
+                    <CurrentChatPluginContext.Provider value={key} key={key}>
+                        <div
+                            style={{ display: "contents" }}
+                            onContextMenu={e => {
+                                if (e.defaultPrevented) return;
+                                const plugin = resolvePlugin(key);
+                                if (plugin) {
+                                    e.preventDefault();
+                                    openPluginModal(plugin);
+                                }
+                            }}
+                        >
+                            <ErrorBoundary noop onError={e => logger.error(`Failed to render ${key}`, e.error)}>
+                                <Button {...props} isMainChat={analyticsName === "normal"} isAnyChat={["normal", "sidebar"].includes(analyticsName)} />
+                            </ErrorBoundary>
+                        </div>
+                    </CurrentChatPluginContext.Provider>
                 ))}
         </div>
     );
@@ -173,6 +202,21 @@ export interface ChatBarButtonProps {
 }
 
 export const ChatBarButton = ErrorBoundary.wrap((props: ChatBarButtonProps) => {
+    const pluginKey = React.useContext(CurrentChatPluginContext);
+
+    const handleContextMenu = (e: React.MouseEvent) => {
+        if (props.onContextMenu) {
+            props.onContextMenu(e);
+        }
+        if (!e.defaultPrevented && pluginKey) {
+            const plugin = resolvePlugin(pluginKey);
+            if (plugin) {
+                e.preventDefault();
+                openPluginModal(plugin);
+            }
+        }
+    };
+
     return (
         <Tooltip text={props.tooltip}>
             {({ onMouseEnter, onMouseLeave }) => (
@@ -183,7 +227,7 @@ export const ChatBarButton = ErrorBoundary.wrap((props: ChatBarButtonProps) => {
                         onMouseLeave={onMouseLeave}
                         className={classes(ButtonWrapperClasses.button, ChannelTextAreaClasses?.button)}
                         onClick={props.onClick}
-                        onContextMenu={props.onContextMenu}
+                        onContextMenu={handleContextMenu}
                         onAuxClick={props.onAuxClick}
                         {...props.buttonProps}
                     >
@@ -236,11 +280,24 @@ function CompactChatPopout({ chatBarProps, closePopout }: any) {
                 {Array.from(ChatBarButtonMap)
                     .filter(([key]) => key !== "Backpack" && chatBarButtons[key]?.enabled !== false)
                     .map(([key, { render: Button }]) => (
-                        <div key={key} style={{ display: "contents" }} onClick={closePopout}>
-                            <ErrorBoundary noop>
-                                <Button {...chatBarProps} isMainChat={analyticsName === "normal"} isAnyChat={["normal", "sidebar"].includes(analyticsName)} />
-                            </ErrorBoundary>
-                        </div>
+                        <CurrentChatPluginContext.Provider value={key} key={key}>
+                            <div
+                                style={{ display: "contents" }}
+                                onClick={closePopout}
+                                onContextMenu={e => {
+                                    if (e.defaultPrevented) return;
+                                    const plugin = resolvePlugin(key);
+                                    if (plugin) {
+                                        e.preventDefault();
+                                        openPluginModal(plugin);
+                                    }
+                                }}
+                            >
+                                <ErrorBoundary noop>
+                                    <Button {...chatBarProps} isMainChat={analyticsName === "normal"} isAnyChat={["normal", "sidebar"].includes(analyticsName)} />
+                                </ErrorBoundary>
+                            </div>
+                        </CurrentChatPluginContext.Provider>
                     ))}
             </div>
             <div className="compact-popout-divider" />

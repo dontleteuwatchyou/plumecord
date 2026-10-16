@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { ChannelStore, FluxDispatcher, GuildMemberStore, SelectedGuildStore, UserStore } from "@webpack/common";
 import { startDrawingInjector, stopDrawingInjector } from "../profileDrawing/drawingInjector";
 import { isDrawingModeActive, renderDrawingOverlay } from "../profileDrawing/drawingManager";
@@ -1097,13 +1098,17 @@ export function startProfileEffects() {
         document.addEventListener("click", onDocumentClick, true);
     }
 
-    startDrawingInjector();
+    if (isPluginEnabled("ProfileDrawing")) {
+        startDrawingInjector();
+    }
     triggerEffectsUpdate();
 }
 
 export function stopProfileEffects() {
     active = false;
-    stopDrawingInjector();
+    if (isPluginEnabled("ProfileDrawing")) {
+        stopDrawingInjector();
+    }
     if (observer) {
         observer.disconnect();
         observer = null;

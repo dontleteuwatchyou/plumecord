@@ -282,11 +282,12 @@ function GroqApiKeySection() {
                     <button
                         type="button"
                         className="nc-api-key-toggle-btn"
+                        style={{ color: "#ffffff" }}
                         title={keyRevealed ? t("Hide API key") : t("Reveal API key")}
                         aria-label={keyRevealed ? t("Hide API key") : t("Reveal API key")}
                         onClick={() => setKeyRevealed(!keyRevealed)}
                     >
-                        {keyRevealed ? <EyeSlashIcon width={18} height={18} /> : <EyeIcon width={18} height={18} />}
+                        {keyRevealed ? <EyeSlashIcon width={18} height={18} fill="#ffffff" /> : <EyeIcon width={18} height={18} fill="#ffffff" />}
                     </button>
                 </div>
             </div>

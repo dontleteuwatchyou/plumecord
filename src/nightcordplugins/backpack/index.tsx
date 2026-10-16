@@ -12,6 +12,8 @@ import ErrorBoundary from "@components/ErrorBoundary";
 import { EquicordDevs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { ContextMenuApi,Menu, Popout, React, Tooltip, useEffect, useRef, useState } from "@webpack/common";
+import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
+import plugins from "~plugins";
 
 const STORE_KEY = "Backpack_packedButtons";
 
@@ -105,6 +107,14 @@ function BackpackPopout({ chatBarProps, closePopout }: { chatBarProps: ChatBarPr
                             onClick={e => {
                                 // Désactivation de la fermeture automatique pour permettre d'activer plusieurs plugins
                                 // closePopout();
+                            }}
+                            onContextMenu={e => {
+                                if (e.defaultPrevented) return;
+                                const plugin = plugins[id] ?? plugins[id.toLowerCase()] ?? Object.values(plugins).find(p => p.name.toLowerCase() === id.toLowerCase());
+                                if (plugin) {
+                                    e.preventDefault();
+                                    openPluginModal(plugin);
+                                }
                             }}
                         >
                             <ErrorBoundary noop>

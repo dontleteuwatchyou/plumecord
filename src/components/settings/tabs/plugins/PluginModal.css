@@ -111,18 +111,23 @@ input.nc-blurred-api-key:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--interactive-normal);
+    color: #ffffff !important;
     border-radius: 4px;
     transition: color 0.15s ease, background-color 0.15s ease;
     z-index: 2;
 }
 
+.nc-api-key-toggle-btn svg {
+    color: #ffffff !important;
+    fill: #ffffff !important;
+}
+
 .nc-api-key-toggle-btn:hover {
-    color: var(--interactive-active);
+    color: #ffffff !important;
     background-color: var(--background-modifier-hover);
 }
 
 .nc-api-key-toggle-btn:active {
-    color: var(--interactive-active);
+    color: #ffffff !important;
     background-color: var(--background-modifier-active);
 }

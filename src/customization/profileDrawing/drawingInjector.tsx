@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { createRoot, React } from "@webpack/common";
 import type { Root } from "react-dom/client";
 import { ProfileDrawingSection } from "./ProfileDrawingSection";
@@ -13,6 +14,12 @@ let activeRoot: Root | null = null;
 let mountedMountElement: HTMLElement | null = null;
 
 function checkForProfileCustomizer() {
+    if (!isPluginEnabled("ProfileDrawing")) {
+        cleanupRoot();
+        document.querySelector("#nc-profile-drawing-mount")?.remove();
+        return;
+    }
+
     // Check if the profile customization scroller/content exists
     const contents = document.querySelectorAll<HTMLElement>(
         "[class*='content__523e1'], [class*='scroller__523e1'] > [class*='content_'], [class*='scroller_'] > [class*='content_']"
@@ -115,6 +122,10 @@ export function stopDrawingInjector() {
     if (observer) {
         observer.disconnect();
         observer = null;
+    }
+    const mountEl = document.querySelector("#nc-profile-drawing-mount");
+    if (mountEl) {
+        mountEl.remove();
     }
     cleanupRoot();
 }

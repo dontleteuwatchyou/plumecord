@@ -118,11 +118,12 @@ export function TextSetting({ option, pluginSettings, definedSettings, id, onCha
                     <button
                         type="button"
                         className="nc-api-key-toggle-btn"
+                        style={{ color: "#ffffff" }}
                         title={isRevealed ? t("Hide API key") : t("Reveal API key")}
                         aria-label={isRevealed ? t("Hide API key") : t("Reveal API key")}
                         onClick={() => setIsRevealed(prev => !prev)}
                     >
-                        {isRevealed ? <EyeSlashIcon width={18} height={18} /> : <EyeIcon width={18} height={18} />}
+                        {isRevealed ? <EyeSlashIcon width={18} height={18} fill="#ffffff" /> : <EyeIcon width={18} height={18} fill="#ffffff" />}
                     </button>
                 </div>
             ) : inputElement}

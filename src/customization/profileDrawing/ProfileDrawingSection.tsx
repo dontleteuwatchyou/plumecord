@@ -7,6 +7,7 @@
 import { FormSwitch } from "@components/FormSwitch";
 import { Button, React, Slider, useEffect, useState } from "@webpack/common";
 import { t } from "../../nightcordplugins/autoTranslateNightcord";
+import { getCachedEffectsConfig } from "../sync";
 import {
     clearAllStrokes,
     getActiveBrushColor,
@@ -14,7 +15,6 @@ import {
     getDrawingStrokes,
     initOwnDrawingStrokes,
     isDrawingModeActive,
-    saveDrawing,
     setActiveBrushColor,
     setActiveBrushSize,
     setDrawingMode,
@@ -58,28 +58,8 @@ const ClearIcon = ({ width = 14, height = 14 }: { width?: number; height?: numbe
     </svg>
 );
 
-const SaveIcon = ({ width = 16, height = 16 }: { width?: number; height?: number }) => (
-    <svg
-        width={width}
-        height={height}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ marginRight: 6 }}
-        aria-hidden="true"
-    >
-        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-        <polyline points="17 21 17 13 7 13 7 21" />
-        <polyline points="7 3 7 8 15 8" />
-    </svg>
-);
-
 export function ProfileDrawingSection() {
     const [, setTick] = useState(0);
-    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         void initOwnDrawingStrokes();
@@ -93,18 +73,11 @@ export function ProfileDrawingSection() {
     const currentColor = getActiveBrushColor();
     const currentSize = getActiveBrushSize();
     const strokes = getDrawingStrokes();
+    const cachedStrokes = getCachedEffectsConfig().profileDrawing?.strokes ?? [];
+    const hasStrokes = strokes.length > 0 || cachedStrokes.length > 0;
 
     const handleToggleDrawing = (val: boolean) => {
         setDrawingMode(val);
-    };
-
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            await saveDrawing();
-        } finally {
-            setSaving(false);
-        }
     };
 
     return (
@@ -116,8 +89,8 @@ export function ProfileDrawingSection() {
                     description={
                         isDrawing
                             ? t("Drawing mode active (Ctrl+Z to undo)")
-                            : strokes.length > 0
-                            ? `${strokes.length} ${t("stroke(s) drawn")}`
+                            : hasStrokes
+                            ? `${strokes.length || cachedStrokes.length} ${t("stroke(s) drawn")}`
                             : t("Draw freely on your profile preview")
                     }
                     value={isDrawing}
@@ -172,19 +145,8 @@ export function ProfileDrawingSection() {
                     </div>
                 </div>
 
-                {/* 3. Action Buttons */}
+                {/* 3. Action Buttons (Instant without manual save) */}
                 <div className="nc-drawing-actions-container">
-                    <Button
-                        size={Button.Sizes.MEDIUM}
-                        color={Button.Colors.BRAND}
-                        onClick={handleSave}
-                        submitting={saving}
-                        className="nc-drawing-save-btn"
-                    >
-                        <SaveIcon />
-                        {t("Save Drawing")}
-                    </Button>
-
                     <div className="nc-drawing-subactions-grid">
                         <Button
                             size={Button.Sizes.SMALL}
@@ -200,10 +162,10 @@ export function ProfileDrawingSection() {
                             size={Button.Sizes.SMALL}
                             color={Button.Colors.RED}
                             onClick={clearAllStrokes}
-                            disabled={strokes.length === 0}
+                            disabled={!hasStrokes}
                         >
                             <ClearIcon />
-                            {t("Clear")}
+                            {t("Delete Drawing")}
                         </Button>
                     </div>
                 </div>

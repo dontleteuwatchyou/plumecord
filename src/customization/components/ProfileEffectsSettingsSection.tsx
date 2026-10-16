@@ -5,6 +5,7 @@
  */
 
 import { t } from "@api/i18n";
+import { isPluginEnabled } from "@api/PluginManager";
 import { React, Select, TextInput, useEffect, useState, UserStore } from "@webpack/common";
 import { triggerEffectsUpdate } from "../profileEffects/effectsManager";
 import { getCachedEffectsConfig, getLocalEffectsConfig, saveLocalEffectsConfig, syncOwnDataToCloud } from "../sync";
@@ -271,9 +272,11 @@ export function ProfileEffectsSettingsSection() {
                     </div>
                 </div>
 
-                <div style={{ marginTop: 24 }}>
-                    <ProfileDrawingSection />
-                </div>
+                {isPluginEnabled("ProfileDrawing") && (
+                    <div style={{ marginTop: 24 }}>
+                        <ProfileDrawingSection />
+                    </div>
+                )}
             </div>
         </div>
     );
