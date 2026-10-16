@@ -173,6 +173,7 @@ function VencordChatBarButtons(props: ChatBarProps) {
                             style={{ display: "contents" }}
                             onContextMenu={e => {
                                 if (e.defaultPrevented) return;
+                                if (key.toLowerCase() === "translate") return;
                                 e.preventDefault();
                                 openPluginSettingsModal(key);
                             }}
@@ -225,6 +226,12 @@ export const ChatBarButton = ErrorBoundary.wrap((props: ChatBarButtonProps) => {
     const handleContextMenu = (e: React.MouseEvent) => {
         if (props.onContextMenu) {
             props.onContextMenu(e);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
+        if (pluginKey?.toLowerCase() === "translate") {
+            return;
         }
         if (!e.defaultPrevented && pluginKey) {
             e.preventDefault();
@@ -302,6 +309,7 @@ function CompactChatPopout({ chatBarProps, closePopout }: any) {
                                 onClick={closePopout}
                                 onContextMenu={e => {
                                     if (e.defaultPrevented) return;
+                                    if (key.toLowerCase() === "translate") return;
                                     e.preventDefault();
                                     openPluginSettingsModal(key);
                                 }}

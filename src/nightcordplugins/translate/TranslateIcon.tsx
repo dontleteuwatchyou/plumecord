@@ -75,7 +75,9 @@ export const TranslateChatBarIcon: ChatBarButtonFactory = ({ isMainChat }) => {
         }
     };
 
-    const openSettings = () => {
+    const openSettings = (e?: React.MouseEvent) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
         openModal(props => (
             <TranslateModal rootProps={props} />
         ));

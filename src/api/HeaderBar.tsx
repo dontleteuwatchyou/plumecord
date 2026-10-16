@@ -106,6 +106,9 @@ export function HeaderBarButton(props: HeaderBarButtonProps & { ref?: React.RefO
     const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
         if (onContextMenu) {
             onContextMenu(e);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
         }
         if (!e.defaultPrevented && pluginKey) {
             e.preventDefault();
