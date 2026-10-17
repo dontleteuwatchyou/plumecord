@@ -22,6 +22,47 @@ class VoiceIsolatorEngine {
     private listeners = new Set<Listener>();
     private audioContext: AudioContext | null = null;
     private userGainNodes = new Map<string, GainNode>();
+    private currentAttenuation: number = 0;
+    private maintenanceInterval: ReturnType<typeof setInterval> | null = null;
+
+    private startMaintenance() {
+        if (this.maintenanceInterval) return;
+        this.maintenanceInterval = setInterval(() => {
+            if (!this.state.channelId || this.state.isolatedUserIds.length === 0) {
+                this.stopMaintenance();
+                return;
+            }
+            this.enforceAttenuation();
+        }, 1500);
+    }
+
+    private stopMaintenance() {
+        if (this.maintenanceInterval) {
+            clearInterval(this.maintenanceInterval);
+            this.maintenanceInterval = null;
+        }
+    }
+
+    public enforceAttenuation(attenuationVol?: number) {
+        if (!this.state.channelId || this.state.isolatedUserIds.length === 0) return;
+        const myId = UserStore.getCurrentUser()?.id;
+        const voiceStates = VoiceStateStore.getVoiceStatesForChannel(this.state.channelId) || {};
+        const attenuation = attenuationVol !== undefined ? attenuationVol : this.currentAttenuation;
+        const shouldMute = attenuation === 0;
+
+        for (const uid of Object.keys(voiceStates)) {
+            if (uid === myId || this.isUserIsolated(uid)) continue;
+
+            if (!(uid in this.state.originalVolumes)) {
+                this.state.originalVolumes[uid] = (MediaEngineStore as any)?.getLocalVolume?.(uid) ?? 100;
+            }
+
+            const currentVol = (MediaEngineStore as any)?.getLocalVolume?.(uid);
+            if (currentVol !== attenuation) {
+                this.setLocalUserVolume(uid, attenuation, shouldMute);
+            }
+        }
+    }
 
     public getState(): VoiceIsolatorState {
         return {
@@ -143,6 +184,8 @@ class VoiceIsolatorEngine {
 
         // If isolation is already active on this channel, just add targetUserId to isolatedUserIds
         if (this.state.channelId === currentChannelId && this.state.isolatedUserIds.length > 0) {
+            this.currentAttenuation = attenuation;
+            this.startMaintenance();
             if (!this.state.isolatedUserIds.includes(targetUserId)) {
                 this.state.isolatedUserIds.push(targetUserId);
                 if (!(targetUserId in this.state.originalVolumes)) {
@@ -157,6 +200,9 @@ class VoiceIsolatorEngine {
             }
             return;
         }
+
+        this.currentAttenuation = attenuation;
+        this.startMaintenance();
 
         // Starting fresh isolation on currentChannelId
         const originalVolumesBackup: Record<string, number> = {};
@@ -238,6 +284,9 @@ class VoiceIsolatorEngine {
     }
 
     public restoreAll() {
+        this.stopMaintenance();
+        this.currentAttenuation = 0;
+
         if (this.state.isolatedUserIds.length === 0 && Object.keys(this.state.originalVolumes).length === 0) return;
 
         // Restore all tracked users' original volumes and unmute
@@ -269,6 +318,7 @@ class VoiceIsolatorEngine {
             attenuationVolume?: number;
             boostTarget?: boolean;
             targetVolume?: number;
+            attenuateNewJoiners?: boolean;
             autoIsolateNewJoiners?: boolean;
         } = {}
     ) {
@@ -292,8 +342,8 @@ class VoiceIsolatorEngine {
         if (channelId === this.state.channelId) {
             if (this.isUserIsolated(uid)) return;
 
-            // Automatically add new joiners to the isolated list
-            if (opts.autoIsolateNewJoiners !== false) {
+            // Check if user explicitly configured auto-isolating new joiners
+            if (opts.autoIsolateNewJoiners) {
                 if (!(uid in this.state.originalVolumes)) {
                     this.state.originalVolumes[uid] = (MediaEngineStore as any)?.getLocalVolume?.(uid) ?? 100;
                 }
@@ -311,20 +361,25 @@ class VoiceIsolatorEngine {
 
                 this.updateLegacyFields();
                 this.notify();
-            } else {
-                // Attenuate new joiner
+            } else if (opts.attenuateNewJoiners !== false) {
+                // By default: automatically lower the volume of new joiners
                 if (!(uid in this.state.originalVolumes)) {
                     this.state.originalVolumes[uid] = (MediaEngineStore as any)?.getLocalVolume?.(uid) ?? 100;
                 }
-                const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : 0;
+                const attenuation = opts.attenuationVolume !== undefined ? opts.attenuationVolume : this.currentAttenuation;
                 const shouldMute = attenuation === 0;
+
                 this.setLocalUserVolume(uid, attenuation, shouldMute);
 
-                setTimeout(() => {
-                    if (!this.isUserIsolated(uid) && this.state.channelId) {
-                        this.setLocalUserVolume(uid, attenuation, shouldMute);
-                    }
-                }, 250);
+                // Multi-stage retry to guarantee attenuation as WebRTC tracks connect asynchronously
+                const delays = [100, 300, 600, 1200, 2500];
+                for (const delay of delays) {
+                    setTimeout(() => {
+                        if (!this.isUserIsolated(uid) && this.state.channelId) {
+                            this.setLocalUserVolume(uid, attenuation, shouldMute);
+                        }
+                    }, delay);
+                }
 
                 this.notify();
             }

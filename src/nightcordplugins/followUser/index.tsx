@@ -21,6 +21,13 @@ const FluxDispatcher = findByPropsLazy("dispatch", "subscribe");
 const DS_KEY = "followuser-v2";
 
 export const settings = definePluginSettings({
+    pauseWhileStreaming: {
+        type: OptionType.BOOLEAN,
+        name: "Pause While Screen Sharing",
+        description: "Prevent automatically changing voice channels when you are screen sharing or streaming your camera",
+        default: false,
+        restartNeeded: false
+    },
     afkTimeout: {
         type: OptionType.SELECT,
         name: "AFK Timeout",
@@ -116,6 +123,11 @@ function isUserStreaming(): boolean {
     } catch { return false; }
 }
 
+function shouldBlockDueToStreaming(): boolean {
+    if (!settings.store.pauseWhileStreaming) return false;
+    return isUserStreaming();
+}
+
 function getCurrentUserChannel(): string | null {
     try {
         const currentUser = UserStore?.getCurrentUser?.();
@@ -133,7 +145,7 @@ function checkFollowedUser() {
             resetInactivityTimer();
             const myCh = getCurrentUserChannel();
             if (myCh !== newCh) {
-                if (isUserStreaming()) {
+                if (shouldBlockDueToStreaming()) {
                     Toasts.show({
                         message: t("Follow suspended: cannot join {name} while streaming").replace("{name}", followedName),
                         type: Toasts.Type.FAILURE,
@@ -161,9 +173,9 @@ function onVoiceStateUpdates(data: any) {
                 resetInactivityTimer();
                 const myCh = getCurrentUserChannel();
                 if (myCh !== newCh) {
-                    if (isUserStreaming()) {
+                    if (shouldBlockDueToStreaming()) {
                         Toasts.show({
-                            message: `Suivi suspendu : impossible de rejoindre ${followedName} pendant que vous streamez`,
+                            message: t("Follow suspended: cannot join {name} while streaming").replace("{name}", followedName),
                             type: Toasts.Type.FAILURE,
                             id: Toasts.genId()
                         });
@@ -224,9 +236,9 @@ export async function follow(userId: string) {
     if (followedChannel) {
         const myCh = getCurrentUserChannel();
         if (myCh !== followedChannel) {
-            if (isUserStreaming()) {
+            if (shouldBlockDueToStreaming()) {
                 Toasts.show({
-                    message: `Suivi activé, mais impossible de rejoindre ${followedName} pendant que vous streamez`,
+                    message: t("Follow enabled, but cannot join {name} while streaming").replace("{name}", followedName),
                     type: Toasts.Type.FAILURE,
                     id: Toasts.genId()
                 });
@@ -247,11 +259,11 @@ export async function unfollow() {
 
 function joinFollowed() {
     if (!followedChannel) {
-        Toasts.show({ message: `${followedName} n'est pas en vocal`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
+        Toasts.show({ message: t("{name} is not in a voice channel").replace("{name}", followedName), type: Toasts.Type.FAILURE, id: Toasts.genId() });
         return;
     }
-    if (isUserStreaming()) {
-        Toasts.show({ message: `Impossible de rejoindre pendant que vous streamez`, type: Toasts.Type.FAILURE, id: Toasts.genId() });
+    if (shouldBlockDueToStreaming()) {
+        Toasts.show({ message: t("Cannot join while streaming"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
         return;
     }
     joinChannel(followedChannel);

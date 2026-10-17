@@ -35,10 +35,16 @@ const settings = definePluginSettings({
         default: 300,
         restartNeeded: false
     },
-    autoIsolateNewJoiners: {
-        description: "Automatically add users who join the voice channel to the isolated list.",
+    attenuateNewJoiners: {
+        description: "Automatically lower the volume of users who join the voice channel while isolation is active.",
         type: OptionType.BOOLEAN,
         default: true,
+        restartNeeded: false
+    },
+    autoIsolateNewJoiners: {
+        description: "Automatically add users who join the voice channel to the isolated list instead of lowering their volume.",
+        type: OptionType.BOOLEAN,
+        default: false,
         restartNeeded: false
     }
 });
@@ -71,6 +77,7 @@ const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user }) =
                     attenuationVolume: settings.store.attenuationVolume,
                     boostTarget: settings.store.boostTarget,
                     targetVolume: settings.store.targetVolume,
+                    attenuateNewJoiners: settings.store.attenuateNewJoiners,
                     autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
                 });
             }}
@@ -175,6 +182,7 @@ export default definePlugin({
                         attenuationVolume: settings.store.attenuationVolume,
                         boostTarget: settings.store.boostTarget,
                         targetVolume: settings.store.targetVolume,
+                        attenuateNewJoiners: settings.store.attenuateNewJoiners,
                         autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
                     });
                 }
@@ -185,6 +193,7 @@ export default definePlugin({
                 attenuationVolume: settings.store.attenuationVolume,
                 boostTarget: settings.store.boostTarget,
                 targetVolume: settings.store.targetVolume,
+                attenuateNewJoiners: settings.store.attenuateNewJoiners,
                 autoIsolateNewJoiners: settings.store.autoIsolateNewJoiners
             });
         },
