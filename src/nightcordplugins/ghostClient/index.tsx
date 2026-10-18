@@ -1215,9 +1215,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const isAll = selectedId === "all";
 
     function extractOptionValue(raw: any): string {
-        if (!raw) return "all";
-        if (typeof raw === "string") return raw;
+        if (raw === undefined || raw === null) return "";
         if (typeof raw === "number") return String(raw);
+        if (typeof raw === "string") return raw;
         if (raw instanceof Set) {
             const first = raw.values().next().value;
             return extractOptionValue(first);
@@ -1235,7 +1235,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     }
 
     function handleAccountSelect(raw: any) {
-        const val = extractOptionValue(raw);
+        const val = extractOptionValue(raw) || "all";
         if (val !== "all" && val === myId) {
             Toasts.show({ message: t("You cannot connect your own account as a ghost"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
             return;
@@ -1387,11 +1387,53 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     ];
 
     const handleMicSelect = (raw: any) => {
-        const v = extractOptionValue(raw);
+        const v = extractOptionValue(raw) || "default";
         setMicLabel(v);
         ghostMicLabel = v;
         DataStore.set(DS_KEY_MIC_DEVICE, v);
         Native.setMicDevice(v).catch(() => {});
+    };
+
+    const stereoOptions = STEREO_MODES.map((mode, i) => ({
+        key: String(i),
+        value: i,
+        label: mode,
+    }));
+
+    const panOptions = [
+        ...BASE_PAN_TYPES.map((pt, i) => ({ key: String(i), value: i, label: pt })),
+        ...customPans.map((pt, i) => ({ key: String(BASE_PAN_TYPES.length + i), value: BASE_PAN_TYPES.length + i, label: pt })),
+    ];
+
+    const notNattyOptions = NOT_NATTY_MODES.map((nn, i) => ({
+        key: String(i),
+        value: i,
+        label: nn,
+    }));
+
+    const opusBitrateOptions = [
+        ...BASE_OPUS_BITRATES.map(br => ({ key: br.id, value: parseInt(br.id, 10), label: br.label })),
+        ...customOpus.map(br => ({ key: br.id, value: parseInt(br.id, 10), label: br.label })),
+    ];
+
+    const handleStereoSelect = (raw: any) => {
+        const num = parseInt(extractOptionValue(raw), 10);
+        if (!isNaN(num)) updateAmp({ stereoMode: num });
+    };
+
+    const handlePanTypeSelect = (raw: any) => {
+        const num = parseInt(extractOptionValue(raw), 10);
+        if (!isNaN(num)) updateAmp({ panType: num });
+    };
+
+    const handleNotNattySelect = (raw: any) => {
+        const num = parseInt(extractOptionValue(raw), 10);
+        if (!isNaN(num)) updateAmp({ notNatty: num });
+    };
+
+    const handleOpusBitrateSelect = (raw: any) => {
+        const num = parseInt(extractOptionValue(raw), 10);
+        if (!isNaN(num)) updateAmp({ opusBitrate: num });
     };
 
     return (
@@ -1831,33 +1873,40 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-amp-field-row" style={{ marginTop: 8 }}>
                     <span className="gc-amp-field-lbl">{t("Stereo Mode")}</span>
                     <div className="gc-amp-select-wrap">
-                        <select
-                            className="gc-amp-select"
-                            value={ampConfig.stereoMode}
-                            onChange={e => updateAmp({ stereoMode: parseInt(e.target.value, 10) })}
-                        >
-                            {STEREO_MODES.map((mode, i) => (
-                                <option key={mode} value={i}>{mode}</option>
-                            ))}
-                        </select>
+                        <div className="gc-amp-select-inner">
+                            <Select
+                                options={stereoOptions}
+                                value={ampConfig.stereoMode}
+                                isSelected={(item: any) => extractOptionValue(item) === String(ampConfig.stereoMode)}
+                                select={handleStereoSelect}
+                                onSelectionChange={handleStereoSelect}
+                                onChange={handleStereoSelect}
+                                serialize={(v: any) => extractOptionValue(v)}
+                                closeOnSelect={true}
+                                maxVisibleItems={8}
+                                popoutPosition="bottom"
+                            />
+                        </div>
                     </div>
                 </div>
 
                 <div className="gc-amp-field-row">
                     <span className="gc-amp-field-lbl">{t("Pan Type")}</span>
                     <div className="gc-amp-select-wrap">
-                        <select
-                            className="gc-amp-select"
-                            value={ampConfig.panType}
-                            onChange={e => updateAmp({ panType: parseInt(e.target.value, 10) })}
-                        >
-                            {BASE_PAN_TYPES.map((pt, i) => (
-                                <option key={pt} value={i}>{pt}</option>
-                            ))}
-                            {customPans.map((pt, i) => (
-                                <option key={pt} value={BASE_PAN_TYPES.length + i}>{pt}</option>
-                            ))}
-                        </select>
+                        <div className="gc-amp-select-inner">
+                            <Select
+                                options={panOptions}
+                                value={ampConfig.panType}
+                                isSelected={(item: any) => extractOptionValue(item) === String(ampConfig.panType)}
+                                select={handlePanTypeSelect}
+                                onSelectionChange={handlePanTypeSelect}
+                                onChange={handlePanTypeSelect}
+                                serialize={(v: any) => extractOptionValue(v)}
+                                closeOnSelect={true}
+                                maxVisibleItems={8}
+                                popoutPosition="bottom"
+                            />
+                        </div>
                         <button className="gc-amp-plus-btn" onClick={addCustomPan} title={t("Add Custom Pan Type")}>+</button>
                     </div>
                 </div>
@@ -1943,15 +1992,20 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-amp-field-row" style={{ marginTop: 4 }}>
                     <span className="gc-amp-field-lbl">{t("Not Natty Mode")}</span>
                     <div className="gc-amp-select-wrap">
-                        <select
-                            className="gc-amp-select"
-                            value={ampConfig.notNatty}
-                            onChange={e => updateAmp({ notNatty: parseInt(e.target.value, 10) })}
-                        >
-                            {NOT_NATTY_MODES.map((nn, i) => (
-                                <option key={nn} value={i}>{nn}</option>
-                            ))}
-                        </select>
+                        <div className="gc-amp-select-inner">
+                            <Select
+                                options={notNattyOptions}
+                                value={ampConfig.notNatty}
+                                isSelected={(item: any) => extractOptionValue(item) === String(ampConfig.notNatty)}
+                                select={handleNotNattySelect}
+                                onSelectionChange={handleNotNattySelect}
+                                onChange={handleNotNattySelect}
+                                serialize={(v: any) => extractOptionValue(v)}
+                                closeOnSelect={true}
+                                maxVisibleItems={8}
+                                popoutPosition="bottom"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -2151,18 +2205,20 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-amp-field-row">
                     <span className="gc-amp-field-lbl">{t("Opus Bitrate")}</span>
                     <div className="gc-amp-select-wrap">
-                        <select
-                            className="gc-amp-select"
-                            value={String(ampConfig.opusBitrate)}
-                            onChange={e => updateAmp({ opusBitrate: parseInt(e.target.value, 10) })}
-                        >
-                            {BASE_OPUS_BITRATES.map(br => (
-                                <option key={br.id} value={br.id}>{br.label}</option>
-                            ))}
-                            {customOpus.map(br => (
-                                <option key={br.id} value={br.id}>{br.label}</option>
-                            ))}
-                        </select>
+                        <div className="gc-amp-select-inner">
+                            <Select
+                                options={opusBitrateOptions}
+                                value={ampConfig.opusBitrate}
+                                isSelected={(item: any) => extractOptionValue(item) === String(ampConfig.opusBitrate)}
+                                select={handleOpusBitrateSelect}
+                                onSelectionChange={handleOpusBitrateSelect}
+                                onChange={handleOpusBitrateSelect}
+                                serialize={(v: any) => extractOptionValue(v)}
+                                closeOnSelect={true}
+                                maxVisibleItems={8}
+                                popoutPosition="bottom"
+                            />
+                        </div>
                         <button className="gc-amp-plus-btn" onClick={addCustomOpus} title={t("Add Custom Bitrate")}>+</button>
                     </div>
                 </div>
