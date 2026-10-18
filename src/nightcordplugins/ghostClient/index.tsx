@@ -1718,20 +1718,22 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
         isConnectingBatch = true;
         try {
-            // Stagger joins by at least 350ms to completely prevent Discord Gateway Opcode 4 rate limits (30s cooldown bucket)
-            const staggerDelay = Math.max(350, ghostJoinDelay);
-            for (let i = 0; i < targets.length; i++) {
-                if (_cancelBatch || _manuallyDisabled) break;
-                connectSingleAccount(targets[i]);
-                if (i < targets.length - 1) {
-                    await new Promise(r => setTimeout(r, staggerDelay));
+            if (ghostJoinDelay === 0) {
+                await Promise.all(targets.map(connectSingleAccount));
+            } else {
+                for (let i = 0; i < targets.length; i++) {
+                    if (_cancelBatch || _manuallyDisabled) break;
+                    connectSingleAccount(targets[i]);
+                    if (i < targets.length - 1 && ghostJoinDelay > 0) {
+                        await new Promise(r => setTimeout(r, ghostJoinDelay));
+                    }
                 }
             }
         } finally {
             setTimeout(() => {
                 isConnectingBatch = false;
                 notify();
-            }, 1200);
+            }, 500);
         }
     }
 
