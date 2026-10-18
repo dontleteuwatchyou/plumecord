@@ -17,10 +17,9 @@
     pointer-events: all;
 }
 
-/* Icon active = green */
+/* Icon active = green (clean Discord tone, non-fluo) */
 .gc-icon--active {
-    color: #3ba55c !important;
-    filter: drop-shadow(0 0 4px rgba(59, 165, 92, 0.6));
+    color: var(--status-positive, #23a55a) !important;
 }
 
 /* Popover container */
@@ -270,7 +269,7 @@
     flex-shrink: 0;
 }
 .gc-toggle--on {
-    background: #3ba55c;
+    background: var(--status-positive, #23a55a);
 }
 .gc-toggle-thumb {
     width: 16px;

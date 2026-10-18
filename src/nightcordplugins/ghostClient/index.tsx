@@ -287,10 +287,26 @@ const ghostStates = new Map<string, GhostState>();
 const _leavingUsers = new Set<string>();
 const _cachedGuildsMap = new Map<string, Set<string>>();
 let _cancelBatch = false;
+let _manuallyDisabled = false;
 let ghostListeners: Array<() => void> = [];
 function notify() { ghostListeners.forEach(f => f()); }
 
 const _pendingDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function boostLocalGhostVolume(userId: string) {
+    try {
+        const MediaEngineStore = findStoreLazy("MediaEngineStore");
+        const FluxDispatcher = findByPropsLazy("dispatch", "subscribe");
+        FluxDispatcher?.dispatch?.({
+            type: "AUDIO_SET_LOCAL_VOLUME",
+            context: "default",
+            userId,
+            volume: 200
+        });
+        const mediaEngine = (MediaEngineStore as any)?.getMediaEngine?.();
+        mediaEngine?.setLocalVolume?.(userId, 200);
+    } catch {}
+}
 
 function syncGhostStateFromDiscord(userId: string) {
     try {
@@ -304,6 +320,16 @@ function syncGhostStateFromDiscord(userId: string) {
             }
             return;
         }
+
+        // Si désactivé manuellement, ne JAMAIS repasser en actif même si VoiceStateStore a encore le salon en cache
+        if (_manuallyDisabled) {
+            if (cur.active || cur.connecting) {
+                ghostStates.set(userId, { ...cur, active: false, connecting: false });
+                notify();
+            }
+            return;
+        }
+
         // Ne bloquer que si un batch est véritablement en cours d'exécution
         if (cur.connecting && isConnectingBatch) return;
 
@@ -566,6 +592,7 @@ async function ghostDeactivate(userId: string) {
 async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: string[] }> {
     _cancelBatch = true;
     isConnectingBatch = false;
+    _manuallyDisabled = true;
 
     const ids = targetIds && targetIds.length > 0
         ? targetIds
@@ -605,12 +632,6 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
         ghostStates.set(userId, defaultState());
     }
     notify();
-
-    setTimeout(() => {
-        for (const userId of ids) {
-            _leavingUsers.delete(userId);
-        }
-    }, 2500);
 
     return { forcedIds: [] };
 }
@@ -837,14 +858,6 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
                 disabled={!!busy}
             >
                 {state.deafened ? <DeafenIcon /> : <UndeafenIcon />}
-            </button>
-            <button
-                className={`gc-ctrl-btn ${state.streaming ? "gc-ctrl-btn--streaming" : ""}`}
-                title={state.streaming ? t("Stop stream") : t("Start stream")}
-                onClick={() => toggle("stream")}
-                disabled={!!busy}
-            >
-                <StreamIcon />
             </button>
             <button
                 className={`gc-ctrl-btn ${state.camera ? "gc-ctrl-btn--cam" : ""}`}
@@ -1331,7 +1344,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             <Slider
                                 key={sliderKey}
                                 minValue={0}
-                                maxValue={500}
+                                maxValue={600}
                                 initialValue={Math.round(volumeMultiplier * 100)}
                                 asValueChanges={(val: number) => {
                                     const v = Math.round(val) / 100;
@@ -1341,7 +1354,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                     Native.setVolume(v).catch(() => {});
                                 }}
                                 onValueRender={(v: number) => `${Math.round(v)}%`}
-                                markers={[0, 100, 200, 300, 400, 500]}
+                                markers={[0, 100, 200, 300, 400, 500, 600]}
                                 equidistant={true}
                             />
                         </div>
@@ -1349,7 +1362,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         <input
                             type="range"
                             min="0"
-                            max="500"
+                            max="600"
                             step="5"
                             value={Math.round(volumeMultiplier * 100)}
                             onChange={e => {
@@ -1440,23 +1453,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         </button>
                         <button
                             className="gc-batch-btn"
-                            title={t("Start / Stop stream for all tokens")}
-                            onClick={async () => {
-                                const anyStream = accounts.some(a => ghostStates.get(a.userId)?.streaming);
-                                const next = !anyStream;
-                                const ids = accounts.map(a => a.userId);
-                                Native.setStreamAll(ids, next).catch(() => {});
-                                for (const a of accounts) {
-                                    const cur = ghostStates.get(a.userId) ?? defaultState();
-                                    ghostStates.set(a.userId, { ...cur, streaming: next });
-                                }
-                                notify();
-                            }}
-                        >
-                            {accounts.some(a => ghostStates.get(a.userId)?.streaming) ? t("Stop All") : t("Stream All")}
-                        </button>
-                        <button
-                            className="gc-batch-btn"
                             title={t("Turn on / off camera for all tokens")}
                             onClick={async () => {
                                 const anyCam = accounts.some(a => ghostStates.get(a.userId)?.camera);
@@ -1486,27 +1482,24 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         const state = states.get(acc.userId) ?? defaultState();
                         const isActive = state.active;
                         const isConnecting = state.connecting;
-                        const isStreaming = Boolean(state.streaming);
                         return (
                             <div key={acc.userId} className={`gc-account ${isActive ? "gc-account--on" : ""}`}>
                                 <div className="gc-account-left">
                                     <div className="gc-avatar-wrap">
                                         <img src={avatarUrl(acc.userId, acc.avatar)} className="gc-avatar" alt="" />
-                                        <div className={`gc-status-dot ${isStreaming ? "gc-dot--stream" : isActive ? "gc-dot--voice" : isConnecting ? "gc-dot--connecting" : "gc-dot--off"}`} />
+                                        <div className={`gc-status-dot ${isActive ? "gc-dot--voice" : isConnecting ? "gc-dot--connecting" : "gc-dot--off"}`} />
                                     </div>
                                     <div className="gc-account-info">
                                         <span className="gc-account-name" title={acc.username}>{acc.username}</span>
                                         <span className="gc-account-status">
                                             {isConnecting
                                                 ? t("Connecting to voice...")
-                                                : isStreaming
-                                                    ? t("Streaming")
-                                                    : state.camera
-                                                        ? t("Camera on")
-                                                        : isActive
-                                                            ? t("Active in voice")
-                                                            : (state.error === "Not in server" || state.error === t("Not in server"))
-                                                                ? t("Not in server")
+                                                : state.camera
+                                                    ? t("Camera on")
+                                                    : isActive
+                                                        ? t("Active in voice")
+                                                        : (state.error === "Not in server" || state.error === t("Not in server"))
+                                                            ? t("Not in server")
                                                                 : state.error
                                                                     ? `${t("Error: ")}${state.error.slice(0, 35)}`
                                                                     : t("Disconnected")}
@@ -1633,7 +1626,9 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
+        _manuallyDisabled = false;
         _cancelBatch = false;
+        _leavingUsers.clear();
 
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
@@ -1673,34 +1668,23 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        const connectSingleAccount = async (acc: GhostAccount) => {
-            if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
+        for (const t of targets) {
+            _leavingUsers.delete(t.userId);
+        }
 
-            if (vs.guildId) {
-                const known = _cachedGuildsMap.get(acc.userId);
-                if (known && !known.has(vs.guildId)) {
-                    const cur = ghostStates.get(acc.userId) ?? defaultState();
-                    ghostStates.set(acc.userId, {
-                        ...cur,
-                        active: false,
-                        connecting: false,
-                        error: t("Not in server")
-                    });
-                    notify();
-                    return;
-                }
-            }
+        const connectSingleAccount = async (acc: GhostAccount) => {
+            if (_cancelBatch || _manuallyDisabled) return;
 
             let realToken = acc.token;
             try { realToken = await decryptToken(acc.token); } catch {}
-            if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
+            if (_cancelBatch || _manuallyDisabled) return;
 
             const cur = ghostStates.get(acc.userId) ?? defaultState();
             ghostStates.set(acc.userId, { ...cur, connecting: true, error: null });
             notify();
             try {
                 const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                if (_cancelBatch || _leavingUsers.has(acc.userId)) {
+                if (_cancelBatch || _manuallyDisabled) {
                     Native.leaveVoice(acc.userId, vs.guildId).catch(() => {});
                     const updated = ghostStates.get(acc.userId) ?? defaultState();
                     ghostStates.set(acc.userId, { ...updated, active: false, connecting: false });
@@ -1709,14 +1693,18 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 }
                 const updated = ghostStates.get(acc.userId) ?? defaultState();
                 const notInServer = result?.notInServer || result?.error === "Not in server";
+                const isOk = Boolean(result?.ok);
                 ghostStates.set(acc.userId, {
                     ...updated,
-                    active: Boolean(result?.ok),
+                    active: isOk,
                     connecting: false,
-                    error: result?.ok ? null : (notInServer ? t("Not in server") : (result?.error ?? t("Connection error")))
+                    error: isOk ? null : (notInServer ? t("Not in server") : (result?.error ?? t("Connection error")))
                 });
+                if (isOk) {
+                    boostLocalGhostVolume(acc.userId);
+                }
             } catch (e) {
-                if (_cancelBatch || _leavingUsers.has(acc.userId)) return;
+                if (_cancelBatch || _manuallyDisabled) return;
                 const updated = ghostStates.get(acc.userId) ?? defaultState();
                 ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
             } finally {
@@ -1730,19 +1718,20 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
         isConnectingBatch = true;
         try {
-            if (ghostJoinDelay === 0) {
-                await Promise.all(targets.map(connectSingleAccount));
-            } else {
-                for (let i = 0; i < targets.length; i++) {
-                    if (_cancelBatch) break;
-                    connectSingleAccount(targets[i]);
-                    if (i < targets.length - 1 && ghostJoinDelay > 0) {
-                        await new Promise(r => setTimeout(r, ghostJoinDelay));
-                    }
+            // Stagger joins by at least 350ms to completely prevent Discord Gateway Opcode 4 rate limits (30s cooldown bucket)
+            const staggerDelay = Math.max(350, ghostJoinDelay);
+            for (let i = 0; i < targets.length; i++) {
+                if (_cancelBatch || _manuallyDisabled) break;
+                connectSingleAccount(targets[i]);
+                if (i < targets.length - 1) {
+                    await new Promise(r => setTimeout(r, staggerDelay));
                 }
             }
         } finally {
-            isConnectingBatch = false;
+            setTimeout(() => {
+                isConnectingBatch = false;
+                notify();
+            }, 1200);
         }
     }
 
