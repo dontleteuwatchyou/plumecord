@@ -1631,10 +1631,6 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
         _cancelBatch = false;
         _leavingUsers.clear();
-        for (const t of targets) {
-            _manuallyDisabledUsers.delete(t.userId);
-            _leavingUsers.delete(t.userId);
-        }
 
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
