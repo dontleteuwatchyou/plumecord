@@ -113,6 +113,20 @@ export async function searchSoundCloud(
     }
 }
 
+export async function fetchSoundCloudTrending(
+    _: any,
+    clientId: string,
+    offset = 0,
+    limit = 50
+): Promise<string | null> {
+    try {
+        const url = `https://api-v2.soundcloud.com/charts?kind=trending&genre=soundcloud%3Agenres%3Aall-music&client_id=${clientId}&limit=${limit}&offset=${offset}`;
+        return await netGet(url);
+    } catch (e: any) {
+        throw new Error(e?.message ?? String(e));
+    }
+}
+
 export async function fetchLyrics(
     _: any,
     title: string,

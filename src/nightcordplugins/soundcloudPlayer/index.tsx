@@ -114,7 +114,7 @@ async function fetchClientId(): Promise<string | null> {
     const cached = await loadCachedClientId();
     if (cached) return cached;
 
-    const FALLBACK = "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX";
+    const FALLBACK = "tHVbSbDP4TaoMbPppngv6Tdry83vNbMQ";
 
     try {
         let id = null;
@@ -796,27 +796,8 @@ function IconRefresh({ size = 16, className = "" }: { size?: number; className?:
     );
 }
 
-const GENRE_PILLS = [
-    { label: "Trending", query: "Trending" },
-    { label: "Lo-Fi", query: "Lo-Fi Beats" },
-    { label: "Synthwave", query: "Synthwave" },
-    { label: "Gaming", query: "Gaming EDM" },
-    { label: "Phonk", query: "Phonk" },
-    { label: "Chill", query: "Chillout" },
-    { label: "Hip-Hop", query: "Hip-Hop" },
-    { label: "Rock", query: "Rock" },
-    { label: "Piano", query: "Piano Calm" },
-    { label: "Anime", query: "Anime OST" },
-];
-
-const DISCOVER_CARDS = [
-    { title: "Trending Worldwide", query: "Top Chart 2026", desc: "Most viral and played tracks right now", bg: "linear-gradient(135deg, #f97316, #ea580c)" },
-    { title: "Lo-Fi & Study", query: "Lofi Hip Hop Chill", desc: "Relaxing beats to focus, work and study", bg: "linear-gradient(135deg, #8b5cf6, #6d28d9)" },
-    { title: "Synthwave & Retro", query: "Synthwave Cyberpunk", desc: "Neon lights, 80s nostalgia and bass", bg: "linear-gradient(135deg, #ec4899, #be185d)" },
-    { title: "Gaming & Bass", query: "Gaming EDM Trap", desc: "High octane beats for competitive gaming", bg: "linear-gradient(135deg, #06b6d4, #0284c7)" },
-    { title: "Phonk & Drift", query: "Drift Phonk House", desc: "Heavy aggressive bass and drift sounds", bg: "linear-gradient(135deg, #ef4444, #b91c1c)" },
-    { title: "Chill & Deep Sleep", query: "Ambient Relaxation", desc: "Soothing acoustic and ambient landscapes", bg: "linear-gradient(135deg, #10b981, #047857)" },
-];
+// Session-level random offset (evaluated on each Discord launch so charts are dynamic & unique per session)
+const SESSION_TRENDING_OFFSET = Math.floor(Math.random() * 25);
 
 const SC_OUTPUT_KEY = "SoundCordPlayer_outputDevice";
 
@@ -902,9 +883,74 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
     const [selectedOutput, setSelectedOutput] = useState<string>("default");
     const [prevVolume, setPrevVolume] = useState<number>(80);
     const p = usePlayerState();
-    const { enableDynamicIsland, richPresence } = settings.use(["enableDynamicIsland", "richPresence"]);
+    const { richPresence } = settings.use(["richPresence"]);
     const displayActivity = richPresence ?? true;
-    const enableIsland = enableDynamicIsland ?? false;
+
+    const [trendingTracks, setTrendingTracks] = useState<ScTrack[]>([]);
+    const [trendingLoading, setTrendingLoading] = useState(false);
+    const [trendingError, setTrendingError] = useState<string | null>(null);
+
+    const loadTrending = async (forceRefresh = false) => {
+        if (!p.clientId) return;
+        if (trendingTracks.length > 0 && !forceRefresh) return;
+        setTrendingLoading(true);
+        setTrendingError(null);
+        try {
+            const offset = forceRefresh ? Math.floor(Math.random() * 30) : SESSION_TRENDING_OFFSET;
+            let tracks: ScTrack[] = [];
+            try {
+                if (Native?.fetchSoundCloudTrending) {
+                    const json = await Native.fetchSoundCloudTrending(p.clientId, offset, 50);
+                    if (json) {
+                        tracks = parseTracks(JSON.parse(json));
+                    }
+                }
+            } catch (e) {
+                console.warn("[SoundCloudPlayer] Charts API trending error:", e);
+            }
+
+            if (tracks.length < 15) {
+                const trendingKeywords = [
+                    "trending",
+                    "top charts 2026",
+                    "viral soundcloud",
+                    "trending hits",
+                    "popular tracks",
+                    "trending electronic",
+                    "trending lofi",
+                    "trending phonk"
+                ];
+                const kw = trendingKeywords[Math.floor(Math.random() * trendingKeywords.length)];
+                const fallbackList = await searchTracks(kw, p.clientId, Math.floor(Math.random() * 10), 30);
+                const seenIds = new Set(tracks.map(t => t.id));
+                for (const t of fallbackList) {
+                    if (!seenIds.has(t.id)) {
+                        tracks.push(t);
+                        seenIds.add(t.id);
+                    }
+                }
+            }
+
+            if (tracks.length > 3) {
+                const anchors = tracks.slice(0, 3);
+                const rest = tracks.slice(3).sort(() => Math.random() - 0.5);
+                tracks = [...anchors, ...rest];
+            }
+
+            setTrendingTracks(tracks);
+        } catch (e: any) {
+            setTrendingError(e?.message || String(e));
+        } finally {
+            setTrendingLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (p.clientId && trendingTracks.length === 0) {
+            loadTrending();
+        }
+    }, [p.clientId]);
+
     const progressRef = useRef<HTMLDivElement>(null);
     const lyricsContainerRef = useRef<HTMLDivElement>(null);
     const activeLyricRef = useRef<HTMLDivElement | null>(null);
@@ -934,7 +980,7 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
 
         const timer = setTimeout(async () => {
             if (searchSubmittedRef.current) return;
-            const clientId = p.clientId || (await fetchClientId()) || "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX";
+            const clientId = p.clientId || (await fetchClientId()) || "tHVbSbDP4TaoMbPppngv6Tdry83vNbMQ";
             if (Native?.fetchSoundCloudSuggestions) {
                 const list = await Native.fetchSoundCloudSuggestions(clientId, query.trim());
                 if (searchSubmittedRef.current) return;
@@ -1589,15 +1635,6 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                         />
                     </div>
 
-                    {/* Dynamic Island Switch */}
-                    <div className="sc-island-toggle">
-                        <span>{t("Dynamic Island")}</span>
-                        <Switch
-                            checked={enableIsland}
-                            onChange={(val: boolean) => settings.store.enableDynamicIsland = val}
-                        />
-                    </div>
-
                     {/* Audio Output device button */}
                     <TooltipContainer text={t("Audio output device")}>
                         <button
@@ -1749,9 +1786,9 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                         className={`sc-tab-btn ${tab === "search" ? "sc-tab-btn--active" : ""}`}
                         onClick={() => setTab("search")}
                     >
-                        <IconSearch />
-                        <span>{t("Search Results")}</span>
-                        {results.length > 0 && <Badge text={results.length} variant="default" className="sc-tab-badge" />}
+                        {activeSearchQuery ? <IconSearch /> : <SoundCloudIcon style={{ width: 14, height: 14 }} />}
+                        <span>{activeSearchQuery ? t("Search Results") : t("Trending")}</span>
+                        {activeSearchQuery && results.length > 0 && <Badge text={results.length} variant="default" className="sc-tab-badge" />}
                     </button>
                     <button
                         className={`sc-tab-btn ${tab === "favs" ? "sc-tab-btn--active" : ""}`}
@@ -2746,212 +2783,226 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                     </div>
                 )}
 
-                {/* SEARCH RESULTS & FAVORITES TABS */}
-                {(tab === "search" || tab === "favs") && (
-                    <div className="sc-tracklist">
-                        {(tab === "search" ? results : p.favorites).length === 0 ? (
-                            tab === "favs" ? (
-                                <div className="sc-empty-state">
-                                    <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-                                    <div className="sc-empty-title">{t("No favorites saved yet")}</div>
-                                    <div className="sc-empty-desc">{t("Click the heart icon on any track to add it to your personal favorites library.")}</div>
-                                </div>
-                            ) : (
-                                // ─── Home Screen (empty search) ──────────────────────────────
-                                <div className="sc-home-screen">
-                                    {/* Genre Quick Filters */}
-                                    <div className="sc-home-section">
-                                        <div className="sc-home-section-label">{t("Browse by Genre")}</div>
-                                        <div className="sc-home-genres">
-                                            {GENRE_PILLS.map(g => (
-                                                <button
-                                                    key={g.query}
-                                                    className="sc-home-genre-pill"
-                                                    onClick={() => doSearch(false, g.query, true, g.label)}
-                                                >
-                                                    {g.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Discover Cards */}
-                                    <div className="sc-home-section">
-                                        <div className="sc-home-section-label">{t("Discover")}</div>
-                                        <div className="sc-home-cards">
-                                            {DISCOVER_CARDS.map(card => (
-                                                <button
-                                                    key={card.query}
-                                                    className="sc-home-card"
-                                                    style={{ background: card.bg }}
-                                                    onClick={() => doSearch(false, card.query, true, card.title)}
-                                                >
-                                                    <div className="sc-home-card-title">{card.title}</div>
-                                                    <div className="sc-home-card-desc">{card.desc}</div>
-                                                    <div className="sc-home-card-icon">
-                                                        <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Recent / Quick mood row */}
-                                    <div className="sc-home-section">
-                                        <div className="sc-home-section-label">{t("Quick Moods")}</div>
-                                        <div className="sc-home-moods">
-                                            {[
-                                                { label: t("Focus"), query: "Deep Focus Study", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
-                                                { label: t("Workout"), query: "Workout Motivation Gym", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
-                                                { label: t("Night Drive"), query: "Night Drive Synthwave", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg> },
-                                                { label: t("Chill"), query: "Chill Lofi Relax", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> },
-                                                { label: t("Party"), query: "Party Electro Rave", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> },
-                                                { label: t("Sleep"), query: "Sleep Ambient White Noise", icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
-                                            ].map(m => (
-                                                <button
-                                                    key={m.query}
-                                                    className="sc-home-mood-btn"
-                                                    onClick={() => doSearch(false, m.query, true, m.label)}
-                                                >
-                                                    {m.icon}
-                                                    <span>{m.label}</span>
-                                                </button>
-                                            ))}
-                                        </div>
+                {/* Track Card Renderer */}
+                {(() => {
+                    const renderTrackCard = (track: ScTrack, idx: number, list: ScTrack[], isFavTab = false) => {
+                        const isCurrentPlaying = p.playing?.id === track.id;
+                        return (
+                            <div
+                                key={`${track.id}-${idx}`}
+                                className={`sc-track-card ${isCurrentPlaying ? "sc-track-card--playing" : ""} ${track.snipped ? "sc-track-card--snipped" : ""}`}
+                                onClick={() => {
+                                    if (!track.snipped) {
+                                        if (isFavTab) playerPlayFavAt(idx);
+                                        else {
+                                            p.currentResults = list;
+                                            playerPlayTrack(track, -1, 0, idx);
+                                        }
+                                    }
+                                }}
+                            >
+                                <div className="sc-art-wrap">
+                                    <img
+                                        className="sc-track-art"
+                                        src={track.artworkUrl || ""}
+                                        alt=""
+                                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                    />
+                                    <div className="sc-art-overlay">
+                                        {isCurrentPlaying && p.isPlaying ? (
+                                            <IconPause size={18} />
+                                        ) : (
+                                            <IconPlay size={18} />
+                                        )}
                                     </div>
                                 </div>
-                            )
-                        ) : (
-                            <>
-                                {tab === "search" && activeCategoryName && (
-                                    <div className="sc-category-header">
-                                        <div className="sc-category-badge">
-                                            <span>{t("Browsing:")}</span>
-                                            <span className="sc-category-name">{activeCategoryName}</span>
-                                        </div>
-                                        <button
-                                            className="sc-category-clear-btn"
-                                            onClick={() => {
-                                                setActiveCategoryName(null);
-                                                setActiveSearchQuery("");
-                                                setResults([]);
-                                                p.currentResults = [];
-                                            }}
+
+                                <div className="sc-track-details">
+                                    <div className="sc-track-main-title">
+                                        {track.title}
+                                        {track.snipped && <span className="sc-restricted-badge">{t("30s Preview")}</span>}
+                                    </div>
+                                    <div className="sc-track-meta">
+                                        <span
+                                            className="sc-artist-name sc-artist-name--clickable"
+                                            onClick={e => openArtistProfile(track.artist, track, e)}
+                                            title={t("View artist profile")}
                                         >
-                                            <IconClose />
-                                            <span>{t("Back to browse")}</span>
-                                        </button>
+                                            {track.artist}
+                                        </span>
+                                        <span>·</span>
+                                        <span>{fmtDuration(track.durationMs)}</span>
+                                        {track.source && (
+                                            <span className={`sc-source-tag sc-source-tag--${track.source}`}>
+                                                {track.source}
+                                            </span>
+                                        )}
                                     </div>
-                                )}
-                                {(tab === "search" ? results : p.favorites).map((track, idx) => {
-                                    const isCurrentPlaying = p.playing?.id === track.id;
-                                    return (
-                                        <div
-                                            key={`${track.id}-${idx}`}
-                                            className={`sc-track-card ${isCurrentPlaying ? "sc-track-card--playing" : ""} ${track.snipped ? "sc-track-card--snipped" : ""}`}
-                                            onClick={() => {
+                                </div>
+
+                                <div className="sc-track-actions">
+                                    <TooltipContainer text={t("Add to queue")}>
+                                        <Button
+                                            variant="secondary"
+                                            size="small"
+                                            className="sc-row-btn"
+                                            onClick={e => addToQueue(track, e)}
+                                        >
+                                            <IconPlus />
+                                            <span>Queue</span>
+                                        </Button>
+                                    </TooltipContainer>
+                                    <TooltipContainer text={isFav(track) ? t("Remove from favorites") : t("Add to favorites")}>
+                                        <button
+                                            className={`sc-row-btn sc-row-btn--heart ${isFav(track) ? "sc-row-btn--fav" : ""}`}
+                                            onClick={e => toggleFavorite(track, e)}
+                                        >
+                                            <IconHeart filled={isFav(track)} />
+                                        </button>
+                                    </TooltipContainer>
+                                    <TooltipContainer text={track.snipped ? t("30s Preview") : t("Play track")}>
+                                        <button
+                                            className="sc-row-btn sc-row-btn--play"
+                                            disabled={!!track.snipped}
+                                            onClick={e => {
+                                                e.stopPropagation();
                                                 if (!track.snipped) {
-                                                    if (tab === "favs") playerPlayFavAt(idx);
-                                                    else playerPlayTrack(track, -1, 0, idx);
+                                                    if (isFavTab) playerPlayFavAt(idx);
+                                                    else {
+                                                        p.currentResults = list;
+                                                        playerPlayTrack(track, -1, 0, idx);
+                                                    }
                                                 }
                                             }}
                                         >
-                                            <div className="sc-art-wrap">
-                                                <img
-                                                    className="sc-track-art"
-                                                    src={track.artworkUrl || ""}
-                                                    alt=""
-                                                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                                />
-                                                <div className="sc-art-overlay">
-                                                    {isCurrentPlaying && p.isPlaying ? (
-                                                        <IconPause size={18} />
-                                                    ) : (
-                                                        <IconPlay size={18} />
-                                                    )}
-                                                </div>
-                                            </div>
+                                            {isCurrentPlaying && p.isPlaying ? <IconPause size={14} /> : <IconPlay size={14} />}
+                                        </button>
+                                    </TooltipContainer>
+                                </div>
+                            </div>
+                        );
+                    };
 
-                                            <div className="sc-track-details">
-                                                <div className="sc-track-main-title">
-                                                    {track.title}
-                                                    {track.snipped && <span className="sc-restricted-badge">{t("30s Preview")}</span>}
-                                                </div>
-                                                <div className="sc-track-meta">
-                                                    <span
-                                                        className="sc-artist-name sc-artist-name--clickable"
-                                                        onClick={e => openArtistProfile(track.artist, track, e)}
-                                                        title={t("View artist profile")}
-                                                    >
-                                                        {track.artist}
-                                                    </span>
-                                                    <span>·</span>
-                                                    <span>{fmtDuration(track.durationMs)}</span>
-                                                    {track.source && (
-                                                        <span className={`sc-source-tag sc-source-tag--${track.source}`}>
-                                                            {track.source}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            <div className="sc-track-actions">
-                                                <TooltipContainer text={t("Add to queue")}>
-                                                    <Button
-                                                        variant="secondary"
-                                                        size="small"
-                                                        className="sc-row-btn"
-                                                        onClick={e => addToQueue(track, e)}
-                                                    >
-                                                        <IconPlus />
-                                                        <span>Queue</span>
-                                                    </Button>
-                                                </TooltipContainer>
-                                                <TooltipContainer text={isFav(track) ? t("Remove from favorites") : t("Add to favorites")}>
+                    return (tab === "search" || tab === "favs") && (
+                        <div className="sc-tracklist">
+                            {tab === "favs" ? (
+                                p.favorites.length === 0 ? (
+                                    <div className="sc-empty-state">
+                                        <svg width={48} height={48} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                                        <div className="sc-empty-title">{t("No favorites saved yet")}</div>
+                                        <div className="sc-empty-desc">{t("Click the heart icon on any track to add it to your personal favorites library.")}</div>
+                                    </div>
+                                ) : (
+                                    p.favorites.map((track, idx) => renderTrackCard(track, idx, p.favorites, true))
+                                )
+                            ) : (
+                                activeSearchQuery ? (
+                                    results.length === 0 ? (
+                                        <div className="sc-empty-state">
+                                            <IconSearch size={40} style={{ opacity: 0.4 }} />
+                                            <div className="sc-empty-title">{t("No tracks found")}</div>
+                                            <div className="sc-empty-desc">{t("Try searching for a different track title, artist, or paste a link.")}</div>
+                                            <Button
+                                                variant="secondary"
+                                                size="small"
+                                                style={{ marginTop: 12 }}
+                                                onClick={() => {
+                                                    setActiveSearchQuery("");
+                                                    setQuery("");
+                                                    setResults([]);
+                                                    p.currentResults = [];
+                                                }}
+                                            >
+                                                {t("Back to browse")}
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {activeCategoryName && (
+                                                <div className="sc-category-header">
+                                                    <div className="sc-category-badge">
+                                                        <span>{t("Browsing:")}</span>
+                                                        <span className="sc-category-name">{activeCategoryName}</span>
+                                                    </div>
                                                     <button
-                                                        className={`sc-row-btn sc-row-btn--heart ${isFav(track) ? "sc-row-btn--fav" : ""}`}
-                                                        onClick={e => toggleFavorite(track, e)}
-                                                    >
-                                                        <IconHeart filled={isFav(track)} />
-                                                    </button>
-                                                </TooltipContainer>
-                                                <TooltipContainer text={track.snipped ? t("30s Preview") : t("Play track")}>
-                                                    <button
-                                                        className="sc-row-btn sc-row-btn--play"
-                                                        disabled={!!track.snipped}
-                                                        onClick={e => {
-                                                            e.stopPropagation();
-                                                            if (!track.snipped) {
-                                                                if (tab === "favs") playerPlayFavAt(idx);
-                                                                else playerPlayTrack(track, -1, 0, idx);
-                                                            }
+                                                        className="sc-category-clear-btn"
+                                                        onClick={() => {
+                                                            setActiveCategoryName(null);
+                                                            setActiveSearchQuery("");
+                                                            setResults([]);
+                                                            p.currentResults = [];
                                                         }}
                                                     >
-                                                        {isCurrentPlaying && p.isPlaying ? <IconPause size={14} /> : <IconPlay size={14} />}
+                                                        <IconClose />
+                                                        <span>{t("Back to browse")}</span>
                                                     </button>
-                                                </TooltipContainer>
+                                                </div>
+                                            )}
+                                            {results.map((track, idx) => renderTrackCard(track, idx, results, false))}
+                                            {hasMore && (
+                                                <div className="sc-load-more-row">
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="medium"
+                                                        className="sc-load-more-btn"
+                                                        onClick={loadMore}
+                                                        disabled={loadingMore}
+                                                    >
+                                                        {loadingMore ? t("Loading more tracks...") : t("Load More Tracks ▾")}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </>
+                                    )
+                                ) : (
+                                    // ─── Home Screen: Dynamic Trending Tracks from SoundCord API ──────────────────────────────
+                                    <div className="sc-home-screen">
+                                        <div className="sc-trending-header">
+                                            <div className="sc-trending-title-wrap">
+                                                <span className="sc-trending-title">{t("Trending on SoundCord")}</span>
+                                                <span className="sc-trending-badge">{t("Live")}</span>
                                             </div>
+                                            <TooltipContainer text={t("Refresh trending")}>
+                                                <button
+                                                    className={`sc-trending-refresh-btn ${trendingLoading ? "sc-trending-refresh-btn--spinning" : ""}`}
+                                                    onClick={() => loadTrending(true)}
+                                                    disabled={trendingLoading}
+                                                >
+                                                    <IconRefresh size={14} />
+                                                </button>
+                                            </TooltipContainer>
                                         </div>
-                                    );
-                                })}
 
-                                {tab === "search" && hasMore && (
-                                    <div className="sc-load-more-row">
-                                        <Button
-                                            variant="secondary"
-                                            size="medium"
-                                            className="sc-load-more-btn"
-                                            onClick={loadMore}
-                                            disabled={loadingMore}
-                                        >
-                                            {loadingMore ? t("Loading more tracks...") : t("Load More Tracks ▾")}
-                                        </Button>
+                                        {trendingLoading && trendingTracks.length === 0 ? (
+                                            <div className="sc-empty-state">
+                                                <div className="sc-trending-spinner" />
+                                                <div className="sc-empty-title">{t("Loading trending tracks...")}</div>
+                                            </div>
+                                        ) : trendingError && trendingTracks.length === 0 ? (
+                                            <div className="sc-empty-state">
+                                                <div className="sc-empty-title">{t("Unable to load trending tracks")}</div>
+                                                <div className="sc-empty-desc">{trendingError}</div>
+                                                <Button variant="secondary" size="small" style={{ marginTop: 12 }} onClick={() => loadTrending(true)}>
+                                                    {t("Try Again")}
+                                                </Button>
+                                            </div>
+                                        ) : trendingTracks.length === 0 ? (
+                                            <div className="sc-empty-state">
+                                                <div className="sc-empty-title">{t("No trending tracks found")}</div>
+                                                <Button variant="secondary" size="small" style={{ marginTop: 12 }} onClick={() => loadTrending(true)}>
+                                                    {t("Try Again")}
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            trendingTracks.map((track, idx) => renderTrackCard(track, idx, trendingTracks, false))
+                                        )}
                                     </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-                )}
+                                )
+                            )}
+                        </div>
+                    );
+                })()}
+
             </div>
 
             {/* Bottom Docked Now-Playing Bar */}
