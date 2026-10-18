@@ -647,8 +647,8 @@ function usePlayerState() {
 function IconSearch() {
     return <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><circle cx={11} cy={11} r={8} /><line x1={21} y1={21} x2={16.65} y2={16.65} /></svg>;
 }
-function IconHeart({ filled }: { filled: boolean; }) {
-    return <svg width={16} height={16} viewBox="0 0 24 24" fill={filled ? "#ed4245" : "none"} stroke={filled ? "#ed4245" : "currentColor"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>;
+function IconHeart({ filled, size = 16 }: { filled: boolean; size?: number; }) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "#ed4245" : "none"} stroke={filled ? "#ed4245" : "currentColor"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>;
 }
 function IconPlay({ size = 18 }: { size?: number; }) {
     return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8V4z" /></svg>;
@@ -773,8 +773,8 @@ const UPLOAD_GENRES = [
     "Acoustic",
 ];
 
-function IconPlus() {
-    return <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
+function IconPlus({ size = 14 }: { size?: number; } = {}) {
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>;
 }
 function IconTrash({ size = 16, className = "" }: { size?: number; className?: string; }) {
     return (
@@ -1620,8 +1620,8 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
 
                 <div className="sc-header-actions">
                     {/* Display Activity Switch */}
-                    <div className="sc-island-toggle">
-                        <span>{t("Display activity")}</span>
+                    <div className="sc-activity-pill">
+                        <span className="sc-activity-pill-label">{t("Display activity")}</span>
                         <Switch
                             checked={displayActivity}
                             onChange={(val: boolean) => {
@@ -2883,6 +2883,88 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                         );
                     };
 
+                    const renderGridTrackCard = (track: ScTrack, idx: number, list: ScTrack[]) => {
+                        const isCurrentPlaying = p.playing?.id === track.id;
+                        return (
+                            <div
+                                key={`grid-${track.id}-${idx}`}
+                                className={`sc-grid-card ${isCurrentPlaying ? "sc-grid-card--playing" : ""}`}
+                                onClick={() => {
+                                    p.currentResults = list;
+                                    playerPlayTrack(track, -1, 0, idx);
+                                }}
+                            >
+                                <div className="sc-grid-art-wrap">
+                                    {track.artworkUrl ? (
+                                        <img
+                                            className="sc-grid-art"
+                                            src={track.artworkUrl}
+                                            alt=""
+                                            onError={e => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.style.display = "none";
+                                                const fallback = target.parentElement?.querySelector(".sc-grid-art-fallback") as HTMLElement;
+                                                if (fallback) fallback.style.display = "flex";
+                                            }}
+                                        />
+                                    ) : null}
+                                    <div
+                                        className="sc-grid-art-fallback"
+                                        style={{ display: track.artworkUrl ? "none" : "flex" }}
+                                    >
+                                        <IconMusicNote size={32} />
+                                    </div>
+
+                                    {/* Duration Badge */}
+                                    {track.durationMs > 0 && (
+                                        <span className="sc-grid-duration">{fmtDuration(track.durationMs)}</span>
+                                    )}
+
+                                    {/* Top Right Quick Actions */}
+                                    <div className="sc-grid-art-top-actions" onClick={e => e.stopPropagation()}>
+                                        <TooltipContainer text={isFav(track) ? t("Remove from favorites") : t("Add to favorites")}>
+                                            <button
+                                                className={`sc-grid-art-btn ${isFav(track) ? "sc-grid-art-btn--fav" : ""}`}
+                                                onClick={e => toggleFavorite(track, e)}
+                                            >
+                                                <IconHeart filled={isFav(track)} size={13} />
+                                            </button>
+                                        </TooltipContainer>
+                                        <TooltipContainer text={t("Add to queue")}>
+                                            <button
+                                                className="sc-grid-art-btn"
+                                                onClick={e => addToQueue(track, e)}
+                                            >
+                                                <IconPlus size={13} />
+                                            </button>
+                                        </TooltipContainer>
+                                    </div>
+
+                                    {/* Play / Pause button overlay */}
+                                    <div className={`sc-grid-play-wrap ${isCurrentPlaying ? "sc-grid-play-wrap--active" : ""}`}>
+                                        <div className="sc-grid-play-circle">
+                                            {isCurrentPlaying && p.isPlaying ? <IconPause size={18} /> : <IconPlay size={18} />}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="sc-grid-meta">
+                                    <div className="sc-grid-title" title={track.title}>{track.title}</div>
+                                    <div
+                                        className="sc-grid-artist"
+                                        title={track.artist}
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            openArtistProfile(track.artist, track, e);
+                                        }}
+                                    >
+                                        {track.artist}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    };
+
                     return (tab === "search" || tab === "favs") && (
                         <div className="sc-tracklist">
                             {tab === "favs" ? (
@@ -2960,17 +3042,7 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                                         <div className="sc-trending-header">
                                             <div className="sc-trending-title-wrap">
                                                 <span className="sc-trending-title">{t("Trending on SoundCord")}</span>
-                                                <span className="sc-trending-badge">{t("Live")}</span>
                                             </div>
-                                            <TooltipContainer text={t("Refresh trending")}>
-                                                <button
-                                                    className={`sc-trending-refresh-btn ${trendingLoading ? "sc-trending-refresh-btn--spinning" : ""}`}
-                                                    onClick={() => loadTrending(true)}
-                                                    disabled={trendingLoading}
-                                                >
-                                                    <IconRefresh size={14} />
-                                                </button>
-                                            </TooltipContainer>
                                         </div>
 
                                         {trendingLoading && trendingTracks.length === 0 ? (
@@ -2994,7 +3066,9 @@ function SoundCloudModal({ onClose }: { onClose: () => void; }) {
                                                 </Button>
                                             </div>
                                         ) : (
-                                            trendingTracks.map((track, idx) => renderTrackCard(track, idx, trendingTracks, false))
+                                            <div className="sc-trending-grid">
+                                                {trendingTracks.map((track, idx) => renderGridTrackCard(track, idx, trendingTracks))}
+                                            </div>
                                         )}
                                     </div>
                                 )
