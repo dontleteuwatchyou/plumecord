@@ -1068,10 +1068,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             maxHeight,
             zIndex: 995
         };
-    }, [anchorRect, showEq]);
+    }, [anchorRect, showEq, showAmpPan]);
 
     useEffect(() => {
         Native.isServerInstalled().then(v => setServerInstalled(Boolean(v))).catch(() => setServerInstalled(true));
+        Native.setEq(ghostEqBass, ghostEqTreble, ghostEqMid, ghostEqEnabled).catch(() => {});
+        Native.setAmpPanParams(ghostAmpConfig || defaultAmpConfig).catch(() => {});
 
         const syncStates = (accs: GhostAccount[]) => {
             for (const a of accs) {
@@ -2726,6 +2728,21 @@ export default definePlugin({
             ghostVolumeMultiplier = vol;
             Native.setVolume(vol, ghostVocalBoost).catch(() => {});
         }
+
+        const eqB = await DataStore.get(DS_KEY_EQ_BASS);
+        if (eqB != null) ghostEqBass = Number(eqB);
+        const eqT = await DataStore.get(DS_KEY_EQ_TREBLE);
+        if (eqT != null) ghostEqTreble = Number(eqT);
+        const eqM = await DataStore.get(DS_KEY_EQ_MID);
+        if (eqM != null) ghostEqMid = Number(eqM);
+        const eqEn = await DataStore.get(DS_KEY_EQ_ENABLED);
+        if (eqEn != null) ghostEqEnabled = Boolean(eqEn);
+
+        const ampCfg = await DataStore.get(DS_KEY_AMP_CONFIG);
+        if (ampCfg != null) ghostAmpConfig = ampCfg;
+
+        Native.setEq(ghostEqBass, ghostEqTreble, ghostEqMid, ghostEqEnabled).catch(() => {});
+        Native.setAmpPanParams(ghostAmpConfig || defaultAmpConfig).catch(() => {});
 
         const allAccs = await getAllSavedAccounts(true);
         if (allAccs.length > 0) savedAccounts = allAccs;
