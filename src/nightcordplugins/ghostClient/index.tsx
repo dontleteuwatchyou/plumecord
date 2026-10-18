@@ -287,7 +287,7 @@ const ghostStates = new Map<string, GhostState>();
 const _leavingUsers = new Set<string>();
 const _cachedGuildsMap = new Map<string, Set<string>>();
 let _cancelBatch = false;
-let _manuallyDisabled = false;
+const _manuallyDisabledUsers = new Set<string>();
 let ghostListeners: Array<() => void> = [];
 function notify() { ghostListeners.forEach(f => f()); }
 
@@ -322,7 +322,7 @@ function syncGhostStateFromDiscord(userId: string) {
         }
 
         // Si désactivé manuellement, ne JAMAIS repasser en actif même si VoiceStateStore a encore le salon en cache
-        if (_manuallyDisabled) {
+        if (_manuallyDisabledUsers.has(userId)) {
             if (cur.active || cur.connecting) {
                 ghostStates.set(userId, { ...cur, active: false, connecting: false });
                 notify();
@@ -592,12 +592,15 @@ async function ghostDeactivate(userId: string) {
 async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: string[] }> {
     _cancelBatch = true;
     isConnectingBatch = false;
-    _manuallyDisabled = true;
 
     const ids = targetIds && targetIds.length > 0
         ? targetIds
         : Array.from(new Set([...ghostStates.keys(), ...savedAccounts.map(a => a.userId)]));
     if (!ids.length) return { forcedIds: [] };
+
+    for (const userId of ids) {
+        _manuallyDisabledUsers.add(userId);
+    }
 
     const curVoice = getMyVoiceState();
     const guildId = curVoice?.guildId;
@@ -1626,9 +1629,12 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        _manuallyDisabled = false;
         _cancelBatch = false;
         _leavingUsers.clear();
+        for (const t of targets) {
+            _manuallyDisabledUsers.delete(t.userId);
+            _leavingUsers.delete(t.userId);
+        }
 
         const isInstalled = await Native.isServerInstalled().catch(() => true);
         if (!isInstalled) {
@@ -1669,22 +1675,23 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         }
 
         for (const t of targets) {
+            _manuallyDisabledUsers.delete(t.userId);
             _leavingUsers.delete(t.userId);
         }
 
         const connectSingleAccount = async (acc: GhostAccount) => {
-            if (_cancelBatch || _manuallyDisabled) return;
+            if (_cancelBatch || _manuallyDisabledUsers.has(acc.userId)) return;
 
             let realToken = acc.token;
             try { realToken = await decryptToken(acc.token); } catch {}
-            if (_cancelBatch || _manuallyDisabled) return;
+            if (_cancelBatch || _manuallyDisabledUsers.has(acc.userId)) return;
 
             const cur = ghostStates.get(acc.userId) ?? defaultState();
             ghostStates.set(acc.userId, { ...cur, connecting: true, error: null });
             notify();
             try {
                 const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
-                if (_cancelBatch || _manuallyDisabled) {
+                if (_cancelBatch || _manuallyDisabledUsers.has(acc.userId)) {
                     Native.leaveVoice(acc.userId, vs.guildId).catch(() => {});
                     const updated = ghostStates.get(acc.userId) ?? defaultState();
                     ghostStates.set(acc.userId, { ...updated, active: false, connecting: false });
@@ -1704,7 +1711,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                     boostLocalGhostVolume(acc.userId);
                 }
             } catch (e) {
-                if (_cancelBatch || _manuallyDisabled) return;
+                if (_cancelBatch || _manuallyDisabledUsers.has(acc.userId)) return;
                 const updated = ghostStates.get(acc.userId) ?? defaultState();
                 ghostStates.set(acc.userId, { ...updated, active: false, connecting: false, error: String(e) });
             } finally {
@@ -1722,7 +1729,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
                 await Promise.all(targets.map(connectSingleAccount));
             } else {
                 for (let i = 0; i < targets.length; i++) {
-                    if (_cancelBatch || _manuallyDisabled) break;
+                    if (_cancelBatch || _manuallyDisabledUsers.has(targets[i].userId)) break;
                     connectSingleAccount(targets[i]);
                     if (i < targets.length - 1 && ghostJoinDelay > 0) {
                         await new Promise(r => setTimeout(r, ghostJoinDelay));
