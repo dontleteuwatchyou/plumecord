@@ -416,6 +416,20 @@ export async function setVolume(_: any, volume: number, vocalBoost = false): Pro
     try { await api("/set-volume", { volume, vocalBoost }); } catch { }
 }
 
+export async function setAmpPanParams(_: any, params: any): Promise<{ ok: boolean; config?: any; }> {
+    try { return await api("/set-amp-pan", params); }
+    catch { return { ok: false }; }
+}
+
+export async function getAmpPanParams(_: any): Promise<{ ok: boolean; config?: any; }> {
+    try { return await api("/get-amp-pan"); }
+    catch { return { ok: false }; }
+}
+
+export async function setEq(_: any, bass: number, treble: number, mid: number, enabled = true): Promise<void> {
+    try { await api("/set-eq", { bass, treble, mid, enabled }); } catch { }
+}
+
 export async function fakeMute(_: any, userIds: string[], muted: boolean): Promise<void> {
     try { await api("/fake-mute", { userIds, muted }); } catch { }
 }
