@@ -433,6 +433,8 @@ const _pendingDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>(
 
 function syncGhostStateFromDiscord(userId: string) {
     try {
+        const myId = getMyId();
+        if (myId && userId === myId) return;
         const cur = ghostStates.get(userId) ?? defaultState();
         if (_manuallyDisabledUsers.has(userId)) {
             if (cur.active || cur.connecting) {
@@ -642,12 +644,14 @@ async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
         return savedAccounts;
     }
 
+    const myId = getMyId();
     const combined = new Map<string, GhostAccount>();
 
     // 1. Lire les comptes de TokenImporter
     const tiAccsRaw = await DataStore.get<any[]>(TI_ACCOUNTS_KEY) ?? [];
     for (const a of tiAccsRaw) {
         const uid = a.id || a.userId;
+        if (myId && uid === myId) continue;
         let tk = cleanToken(a.token);
         if (tk.startsWith("dQw4w9WgXcQ:")) {
             tk = await decryptToken(tk);
@@ -667,6 +671,7 @@ async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
     const gc2Accs = await DataStore.get<any[]>("nightcord-ghost-v2-tokens") ?? [];
     for (const a of [...gc1Accs, ...gc2Accs]) {
         const uid = a.userId || a.id;
+        if (myId && uid === myId) continue;
         let tk = cleanToken(a.token);
         if (tk.startsWith("dQw4w9WgXcQ:")) {
             tk = await decryptToken(tk);
@@ -711,7 +716,6 @@ async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
     }
 
     // Ne jamais inclure l'utilisateur actuel
-    const myId = getMyId();
     if (myId) combined.delete(myId);
 
     const result = Array.from(combined.values());
@@ -2609,17 +2613,24 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const btnRef = useRef<HTMLDivElement>(null);
 
-    // Précis: actif UNIQUEMENT si une connexion est activement en cours ou si le compte est véritablement présent dans un salon vocal
-    const anyActive = Array.from(states.entries()).some(([uid, s]) => {
-        if (s.connecting && isConnectingBatch) return true;
-        if (!s.active) return false;
-        try {
-            const vs = VoiceStateStore?.getVoiceStateForUser?.(uid);
-            return Boolean(vs?.channelId);
-        } catch {
-            return false;
-        }
-    });
+    const myId = getMyId();
+    const myVs = getMyVoiceState();
+
+    // Actif UNIQUEMENT si une connexion est activement en cours pour un compte fantôme (exclut myId),
+    // ou si au moins un compte fantôme est véritablement connecté DANS MON SALON VOCAL ACTUEL
+    const anyActive = Boolean(
+        (isConnectingBatch && Array.from(states.entries()).some(([uid, s]) => (!myId || uid !== myId) && s.connecting)) ||
+        (myVs?.channelId && Array.from(states.entries()).some(([uid, s]) => {
+            if (!uid || (myId && uid === myId)) return false;
+            if (!s.active) return false;
+            try {
+                const vs = VoiceStateStore?.getVoiceStateForUser?.(uid);
+                return vs?.channelId === myVs.channelId;
+            } catch {
+                return false;
+            }
+        }))
+    );
 
     useEffect(() => {
         if (!showPopover) return;
@@ -2923,17 +2934,19 @@ export default definePlugin({
                 if (!myVs || !myVs.channelId) {
                     for (const [uid, st] of ghostStates.entries()) {
                         if (st.active || st.connecting) {
-                            syncGhostStateFromDiscord(uid);
+                            const cur = ghostStates.get(uid) ?? defaultState();
+                            ghostStates.set(uid, { ...cur, active: false, connecting: false });
                         }
                     }
                 }
+                notify();
             }
-            if (data.userId && ghostStates.has(data.userId)) {
+            if (data.userId && data.userId !== myId && ghostStates.has(data.userId)) {
                 syncGhostStateFromDiscord(data.userId);
             }
             if (Array.isArray(data.voiceStates)) {
                 for (const s of data.voiceStates) {
-                    if (s?.userId && ghostStates.has(s.userId)) {
+                    if (s?.userId && s.userId !== myId && ghostStates.has(s.userId)) {
                         syncGhostStateFromDiscord(s.userId);
                     }
                 }
