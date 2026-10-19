@@ -129,7 +129,7 @@ const BASE_OPUS_BITRATES = [
 ];
 
 const defaultAmpConfig = {
-    enabled: false,
+    enabled: true,
     deess: false,
     vocalBoost: false,
     stereoMode: 0,
@@ -1034,6 +1034,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const updateAmp = (partial: any) => {
         setAmpConfig((prev: any) => {
             const next = { ...prev, ...partial };
+            if (partial.enabled === undefined && !next.enabled) {
+                next.enabled = true;
+            }
             ghostAmpConfig = next;
             DataStore.set(DS_KEY_AMP_CONFIG, next).catch(() => {});
             Native.setAmpPanParams(next).catch(() => {});
@@ -1145,6 +1148,29 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
         DataStore.get(DS_KEY_SHOW_AMP_PAN).then((v: boolean | null) => {
             if (v !== null) { setShowAmpPan(v); ghostShowAmpPan = v; }
+        }).catch(() => {});
+        DataStore.get(DS_KEY_SHOW_EQ).then((v: boolean | null) => {
+            if (v !== null) { setShowEq(v); ghostShowEq = v; }
+        }).catch(() => {});
+        Promise.all([
+            DataStore.get(DS_KEY_EQ_BASS),
+            DataStore.get(DS_KEY_EQ_TREBLE),
+            DataStore.get(DS_KEY_EQ_MID),
+            DataStore.get(DS_KEY_EQ_ENABLED),
+        ]).then(([b, tr, m, en]) => {
+            const nextBass = typeof b === "number" ? b : ghostEqBass;
+            const nextTreble = typeof tr === "number" ? tr : ghostEqTreble;
+            const nextMid = typeof m === "number" ? m : ghostEqMid;
+            const nextEn = typeof en === "boolean" ? en : ghostEqEnabled;
+            setEqBass(nextBass);
+            setEqTreble(nextTreble);
+            setEqMid(nextMid);
+            setEqEnabled(nextEn);
+            ghostEqBass = nextBass;
+            ghostEqTreble = nextTreble;
+            ghostEqMid = nextMid;
+            ghostEqEnabled = nextEn;
+            Native.setEq(nextBass, nextTreble, nextMid, nextEn).catch(() => {});
         }).catch(() => {});
         DataStore.get(DS_KEY_AMP_CONFIG).then((v: any) => {
             if (v) { setAmpConfig(v); ghostAmpConfig = v; }
