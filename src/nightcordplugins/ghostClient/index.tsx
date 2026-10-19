@@ -46,6 +46,8 @@ const UserAreaButton: any = (props: any) => {
 
 const VoiceStateStore = findStoreLazy("VoiceStateStore");
 const ChannelStore = findStoreLazy("ChannelStore");
+const SelectedChannelStore = findStoreLazy("SelectedChannelStore");
+const GuildStore = findStoreLazy("GuildStore");
 const FluxDispatcher = findByPropsLazy("dispatch", "subscribe");
 const UserStore = findStoreLazy("UserStore");
 
@@ -409,6 +411,7 @@ function defaultState(): GhostState {
 // ─── State global réactif ─────────────────────────────────────────────────────
 const ghostStates = new Map<string, GhostState>();
 const _leavingUsers = new Set<string>();
+const _manuallyDisabledUsers = new Set<string>();
 const _cachedGuildsMap = new Map<string, Set<string>>();
 let _cancelBatch = false;
 
@@ -426,12 +429,16 @@ function notify() { ghostListeners.forEach(f => f()); }
 
 const _pendingDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-
-
-
 function syncGhostStateFromDiscord(userId: string) {
     try {
         const cur = ghostStates.get(userId) ?? defaultState();
+        if (_manuallyDisabledUsers.has(userId)) {
+            if (cur.active || cur.connecting) {
+                ghostStates.set(userId, { ...cur, active: false, connecting: false });
+                notify();
+            }
+            return;
+        }
         if (_leavingUsers.has(userId)) {
             const vs = VoiceStateStore?.getVoiceStateForUser?.(userId);
             if (!vs || !vs.channelId) {
@@ -505,16 +512,37 @@ function getMyId(): string {
     try { return UserStore?.getCurrentUser?.()?.id ?? ""; } catch { return ""; }
 }
 
-function getMyVoiceState() {
+function getMyVoiceState(): { channelId: string; guildId: string; isDM?: boolean } | null {
     try {
         const id = getMyId();
-        if (!id) return null;
-        const vs = VoiceStateStore?.getVoiceStateForUser?.(id);
-        if (vs?.channelId) return { channelId: vs.channelId, guildId: vs.guildId ?? ChannelStore?.getChannel?.(vs.channelId)?.guild_id ?? "" };
-        const chId = VoiceStateStore?.getCurrentClientVoiceChannelId?.();
-        if (chId) { const ch = ChannelStore?.getChannel?.(chId); return { channelId: chId, guildId: ch?.guild_id ?? "" }; }
-    } catch {}
-    return null;
+        let channelId = "";
+        let guildId = "";
+
+        if (id) {
+            const vs = VoiceStateStore?.getVoiceStateForUser?.(id);
+            if (vs?.channelId) {
+                channelId = vs.channelId;
+                guildId = vs.guildId ?? "";
+            }
+        }
+
+        if (!channelId) {
+            channelId = SelectedChannelStore?.getVoiceChannelId?.() ?? "";
+        }
+
+        if (!channelId) return null;
+
+        const ch = ChannelStore?.getChannel?.(channelId);
+        if (ch) {
+            guildId = guildId || ch.guild_id || (typeof ch.getGuildId === "function" ? ch.getGuildId() : "") || "";
+            const isDM = ch.type === 1 || ch.type === 3 || Boolean(ch.isDM?.()) || Boolean(ch.isGroupDM?.());
+            return { channelId, guildId: guildId || "", isDM: Boolean(isDM) };
+        }
+
+        return { channelId, guildId: guildId || "" };
+    } catch {
+        return null;
+    }
 }
 
 function avatarUrl(userId: string, avatar: string | null) {
@@ -691,6 +719,7 @@ async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
 }
 
 async function ghostDeactivate(userId: string) {
+    _manuallyDisabledUsers.add(userId);
     if (_pendingDisconnectTimers.has(userId)) {
         clearTimeout(_pendingDisconnectTimers.get(userId)!);
         _pendingDisconnectTimers.delete(userId);
@@ -713,6 +742,7 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
     const guildId = curVoice?.guildId;
 
     for (const userId of ids) {
+        _manuallyDisabledUsers.add(userId);
         if (_pendingDisconnectTimers.has(userId)) {
             clearTimeout(_pendingDisconnectTimers.get(userId)!);
             _pendingDisconnectTimers.delete(userId);
@@ -778,6 +808,7 @@ function startFollowing() {
 
             const activeAccs = accounts.filter(a =>
                 !_leavingUsers.has(a.userId) &&
+                !_manuallyDisabledUsers.has(a.userId) &&
                 (ghostStates.get(a.userId)?.active === true || ghostStates.get(a.userId)?.connecting === true)
             );
             if (!activeAccs.length) return;
@@ -2564,20 +2595,25 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        // Vérifier si TOUS les comptes cibles sont déjà dans MON salon vocal actuel
-        const allTargetsInMyChannel = targets.length > 0 && targets.every(a => {
-            try {
-                const userVs = VoiceStateStore?.getVoiceStateForUser?.(a.userId);
-                return userVs?.channelId === vs.channelId;
-            } catch {
-                return false;
-            }
+        // Si au moins un compte cible est actif ou en cours de connexion, le clic gauche sert de toggle pour déconnecter
+        const anyTargetActive = targets.some(a => {
+            const s = ghostStates.get(a.userId);
+            const userVs = VoiceStateStore?.getVoiceStateForUser?.(a.userId);
+            return s?.active || s?.connecting || userVs?.channelId === vs.channelId;
         });
 
-        // Si tous les comptes cibles sont déjà connectés dans mon salon, le clic gauche sert de toggle pour déconnecter
-        if (allTargetsInMyChannel) {
+        if (anyTargetActive) {
             await ghostDisableClean(targets.map(a => a.userId));
             Toasts.show({ message: t("Ghost accounts disconnected"), type: Toasts.Type.SUCCESS, id: Toasts.genId() });
+            return;
+        }
+
+        if (vs.isDM && ChannelStore?.getChannel?.(vs.channelId)?.type === 1) {
+            Toasts.show({
+                message: t("Ghost accounts cannot join private 1-on-1 DMs. Please join a server voice channel or group call."),
+                type: Toasts.Type.FAILURE,
+                id: Toasts.genId()
+            });
             return;
         }
 
@@ -2593,6 +2629,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
         const connectSingleAccount = async (acc: GhostAccount) => {
             if (_cancelBatch) return;
+            _manuallyDisabledUsers.delete(acc.userId);
 
             let realToken = acc.token;
             try { realToken = await decryptToken(acc.token); } catch {}
@@ -2602,7 +2639,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             ghostStates.set(acc.userId, { ...cur, connecting: true, error: null });
             notify();
             try {
-                const result = await Native.connectGhost(acc.userId, realToken, vs.guildId, vs.channelId, ghostMicLabel);
+                const result = await Native.connectGhost(acc.userId, realToken, vs.guildId || "", vs.channelId, ghostMicLabel);
                 if (_cancelBatch) {
                     Native.leaveVoice(acc.userId, vs.guildId).catch(() => {});
                     const updated = ghostStates.get(acc.userId) ?? defaultState();
