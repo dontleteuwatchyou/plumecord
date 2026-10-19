@@ -5,7 +5,7 @@
  */
 
 import { app, BrowserWindow, ipcMain, type NativeImage, nativeImage, safeStorage, screen, session, type Session } from "electron";
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, promises as fsPromises, readdirSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
 export async function decryptToken(_: any, encryptedToken: string): Promise<string | null> {
@@ -111,44 +111,31 @@ function grantSessionMediaPermissions(ses: Session) {
 
 const SHARED_SETTINGS_FILE = join(app.getPath("userData"), "nightcord-mi-shared-settings.json");
 
-// Clés qu'on ne veut jamais copier d'une fenêtre à l'autre (identité du compte / session)
-const SHARED_SETTINGS_BLOCKLIST = new Set([
-    "token",
-    "default_token",
-    "multiaccount_tokens",
-    "tokens",
-    "user_id_cache",
-    "MultiAccountStore",
-    "AuthenticationStore",
-    "UserProfileStore",
-    "UserStore",
-    "login_token",
-    "email_cache"
+// Clés légères autorisées à être partagées entre instances (UI, thème, langue, zoom)
+const SHARED_SETTINGS_ALLOWLIST = new Set([
+    "theme",
+    "customThemeIndex",
+    "locale",
+    "developerMode",
+    "AccessibilityStore",
+    "WindowStore",
+    "fontSize",
+    "zoom"
 ]);
-
-const DUMP_LOCAL_STORAGE_SCRIPT = `
-(function() {
-    try {
-        const block = ["token", "default_token", "multiaccount_tokens", "tokens", "user_id_cache", "MultiAccountStore", "AuthenticationStore", "login_token"];
-        const out = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i);
-            if (!k || block.includes(k)) continue;
-            out[k] = localStorage.getItem(k);
-        }
-        return JSON.stringify(out);
-    } catch (e) {
-        return "{}";
-    }
-})();
-`;
 
 function loadSharedSettings(): Record<string, string> {
     try {
         if (!existsSync(SHARED_SETTINGS_FILE)) return {};
         const raw = readFileSync(SHARED_SETTINGS_FILE, "utf-8");
         const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === "object" ? parsed : {};
+        if (!parsed || typeof parsed !== "object") return {};
+        const cleaned: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+            if (SHARED_SETTINGS_ALLOWLIST.has(k) && typeof v === "string") {
+                cleaned[k] = v;
+            }
+        }
+        return cleaned;
     } catch {
         return {};
     }
@@ -156,35 +143,32 @@ function loadSharedSettings(): Record<string, string> {
 
 function saveSharedSettings(settings: Record<string, string>): void {
     try {
-        writeFileSync(SHARED_SETTINGS_FILE, JSON.stringify(settings), "utf-8");
+        fsPromises.writeFile(SHARED_SETTINGS_FILE, JSON.stringify(settings), "utf-8").catch(e => {
+            console.warn("[NightcordMI] Failed to save shared settings:", e);
+        });
     } catch (e) {
         console.warn("[NightcordMI] Failed to save shared settings:", e);
     }
 }
 
 /**
- * Capture le localStorage de la fenêtre qui a déclenché l'action (event.sender)
- * et le fusionne avec le cache déjà présent sur disque. Ne lève jamais d'erreur :
- * en cas de souci on retombe simplement sur le cache existant.
+ * Capture ou fusionne les réglages d'interface utilisateur (thème, zoom, langue)
+ * sans JAMAIS bloquer ni exécuter de script lourd sur la fenêtre Discord principale.
  */
-async function captureAndMergeSharedSettings(sourceEvent: any): Promise<Record<string, string>> {
+async function captureAndMergeSharedSettings(_sourceEvent: any, passedSettings?: Record<string, string>): Promise<Record<string, string>> {
     const existing = loadSharedSettings();
-    try {
-        const sourceWc = sourceEvent?.sender;
-        if (!sourceWc || sourceWc.isDestroyed?.()) return existing;
-        const dump = await sourceWc.executeJavaScript(DUMP_LOCAL_STORAGE_SCRIPT);
-        const captured = JSON.parse(dump || "{}");
+    if (passedSettings && typeof passedSettings === "object" && Object.keys(passedSettings).length > 0) {
         const filtered: Record<string, string> = {};
-        for (const [key, value] of Object.entries(captured)) {
-            if (SHARED_SETTINGS_BLOCKLIST.has(key)) continue;
-            if (typeof value === "string") filtered[key] = value;
+        for (const [key, value] of Object.entries(passedSettings)) {
+            if (SHARED_SETTINGS_ALLOWLIST.has(key) && typeof value === "string") {
+                filtered[key] = value;
+            }
         }
         const merged = { ...existing, ...filtered };
         saveSharedSettings(merged);
         return merged;
-    } catch {
-        return existing;
     }
+    return existing;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,7 +180,7 @@ const AUDIO_SETTINGS_FILE = join(app.getPath("userData"), "nightcord-mi-audio-se
 export function saveMasterAudioSettings(_: any, settings: any): boolean {
     try {
         if (!settings || typeof settings !== "object") return false;
-        writeFileSync(AUDIO_SETTINGS_FILE, JSON.stringify(settings), "utf-8");
+        fsPromises.writeFile(AUDIO_SETTINGS_FILE, JSON.stringify(settings), "utf-8").catch(() => {});
         return true;
     } catch (e) {
         console.warn("[NightcordMI] Failed to save master audio settings:", e);
@@ -271,7 +255,7 @@ export async function saveSharedAccounts(_: any, accounts: SharedAccountData[]):
             avatar: acc.avatar,
             token: encryptTokenSync(acc.token),
         }));
-        writeFileSync(SHARED_ACCOUNTS_FILE, JSON.stringify(toSave, null, 2), "utf-8");
+        await fsPromises.writeFile(SHARED_ACCOUNTS_FILE, JSON.stringify(toSave, null, 2), "utf-8");
         return true;
     } catch (e) {
         console.warn("[NightcordMI] saveSharedAccounts error:", e);
@@ -309,7 +293,7 @@ export async function saveSharedTokenCache(_: any, cache: Record<string, string>
                 encrypted[id] = encryptTokenSync(tok);
             }
         }
-        writeFileSync(SHARED_TOKEN_CACHE_FILE, JSON.stringify(encrypted, null, 2), "utf-8");
+        await fsPromises.writeFile(SHARED_TOKEN_CACHE_FILE, JSON.stringify(encrypted, null, 2), "utf-8");
         return true;
     } catch (e) {
         console.warn("[NightcordMI] saveSharedTokenCache error:", e);
@@ -334,7 +318,7 @@ export async function getSharedAutoLaunch(): Promise<string[]> {
 export async function saveSharedAutoLaunch(_: any, ids: string[]): Promise<boolean> {
     try {
         if (!Array.isArray(ids)) return false;
-        writeFileSync(SHARED_AUTOLAUNCH_FILE, JSON.stringify(ids.map(String), null, 2), "utf-8");
+        await fsPromises.writeFile(SHARED_AUTOLAUNCH_FILE, JSON.stringify(ids.map(String), null, 2), "utf-8");
         return true;
     } catch (e) {
         console.warn("[NightcordMI] saveSharedAutoLaunch error:", e);
@@ -773,20 +757,17 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
     const dir = join(app.getPath("userData"), "nightcord-mi-preloads");
     mkdirSync(dir, { recursive: true });
 
-    // ── Nettoyage des preloads orphelins ────────────────────────────────────────
-    // Supprime uniquement les fichiers token-preload-*.js qui ne sont PAS dans
-    // activePreloads (= fenêtre MI fermée ou crash précédent).
-    // On ne touche JAMAIS aux fichiers des fenêtres encore ouvertes, peu importe
-    // leur âge — un utilisateur peut garder une fenêtre MI ouverte des heures.
-    try {
-        for (const f of readdirSync(dir)) {
-            if (!/^token-preload-\d+\.js$/.test(f)) continue;
-            const fullPath = join(dir, f);
-            if (!activePreloads.has(fullPath)) {
-                try { unlinkSync(fullPath); } catch {}
+    setImmediate(() => {
+        try {
+            for (const f of readdirSync(dir)) {
+                if (!/^token-preload-\d+\.js$/.test(f)) continue;
+                const fullPath = join(dir, f);
+                if (!activePreloads.has(fullPath)) {
+                    try { unlinkSync(fullPath); } catch {}
+                }
             }
-        }
-    } catch {}
+        } catch {}
+    });
 
     const cleanToken = decryptTokenSync(token);
     const encryptedToken = encryptTokenSync(cleanToken);
@@ -931,39 +912,44 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
 // Compteur d'icones detached : tourne de 1 à N (9 icones disponibles)
 let iconCounter = 1;
 
+let cachedIconDir: string | null = null;
+let cachedIconCount: number | null = null;
+
 // Chemin vers le dossier d'icones detached (multi-instance-icons/ dans assets ou dist)
 function getDetachedIconDir(): string {
+    if (cachedIconDir) return cachedIconDir;
     // 1. Dossier assets du code source
     const sourceDir = join(__dirname, "..", "..", "assets", "multi-instance-icons");
-    if (existsSync(sourceDir)) return sourceDir;
+    if (existsSync(sourceDir)) return (cachedIconDir = sourceDir);
 
     // 2. Dossier dist aux côtés du patcher
     const distDir = join(__dirname, "multi-instance-icons");
-    if (existsSync(distDir)) return distDir;
+    if (existsSync(distDir)) return (cachedIconDir = distDir);
 
     // 3. Dossier de l'exécutable Discord / resources
     const exeDir = join(process.execPath, "..");
     const prodDir = join(exeDir, "multi-instance-icons");
-    if (existsSync(prodDir)) return prodDir;
+    if (existsSync(prodDir)) return (cachedIconDir = prodDir);
     const resDir = join(exeDir, "resources", "multi-instance-icons");
-    if (existsSync(resDir)) return resDir;
+    if (existsSync(resDir)) return (cachedIconDir = resDir);
 
     // 4. Dossier racine de travail
     const cwdDir = join(process.cwd(), "assets", "multi-instance-icons");
-    if (existsSync(cwdDir)) return cwdDir;
+    if (existsSync(cwdDir)) return (cachedIconDir = cwdDir);
 
-    return distDir;
+    return (cachedIconDir = distDir);
 }
 
 function getAvailableIconCount(): number {
+    if (cachedIconCount !== null) return cachedIconCount;
     try {
         const dir = getDetachedIconDir();
         if (existsSync(dir)) {
             const files = readdirSync(dir).filter(f => /^\d+\.ico$/i.test(f));
-            if (files.length > 0) return files.length;
+            if (files.length > 0) return (cachedIconCount = files.length);
         }
     } catch {}
-    return 9;
+    return (cachedIconCount = 9);
 }
 
 export async function openInstanceWindow(
@@ -975,7 +961,8 @@ export async function openInstanceWindow(
     domain = "discord.com",
     blockExternalTokenAccess = false,
     performanceMode = false,
-    audioSettings?: any
+    audioSettings?: any,
+    passedSharedSettings?: Record<string, string>
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
         const cleanTok = decryptTokenSync(token);
@@ -1040,7 +1027,7 @@ export async function openInstanceWindow(
             saveSharedTokenCache(null, { [userId]: token }).catch(() => {});
         }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
-        const sharedSettings = await captureAndMergeSharedSettings(_);
+        const sharedSettings = await captureAndMergeSharedSettings(_, passedSharedSettings);
         const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio, username);
         ses.setPreloads([preloadPath]);
 
@@ -1203,34 +1190,22 @@ export async function openInstanceWindow(
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }
-                const iframe = document.createElement("iframe");
-                iframe.style.display = "none";
-                document.body.appendChild(iframe);
-                try {
-                    iframe.contentWindow.localStorage.token = q;
-                    iframe.contentWindow.localStorage.default_token = q;
-                    if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
-                    if (tokensJson && tokensJson !== "{}") {
-                        iframe.contentWindow.localStorage.tokens = tokensJson;
-                        iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
-                    }
-                    if (rawAud && rawAud.length > 5) {
-                        iframe.contentWindow.localStorage.MediaEngineStore = rawAud;
-                    }
-                } catch(e) {}
-                document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
+        let hasInjected = false;
+        const runInjectOnce = () => {
+            if (hasInjected || win.isDestroyed() || wc.isDestroyed()) return;
+            hasInjected = true;
+            wc.executeJavaScript(injectJs).catch(() => {});
+        };
+
         wc.on("dom-ready", () => {
             showWindowSafely();
-            wc.executeJavaScript(injectJs).catch(() => {});
+            runInjectOnce();
         });
         wc.on("did-finish-load", () => {
             showWindowSafely();
-            wc.executeJavaScript(injectJs).catch(() => {});
-        });
-        wc.on("did-navigate", () => {
-            wc.executeJavaScript(injectJs).catch(() => {});
+            runInjectOnce();
         });
         setTimeout(showWindowSafely, 3000);
 
@@ -1257,7 +1232,9 @@ export async function openInstanceWindow(
 
         const validDomains = ["discord.com", "ptb.discord.com", "canary.discord.com"];
         const targetDomain = validDomains.includes(domain) ? domain : "discord.com";
-        await win.loadURL(`https://${targetDomain}/channels/@me`);
+        win.loadURL(`https://${targetDomain}/channels/@me`).catch(err => {
+            console.warn("[NightcordMI] loadURL navigation warning:", err);
+        });
         return { ok: true };
     } catch (e: any) {
         return { ok: false, error: e?.message ?? String(e) };
@@ -1278,7 +1255,8 @@ export async function openInstanceWindowGrouped(
     domain = "discord.com",
     blockExternalTokenAccess = false,
     performanceMode = false,
-    audioSettings?: any
+    audioSettings?: any,
+    passedSharedSettings?: Record<string, string>
 ): Promise<{ ok: boolean; error?: string; }> {
     try {
         const cleanTok = decryptTokenSync(token);
@@ -1331,7 +1309,7 @@ export async function openInstanceWindowGrouped(
             saveSharedTokenCache(null, { [userId]: token }).catch(() => {});
         }
         const effectiveAudio = audioSettings || getMasterAudioSettings();
-        const sharedSettings = await captureAndMergeSharedSettings(_);
+        const sharedSettings = await captureAndMergeSharedSettings(_, passedSharedSettings);
         const preloadPath = createTokenPreload(token, sharedSettings, userId, effectiveAudio, username);
         ses.setPreloads([preloadPath]);
 
@@ -1471,34 +1449,22 @@ export async function openInstanceWindowGrouped(
                     localStorage.removeItem("AuthenticationStore");
                     localStorage.removeItem("MultiAccountStore");
                 }
-                const iframe = document.createElement("iframe");
-                iframe.style.display = "none";
-                document.body.appendChild(iframe);
-                try {
-                    iframe.contentWindow.localStorage.token = q;
-                    iframe.contentWindow.localStorage.default_token = q;
-                    if (target) iframe.contentWindow.localStorage.user_id_cache = JSON.stringify(target);
-                    if (tokensJson && tokensJson !== "{}") {
-                        iframe.contentWindow.localStorage.tokens = tokensJson;
-                        iframe.contentWindow.localStorage.multiaccount_tokens = tokensJson;
-                    }
-                    if (rawAud && rawAud.length > 5) {
-                        iframe.contentWindow.localStorage.MediaEngineStore = rawAud;
-                    }
-                } catch(e) {}
-                document.body.removeChild(iframe);
             } catch(e) {}
         })();`;
+        let hasInjected = false;
+        const runInjectOnce = () => {
+            if (hasInjected || win.isDestroyed() || wc.isDestroyed()) return;
+            hasInjected = true;
+            wc.executeJavaScript(injectJs).catch(() => {});
+        };
+
         wc.on("dom-ready", () => {
             showWindowSafely();
-            wc.executeJavaScript(injectJs).catch(() => {});
+            runInjectOnce();
         });
         wc.on("did-finish-load", () => {
             showWindowSafely();
-            wc.executeJavaScript(injectJs).catch(() => {});
-        });
-        wc.on("did-navigate", () => {
-            wc.executeJavaScript(injectJs).catch(() => {});
+            runInjectOnce();
         });
         setTimeout(showWindowSafely, 3000);
 
@@ -1524,7 +1490,9 @@ export async function openInstanceWindowGrouped(
 
         const validDomains = ["discord.com", "ptb.discord.com", "canary.discord.com"];
         const targetDomain = validDomains.includes(domain) ? domain : "discord.com";
-        await win.loadURL(`https://${targetDomain}/channels/@me`);
+        win.loadURL(`https://${targetDomain}/channels/@me`).catch(err => {
+            console.warn("[NightcordMI] loadURL navigation warning:", err);
+        });
         return { ok: true };
     } catch (e: any) {
         return { ok: false, error: e?.message ?? String(e) };

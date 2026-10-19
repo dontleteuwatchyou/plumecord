@@ -101,6 +101,27 @@ export async function toggleAutoLaunchAccount(userId: string): Promise<boolean> 
     return setAccountAutoLaunch(userId, !isCurrently);
 }
 
+export function captureSharedUiSettings(): Record<string, string> {
+    const allowedKeys = [
+        "theme",
+        "customThemeIndex",
+        "locale",
+        "developerMode",
+        "AccessibilityStore",
+        "WindowStore",
+        "fontSize",
+        "zoom"
+    ];
+    const out: Record<string, string> = {};
+    try {
+        for (const k of allowedKeys) {
+            const val = window.localStorage.getItem(k);
+            if (val !== null) out[k] = val;
+        }
+    } catch {}
+    return out;
+}
+
 let autoLaunchDone = false;
 
 async function runAutoLaunch(): Promise<void> {
@@ -133,7 +154,7 @@ async function runAutoLaunch(): Promise<void> {
                 try {
                     const currentlyOpen = (await Native.getOpenInstances().catch(() => [])) ?? [];
                     if (currentlyOpen.includes(targetId)) return;
-                    console.log(`[NightcordMI] Auto-launching instance for ${username || targetId}...`);
+                    const uiSettings = captureSharedUiSettings();
                     await Native.openInstanceWindow(
                         tok,
                         targetId,
@@ -142,7 +163,8 @@ async function runAutoLaunch(): Promise<void> {
                         domain,
                         blockExternalTokenAccess,
                         performanceMode,
-                        audioSettings
+                        audioSettings,
+                        uiSettings
                     );
                 } catch (err) {
                     console.warn(`[NightcordMI] Auto-launch failed for ${targetId}:`, err);
@@ -1177,8 +1199,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
-        // @ts-ignore - Passage du pseudo, domaine, token protection, perf mode, audioSettings
-        const res = await Native.openInstanceWindow(acc.token, acc.id, false, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
+        const uiSettings = captureSharedUiSettings();
+        // @ts-ignore - Passage du pseudo, domaine, token protection, perf mode, audioSettings, uiSettings
+        const res = await Native.openInstanceWindow(acc.token, acc.id, false, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings, uiSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any)?.ok) {
             await refreshInstances();
         } else {
@@ -1199,8 +1222,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
-        // @ts-ignore - Argument 'detached', pseudo, domaine, token protection, perf mode, audioSettings
-        const res = await Native.openInstanceWindow(acc.token, acc.id, true, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
+        const uiSettings = captureSharedUiSettings();
+        // @ts-ignore - Argument 'detached', pseudo, domaine, token protection, perf mode, audioSettings, uiSettings
+        const res = await Native.openInstanceWindow(acc.token, acc.id, true, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings, uiSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any)?.ok) {
             await refreshInstances();
         } else {
@@ -1218,8 +1242,9 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
         }
         const { domain, blockExternalTokenAccess, performanceMode, syncAudioSettings } = settings.store;
         const audioSettings = syncAudioSettings ? captureMasterAudioSettings() : undefined;
+        const uiSettings = captureSharedUiSettings();
         // @ts-ignore
-        const res = await Native.openInstanceWindowGrouped(acc.token, acc.id, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings).catch(() => ({ ok: false, error: "error" }));
+        const res = await Native.openInstanceWindowGrouped(acc.token, acc.id, acc.username, domain, blockExternalTokenAccess, performanceMode, audioSettings, uiSettings).catch(() => ({ ok: false, error: "error" }));
         if ((res as any)?.ok) {
             await refreshInstances();
         } else {
