@@ -305,8 +305,17 @@ function startDomObserver() {
     if (document.querySelector("#user-profile-editing-panel, [class*='editingPanel_'], [class*='standardSidebarView_']")) {
         injectHypeSquadChangerIntoNativePanel();
     }
-    domObserver = new MutationObserver(() => {
+    domObserver = new MutationObserver(mutations => {
         if (!isPluginStarted || isHypeSquadThrottled) return;
+        let relevant = false;
+        for (const m of mutations) {
+            const target = m.target as HTMLElement;
+            if (target?.closest?.("#user-profile-editing-panel, [class*='editingPanel_'], [class*='standardSidebarView_'], [class*='layers_']")) {
+                relevant = true;
+                break;
+            }
+        }
+        if (!relevant) return;
         if (!document.querySelector("#user-profile-editing-panel, [class*='editingPanel_'], [class*='standardSidebarView_']")) return;
         isHypeSquadThrottled = true;
         requestAnimationFrame(() => {

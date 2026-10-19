@@ -294,6 +294,15 @@ function scanProfileButtons() {
     }
 }
 
+let _scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+function debouncedScanProfileButtons() {
+    if (_scanDebounceTimer !== null) return;
+    _scanDebounceTimer = setTimeout(() => {
+        _scanDebounceTimer = null;
+        scanProfileButtons();
+    }, 120);
+}
+
 export default definePlugin({
     name: "CopyProfileId",
     description: "Adds a button next to the Message button in user profile popouts to quickly copy the user ID.",
@@ -306,14 +315,36 @@ export default definePlugin({
     enabledByDefault: true,
 
     start() {
-        scanProfileButtons();
-        observer = new MutationObserver(() => {
-            scanProfileButtons();
+        debouncedScanProfileButtons();
+        observer = new MutationObserver(mutations => {
+            let relevant = false;
+            for (const m of mutations) {
+                const target = m.target as HTMLElement;
+                if (!target) continue;
+                if (target.closest?.("[class*='userProfile'], [class*='userPopout'], [class*='biteSize_'], [class*='profileButtons_'], [id^='popout_']")) {
+                    relevant = true;
+                    break;
+                }
+                for (const node of m.addedNodes) {
+                    if (node instanceof HTMLElement && (node.matches?.("[class*='userProfile'], [class*='userPopout'], [class*='biteSize_'], [class*='profileButtons_'], [id^='popout_']") || node.querySelector?.("[class*='profileButtons_'], .profileButtons__9c3be"))) {
+                        relevant = true;
+                        break;
+                    }
+                }
+                if (relevant) break;
+            }
+            if (relevant) {
+                debouncedScanProfileButtons();
+            }
         });
         observer.observe(document.body, { childList: true, subtree: true });
     },
 
     stop() {
+        if (_scanDebounceTimer !== null) {
+            clearTimeout(_scanDebounceTimer);
+            _scanDebounceTimer = null;
+        }
         observer?.disconnect();
         observer = null;
         for (const [spanEl, r] of mountedRoots.entries()) {

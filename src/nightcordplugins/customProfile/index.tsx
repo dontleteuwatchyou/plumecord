@@ -526,7 +526,23 @@ function setPublicProfileCache(userId: string, entry: { fetched: boolean, data: 
     publicProfilesCache.set(userId, entry);
 }
 
-const PUBLIC_CACHE_TTL = 1000 * 30;
+const PUBLIC_CACHE_TTL = 1000 * 60 * 5; // 5 minutes for positive cache
+const PUBLIC_CACHE_NEGATIVE_TTL = 1000 * 60 * 15; // 15 minutes for users without custom profile
+
+let _storesRerenderTimer: any = null;
+function scheduleStoresRerender() {
+    if (_storesRerenderTimer) return;
+    _storesRerenderTimer = setTimeout(() => {
+        _storesRerenderTimer = null;
+        try {
+            const UPS = (Vencord as any).Webpack?.findByProps?.("getUserProfile", "getGuildMemberProfile");
+            if (UPS && UPS.emitChange) UPS.emitChange();
+
+            const US = (Vencord as any).Webpack?.findByStoreName("UserStore");
+            if (US && US.emitChange) US.emitChange();
+        } catch {}
+    }, 200);
+}
 
 let _lastSeeAll = false;
 function checkSeeAllSettingChange() {
@@ -540,10 +556,12 @@ function checkSeeAllSettingChange() {
 const inFlightRequests = new Set<string>();
 
 async function fetchPublicProfileIfNeeded(userId: string) {
+    if (!userId) return;
     checkSeeAllSettingChange();
     if (!Settings.seeAllCustomProfile) return;
     const existing = publicProfilesCache.get(userId);
-    if (existing?.fetched && (Date.now() - existing.timestamp) < PUBLIC_CACHE_TTL) return;
+    const ttl = existing?.data ? PUBLIC_CACHE_TTL : PUBLIC_CACHE_NEGATIVE_TTL;
+    if (existing?.fetched && (Date.now() - existing.timestamp) < ttl) return;
 
     if (inFlightRequests.has(userId)) return;
     inFlightRequests.add(userId);
@@ -567,17 +585,13 @@ async function fetchPublicProfileIfNeeded(userId: string) {
         }
         setPublicProfileCache(userId, { fetched: true, data: dataToSave, timestamp: Date.now() });
 
-        try {
-            const UPS = (Vencord as any).Webpack?.findByProps?.("getUserProfile", "getGuildMemberProfile");
-            if (UPS && UPS.emitChange) UPS.emitChange();
-
-            const US = (Vencord as any).Webpack?.findByStoreName("UserStore");
-            if (US && US.emitChange) US.emitChange();
-        } catch {}
-    } catch (e: any) {
-        // Cache the failure so we don't spam requests for non-existent public profiles
+        // Only trigger store re-renders if actual custom profile properties exist
+        if (dataToSave && Object.keys(dataToSave).length > 0) {
+            scheduleStoresRerender();
+        }
+    } catch {
+        // Cache the negative result for 15 minutes so we don't spam network requests
         setPublicProfileCache(userId, { fetched: true, data: null, timestamp: Date.now() });
-        console.warn(`[CustomProfile] Failed to fetch public profile for ${userId} (User might not have customProfile):`, e.message || e);
     } finally {
         inFlightRequests.delete(userId);
     }
@@ -830,15 +844,6 @@ function applyAvatarPatchEarly() {
             // Own user
             if (isEnabled && storedData.avatar && isMe(uid)) {
                 return storedData.avatar;
-            }
-            // Other users via public cache
-            checkSeeAllSettingChange();
-            if (Settings.seeAllCustomProfile && !isMe(uid)) {
-                const cached = publicProfilesCache.get(uid);
-                if (cached?.fetched && cached.data?.avatar) {
-                    return cached.data.avatar;
-                }
-                fetchPublicProfileIfNeeded(uid);
             }
             return orig(user, ...args);
         };
@@ -1175,7 +1180,27 @@ function scanTextNode(node: Text) {
     if (replaced && result !== node.nodeValue) { if ((node as any).__cp_orig === undefined) { (node as any).__cp_orig = val; _modifiedNodes.add(node); } node.nodeValue = result; }
 }
 
+function isIgnoredContainer(node: Node): boolean {
+    const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    if (!el) return false;
+    return !!el.closest?.(
+        "[class*='sidebar_'], [class*='channels_'], [class*='membersWrap_'], [class*='members_'], [class*='messagesWrapper_'], [data-list-id='chat-messages'], [class*='guilds_']"
+    );
+}
+
+function isInsideProfileContainer(node: Node): boolean {
+    const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    if (!el) return false;
+    return !!el.closest?.(
+        "[class*='userProfile'], [class*='userPopout'], [class*='accountProfileCard'], [class*='profileModal'], [class*='profileThemes'], [class*='standardSidebarView'], section[aria-label], [id^='popout_']"
+    );
+}
+
 function scanNode(node: Node) {
+    if (!node) return;
+    if (isIgnoredContainer(node)) return;
+    if (!isInsideProfileContainer(node)) return;
+
     if (node.nodeType === Node.TEXT_NODE) { scanTextNode(node as Text); return; }
     if (node instanceof Element) {
         const tag = node.tagName;
@@ -1209,7 +1234,6 @@ function processDomBatch() {
                 }
             }
         }
-        // HypeSquad changer is handled by standalone HypeSquadChanger plugin
     } finally {
         if (isEnabled && obs) {
             obs.observe(document.body, { childList: true, subtree: true });
@@ -1222,41 +1246,17 @@ function startDomObserver() {
     if (!isEnabled || document.visibilityState === "hidden") return;
     if (!storedData?.username && !storedData?.globalName && !storedData?.createdAt) return;
 
-    // Time-sliced scanner that yields every 4ms so the main thread / UI never freezes at startup
     const runDeferredScan = () => {
         if (!isEnabled || document.visibilityState === "hidden") return;
         const targets = [
             document.querySelector("section[aria-label]"),
             document.querySelector("[class*='userProfile']"),
             document.querySelector("[class*='userPopout']"),
-            document.querySelector("[class*='accountProfileCard']")
+            document.querySelector("[class*='accountProfileCard']"),
+            document.querySelector("[class*='standardSidebarView']")
         ].filter(Boolean) as Node[];
 
         for (const t of targets) scanNode(t);
-
-        const ric = (window as any).requestIdleCallback || ((cb: any) => setTimeout(cb, 1000));
-        ric(() => {
-            if (!isEnabled || document.visibilityState === "hidden") return;
-            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-            let n: Node | null;
-            const slice = () => {
-                if (!isEnabled || document.visibilityState === "hidden") return;
-                const start = performance.now();
-                while ((n = walker.nextNode())) {
-                    const parent = n.parentElement;
-                    if (parent) {
-                        const tag = parent.tagName;
-                        if (tag === "SCRIPT" || tag === "STYLE" || tag === "SVG" || tag === "CANVAS" || tag === "VIDEO" || tag === "IFRAME") continue;
-                    }
-                    scanTextNode(n as Text);
-                    if (performance.now() - start > 4) {
-                        requestAnimationFrame(slice);
-                        return;
-                    }
-                }
-            };
-            slice();
-        }, { timeout: 3000 });
     };
 
     setTimeout(runDeferredScan, 1500);
@@ -1268,8 +1268,13 @@ function startDomObserver() {
             _domMutations = [];
             return;
         }
-        _domMutations.push(...mutations);
-        if (!_domQueued) {
+        for (const m of mutations) {
+            const target = m.target;
+            if (target && !isIgnoredContainer(target)) {
+                _domMutations.push(m);
+            }
+        }
+        if (_domMutations.length && !_domQueued) {
             _domQueued = true;
             setTimeout(processDomBatch, 100);
         }
@@ -3590,7 +3595,6 @@ export default definePlugin({
                         }
                         
                         if (Settings.seeAllCustomProfile && !isMe(userId)) {
-                            fetchPublicProfileIfNeeded(userId);
                             const cached = publicProfilesCache.get(userId);
                             if (cached?.fetched && cached.data && profile) {
                                 return this.hookOtherUserProfile(profile, cached.data, cached.timestamp, true);
