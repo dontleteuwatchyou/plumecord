@@ -173,7 +173,7 @@ function VencordChatBarButtons(props: ChatBarProps) {
                             style={{ display: "contents" }}
                             onContextMenu={e => {
                                 if (e.defaultPrevented) return;
-                                if (key.toLowerCase() === "translate") return;
+                                if (key.toLowerCase() === "translate" || key.toLowerCase() === "floodpanel") return;
                                 e.preventDefault();
                                 openPluginSettingsModal(key);
                             }}
@@ -230,7 +230,7 @@ export const ChatBarButton = ErrorBoundary.wrap((props: ChatBarButtonProps) => {
             e.stopPropagation();
             return;
         }
-        if (pluginKey?.toLowerCase() === "translate") {
+        if (pluginKey?.toLowerCase() === "translate" || pluginKey?.toLowerCase() === "floodpanel") {
             return;
         }
         if (!e.defaultPrevented && pluginKey) {

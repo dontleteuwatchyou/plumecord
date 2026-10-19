@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -71,11 +71,28 @@ export function FloodModal({ channel, rootProps, onRunningChange }: Props) {
     const [running, setRunning] = useState(false);
     const [status, setStatus] = useState("");
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const indexRef = useRef(0);
     const runningRef = useRef(false);
 
     const delayOptions = useMemo(() => DELAY_OPTIONS, []);
+
+    function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            const text = (ev.target?.result as string) || "";
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length > 0) {
+                setMessages(lines);
+                setFileName(`${file.name} (${lines.length} ${t("phrases")})`);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+    }
 
     useEffect(() => { onRunningChange(running); }, [running]);
     useEffect(() => {
@@ -173,6 +190,16 @@ export function FloodModal({ channel, rootProps, onRunningChange }: Props) {
                             {fileName ?? t("Default") + ` (${messages.length} ` + t("phrases)")}
                         </div>
                         <div className={`vc-flood-file-row ${Margins.bottom16}`}>
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                style={{ display: "none" }}
+                                accept=".txt,text/plain"
+                                onChange={handleFileUpload}
+                            />
+                            <Button variant="primary" size="small" onClick={() => fileInputRef.current?.click()}>
+                                {t("Load .txt file")}
+                            </Button>
                             <Button variant="secondary" size="small" onClick={() => {
                                 setEditValue(messages.join("\n"));
                                 setIsEditing(true);
@@ -190,15 +217,39 @@ export function FloodModal({ channel, rootProps, onRunningChange }: Props) {
 
                 {/* Delay */}
                 <HeadingSecondary className={Margins.bottom8}>{t("Delay between messages")}</HeadingSecondary>
-                <div className={Margins.bottom16}>
-                    <SafeSearchableSelect
-                        options={delayOptions}
-                        value={delayOptions.find(o => o.value === delayMs)?.value}
-                        placeholder={t("Choose a delay")}
-                        maxVisibleItems={8}
-                        closeOnSelect={true}
-                        onChange={(v: string) => setDelayMs(v)}
-                    />
+                <div className={Margins.bottom16} style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <div style={{ flex: 1 }}>
+                        <SafeSearchableSelect
+                            options={delayOptions}
+                            value={delayOptions.find(o => o.value === delayMs)?.value}
+                            placeholder={t("Choose a delay")}
+                            maxVisibleItems={8}
+                            closeOnSelect={true}
+                            onChange={(v: string) => setDelayMs(v)}
+                        />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <input
+                            type="number"
+                            min="0"
+                            max="60000"
+                            step="10"
+                            value={delayMs}
+                            onChange={e => setDelayMs(e.target.value)}
+                            style={{
+                                width: "80px",
+                                height: "36px",
+                                background: "var(--input-background, #1e1f22)",
+                                color: "var(--text-normal, #dbdee1)",
+                                border: "1px solid var(--input-border, #3b3e45)",
+                                borderRadius: "4px",
+                                padding: "0 8px",
+                                fontSize: "14px",
+                                textAlign: "right"
+                            }}
+                        />
+                        <span style={{ color: "var(--text-muted, #949ba4)", fontSize: "13px" }}>ms</span>
+                    </div>
                 </div>
 
                 {/* Status */}

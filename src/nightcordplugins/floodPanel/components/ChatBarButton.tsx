@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -17,7 +17,11 @@ export const FloodPanelButton: ChatBarButtonFactory = ({ isMainChat, channel }) 
 
     if (!isMainChat) return null;
 
-    function handleClick() {
+    function handleOpen(e?: any) {
+        if (e) {
+            e.preventDefault?.();
+            e.stopPropagation?.();
+        }
         openModal(props => (
             <FloodModal
                 channel={channel}
@@ -30,7 +34,8 @@ export const FloodPanelButton: ChatBarButtonFactory = ({ isMainChat, channel }) 
     return (
         <ChatBarButton
             tooltip={isRunning ? t("Flood in progress...") : t("Flood Panel")}
-            onClick={handleClick}
+            onClick={handleOpen}
+            onContextMenu={handleOpen}
             buttonProps={{ "aria-haspopup": "dialog" }}
         >
             <FloodIcon color={isRunning ? "var(--status-danger)" : undefined} />

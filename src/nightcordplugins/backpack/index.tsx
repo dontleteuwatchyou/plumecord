@@ -108,7 +108,7 @@ function BackpackPopout({ chatBarProps, closePopout }: { chatBarProps: ChatBarPr
                             }}
                             onContextMenu={e => {
                                 if (e.defaultPrevented) return;
-                                if (id.toLowerCase() === "translate") return;
+                                if (id.toLowerCase() === "translate" || id.toLowerCase() === "floodpanel") return;
                                 try {
                                     const { openPluginModal } = require("@components/settings/tabs/plugins/PluginModal");
                                     const pluginModule = require("~plugins");
