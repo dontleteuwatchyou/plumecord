@@ -1308,6 +1308,26 @@
     gap: 4px;
 }
 
+.gc-amp-reset-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-normal, #f2f3f5);
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    user-select: none;
+    outline: none;
+}
+
+.gc-amp-reset-btn:hover {
+    background: rgba(237, 66, 69, 0.15);
+    border-color: rgba(237, 66, 69, 0.5);
+    color: #f23f43;
+}
+
 
 /* ══════════════════════════════════════════════════════════════════════════════
    SUPER PAN GRID BOXES (remplace le <select> natif)

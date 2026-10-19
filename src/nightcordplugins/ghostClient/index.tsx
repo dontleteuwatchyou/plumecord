@@ -160,7 +160,8 @@ const defaultAmpConfig = {
     opusBoost: false,
     pitchEnabled: false,
     pitchSemitones: 0.0,
-    eightD: false
+    eightD: false,
+    eightDSpeed: 1.0
 };
 
 const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
@@ -1040,6 +1041,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             Native.setAmpPanParams(next).catch(() => {});
             return next;
         });
+    };
+
+    const resetAllAmpSettings = () => {
+        const fresh = { ...defaultAmpConfig, enabled: false };
+        setAmpConfig(fresh);
+        ghostAmpConfig = fresh;
+        DataStore.set(DS_KEY_AMP_CONFIG, fresh).catch(() => {});
+        Native.setAmpPanParams(fresh).catch(() => {});
     };
 
     const addCustomPan = () => {
@@ -1993,6 +2002,21 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 >
                     {t("360° 8D Audio Rotation (Slow Head Orbit)")}
                 </button>
+                <div className="gc-amp-slider-row" style={{ marginTop: 4 }}>
+                    <span className="gc-amp-slider-lbl">{t("Orbit Speed")}</span>
+                    <div className="gc-amp-range-wrap">
+                        <input
+                            type="range"
+                            className="gc-amp-range"
+                            min="0.2"
+                            max="5.0"
+                            step="0.1"
+                            value={ampConfig.eightDSpeed ?? 1.0}
+                            onChange={e => updateAmp({ eightDSpeed: parseFloat(e.target.value) })}
+                        />
+                        <span className="gc-amp-slider-val">{(ampConfig.eightDSpeed ?? 1.0).toFixed(1)}x</span>
+                    </div>
+                </div>
 
                 <div className="gc-amp-section-lbl" style={{ marginTop: 8 }}>{t("Super Pan")}</div>
                 <div className="gc-superpan-grid">
@@ -2361,6 +2385,27 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#f0b232"/></svg>
                         <span>{t("Applied to the microphone selected in Settings")}</span>
                     </div>
+                </div>
+
+                {/* FOOTER RESET ALL SETTINGS */}
+                <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingTop: 10,
+                    marginTop: 6,
+                    borderTop: "1px solid rgba(255, 255, 255, 0.08)"
+                }}>
+                    <button
+                        className="gc-amp-reset-btn"
+                        onClick={resetAllAmpSettings}
+                        title={t("Reset all Amp & Pan Engine settings to default (0)")}
+                    >
+                        {t("Reset all settings to 0")}
+                    </button>
+                    <span style={{ fontSize: 10, color: "var(--text-muted, #949ba4)", fontWeight: 600 }}>
+                        AMP & PAN ENGINE
+                    </span>
                 </div>
             </div>
         )}
