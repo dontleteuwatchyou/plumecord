@@ -69,7 +69,7 @@ const DS_KEY_AMP_CONFIG = "nightcord-ghost-amp-config";
 const DS_KEY_CUSTOM_PANS = "nightcord-ghost-custom-pans";
 const DS_KEY_CUSTOM_OPUS = "nightcord-ghost-custom-opus";
 
-let ghostShowAmpPan: boolean = true;
+let ghostShowAmpPan: boolean = false;
 let ghostAmpConfig: any = null;
 
 const STEREO_MODES = [
@@ -159,7 +159,8 @@ const defaultAmpConfig = {
     opusBitrate: 64000,
     opusBoost: false,
     pitchEnabled: false,
-    pitchSemitones: 0.0
+    pitchSemitones: 0.0,
+    eightD: false
 };
 
 const TI_ACCOUNTS_KEY = "TokenImporter_accounts";
@@ -172,7 +173,7 @@ let ghostEqBass: number = 12.0;
 let ghostEqTreble: number = 12.0;
 let ghostEqMid: number = -3.9;
 let ghostEqEnabled: boolean = true;
-let ghostShowEq: boolean = true;
+let ghostShowEq: boolean = false;
 let ghostVocalBoost: boolean = false;
 let _voiceSyncUnsub: (() => void) | null = null;
 
@@ -1021,12 +1022,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const [sliderKey, setSliderKey] = useState(0);
     const [dshowDevices, setDshowDevices] = useState<string[]>([]);
     const [serverInstalled, setServerInstalled] = useState<boolean>(true);
-    const [showEq, setShowEq] = useState(ghostShowEq);
+    const [showEq, setShowEq] = useState(false);
     const [eqBass, setEqBass] = useState(ghostEqBass);
     const [eqTreble, setEqTreble] = useState(ghostEqTreble);
     const [eqMid, setEqMid] = useState(ghostEqMid);
     const [eqEnabled, setEqEnabled] = useState(ghostEqEnabled);
-    const [showAmpPan, setShowAmpPan] = useState(true);
+    const [showAmpPan, setShowAmpPan] = useState(false);
     const [ampConfig, setAmpConfig] = useState<any>(ghostAmpConfig || defaultAmpConfig);
     const [customPans, setCustomPans] = useState<string[]>([]);
     const [customOpus, setCustomOpus] = useState<{ id: string; label: string }[]>([]);
@@ -1146,12 +1147,10 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             });
         }
 
-        DataStore.get(DS_KEY_SHOW_AMP_PAN).then((v: boolean | null) => {
-            if (v !== null) { setShowAmpPan(v); ghostShowAmpPan = v; }
-        }).catch(() => {});
-        DataStore.get(DS_KEY_SHOW_EQ).then((v: boolean | null) => {
-            if (v !== null) { setShowEq(v); ghostShowEq = v; }
-        }).catch(() => {});
+        setShowAmpPan(false);
+        ghostShowAmpPan = false;
+        setShowEq(false);
+        ghostShowEq = false;
         Promise.all([
             DataStore.get(DS_KEY_EQ_BASS),
             DataStore.get(DS_KEY_EQ_TREBLE),
@@ -1970,7 +1969,16 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     </div>
                 </div>
 
-                <div className="gc-amp-section-lbl">{t("Super Pan")}</div>
+                <div className="gc-amp-section-lbl" style={{ marginTop: 8 }}>{t("8D Audio Orbit")}</div>
+                <button
+                    className={`gc-amp-btn gc-amp-btn-full ${ampConfig.eightD ? "gc-amp-btn--active" : ""}`}
+                    onClick={() => updateAmp({ eightD: !ampConfig.eightD })}
+                    title={t("360° binaural rotation: sound slowly rotates front, back, left, and right around your head")}
+                >
+                    {t("360° 8D Audio Rotation (Slow Head Orbit)")}
+                </button>
+
+                <div className="gc-amp-section-lbl" style={{ marginTop: 8 }}>{t("Super Pan")}</div>
                 <div className="gc-superpan-grid">
                     {SUPER_PANS.map((sp, i) => (
                         <button
@@ -2574,6 +2582,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
     async function handleLeftClick(e?: any) {
         if (e && e.button !== undefined && e.button !== 0) return;
+        if (showPopover) setShowPopover(false);
 
         if (isConnectingBatch) {
             _cancelBatch = true;
@@ -2721,6 +2730,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
     const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) return;
+        if (showPopover) setShowPopover(false);
         handleLeftClick(e);
     };
 
