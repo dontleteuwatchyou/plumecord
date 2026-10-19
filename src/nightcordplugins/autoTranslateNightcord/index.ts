@@ -12,6 +12,8 @@ export type TranslationMap = Record<string, Record<SupportedLang, string>>;
 
 export const translations: TranslationMap = {
     "Amp & Pan Engine": {"en":"Amp & Pan Engine","fr":"Moteur Amp & Pan","ar":"محرك التضخيم والتوجيه","es":"Motor de amplificación y panorama","ru":"Движок усиления и панорамы","zh":"放大与声相引擎"},
+    "Enable Amp Engine": {"en":"Enable Amp Engine","fr":"Activer l'Amp Engine","ar":"تفعيل محرك التضخيم","es":"Activar motor de amplificación","ru":"Включить движок усиления","zh":"启用放大引擎"},
+    "Disable Amp Engine": {"en":"Disable Amp Engine","fr":"Désactiver l'Amp Engine","ar":"تعطيل محرك التضخيم","es":"Desactivar motor de amplificación","ru":"Отключить движок усиления","zh":"禁用放大引擎"},
     "Equalizer": {"en":"Equalizer","fr":"Égaliseur","ar":"المعادل الصوتي","es":"Ecualizador","ru":"Эквалайзер","zh":"均衡器"},
     "The amp panel never touches the system microphone - only the Discord audio stream": {"en":"The amp panel never touches the system microphone - only the Discord audio stream","fr":"Le panel amp ne touche jamais au micro système – uniquement le flux audio Discord","ar":"لوحة التضخيم لا تلمس ميكروفون النظام مطلقاً - فقط تدفق صوت ديسكورد","es":"El panel de amplificación nunca toca el micrófono del sistema, solo el flujo de audio de Discord","ru":"Панель усиления никогда не затрагивает системный микрофон — только аудиопоток Discord","zh":"放大面板绝不影响系统麦克风，仅处理 Discord 音频流"},
     "Vocal Processing": {"en":"Vocal Processing","fr":"Traitement vocal","ar":"معالجة الصوت","es":"Procesamiento vocal","ru":"Обработка вокала","zh":"人声处理"},

@@ -129,7 +129,7 @@ const BASE_OPUS_BITRATES = [
 ];
 
 const defaultAmpConfig = {
-    enabled: true,
+    enabled: false,
     deess: false,
     vocalBoost: false,
     stereoMode: 0,
@@ -169,10 +169,10 @@ let ghostMicLabel: string = "default";
 let ghostJoinDelay: number = 0;
 let isConnectingBatch = false;
 let ghostVolumeMultiplier: number = 1.0;
-let ghostEqBass: number = 12.0;
-let ghostEqTreble: number = 12.0;
-let ghostEqMid: number = -3.9;
-let ghostEqEnabled: boolean = true;
+let ghostEqBass: number = 0.0;
+let ghostEqTreble: number = 0.0;
+let ghostEqMid: number = 0.0;
+let ghostEqEnabled: boolean = false;
 let ghostShowEq: boolean = false;
 let ghostVocalBoost: boolean = false;
 let _voiceSyncUnsub: (() => void) | null = null;
@@ -1035,9 +1035,6 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     const updateAmp = (partial: any) => {
         setAmpConfig((prev: any) => {
             const next = { ...prev, ...partial };
-            if (partial.enabled === undefined && !next.enabled) {
-                next.enabled = true;
-            }
             ghostAmpConfig = next;
             DataStore.set(DS_KEY_AMP_CONFIG, next).catch(() => {});
             Native.setAmpPanParams(next).catch(() => {});
@@ -1172,7 +1169,12 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
             Native.setEq(nextBass, nextTreble, nextMid, nextEn).catch(() => {});
         }).catch(() => {});
         DataStore.get(DS_KEY_AMP_CONFIG).then((v: any) => {
-            if (v) { setAmpConfig(v); ghostAmpConfig = v; }
+            if (v && typeof v === "object") {
+                const merged = { ...defaultAmpConfig, ...v };
+                setAmpConfig(merged);
+                ghostAmpConfig = merged;
+                Native.setAmpPanParams(merged).catch(() => {});
+            }
         }).catch(() => {});
         DataStore.get(DS_KEY_CUSTOM_PANS).then((v: any) => {
             if (Array.isArray(v)) setCustomPans(v);
@@ -1901,13 +1903,27 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         </svg>
                         <span>{t("Amp & Pan Engine")}</span>
                     </span>
-                    <button
-                        className={`gc-amp-switch ${ampConfig.enabled ? "gc-amp-switch--on" : ""}`}
-                        onClick={() => updateAmp({ enabled: !ampConfig.enabled })}
-                        title={ampConfig.enabled ? "Désactiver l'Amp Engine" : "Activer l'Amp Engine"}
-                    >
-                        <div className="gc-amp-switch-knob" />
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <button
+                            className={`gc-amp-switch ${ampConfig.enabled ? "gc-amp-switch--on" : ""}`}
+                            onClick={() => updateAmp({ enabled: !ampConfig.enabled })}
+                            title={ampConfig.enabled ? t("Disable Amp Engine") : t("Enable Amp Engine")}
+                        >
+                            <div className="gc-amp-switch-knob" />
+                        </button>
+                        <button
+                            className="gc-vm-power-btn"
+                            style={{ padding: "3px 6px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                            onClick={() => {
+                                setShowAmpPan(false);
+                                ghostShowAmpPan = false;
+                                DataStore.set(DS_KEY_SHOW_AMP_PAN, false);
+                            }}
+                            title={t("Close")}
+                        >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                        </button>
+                    </div>
                 </div>
 
                 {/* TRAITEMENT VOCAL */}
@@ -2562,21 +2578,26 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
     useEffect(() => {
         if (!showPopover) return;
-        const handler = (e: MouseEvent) => {
+        const handler = (e: Event) => {
             const tgt = e.target as HTMLElement;
+            if (!tgt) return;
             if (tgt.closest(".gc-popover") || tgt.closest(".gc-popover-wrapper") || tgt.closest(".gc-vm-panel") || tgt.closest(".gc-amp-panel")) return;
             if (tgt.closest("[role='listbox']") || tgt.closest("[role='option']") || tgt.closest("[class*='popout']") || tgt.closest("[class*='layerContainer']")) return;
-            if (btnRef.current?.contains(tgt)) return;
+
+            if (btnRef.current?.contains(tgt)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
             setShowPopover(false);
         };
         const timer = setTimeout(() => {
-            document.addEventListener("mousedown", handler);
-            document.addEventListener("contextmenu", handler);
-        }, 150);
+            document.addEventListener("pointerdown", handler, true);
+            document.addEventListener("contextmenu", handler, true);
+        }, 50);
         return () => {
             clearTimeout(timer);
-            document.removeEventListener("mousedown", handler);
-            document.removeEventListener("contextmenu", handler);
+            document.removeEventListener("pointerdown", handler, true);
+            document.removeEventListener("contextmenu", handler, true);
         };
     }, [showPopover]);
 
@@ -2730,13 +2751,22 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
 
     const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
         if (e.button !== 0) return;
-        if (showPopover) setShowPopover(false);
+        if (showPopover) {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowPopover(false);
+            return;
+        }
         handleLeftClick(e);
     };
 
     const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
+        if (showPopover) {
+            setShowPopover(false);
+            return;
+        }
         openPopover();
     };
 
