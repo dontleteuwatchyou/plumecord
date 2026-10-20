@@ -128,7 +128,7 @@ export function QuickMessagesModal({
     }
 
     return (
-        <ModalRoot {...rootProps} size="medium" className="nc-qm-modal">
+        <ModalRoot {...rootProps} size="medium" className="nc-qm-modal theme-dark">
             <ModalHeader className="nc-qm-header">
                 <div className="nc-qm-title-row">
                     <div className="nc-qm-header-icon">
@@ -141,12 +141,13 @@ export function QuickMessagesModal({
 
             <ModalContent className="nc-qm-content">
                 <div className="nc-qm-search-bar-row">
-                    <TextInput
-                        className="nc-qm-search-input"
-                        placeholder={t("Search quick messages...")}
-                        value={searchQuery}
-                        onChange={setSearchQuery}
-                    />
+                    <div className="nc-qm-search-input-wrap">
+                        <TextInput
+                            placeholder={t("Search quick messages...")}
+                            value={searchQuery}
+                            onChange={setSearchQuery}
+                        />
+                    </div>
                     {!isFormOpen && (
                         <Button
                             size="small"

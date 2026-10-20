@@ -61,51 +61,8 @@
     width: 100%;
 }
 
-.nc-qm-search-input {
+.nc-qm-search-input-wrap {
     flex: 1;
-}
-
-/* Outer input wrapper styling */
-.nc-qm-modal [class*="inputWrapper"] {
-    background-color: var(--input-background, #1e1f22) !important;
-    border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
-    border-radius: 4px !important;
-    box-sizing: border-box !important;
-    padding: 0 !important;
-    transition: border-color 0.15s ease;
-}
-
-.nc-qm-modal [class*="inputWrapper"]:focus-within {
-    border-color: var(--brand-500, #5865f2) !important;
-}
-
-/* Inner input inside the wrapper: borderless and transparent, preventing double borders */
-.nc-qm-modal [class*="inputWrapper"] input,
-.nc-qm-modal [class*="inputWrapper"] [class*="inputDefault"],
-.nc-qm-search-input input {
-    background: transparent !important;
-    border: none !important;
-    outline: none !important;
-    box-shadow: none !important;
-    color: var(--text-normal, #dbdee1) !important;
-    font-size: 14px !important;
-    font-family: inherit !important;
-    padding: 8px 12px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* Standalone inputs (if rendered without inputWrapper) */
-.nc-qm-modal > input:not([class*="inputWrapper"] *),
-.nc-qm-form-card > input:not([class*="inputWrapper"] *) {
-    background-color: var(--input-background, #1e1f22) !important;
-    color: var(--text-normal, #dbdee1) !important;
-    border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
-    border-radius: 4px !important;
-    padding: 8px 12px !important;
-    font-size: 14px !important;
-    box-sizing: border-box !important;
-    width: 100% !important;
 }
 
 /* Textarea in form card */
@@ -127,7 +84,6 @@
     border-color: var(--brand-500, #5865f2) !important;
 }
 
-.nc-qm-modal input::placeholder,
 .nc-qm-modal textarea::placeholder {
     color: var(--text-muted, #949ba4) !important;
     opacity: 0.8 !important;
@@ -261,54 +217,4 @@
 .nc-qm-footer-info {
     font-size: 13px;
     color: var(--text-muted, #949ba4) !important;
-}
-
-/* ChatBar attach button injection */
-.nc-quick-messages-attach-wrapper {
-    position: sticky;
-    top: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 44px;
-    align-self: flex-start;
-    flex-shrink: 0;
-    padding-right: 4px;
-    margin-left: 0;
-}
-
-.nc-quick-messages-attach-btn {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--interactive-normal, #b5bac1) !important;
-    fill: var(--interactive-normal, #b5bac1) !important;
-    padding: 0 4px;
-    margin: 0;
-    height: 44px;
-    width: auto;
-    outline: none;
-    transition: color 0.15s ease, fill 0.15s ease, transform 0.1s ease;
-}
-
-.nc-quick-messages-attach-btn:hover {
-    color: var(--interactive-hover, #ffffff) !important;
-    fill: var(--interactive-hover, #ffffff) !important;
-}
-
-.nc-quick-messages-attach-btn:active {
-    color: var(--interactive-active, #ffffff) !important;
-    fill: var(--interactive-active, #ffffff) !important;
-    transform: scale(0.95);
-}
-
-.nc-quick-messages-attach-btn svg,
-.nc-quick-messages-attach-btn svg path {
-    color: inherit !important;
-    fill: currentColor !important;
-    transition: color 0.15s ease, fill 0.15s ease;
 }
