@@ -134,7 +134,7 @@ export function QuickMessagesModal({
                     <div className="nc-qm-header-icon">
                         <QuickMessagesIcon width={22} height={22} color="var(--brand-500)" />
                     </div>
-                    <HeadingPrimary>{t("Quick Messages")}</HeadingPrimary>
+                    <HeadingPrimary className="nc-qm-modal-title">{t("Quick Messages")}</HeadingPrimary>
                 </div>
                 <ModalCloseButton onClick={rootProps.onClose} />
             </ModalHeader>
