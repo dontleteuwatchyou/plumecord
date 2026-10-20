@@ -65,42 +65,72 @@
     flex: 1;
 }
 
-/* Force dark input and textarea styling */
-.nc-qm-modal input,
-.nc-qm-modal textarea,
-.nc-qm-search-input input,
-.nc-qm-search-input [class*="input"],
-.nc-qm-form-card input,
-.nc-qm-form-card textarea,
-.nc-qm-form-card [class*="input"] {
+/* Outer input wrapper styling */
+.nc-qm-modal [class*="inputWrapper"] {
+    background-color: var(--input-background, #1e1f22) !important;
+    border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
+    border-radius: 4px !important;
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    transition: border-color 0.15s ease;
+}
+
+.nc-qm-modal [class*="inputWrapper"]:focus-within {
+    border-color: var(--brand-500, #5865f2) !important;
+}
+
+/* Inner input inside the wrapper: borderless and transparent, preventing double borders */
+.nc-qm-modal [class*="inputWrapper"] input,
+.nc-qm-modal [class*="inputWrapper"] [class*="inputDefault"],
+.nc-qm-search-input input {
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    color: var(--text-normal, #dbdee1) !important;
+    font-size: 14px !important;
+    font-family: inherit !important;
+    padding: 8px 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Standalone inputs (if rendered without inputWrapper) */
+.nc-qm-modal > input:not([class*="inputWrapper"] *),
+.nc-qm-form-card > input:not([class*="inputWrapper"] *) {
     background-color: var(--input-background, #1e1f22) !important;
     color: var(--text-normal, #dbdee1) !important;
     border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
     border-radius: 4px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+/* Textarea in form card */
+.nc-qm-modal textarea {
+    background-color: var(--input-background, #1e1f22) !important;
+    color: var(--text-normal, #dbdee1) !important;
+    border: 1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
+    border-radius: 4px !important;
+    padding: 10px 12px !important;
     font-size: 14px !important;
     font-family: inherit !important;
     box-sizing: border-box !important;
+    width: 100% !important;
+    outline: none !important;
+    resize: vertical;
 }
 
-.nc-qm-search-input [class*="inputWrapper"],
-.nc-qm-search-input [class*="inputDefault"],
-.nc-qm-form-card [class*="inputWrapper"],
-.nc-qm-form-card [class*="inputDefault"] {
-    background-color: var(--input-background, #1e1f22) !important;
-    border-color: var(--background-modifier-accent, rgba(255, 255, 255, 0.08)) !important;
+.nc-qm-modal textarea:focus {
+    border-color: var(--brand-500, #5865f2) !important;
 }
 
 .nc-qm-modal input::placeholder,
-.nc-qm-modal textarea::placeholder,
-.nc-qm-search-input input::placeholder {
+.nc-qm-modal textarea::placeholder {
     color: var(--text-muted, #949ba4) !important;
     opacity: 0.8 !important;
-}
-
-.nc-qm-modal input:focus,
-.nc-qm-modal textarea:focus,
-.nc-qm-search-input input:focus {
-    border-color: var(--brand-500, #5865f2) !important;
 }
 
 .nc-qm-form-card {

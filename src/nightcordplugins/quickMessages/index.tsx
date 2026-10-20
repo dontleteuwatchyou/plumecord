@@ -6,11 +6,13 @@
 
 import "./styles.css";
 
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import { EquicordDevs } from "@utils/constants";
 import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
 import { findStoreLazy } from "@webpack";
+import { Menu } from "@webpack/common";
 
 import { QuickMessagesChatBarButton } from "./components/ChatBarButton";
 import { QuickMessagesIcon } from "./components/Icons";
@@ -22,6 +24,11 @@ const ChannelStore = findStoreLazy("ChannelStore");
 const SelectedChannelStore = findStoreLazy("SelectedChannelStore");
 
 export const settings = definePluginSettings({
+    showInAttachMenu: {
+        type: OptionType.BOOLEAN,
+        description: "Display Quick Messages in the attach (+) button menu.",
+        default: true
+    },
     showNextToAttach: {
         type: OptionType.BOOLEAN,
         description: "Display the Quick Messages button directly next to the attach (+) button.",
@@ -128,12 +135,44 @@ function stopObserver() {
     }
 }
 
+const channelAttachMenuPatch: NavContextMenuPatchCallback = (children, props) => {
+    if (settings.store.showInAttachMenu === false) return;
+    if (!props?.channel) return;
+    if (!Menu?.MenuItem) return;
+
+    children.push(
+        <Menu.MenuItem
+            id="nc-quick-messages-attach-menu"
+            key="nc-quick-messages-attach-menu"
+            label={t("Quick Messages")}
+            iconLeft={QuickMessagesIcon}
+            icon={QuickMessagesIcon}
+            leadingAccessory={{
+                type: "icon",
+                icon: QuickMessagesIcon
+            }}
+            action={() => {
+                openModal(modalProps => (
+                    <QuickMessagesModal
+                        rootProps={modalProps}
+                        channel={props.channel}
+                        autoCloseOnSend={settings.store.autoCloseOnSend}
+                    />
+                ));
+            }}
+        />
+    );
+};
+
 export default definePlugin({
     name: "QuickMessages",
     enabledByDefault: false,
     description: "Save custom preset messages and send or paste them instantly into any channel or DM with a single click.",
     authors: [EquicordDevs.nobody],
     settings,
+    contextMenus: {
+        "channel-attach": channelAttachMenuPatch
+    },
 
     chatBarButton: {
         icon: QuickMessagesIcon,

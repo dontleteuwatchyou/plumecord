@@ -7,24 +7,31 @@
 export function QuickMessagesIcon({
     width = 24,
     height = 24,
+    size,
     color = "currentColor",
-    className
+    className,
+    ...props
 }: {
     width?: number;
     height?: number;
+    size?: number;
     color?: string;
     className?: string;
+    [key: string]: any;
 }) {
+    const finalW = size ?? width;
+    const finalH = size ?? height;
     return (
         <svg
             className={`vc-ic-save-icon ${className ?? ""}`}
             aria-hidden="true"
             role="img"
             xmlns="http://www.w3.org/2000/svg"
-            width={width}
-            height={height}
+            width={finalW}
+            height={finalH}
             fill="none"
             viewBox="0 0 24 24"
+            {...props}
         >
             <path
                 d="M5 2a3 3 0 0 0-3 3v14a3 3 0 0 0 3 3h6.88c.37 0 .61-.38.5-.73a7 7 0 0 1-.37-2.7.53.53 0 0 0-.52-.57H6a1 1 0 1 1 0-2h6.36c.2 0 .37-.11.46-.28.3-.6.7-1.13 1.17-1.6.35-.37.11-1.12-.4-1.12H6a1 1 0 1 1 0-2h12a1 1 0 0 1 .88.52c.13.24.34.48.62.5.61.04 1.2.16 1.77.36.35.11.73-.13.73-.5V5a3 3 0 0 0-3-3H5Zm1 4a1 1 0 0 0 0 2h5a1 1 0 1 0 0-2H6Z"
