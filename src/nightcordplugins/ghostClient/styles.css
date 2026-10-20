@@ -18,8 +18,10 @@
 }
 
 /* Icon active = green */
-.gc-icon--active {
+.gc-icon--active,
+.gc-icon--active path {
     color: var(--status-positive, #23a55a) !important;
+    fill: var(--status-positive, #23a55a) !important;
 }
 
 /* Popover container */

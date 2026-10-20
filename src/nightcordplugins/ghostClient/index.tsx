@@ -319,9 +319,8 @@ async setEq(bass: number, treble: number, mid: number, enabled = true): Promise<
 // ─── Icons (Strict Zero-Emoji, Minimalist SVG Primitives) ────────────────────
 function GhostIcon({ width = 20, height = 20, className }: { width?: number; height?: number; className?: string; }) {
     return (
-        <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width={width} height={height} className={className} fill="none" viewBox="0 0 24 24">
-            <path fill="currentColor" d="M16 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM2 20.53A9.53 9.53 0 0 1 11.53 11h.94c1.28 0 2.5.25 3.61.7.41.18.36.77-.05.96a7 7 0 0 0-3.65 8.6c.11.36-.13.74-.5.74H6.15a.5.5 0 0 1-.5-.55l.27-2.6c.02-.26-.27-.37-.41-.16-.48.74-1.03 1.8-1.32 2.9a.53.53 0 0 1-.5.41h-.22C2.66 22 2 21.34 2 20.53Z" />
-            <path fill="currentColor" d="M24 19a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z" />
+        <svg className={`vc-ic-save-icon ${className ?? ""}`} aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width={width} height={height} fill="none" viewBox="0 0 24 24">
+            <path fill="var(--control-critical-primary-background-default)" d="M12.47 11c1.17 0 2.3.21 3.33.6.42.16.38.8.01 1.06-.9.63-1.5 1.67-1.5 2.9v1.58c0 .4-.25.76-.6.97l-.33.23A3.4 3.4 0 0 0 12 20.79l-.01.22v.22l.01.1c.04.34-.2.67-.54.67H6.15a.5.5 0 0 1-.5-.55l.27-2.6c.02-.26-.28-.37-.41-.16-.48.74-1.03 1.8-1.32 2.9a.53.53 0 0 1-.5.41h-.22C2.66 22 2 21.34 2 20.53A9.53 9.53 0 0 1 11.53 11h.94ZM12 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM16.31 15.55c0-1.06 1.05-1.8 2.05-1.46l4.66 1.59c.58.2.98.75.98 1.37v5.47c-.04.82-.92 1.48-2 1.48-1.11 0-2.01-.68-2.01-1.53 0-.84.9-1.52 2-1.52l.3.01v-3l-4.28-1.46v4.52c0 .84-.9 1.52-2 1.52-1.11 0-2.01-.69-2.01-1.53 0-.84.9-1.53 2-1.53l.31.02v-3.95Z" />
         </svg>
     );
 }
