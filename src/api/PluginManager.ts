@@ -180,20 +180,22 @@ export function subscribePluginFluxEvents(p: Plugin, fluxDispatcher: typeof Flux
 
         logger.debug("Subscribing to flux events of plugin", p.name);
         for (const [event, handler] of Object.entries(p.flux)) {
-            if ((handler as any).__vcWrapped) continue;
-            const wrappedHandler = p.flux[event] = function () {
-                if (p.name === "Encryptcord" && event === "MESSAGE_CREATE") return;
-                try {
-                    const res = handler!.apply(p, arguments as any);
-                    return res instanceof Promise
-                        ? res.catch(e => logger.error(`${p.name}: Error while handling ${event}\n`, e))
-                        : res;
-                } catch (e) {
-                    logger.error(`${p.name}: Error while handling ${event}\n`, e);
-                }
-            };
-            (wrappedHandler as any).__vcWrapped = true;
-            fluxDispatcher.subscribe(event as FluxEvents, wrappedHandler);
+            let wrappedHandler = handler;
+            if (!(handler as any).__vcWrapped) {
+                wrappedHandler = p.flux[event] = function () {
+                    if (p.name === "Encryptcord" && event === "MESSAGE_CREATE") return;
+                    try {
+                        const res = handler!.apply(p, arguments as any);
+                        return res instanceof Promise
+                            ? res.catch(e => logger.error(`${p.name}: Error while handling ${event}\n`, e))
+                            : res;
+                    } catch (e) {
+                        logger.error(`${p.name}: Error while handling ${event}\n`, e);
+                    }
+                };
+                (wrappedHandler as any).__vcWrapped = true;
+            }
+            fluxDispatcher.subscribe(event as FluxEvents, wrappedHandler!);
         }
     }
 }

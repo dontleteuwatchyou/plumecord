@@ -733,9 +733,22 @@ function SurveillanceTab() {
     const searchMeta = `${resultCount} ${t("shown")}${totalAvailable > SEARCH_RESULT_LIMIT ? ` ${t("of")} ${totalAvailable}` : ""}`;
 
     const addInputTargets = () => {
-        const ids = targetInput.match(/\d+/g) ?? [];
+        const trimmed = targetInput.trim();
+        let ids = trimmed.match(/\d{17,20}/g) ?? [];
         if (!ids.length) {
-            toast(t("Enter a valid Discord user ID."), Toasts.Type.FAILURE);
+            const clean = trimmed.replace(/^@/, "").toLowerCase();
+            const found = getCachedUsers().find(u =>
+                u.username.toLowerCase() === clean
+                || (u.globalName && u.globalName.toLowerCase() === clean)
+            );
+            if (found) {
+                ids = [found.id];
+            } else {
+                ids = trimmed.match(/\d+/g) ?? [];
+            }
+        }
+        if (!ids.length) {
+            toast(t("Enter a valid Discord user ID or username."), Toasts.Type.FAILURE);
             return;
         }
 
