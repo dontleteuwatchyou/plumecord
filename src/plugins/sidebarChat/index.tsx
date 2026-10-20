@@ -47,6 +47,10 @@ import {
 import { getOpenPopoutWindowKeys, getPersistedPopoutChannelIds, getPopoutWindowKey, isPopoutWindowOpen, settings, SidebarStore, syncPersistedPopoutWindows } from "./store";
 import style from "./styles.css?managed";
 
+if (typeof window !== "undefined") {
+    (window as any).vc_SidebarChat = null;
+}
+
 const cl = classNameFactory("vc-sidebar-chat-");
 
 const HeaderBar = findComponentByCodeLazy("toolbarClassName:", "}),onDoubleClick:");
@@ -261,9 +265,10 @@ const createPopoutChatContextMenuItem = (id: string, label: string, action: () =
 };
 
 const UserContextPatch: NavContextMenuPatchCallback = (children, args: { user: User; }) => {
+    const currentUserId = UserStore.getCurrentUser()?.id;
     const checks = [
         args.user,
-        args.user.id !== UserStore.getCurrentUser().id,
+        currentUserId && args.user.id !== currentUserId,
     ];
     if (checks.some(check => !check)) return;
     const channelId = ChannelStore.getDMFromUserId?.(args.user.id) ?? null;
@@ -299,6 +304,92 @@ const ChannelContextPatch: NavContextMenuPatchCallback = (children, args: { chan
     ));
 };
 
+function SidebarChatComponent() {
+    const { guild, channel /* width*/ } = useStateFromStores(
+        [SidebarStore, GuildStore, ChannelStore], () => {
+            const { channelId, guildId } = SidebarStore.getState();
+            return {
+                guild: GuildStore.getGuild(guildId),
+                channel: ChannelStore.getChannel(channelId)
+            };
+        }, []
+    );
+
+    const [channelSidebar, guildSidebar] = useStateFromStores(
+        [ChannelSectionStore, SelectedChannelStore, ChannelStore], () => {
+            const currentChannelId = SelectedChannelStore.getChannelId();
+            const currentGuildId = SelectedGuildStore.getGuildId?.() ?? "";
+            return [
+                ChannelSectionStore.getSidebarState?.(currentChannelId),
+                ChannelSectionStore.getGuildSidebarState?.(currentGuildId),
+            ];
+        }, []
+    );
+
+    useEffect(() => {
+        if (!channel?.id || MessageStore.getLastMessage(channel.id)) return;
+        MessageActions.fetchMessages({
+            channelId: channel.id,
+            limit: 50,
+        });
+    }, [channel?.id]);
+
+    const [width, setWidth] = useState(window.innerWidth);
+
+    useLayoutEffect(() => {
+        const handleResize = () => setWidth(window.innerWidth);
+
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+    const [View, setViewComponent] = useState<React.ReactNode>(null);
+
+    useEffect(() => {
+        if (!channel) return;
+
+        if (channel.isForumLikeChannel()) {
+            requireForumView().then(() => {
+                setViewComponent(
+                    <ForumView
+                        channel={channel}
+                        guild={guild}
+                        sidebarState={null}
+                    />
+                );
+            });
+
+            setViewComponent(
+                <div className={ChatClasses.loader}>
+                    <WanderingCubesLoading />
+                </div>
+            );
+        } else {
+            setViewComponent(
+                <Chat
+                    channel={channel}
+                    guild={guild}
+                    chatInputType={ChatInputTypes.SIDEBAR}
+                />
+            );
+        }
+    }, [channel]);
+
+    if (!channel || channelSidebar || guildSidebar) return null;
+
+    return (
+        <ErrorBoundary noop>
+            <Resize
+                sidebarType={Sidebars.MessageRequestSidebar}
+                maxWidth={~~(width * 0.31)/* width - 690*/}
+            >
+                <Header channel={channel} guild={guild} />
+                {View}
+            </Resize>
+        </ErrorBoundary>
+    );
+}
+
 export default definePlugin({
     name: "SidebarChat",
     authors: [Devs.Joona, EquicordDevs.justjxke],
@@ -308,15 +399,10 @@ export default definePlugin({
     patches: [
         {
             find: 'case"pendingFriends":',
-            group: true,
             replacement: [
                 {
-                    match: /ChannelRenderer"\),/,
-                    replace: "$&vc_SidebarChat=$self.renderSidebar(),"
-                },
-                {
                     match: /:(\(0,\i\.jsxs?\)\(\i,{}\))}(?<=default:.{0,300})/,
-                    replace: ":[$1, vc_SidebarChat]}"
+                    replace: ":[$1, $self.renderSidebarElement()]}"
                 },
             ],
         },
@@ -358,93 +444,16 @@ export default definePlugin({
     },
 
     async start() {
+        (window as any).vc_SidebarChat = null;
         restorePersistedPopouts();
     },
 
+    renderSidebarElement() {
+        return <SidebarChatComponent key="vc-sidebar-chat" />;
+    },
+
     renderSidebar() {
-        const { guild, channel /* width*/ } = useStateFromStores(
-            [SidebarStore, GuildStore, ChannelStore], () => {
-                const { channelId, guildId } = SidebarStore.getState();
-                return {
-                    guild: GuildStore.getGuild(guildId),
-                    channel: ChannelStore.getChannel(channelId)
-                };
-            }, []
-        );
-
-        const [channelSidebar, guildSidebar] = useStateFromStores(
-            [ChannelSectionStore, SelectedChannelStore, ChannelStore], () => {
-                const currentChannelId = SelectedChannelStore.getChannelId();
-                const currentGuildId = SelectedGuildStore.getGuildId()!;
-                return [
-                    ChannelSectionStore.getSidebarState(currentChannelId),
-                    ChannelSectionStore.getGuildSidebarState(currentGuildId),
-                ];
-            }, []
-        );
-
-        useEffect(() => {
-            if (!channel?.id || MessageStore.getLastMessage(channel.id)) return;
-            MessageActions.fetchMessages({
-                channelId: channel.id,
-                limit: 50,
-            });
-        }, [channel?.id]);
-
-        const [width, setWidth] = useState(window.innerWidth);
-
-        useLayoutEffect(() => {
-            const handleResize = () => setWidth(window.innerWidth);
-
-            window.addEventListener("resize", handleResize);
-            return () => window.removeEventListener("resize", handleResize);
-        }, []);
-
-        const [View, setViewComponent] = useState<React.ReactNode>(null);
-
-        useEffect(() => {
-            if (!channel) return;
-
-            if (channel.isForumLikeChannel()) {
-                requireForumView().then(() => {
-                    setViewComponent(
-                        <ForumView
-                            channel={channel}
-                            guild={guild}
-                            sidebarState={null}
-                        />
-                    );
-                });
-
-                setViewComponent(
-                    <div className={ChatClasses.loader}>
-                        <WanderingCubesLoading />
-                    </div>
-                );
-            } else {
-                setViewComponent(
-                    <Chat
-                        channel={channel}
-                        guild={guild}
-                        chatInputType={ChatInputTypes.SIDEBAR}
-                    />
-                );
-            }
-        }, [channel]);
-
-        if (!channel || channelSidebar || guildSidebar) return null;
-
-        return (
-            <ErrorBoundary noop>
-                <Resize
-                    sidebarType={Sidebars.MessageRequestSidebar}
-                    maxWidth={~~(width * 0.31)/* width - 690*/}
-                >
-                    <Header channel={channel} guild={guild} />
-                    {View}
-                </Resize>
-            </ErrorBoundary>
-        );
+        return <SidebarChatComponent key="vc-sidebar-chat" />;
     },
 });
 

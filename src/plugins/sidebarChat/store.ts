@@ -58,7 +58,9 @@ export const SidebarStore = proxyLazy(() => {
 
     let previous = { ...current };
 
-    class SidebarStore extends (FluxWP as IFlux).PersistedStore {
+    const BaseStore = (FluxWP as any)?.PersistedStore ?? (FluxWP as any)?.Store ?? FluxWP;
+
+    class SidebarStore extends BaseStore {
         static persistKey = "SidebarStore";
 
         // @ts-ignore
