@@ -9,8 +9,10 @@ import definePlugin, { OptionType } from "@utils/types";
 import { findByCodeLazy, findByPropsLazy } from "@webpack";
 import {
     ApplicationStreamingStore,
+    ChannelRTCStore,
     ChannelStore,
     FluxDispatcher,
+    RTCConnectionStore,
     SelectedChannelStore,
     showToast,
     Toasts,
@@ -20,7 +22,7 @@ import {
 
 import { t } from "../autoTranslateNightcord";
 
-interface ParsedStreamKey {
+interface StreamDescriptor {
     streamType: "guild" | "call";
     guildId?: string;
     channelId: string;
@@ -40,30 +42,17 @@ const settings = definePluginSettings({
     }
 });
 
-const watchStreamByCode = findByCodeLazy('type:"STREAM_WATCH"');
-const streamActions = findByPropsLazy("watchStream") ?? findByPropsLazy("stopWatchingStream");
-const streamKeyUtils = findByPropsLazy("encodeStreamKey", "decodeStreamKey");
+const watchStreamAction = findByCodeLazy('type:"STREAM_WATCH"');
+const ChannelRTCActions = findByPropsLazy("selectParticipant");
 
 const manuallyClosedStreams = new Set<string>();
 const watchedStreams = new Set<string>();
 const debounceTimers = new Map<string, any>();
+const channelRetryTimers: any[] = [];
 let currentVoiceChannelId: string | null = null;
 
-function parseStreamKey(streamKey: string): ParsedStreamKey | null {
-    if (typeof streamKeyUtils?.decodeStreamKey === "function") {
-        try {
-            const decoded = streamKeyUtils.decodeStreamKey(streamKey);
-            if (decoded && decoded.channelId && decoded.ownerId) {
-                return {
-                    streamType: decoded.streamType || (decoded.guildId ? "guild" : "call"),
-                    guildId: decoded.guildId || undefined,
-                    channelId: decoded.channelId,
-                    ownerId: decoded.ownerId
-                };
-            }
-        } catch {}
-    }
-
+function parseStreamKey(streamKey: string): StreamDescriptor | null {
+    if (!streamKey || typeof streamKey !== "string") return null;
     const parts = streamKey.split(":");
     if (parts[0] === "guild" && parts.length >= 4) {
         return {
@@ -84,13 +73,6 @@ function parseStreamKey(streamKey: string): ParsedStreamKey | null {
 }
 
 function makeStreamKey(stream: { streamType?: string; guildId?: string; channelId: string; ownerId: string }): string {
-    if (typeof streamKeyUtils?.encodeStreamKey === "function") {
-        try {
-            const encoded = streamKeyUtils.encodeStreamKey(stream);
-            if (typeof encoded === "string" && encoded.length > 0) return encoded;
-        } catch {}
-    }
-
     const isGuild = Boolean(stream.guildId) || stream.streamType === "guild";
     if (isGuild && stream.guildId) {
         return `guild:${stream.guildId}:${stream.channelId}:${stream.ownerId}`;
@@ -98,46 +80,65 @@ function makeStreamKey(stream: { streamType?: string; guildId?: string; channelI
     return `call:${stream.channelId}:${stream.ownerId}`;
 }
 
-function triggerWatchStream(stream: { streamType?: string; guildId?: string; channelId: string; ownerId: string }, streamKey: string) {
+function triggerWatchStream(stream: StreamDescriptor, streamKey: string) {
     const myId = UserStore.getCurrentUser()?.id;
-    if (stream.ownerId === myId) return;
+    if (!stream || stream.ownerId === myId) return;
 
     if (manuallyClosedStreams.has(streamKey)) return;
     if (watchedStreams.has(streamKey)) return;
 
     watchedStreams.add(streamKey);
 
-    const watchFn = streamActions?.watchStream ?? watchStreamByCode;
-    let success = false;
+    const allowMultiple = Boolean(settings.store.allowMultipleStreams);
+    const streamObj = {
+        streamType: stream.streamType || (stream.guildId ? "guild" : "call"),
+        guildId: stream.guildId,
+        channelId: stream.channelId,
+        ownerId: stream.ownerId
+    };
 
-    if (typeof watchFn === "function") {
-        try {
-            const streamObj = {
-                streamType: stream.streamType || (stream.guildId ? "guild" : "call"),
-                guildId: stream.guildId,
-                channelId: stream.channelId,
-                ownerId: stream.ownerId
-            };
+    // 1. Invoke Discord internal watchStream action if present
+    try {
+        const watchFn = typeof watchStreamAction === "function"
+            ? watchStreamAction
+            : typeof (watchStreamAction as any)?.watchStream === "function"
+                ? (watchStreamAction as any).watchStream
+                : typeof (watchStreamAction as any)?.A9 === "function"
+                    ? (watchStreamAction as any).A9
+                    : null;
+
+        if (watchFn) {
             watchFn(streamObj, {
-                allowMultiple: settings.store.allowMultipleStreams,
-                forceMultiple: settings.store.allowMultipleStreams
+                forceMultiple: allowMultiple,
+                allowMultiple,
+                forceFocus: true
             });
-            success = true;
-        } catch {}
-    }
+        }
+    } catch {}
 
-    if (!success) {
-        try {
+    // 2. Dispatch STREAM_WATCH Flux event for RTC signalling
+    try {
+        FluxDispatcher.dispatch({
+            type: "STREAM_WATCH",
+            streamKey,
+            allowMultiple
+        });
+    } catch {}
+
+    // 3. Select participant to bring stream onto active stage
+    try {
+        if (typeof ChannelRTCActions?.selectParticipant === "function") {
+            ChannelRTCActions.selectParticipant(stream.channelId, streamKey);
+        } else {
             FluxDispatcher.dispatch({
-                type: "STREAM_WATCH",
-                streamKey,
-                allowMultiple: settings.store.allowMultipleStreams
+                type: "CHANNEL_RTC_SELECT_PARTICIPANT",
+                channelId: stream.channelId,
+                id: streamKey
             });
-            success = true;
-        } catch {}
-    }
+        }
+    } catch {}
 
-    if (success && settings.store.showToast) {
+    if (settings.store.showToast) {
         try {
             const owner = UserStore.getUser(stream.ownerId);
             const name = owner?.globalName || owner?.username || "user";
@@ -146,7 +147,7 @@ function triggerWatchStream(stream: { streamType?: string; guildId?: string; cha
     }
 }
 
-function queueWatchStream(stream: { streamType?: string; guildId?: string; channelId: string; ownerId: string }, streamKey: string, delayMs = 150) {
+function queueWatchStream(stream: StreamDescriptor, streamKey: string, delayMs = 120) {
     if (manuallyClosedStreams.has(streamKey) || watchedStreams.has(streamKey)) return;
 
     if (debounceTimers.has(streamKey)) {
@@ -165,52 +166,89 @@ function queueWatchStream(stream: { streamType?: string; guildId?: string; chann
 
 function checkChannelStreams(channelId: string) {
     if (!channelId) return;
+    const currentVoice = SelectedChannelStore.getVoiceChannelId();
+    if (currentVoice !== channelId) return;
+
     const myId = UserStore.getCurrentUser()?.id;
-    const streamsToWatch: Array<{ stream: any; key: string }> = [];
+    const channel = ChannelStore.getChannel(channelId);
+    const guildId = channel?.guild_id;
+    const defaultStreamType: "guild" | "call" = guildId ? "guild" : "call";
 
-    // 1. ApplicationStreamingStore.getAllActiveStreamsForChannel
+    const candidateStreams: Array<{ stream: StreamDescriptor; key: string }> = [];
+
+    // 1. ChannelRTCStore: stream participants currently in the channel
     try {
-        if (typeof ApplicationStreamingStore?.getAllActiveStreamsForChannel === "function") {
-            const list = ApplicationStreamingStore.getAllActiveStreamsForChannel(channelId);
+        if (typeof ChannelRTCStore?.getStreamParticipants === "function") {
+            const participants = ChannelRTCStore.getStreamParticipants(channelId) as any[];
+            if (Array.isArray(participants)) {
+                for (const p of participants) {
+                    const ownerId = p?.user?.id || p?.userId;
+                    if (!ownerId || ownerId === myId) continue;
+
+                    const rawKey = p.id || p.streamId;
+                    if (rawKey && typeof rawKey === "string") {
+                        const parsed = parseStreamKey(rawKey);
+                        if (parsed) {
+                            candidateStreams.push({ stream: parsed, key: rawKey });
+                            continue;
+                        }
+                    }
+
+                    const fallback: StreamDescriptor = {
+                        streamType: defaultStreamType,
+                        guildId,
+                        channelId,
+                        ownerId
+                    };
+                    candidateStreams.push({ stream: fallback, key: makeStreamKey(fallback) });
+                }
+            }
+        }
+    } catch {}
+
+    // 2. ApplicationStreamingStore: all broadcasted application streams in this channel
+    try {
+        if (typeof (ApplicationStreamingStore as any)?.getAllApplicationStreamsForChannel === "function") {
+            const list = (ApplicationStreamingStore as any).getAllApplicationStreamsForChannel(channelId) as any[];
             if (Array.isArray(list)) {
                 for (const s of list) {
                     if (s && s.ownerId && s.ownerId !== myId) {
-                        streamsToWatch.push({ stream: s, key: makeStreamKey(s) });
+                        const streamType = (s.streamType as "guild" | "call") || (s.guildId ? "guild" : "call") || defaultStreamType;
+                        const desc: StreamDescriptor = {
+                            streamType,
+                            guildId: s.guildId || guildId,
+                            channelId: s.channelId || channelId,
+                            ownerId: s.ownerId
+                        };
+                        candidateStreams.push({ stream: desc, key: makeStreamKey(desc) });
                     }
                 }
             }
         }
     } catch {}
 
-    // 2. ApplicationStreamingStore.getActiveStreamsForChannel
+    // 3. ApplicationStreamingStore: active broadcast streams
     try {
-        if (typeof ApplicationStreamingStore?.getActiveStreamsForChannel === "function") {
-            const list = ApplicationStreamingStore.getActiveStreamsForChannel(channelId);
-            if (Array.isArray(list)) {
-                for (const s of list) {
-                    if (s && s.ownerId && s.ownerId !== myId) {
-                        streamsToWatch.push({ stream: s, key: makeStreamKey(s) });
-                    }
-                }
-            }
-        }
-    } catch {}
-
-    // 3. ApplicationStreamingStore.getAllActiveStreams
-    try {
-        if (typeof ApplicationStreamingStore?.getAllActiveStreams === "function") {
-            const list = ApplicationStreamingStore.getAllActiveStreams();
+        if (typeof (ApplicationStreamingStore as any)?.getAllActiveStreams === "function") {
+            const list = (ApplicationStreamingStore as any).getAllActiveStreams() as any[];
             if (Array.isArray(list)) {
                 for (const s of list) {
                     if (s && s.channelId === channelId && s.ownerId && s.ownerId !== myId) {
-                        streamsToWatch.push({ stream: s, key: makeStreamKey(s) });
+                        const streamType = (s.streamType as "guild" | "call") || (s.guildId ? "guild" : "call") || defaultStreamType;
+                        const desc: StreamDescriptor = {
+                            streamType,
+                            guildId: s.guildId || guildId,
+                            channelId: s.channelId || channelId,
+                            ownerId: s.ownerId
+                        };
+                        candidateStreams.push({ stream: desc, key: makeStreamKey(desc) });
                     }
                 }
             }
         }
     } catch {}
 
-    // 4. VoiceStateStore scan for streaming members
+    // 4. VoiceStateStore: scan for users with selfStream: true
     try {
         if (typeof VoiceStateStore?.getVoiceStatesForChannel === "function") {
             const states = VoiceStateStore.getVoiceStatesForChannel(channelId);
@@ -218,19 +256,26 @@ function checkChannelStreams(channelId: string) {
                 const list = Object.values(states) as any[];
                 for (const vs of list) {
                     if (vs && vs.userId && vs.userId !== myId && vs.selfStream) {
-                        const userStream = ApplicationStreamingStore?.getAnyStreamForUser?.(vs.userId)
-                            ?? ApplicationStreamingStore?.getActiveStreamForUser?.(vs.userId);
-                        if (userStream && userStream.channelId === channelId) {
-                            streamsToWatch.push({ stream: userStream, key: makeStreamKey(userStream) });
+                        const appStream = (ApplicationStreamingStore as any)?.getStreamForUser?.(vs.userId, vs.guildId || guildId)
+                            ?? (ApplicationStreamingStore as any)?.getAnyStreamForUser?.(vs.userId);
+
+                        if (appStream) {
+                            const streamType = (appStream.streamType as "guild" | "call") || (appStream.guildId ? "guild" : "call") || defaultStreamType;
+                            const desc: StreamDescriptor = {
+                                streamType,
+                                guildId: appStream.guildId || guildId,
+                                channelId: appStream.channelId || channelId,
+                                ownerId: vs.userId
+                            };
+                            candidateStreams.push({ stream: desc, key: makeStreamKey(desc) });
                         } else {
-                            const ch = ChannelStore.getChannel(channelId);
-                            const synth = {
-                                streamType: ch?.guild_id ? "guild" : "call",
-                                guildId: ch?.guild_id,
+                            const fallback: StreamDescriptor = {
+                                streamType: defaultStreamType,
+                                guildId,
                                 channelId,
                                 ownerId: vs.userId
                             };
-                            streamsToWatch.push({ stream: synth, key: makeStreamKey(synth) });
+                            candidateStreams.push({ stream: fallback, key: makeStreamKey(fallback) });
                         }
                     }
                 }
@@ -240,12 +285,40 @@ function checkChannelStreams(channelId: string) {
 
     // Deduplicate and queue watch
     const seen = new Set<string>();
-    for (const item of streamsToWatch) {
+    for (const item of candidateStreams) {
         if (seen.has(item.key)) continue;
         seen.add(item.key);
+
         if (manuallyClosedStreams.has(item.key) || watchedStreams.has(item.key)) continue;
-        queueWatchStream(item.stream, item.key, 200);
+
+        if (!settings.store.allowMultipleStreams && watchedStreams.size > 0) {
+            break;
+        }
+
+        queueWatchStream(item.stream, item.key, 120);
     }
+}
+
+function scheduleChannelChecks(channelId: string) {
+    clearChannelRetryTimers();
+    checkChannelStreams(channelId);
+
+    const delays = [250, 600, 1200, 2000];
+    for (const delay of delays) {
+        const timer = setTimeout(() => {
+            if (SelectedChannelStore.getVoiceChannelId() === channelId) {
+                checkChannelStreams(channelId);
+            }
+        }, delay);
+        channelRetryTimers.push(timer);
+    }
+}
+
+function clearChannelRetryTimers() {
+    for (const timer of channelRetryTimers) {
+        clearTimeout(timer);
+    }
+    channelRetryTimers.length = 0;
 }
 
 export default definePlugin({
@@ -258,12 +331,7 @@ export default definePlugin({
     start() {
         currentVoiceChannelId = SelectedChannelStore.getVoiceChannelId();
         if (currentVoiceChannelId) {
-            checkChannelStreams(currentVoiceChannelId);
-            setTimeout(() => {
-                if (SelectedChannelStore.getVoiceChannelId() === currentVoiceChannelId) {
-                    checkChannelStreams(currentVoiceChannelId!);
-                }
-            }, 500);
+            scheduleChannelChecks(currentVoiceChannelId);
         }
     },
 
@@ -271,6 +339,7 @@ export default definePlugin({
         currentVoiceChannelId = null;
         manuallyClosedStreams.clear();
         watchedStreams.clear();
+        clearChannelRetryTimers();
         for (const timer of debounceTimers.values()) {
             clearTimeout(timer);
         }
@@ -283,19 +352,31 @@ export default definePlugin({
                 currentVoiceChannelId = channelId;
                 manuallyClosedStreams.clear();
                 watchedStreams.clear();
+                clearChannelRetryTimers();
                 for (const timer of debounceTimers.values()) {
                     clearTimeout(timer);
                 }
                 debounceTimers.clear();
 
                 if (channelId) {
-                    checkChannelStreams(channelId);
-                    setTimeout(() => {
-                        if (SelectedChannelStore.getVoiceChannelId() === channelId) {
-                            checkChannelStreams(channelId);
-                        }
-                    }, 400);
+                    scheduleChannelChecks(channelId);
                 }
+            }
+        },
+
+        RTC_CONNECTION_STATE({ state }: { state: string }) {
+            if (state === "RTC_CONNECTED") {
+                const activeVoice = SelectedChannelStore.getVoiceChannelId();
+                if (activeVoice) {
+                    checkChannelStreams(activeVoice);
+                }
+            }
+        },
+
+        CHANNEL_RTC_ACTIVE_CHANNELS() {
+            const activeVoice = SelectedChannelStore.getVoiceChannelId();
+            if (activeVoice) {
+                checkChannelStreams(activeVoice);
             }
         },
 
@@ -312,7 +393,7 @@ export default definePlugin({
 
             if (manuallyClosedStreams.has(streamKey)) return;
 
-            queueWatchStream(parsed, streamKey, 150);
+            queueWatchStream(parsed, streamKey, 100);
         },
 
         STREAM_DELETE({ streamKey }: { streamKey: string }) {
@@ -366,6 +447,7 @@ export default definePlugin({
                     currentVoiceChannelId = null;
                     manuallyClosedStreams.clear();
                     watchedStreams.clear();
+                    clearChannelRetryTimers();
                     for (const timer of debounceTimers.values()) {
                         clearTimeout(timer);
                     }
