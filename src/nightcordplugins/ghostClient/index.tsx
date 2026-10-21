@@ -9,9 +9,12 @@ import "./styles.css";
 import { isPluginEnabled } from "@api/PluginManager";
 import { DataStore } from "@api/index";
 import { UserAreaButton as RawUserAreaButton } from "@api/UserArea";
+import { Button } from "@components/Button";
+import { FormSwitch } from "@components/FormSwitch";
+import { ModalCloseButton } from "@utils/modal";
 import definePlugin, { PluginNative } from "@utils/types";
 import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select } from "@webpack/common";
+import { React, ReactDOM, Toasts, useState, useEffect, useRef, useCallback, SettingsRouter, Slider, Select, Text, Tooltip } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 // UserAreaButton 100% sûr - aucun proxy lazy Webpack pour éviter les erreurs de type Reflect
@@ -978,40 +981,68 @@ function TokenControls({ acc, state }: { acc: GhostAccount; state: GhostState })
     }
 
     return (
-        <>
-            <button
-                className={`gc-ctrl-btn ${state.muted ? "gc-ctrl-btn--muted" : ""}`}
-                title={state.muted ? t("Unmute") : t("Mute")}
-                onClick={() => toggle("mute")}
-                disabled={!!busy}
-            >
-                {state.muted ? <MicOffIcon /> : <MicIcon />}
-            </button>
-            <button
-                className={`gc-ctrl-btn ${state.deafened ? "gc-ctrl-btn--deafened" : ""}`}
-                title={state.deafened ? t("Undeafen") : t("Deafen")}
-                onClick={() => toggle("deafen")}
-                disabled={!!busy}
-            >
-                {state.deafened ? <DeafenIcon /> : <UndeafenIcon />}
-            </button>
-            <button
-                className={`gc-ctrl-btn ${state.streaming ? "gc-ctrl-btn--streaming" : ""}`}
-                title={state.streaming ? t("Stop stream") : t("Start stream")}
-                onClick={() => toggle("stream")}
-                disabled={!!busy}
-            >
-                <StreamIcon />
-            </button>
-            <button
-                className={`gc-ctrl-btn ${state.camera ? "gc-ctrl-btn--cam" : ""}`}
-                title={state.camera ? t("Turn off camera") : t("Turn on camera")}
-                onClick={() => toggle("camera")}
-                disabled={!!busy}
-            >
-                <CamIcon />
-            </button>
-        </>
+        <div className="gc-account-actions">
+            <Tooltip text={state.muted ? t("Unmute") : t("Mute")}>
+                {(props: any) => (
+                    <Button
+                        {...props}
+                        size="iconOnly"
+                        variant={state.muted ? "dangerPrimary" : "secondary"}
+                        className="gc-action-btn"
+                        onClick={() => toggle("mute")}
+                        disabled={!!busy}
+                        aria-label={state.muted ? t("Unmute") : t("Mute")}
+                    >
+                        {state.muted ? <MicOffIcon width={14} height={14} /> : <MicIcon width={14} height={14} />}
+                    </Button>
+                )}
+            </Tooltip>
+            <Tooltip text={state.deafened ? t("Undeafen") : t("Deafen")}>
+                {(props: any) => (
+                    <Button
+                        {...props}
+                        size="iconOnly"
+                        variant={state.deafened ? "dangerPrimary" : "secondary"}
+                        className="gc-action-btn"
+                        onClick={() => toggle("deafen")}
+                        disabled={!!busy}
+                        aria-label={state.deafened ? t("Undeafen") : t("Deafen")}
+                    >
+                        {state.deafened ? <DeafenIcon width={14} height={14} /> : <UndeafenIcon width={14} height={14} />}
+                    </Button>
+                )}
+            </Tooltip>
+            <Tooltip text={state.streaming ? t("Stop stream") : t("Start stream")}>
+                {(props: any) => (
+                    <Button
+                        {...props}
+                        size="iconOnly"
+                        variant={state.streaming ? "primary" : "secondary"}
+                        className="gc-action-btn"
+                        onClick={() => toggle("stream")}
+                        disabled={!!busy}
+                        aria-label={state.streaming ? t("Stop stream") : t("Start stream")}
+                    >
+                        <StreamIcon width={14} height={14} />
+                    </Button>
+                )}
+            </Tooltip>
+            <Tooltip text={state.camera ? t("Turn off camera") : t("Turn on camera")}>
+                {(props: any) => (
+                    <Button
+                        {...props}
+                        size="iconOnly"
+                        variant={state.camera ? "primary" : "secondary"}
+                        className="gc-action-btn"
+                        onClick={() => toggle("camera")}
+                        disabled={!!busy}
+                        aria-label={state.camera ? t("Turn off camera") : t("Turn on camera")}
+                    >
+                        <CamIcon width={14} height={14} />
+                    </Button>
+                )}
+            </Tooltip>
+        </div>
     );
 }
 
@@ -1512,45 +1543,57 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
         <div ref={popoverRef} className="gc-popover-wrapper" style={style}>
             <div className="gc-popover">
             <div className="gc-popover-header">
-                <GhostIcon width={16} height={16} />
-                <span className="gc-popover-title">{t("Ghost Accounts")}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                    <GhostIcon width={16} height={16} />
+                    <Text variant="text-md/bold" color="header-primary" className="gc-popover-title">
+                        {t("Ghost Accounts")}
+                    </Text>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button
-                        className={`gc-amp-header-btn ${showAmpPan ? "gc-amp-header-btn--active" : ""}`}
-                        onClick={() => {
-                            const next = !showAmpPan;
-                            setShowAmpPan(next);
-                            ghostShowAmpPan = next;
-                            DataStore.set(DS_KEY_SHOW_AMP_PAN, next);
-                        }}
-                        title={t("Amp & Pan Engine")}
-                    >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
-                            <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
-                            <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
-                            <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
-                        </svg>
-                    </button>
-                    <button
-                        className={`gc-eq-header-btn ${showEq ? "gc-eq-header-btn--active" : ""}`}
-                        onClick={() => {
-                            const next = !showEq;
-                            setShowEq(next);
-                            ghostShowEq = next;
-                            DataStore.set(DS_KEY_SHOW_EQ, next);
-                        }}
-                        title={t("Equalizer")}
-                    >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="18" y1="20" x2="18" y2="10" />
-                            <line x1="12" y1="20" x2="12" y2="4" />
-                            <line x1="6" y1="20" x2="6" y2="14" />
-                        </svg>
-                    </button>
-                    <button className="gc-popover-close" onClick={onClose} title={t("Close")}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-                    </button>
+                    <Tooltip text={t("Amp & Pan Engine")}>
+                        {(props: any) => (
+                            <button
+                                {...props}
+                                className={`gc-amp-header-btn ${showAmpPan ? "gc-amp-header-btn--active" : ""}`}
+                                onClick={() => {
+                                    const next = !showAmpPan;
+                                    setShowAmpPan(next);
+                                    ghostShowAmpPan = next;
+                                    DataStore.set(DS_KEY_SHOW_AMP_PAN, next);
+                                }}
+                                aria-label={t("Amp & Pan Engine")}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+                                    <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+                                    <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+                                    <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
+                                </svg>
+                            </button>
+                        )}
+                    </Tooltip>
+                    <Tooltip text={t("Equalizer")}>
+                        {(props: any) => (
+                            <button
+                                {...props}
+                                className={`gc-eq-header-btn ${showEq ? "gc-eq-header-btn--active" : ""}`}
+                                onClick={() => {
+                                    const next = !showEq;
+                                    setShowEq(next);
+                                    ghostShowEq = next;
+                                    DataStore.set(DS_KEY_SHOW_EQ, next);
+                                }}
+                                aria-label={t("Equalizer")}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="18" y1="20" x2="18" y2="10" />
+                                    <line x1="12" y1="20" x2="12" y2="4" />
+                                    <line x1="6" y1="20" x2="6" y2="14" />
+                                </svg>
+                            </button>
+                        )}
+                    </Tooltip>
+                    <ModalCloseButton onClick={onClose} />
                 </div>
             </div>
 
@@ -1558,23 +1601,33 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 {/* Server alert banner */}
                 {!serverInstalled && (
                     <div className="gc-server-alert">
-                        <div className="gc-server-alert-title">{t("Companion Server Required")}</div>
-                        <div className="gc-server-alert-desc">{t("The background ghost-server is required to connect voice and stream audio.")}</div>
-                        <button
-                            className="gc-server-install-btn"
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                            <Text variant="text-xs/bold" color="text-danger" style={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+                                {t("Companion Server Required")}
+                            </Text>
+                            <Text variant="text-xs/normal" color="text-muted">
+                                {t("The background ghost-server is required to connect voice and stream audio.")}
+                            </Text>
+                        </div>
+                        <Button
+                            size="small"
+                            variant="dangerPrimary"
                             onClick={() => {
                                 onClose();
                                 SettingsRouter.openUserSettings("nightcord_ghost_client_installer_panel");
                             }}
                         >
                             {t("Open Installer")}
-                        </button>
+                        </Button>
                     </div>
                 )}
 
                 {/* Account and Mic Selectors */}
                 <div className="gc-dropdown-wrap">
-                    <div className="gc-dropdown-label"><UserIcon /><span>{t("Active accounts")}</span></div>
+                    <div className="gc-dropdown-label">
+                        <UserIcon />
+                        <Text variant="eyebrow" color="header-secondary">{t("Active accounts")}</Text>
+                    </div>
                     <Select
                         options={accountOptions}
                         value={selectedId}
@@ -1592,7 +1645,10 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     />
                 </div>
                 <div className="gc-dropdown-wrap">
-                    <div className="gc-dropdown-label"><MicIcon /><span>{t("Source microphone")}</span></div>
+                    <div className="gc-dropdown-label">
+                        <MicIcon />
+                        <Text variant="eyebrow" color="header-secondary">{t("Source microphone")}</Text>
+                    </div>
                     <Select
                         options={micOptions}
                         value={micLabel}
@@ -1609,60 +1665,76 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
                 <div className="gc-popover-divider" />
 
-                {/* Auto-follow toggle */}
-                <div className="gc-follow-row" onClick={() => toggleAutoFollow(!autoFollow)}>
-                    <div className="gc-follow-info">
-                        <span className="gc-follow-title">{t("Automatic voice tracking")}</span>
-                        <span className="gc-follow-sub">{t("Ghosts join your channel in real time")}</span>
-                    </div>
-                    <div className={`gc-toggle ${autoFollow ? "gc-toggle--on" : ""}`}><div className="gc-toggle-thumb" /></div>
-                </div>
+                {/* Auto-follow toggle (Discord native FormSwitch) */}
+                <FormSwitch
+                    title={t("Automatic voice tracking")}
+                    description={t("Ghosts join your channel in real time")}
+                    value={autoFollow}
+                    onChange={toggleAutoFollow}
+                    hideBorder={true}
+                    className="gc-form-switch"
+                />
 
                 {/* Join delay */}
                 <div className="gc-delay-row">
                     <div className="gc-delay-info">
-                        <span className="gc-delay-title"><TimerIcon /> {t("Join delay")}</span>
-                        <span className="gc-delay-sub">{t("Delay between each token connection")}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <TimerIcon width={14} height={14} />
+                            <Text variant="text-sm/semibold" color="header-primary">{t("Join delay")}</Text>
+                        </div>
+                        <Text variant="text-xs/normal" color="text-muted">{t("Delay between each token connection")}</Text>
                     </div>
                     <div className="gc-delay-ctrl">
-                        <button className="gc-delay-btn" onClick={() => {
-                            const v = Math.max(0, joinDelay - 50);
-                            setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
-                        }}>−</button>
-                        <span className="gc-delay-val">{joinDelay}ms</span>
-                        <button className="gc-delay-btn" onClick={() => {
-                            const v = Math.min(5000, joinDelay + 50);
-                            setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
-                        }}>+</button>
+                        <Button
+                            size="small"
+                            variant="secondary"
+                            className="gc-stepper-btn"
+                            onClick={() => {
+                                const v = Math.max(0, joinDelay - 50);
+                                setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
+                            }}
+                        >
+                            −
+                        </Button>
+                        <Text variant="text-xs/bold" color="header-primary" className="gc-delay-val">
+                            {joinDelay}ms
+                        </Text>
+                        <Button
+                            size="small"
+                            variant="secondary"
+                            className="gc-stepper-btn"
+                            onClick={() => {
+                                const v = Math.min(5000, joinDelay + 50);
+                                setJoinDelay(v); ghostJoinDelay = v; DataStore.set(DS_KEY_JOIN_DELAY, v);
+                            }}
+                        >
+                            +
+                        </Button>
                     </div>
                 </div>
 
                 {/* Volume Booster */}
-                <div style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    padding: "9px 11px",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 6,
-                    boxSizing: "border-box"
-                }}>
+                <div className="gc-booster-card">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <div className="gc-delay-info">
-                            <span className="gc-delay-title" style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <VolumeIcon /> {t("Volume Booster")}
-                            </span>
-                            <span className="gc-delay-sub">{t("Radically amplifies or lowers selected device volume")}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <VolumeIcon width={14} height={14} />
+                                <Text variant="text-sm/semibold" color="header-primary">{t("Volume Booster")}</Text>
+                            </div>
+                            <Text variant="text-xs/normal" color="text-muted">{t("Radically amplifies or lowers selected device volume")}</Text>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: volumeMultiplier > 1 ? "#faa61a" : "#fff", minWidth: 40, textAlign: "right", fontFamily: "monospace" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Text
+                                variant="text-xs/bold"
+                                color={volumeMultiplier > 1 ? "status-warning" : "header-primary"}
+                                style={{ minWidth: 40, textAlign: "right", fontFamily: "var(--font-code, monospace)" }}
+                            >
                                 {Math.round(volumeMultiplier * 100)}%
-                            </span>
-                            <button
-                                className="gc-delay-btn"
-                                title={t("Reset volume")}
-                                style={{ width: "auto", padding: "2px 6px", fontSize: 11 }}
+                            </Text>
+                            <Button
+                                size="small"
+                                variant="secondary"
+                                className="gc-reset-btn"
                                 onClick={() => {
                                     setVolumeMultiplier(1.0);
                                     ghostVolumeMultiplier = 1.0;
@@ -1672,11 +1744,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 }}
                             >
                                 {t("Reset")}
-                            </button>
+                            </Button>
                         </div>
                     </div>
                     {Slider ? (
-                        <div style={{ padding: "4px 2px 8px" }}>
+                        <div style={{ padding: "6px 2px 2px" }}>
                             <Slider
                                 key={sliderKey}
                                 minValue={0}
@@ -1713,8 +1785,8 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                 height: 6,
                                 borderRadius: 3,
                                 cursor: "pointer",
-                                accentColor: "#5865f2",
-                                background: "rgba(255,255,255,0.15)",
+                                accentColor: "var(--brand-500, #5865f2)",
+                                background: "var(--background-modifier-accent)",
                             }}
                         />
                     )}
@@ -1723,10 +1795,14 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-popover-divider" />
 
                 {/* Accounts list header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div className="gc-section-label">{t("Accounts (Native + Imported)")}</div>
-                    <button
-                        style={{ background: "none", border: "none", color: "#5865f2", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "2px 4px" }}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                    <Text variant="eyebrow" color="header-secondary">
+                        {t("Accounts (Native + Imported)")}
+                    </Text>
+                    <Button
+                        size="small"
+                        variant="link"
+                        className="gc-reverify-btn"
                         onClick={async () => {
                             Toasts.show({ message: t("Checking tokens..."), type: Toasts.Type.INFO, id: Toasts.genId() });
                             let ok = 0;
@@ -1747,14 +1823,16 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         }}
                     >
                         {t("Re-verify")}
-                    </button>
+                    </Button>
                 </div>
 
                 {/* Batch controls */}
                 {accounts.length > 0 && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 5 }}>
-                        <button
-                            className="gc-batch-btn"
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                        <Button
+                            size="small"
+                            variant={accounts.some(a => ghostStates.get(a.userId)?.muted) ? "dangerPrimary" : "secondary"}
+                            className="gc-batch-button"
                             title={t("Mute / Unmute all tokens")}
                             onClick={async () => {
                                 const anyMuted = accounts.some(a => ghostStates.get(a.userId)?.muted);
@@ -1769,9 +1847,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                         >
                             {accounts.some(a => ghostStates.get(a.userId)?.muted) ? t("Unmute All") : t("Mute All")}
-                        </button>
-                        <button
-                            className="gc-batch-btn"
+                        </Button>
+                        <Button
+                            size="small"
+                            variant={accounts.some(a => ghostStates.get(a.userId)?.deafened) ? "dangerPrimary" : "secondary"}
+                            className="gc-batch-button"
                             title={t("Deafen / Undeafen all tokens")}
                             onClick={async () => {
                                 const anyDeaf = accounts.some(a => ghostStates.get(a.userId)?.deafened);
@@ -1786,9 +1866,11 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                         >
                             {accounts.some(a => ghostStates.get(a.userId)?.deafened) ? t("Undeaf All") : t("Deafen All")}
-                        </button>
-                        <button
-                            className="gc-batch-btn"
+                        </Button>
+                        <Button
+                            size="small"
+                            variant={accounts.some(a => ghostStates.get(a.userId)?.camera) ? "primary" : "secondary"}
+                            className="gc-batch-button"
                             title={t("Turn on / off camera for all tokens")}
                             onClick={async () => {
                                 const anyCam = accounts.some(a => ghostStates.get(a.userId)?.camera);
@@ -1803,7 +1885,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                             }}
                         >
                             {accounts.some(a => ghostStates.get(a.userId)?.camera) ? t("Cam Off All") : t("Cam All")}
-                        </button>
+                        </Button>
                     </div>
                 )}
 
@@ -1811,7 +1893,9 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-accounts">
                     {accounts.length === 0 && (
                         <div className="gc-empty">
-                            {t("No accounts — tokens are automatically scanned from local Discord clients or imported from TokenImporter.")}
+                            <Text variant="text-xs/normal" color="text-muted">
+                                {t("No accounts — tokens are automatically scanned from local Discord clients or imported from TokenImporter.")}
+                            </Text>
                         </div>
                     )}
                     {accounts.map(acc => {
@@ -1827,8 +1911,10 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                         <div className={`gc-status-dot ${isStreaming ? "gc-dot--stream" : isActive ? "gc-dot--voice" : isConnecting ? "gc-dot--connecting" : "gc-dot--off"}`} />
                                     </div>
                                     <div className="gc-account-info">
-                                        <span className="gc-account-name" title={acc.username}>{acc.username}</span>
-                                        <span className="gc-account-status">
+                                        <Text variant="text-sm/semibold" color="header-primary" className="gc-account-name" title={acc.username}>
+                                            {acc.username}
+                                        </Text>
+                                        <Text variant="text-xs/normal" color="text-muted" className="gc-account-status">
                                             {isConnecting
                                                 ? t("Connecting to voice...")
                                                 : isStreaming
@@ -1842,21 +1928,28 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                                                                 : state.error
                                                                     ? `${t("Error: ")}${state.error.slice(0, 35)}`
                                                                     : t("Disconnected")}
-                                        </span>
+                                        </Text>
                                     </div>
                                 </div>
-                                <div className="gc-account-actions">
+                                <div className="gc-account-actions-wrap">
                                     <TokenControls acc={acc} state={state} />
-                                    <button
-                                        className="gc-btn-del"
-                                        title={t("Delete account")}
-                                        onClick={async () => {
-                                            await ghostDeactivate(acc.userId);
-                                            await saveAccounts(accounts.filter(a => a.userId !== acc.userId));
-                                        }}
-                                    >
-                                        <TrashIcon />
-                                    </button>
+                                    <Tooltip text={t("Delete account")}>
+                                        {(props: any) => (
+                                            <Button
+                                                {...props}
+                                                size="iconOnly"
+                                                variant="dangerSecondary"
+                                                className="gc-action-btn gc-action-del-btn"
+                                                onClick={async () => {
+                                                    await ghostDeactivate(acc.userId);
+                                                    await saveAccounts(accounts.filter(a => a.userId !== acc.userId));
+                                                }}
+                                                aria-label={t("Delete account")}
+                                            >
+                                                <TrashIcon width={14} height={14} />
+                                            </Button>
+                                        )}
+                                    </Tooltip>
                                 </div>
                             </div>
                         );
@@ -1865,30 +1958,21 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
                 {/* TokenImporter helper notice text (replaces manual token textarea) */}
                 <div className="gc-popover-divider" />
-                <div style={{
-                    padding: "8px 10px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    background: "rgba(255,255,255,0.02)",
-                    borderRadius: 6,
-                    border: "1px solid rgba(255,255,255,0.05)",
-                    cursor: "pointer"
-                }} onClick={handleOpenTokenImporter}>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: 1.4 }}>
+                <div className="gc-importer-card" onClick={handleOpenTokenImporter}>
+                    <Text variant="text-xs/normal" color="text-muted" style={{ lineHeight: 1.4 }}>
                         {t("Manage and add accounts from the TokenImporter plugin.")}
-                    </span>
-                    <button
-                        className="gc-batch-btn"
-                        style={{ whiteSpace: "nowrap", flexShrink: 0, padding: "4px 8px" }}
-                        onClick={(e) => {
+                    </Text>
+                    <Button
+                        size="small"
+                        variant="primary"
+                        className="gc-importer-btn"
+                        onClick={(e: React.MouseEvent) => {
                             e.stopPropagation();
                             handleOpenTokenImporter();
                         }}
                     >
                         TokenImporter
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>
@@ -1923,18 +2007,13 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         >
                             <div className="gc-amp-switch-knob" />
                         </button>
-                        <button
-                            className="gc-vm-power-btn"
-                            style={{ padding: "3px 6px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        <ModalCloseButton
                             onClick={() => {
                                 setShowAmpPan(false);
                                 ghostShowAmpPan = false;
                                 DataStore.set(DS_KEY_SHOW_AMP_PAN, false);
                             }}
-                            title={t("Close")}
-                        >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-                        </button>
+                        />
                     </div>
                 </div>
 
@@ -2397,15 +2476,16 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                     justifyContent: "space-between",
                     paddingTop: 10,
                     marginTop: 6,
-                    borderTop: "1px solid rgba(255, 255, 255, 0.08)"
+                    borderTop: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.08))"
                 }}>
-                    <button
-                        className="gc-amp-reset-btn"
+                    <Button
+                        size="small"
+                        variant="secondary"
                         onClick={resetAllAmpSettings}
                         title={t("Reset all Amp & Pan Engine settings to default (0)")}
                     >
                         {t("Reset all settings to 0")}
-                    </button>
+                    </Button>
                     <span style={{ fontSize: 10, color: "var(--text-muted, #949ba4)", fontWeight: 600 }}>
                         AMP & PAN ENGINE
                     </span>
@@ -2430,18 +2510,13 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                         >
                             {eqEnabled ? "ON" : "BYP"}
                         </button>
-                        <button
-                            className="gc-vm-power-btn"
-                            style={{ padding: "3px 6px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        <ModalCloseButton
                             onClick={() => {
                                 setShowEq(false);
                                 ghostShowEq = false;
                                 DataStore.set(DS_KEY_SHOW_EQ, false);
                             }}
-                            title={t("Close")}
-                        >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
-                        </button>
+                        />
                     </div>
                 </div>
 
