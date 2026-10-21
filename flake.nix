@@ -14,33 +14,51 @@
           config.allowUnfree = true;
         };
 
-        nightcordPkg = pkgs.callPackage ./default.nix { };
+        nightcordPkg = pkgs.callPackage ./default.nix {
+          src = self;
+          gitHash = self.rev or "unknown";
+        };
 
-        # Wraps official Discord binaries with Nightcord desktop patcher
-        wrapDiscord = discordPkg: pkgs.runCommand "${discordPkg.name}-nightcord" {
-          nativeBuildInputs = [ pkgs.makeWrapper ];
-          meta = discordPkg.meta // {
-            description = "${discordPkg.meta.description or "Discord"} (with Nightcord mod)";
-            mainProgram = discordPkg.meta.mainProgram or "discord";
-          };
-        } ''
-          mkdir -p $out
-          cp -rs --no-preserve=mode,ownership ${discordPkg}/* $out/
-
-          for res in $out/opt/*/resources $out/share/*/resources $out/opt/discord*/resources $out/lib/*/resources; do
-            if [ -d "$res" ]; then
-              rm -rf "$res/app"
-              mkdir -p "$res/app"
-              cat << 'EOF' > "$res/app/package.json"
-{
-  "name": "discord",
-  "main": "index.js"
-}
-EOF
-              echo 'require("${nightcordPkg}/share/nightcord/patcher.js");' > "$res/app/index.js"
-            fi
-          done
-        '';
+        # Injects Nightcord desktop patcher into Discord by overriding unwrappedDiscord
+        wrapDiscord = discordPkg:
+          if discordPkg ? unwrappedDiscord then
+            discordPkg.override {
+              unwrappedDiscord = discordPkg.unwrappedDiscord.overrideAttrs (old: {
+                postInstall = (old.postInstall or "") + ''
+                  if [ -f "$out/opt/Discord/resources/app.asar" ]; then
+                    mv $out/opt/Discord/resources/app.asar $out/opt/Discord/resources/_app.asar
+                    mkdir $out/opt/Discord/resources/app.asar
+                    echo '{"name":"discord","main":"index.js"}' > $out/opt/Discord/resources/app.asar/package.json
+                    echo 'require("${nightcordPkg}/share/nightcord/patcher.js")' > $out/opt/Discord/resources/app.asar/index.js
+                  else
+                    for asar in $out/opt/*/resources/app.asar; do
+                      if [ -f "$asar" ]; then
+                        dir="$(dirname "$asar")"
+                        mv "$asar" "$dir/_app.asar"
+                        mkdir -p "$asar"
+                        echo '{"name":"discord","main":"index.js"}' > "$asar/package.json"
+                        echo 'require("${nightcordPkg}/share/nightcord/patcher.js")' > "$asar/index.js"
+                      fi
+                    done
+                  fi
+                '';
+              });
+            }
+          else
+            # Fallback for non-FHS Discord derivations (e.g. Darwin or standalone)
+            discordPkg.overrideAttrs (old: {
+              postInstall = (old.postInstall or "") + ''
+                for asar in $out/opt/*/resources/app.asar $out/Applications/*/Contents/Resources/app.asar; do
+                  if [ -f "$asar" ]; then
+                    dir="$(dirname "$asar")"
+                    mv "$asar" "$dir/_app.asar"
+                    mkdir -p "$asar"
+                    echo '{"name":"discord","main":"index.js"}' > "$asar/package.json"
+                    echo 'require("${nightcordPkg}/share/nightcord/patcher.js")' > "$asar/index.js"
+                  fi
+                done
+              '';
+            });
       in rec {
         packages = {
           # The core Nightcord compiled desktop JS/CSS files
@@ -70,22 +88,21 @@ EOF
       }
     ) // {
       overlays.default = final: prev: {
-        nightcord = final.callPackage ./default.nix { };
+        nightcord = final.callPackage ./default.nix {
+          src = self;
+          gitHash = self.rev or "unknown";
+        };
 
-        discord-nightcord = final.runCommand "discord-nightcord" {
-          nativeBuildInputs = [ final.makeWrapper ];
-        } ''
-          mkdir -p $out
-          cp -rs --no-preserve=mode,ownership ${final.discord}/* $out/
-          for res in $out/opt/*/resources $out/share/*/resources $out/opt/discord*/resources $out/lib/*/resources; do
-            if [ -d "$res" ]; then
-              rm -rf "$res/app"
-              mkdir -p "$res/app"
-              echo '{"name":"discord","main":"index.js"}' > "$res/app/package.json"
-              echo 'require("${final.nightcord}/share/nightcord/patcher.js");' > "$res/app/index.js"
-            fi
-          done
-        '';
+        discord-nightcord = final.discord.override {
+          unwrappedDiscord = final.discord.unwrappedDiscord.overrideAttrs (old: {
+            postInstall = (old.postInstall or "") + ''
+              mv $out/opt/Discord/resources/app.asar $out/opt/Discord/resources/_app.asar
+              mkdir $out/opt/Discord/resources/app.asar
+              echo '{"name":"discord","main":"index.js"}' > $out/opt/Discord/resources/app.asar/package.json
+              echo 'require("${final.nightcord}/share/nightcord/patcher.js")' > $out/opt/Discord/resources/app.asar/index.js
+            '';
+          });
+        };
 
         # Default discord package override
         discord = final.discord-nightcord;

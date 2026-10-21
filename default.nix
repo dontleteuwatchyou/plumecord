@@ -1,45 +1,60 @@
 { lib
 , stdenv
-, nodejs_20
-, pnpm ? null
+, fetchPnpmDeps
+, nodejs
+, pnpm_10
+, pnpmConfigHook
+, git
+, src ? lib.cleanSource ./.
+, gitHash ? null
 }:
 
-stdenv.mkDerivation rec {
+let
+  packageJson = builtins.fromJSON (builtins.readFile "${src}/package.json");
+in
+stdenv.mkDerivation (finalAttrs: {
   pname = "nightcord";
-  version = "1.27.8";
+  version = packageJson.version;
 
-  src = lib.cleanSource ./.;
+  inherit src;
+
+  pnpmDeps = fetchPnpmDeps {
+    inherit (finalAttrs) pname version src;
+    pnpm = pnpm_10;
+    fetcherVersion = 4;
+    hash = "sha256-Ta84vdQEcxDm7tKiiT25+GPyGijATFP5uoSjNDodLZs=";
+  };
 
   nativeBuildInputs = [
-    nodejs_20
-  ] ++ lib.optional (pnpm != null) pnpm.configHook;
+    nodejs
+    pnpm_10
+    pnpmConfigHook
+    git
+  ];
+
+  env = {
+    NIGHTCORD_REMOTE = "nightcord/nightcord";
+    NIGHTCORD_HASH = if gitHash != null then gitHash else (src.rev or "unknown");
+    SOURCE_DATE_EPOCH = builtins.toString (src.lastModified or 0);
+  };
 
   buildPhase = ''
     runHook preBuild
-    if [ -d "dist/desktop" ] && [ -f "dist/desktop/patcher.js" ]; then
-      echo "Nightcord: Using pre-compiled dist/desktop build."
-    else
-      echo "Nightcord: Building dist files..."
-      node --require=./scripts/suppressExperimentalWarnings.js scripts/build/build.mjs || true
-    fi
+    pnpm run build -- --standalone --disable-updater
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
     mkdir -p $out/share/nightcord
-    if [ -d "dist/desktop" ]; then
-      cp -r dist/desktop/* $out/share/nightcord/
-    elif [ -d "dist" ]; then
-      cp -r dist/* $out/share/nightcord/
-    fi
+    cp -r dist/desktop/* $out/share/nightcord/
     runHook postInstall
   '';
 
   meta = with lib; {
-    description = "Everything Discord doesn't build, we create (Nightcord)";
-    homepage = "https://source.nightcord.st/nightcord/nightcord";
+    description = "Discord client mod (Nightcord)";
+    homepage = "https://nightcord.st";
     license = licenses.gpl3Plus;
-    platforms = platforms.all;
+    platforms = platforms.linux;
   };
-}
+})
