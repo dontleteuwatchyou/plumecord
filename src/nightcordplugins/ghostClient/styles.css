@@ -28,6 +28,7 @@
 .gc-popover {
     width: 380px;
     max-width: calc(100vw - 20px);
+    max-height: inherit;
     background: var(--background-floating, #2b2d31);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
@@ -35,6 +36,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
 }
 
 .gc-popover-header {
@@ -545,9 +547,16 @@
 .gc-popover-wrapper {
     display: flex;
     flex-direction: row;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: 10px;
     pointer-events: auto;
+    max-width: calc(100vw - 20px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .gc-eq-header-btn {
@@ -582,17 +591,25 @@
 /* VoiceMeeter Hardware Rack Styling */
 .gc-vm-panel {
     width: 250px;
+    max-width: calc(100vw - 20px);
+    max-height: inherit !important;
     background: var(--background-floating, #2b2d31);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
     box-shadow: var(--elevation-high, 0 16px 48px rgba(0, 0, 0, 0.65));
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
     animation: gcVmSlide 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     box-sizing: border-box;
     font-family: var(--font-primary, sans-serif);
     user-select: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 @keyframes gcVmSlide {
@@ -868,8 +885,9 @@
    ══════════════════════════════════════════════════════════════════════════════ */
 
 .gc-amp-panel {
-    width: 370px;
-    max-height: 600px;
+    width: 380px;
+    max-width: calc(100vw - 20px);
+    max-height: inherit !important;
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--background-floating, #2b2d31);
@@ -885,6 +903,9 @@
     box-sizing: border-box;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
+    flex-shrink: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .gc-amp-panel::-webkit-scrollbar {
@@ -1512,12 +1533,7 @@
     box-shadow: none !important;
 }
 
-/* Amp Panel Width & Large Boxes */
-.gc-amp-panel {
-    width: 410px !important;
-    background: var(--background-floating, #2b2d31) !important;
-    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08)) !important;
-}
+
 
 /* Large, prominent, beautiful boxes identical to left-side cards */
 .gc-superpan-grid {

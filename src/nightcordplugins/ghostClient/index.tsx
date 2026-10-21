@@ -1126,24 +1126,49 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     };
     const states = useGhostStates();
     const popoverRef = useRef<HTMLDivElement>(null);
+    const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+
+    useEffect(() => {
+        const onResize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight });
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
 
     const style = React.useMemo<React.CSSProperties>(() => {
-        if (!anchorRect) return { position: "fixed", bottom: 60, left: 8, zIndex: 995 };
-        const PW = 380 + (showEq ? 260 : 0) + (showAmpPan ? 380 : 0), margin = 10;
-        let left = anchorRect.left;
+        const margin = 10;
+        const PW = 380 + (showEq ? 260 : 0) + (showAmpPan ? 390 : 0);
+
+        let left = anchorRect ? anchorRect.left : margin;
         if (left + PW > window.innerWidth - margin) left = window.innerWidth - PW - margin;
         if (left < margin) left = margin;
 
-        const bottom = Math.max(margin, window.innerHeight - anchorRect.top + 8);
-        const maxHeight = Math.max(260, anchorRect.top - 16);
+        let bottom = anchorRect ? Math.max(margin, window.innerHeight - anchorRect.top + 8) : 60;
+        const maxAllowed = Math.min(window.innerHeight - 20, 680);
+
+        // Clamping: ensure the popover wrapper NEVER extends beyond the top of the window!
+        if (bottom + maxAllowed > window.innerHeight - margin) {
+            bottom = Math.max(margin, window.innerHeight - maxAllowed - margin);
+        }
+
+        const maxHeight = Math.max(220, window.innerHeight - bottom - margin);
+
         return {
             position: "fixed",
             left,
             bottom,
             maxHeight,
+            maxWidth: `calc(100vw - ${left + margin}px)`,
             zIndex: 995
         };
-    }, [anchorRect, showEq, showAmpPan]);
+    }, [anchorRect, showEq, showAmpPan, windowSize]);
+
+    const handleWrapperWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+        const target = e.target as HTMLElement;
+        const isInsideVerticalScroller = target.closest(".gc-popover-body, .gc-amp-panel, .gc-vm-panel, .gc-accounts");
+        if (!isInsideVerticalScroller && popoverRef.current) {
+            popoverRef.current.scrollLeft += e.deltaY;
+        }
+    };
 
     useEffect(() => {
         Native.isServerInstalled().then(v => setServerInstalled(Boolean(v))).catch(() => setServerInstalled(true));
@@ -1540,7 +1565,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
     };
 
     return (
-        <div ref={popoverRef} className="gc-popover-wrapper" style={style}>
+        <div ref={popoverRef} className="gc-popover-wrapper" style={style} onWheel={handleWrapperWheel}>
             <div className="gc-popover">
             <div className="gc-popover-header">
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
