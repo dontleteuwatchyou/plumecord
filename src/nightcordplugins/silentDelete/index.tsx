@@ -20,8 +20,8 @@ const settings = definePluginSettings({
     },
     deleteDelay: {
         type: OptionType.NUMBER,
-        description: "Delay in milliseconds before deleting the replacement message (recommended: 100-500).",
-        default: 200
+        description: "Delay in milliseconds before deleting the message after overwriting it (recommended: 200-500ms to allow clients to receive the edit).",
+        default: 250
     },
     suppressNotifications: {
         type: OptionType.BOOLEAN,
@@ -30,7 +30,7 @@ const settings = definePluginSettings({
     },
     deleteOriginal: {
         type: OptionType.BOOLEAN,
-        description: "Delete the original message from server. If disabled, the original message will reappear on client restart.",
+        description: "Delete the message from the server after replacing it. If disabled, the message will remain overwritten with the replacement text.",
         default: true
     },
     purgeInterval: {
@@ -55,25 +55,29 @@ let _silentPurgeActive = false;
 
 async function silentDeleteMessage(channelId: string, messageId: string, deleteOriginal = true): Promise<boolean> {
     try {
-        const { replacementText = "** **", deleteDelay = 200, suppressNotifications = true, deleteOriginal: shouldDelete = true } = settings.store;
+        const {
+            replacementText = "** **",
+            deleteDelay = 250,
+            deleteOriginal: shouldDelete = true
+        } = settings.store;
 
-        const response = await RestAPI.post({
-            url: Constants.Endpoints.MESSAGES(channelId),
+        // 1. Overwrite the message on Discord servers to wipe the original content and attachments
+        await RestAPI.patch({
+            url: Constants.Endpoints.MESSAGE(channelId, messageId),
             body: {
-                content: replacementText,
-                flags: suppressNotifications ? 4096 : 0,
-                mobile_network_type: "unknown",
-                nonce: messageId,
-                tts: false
+                content: replacementText || "** **",
+                attachments: [],
+                allowed_mentions: { parse: [] }
             }
         });
 
-        await sleep(deleteDelay);
-        await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, response.body.id) });
-
+        // 2. Wait for the MESSAGE_UPDATE gateway event to propagate to all clients (updating MessageStore and MessageLogger cache)
         if (deleteOriginal && shouldDelete) {
-            await sleep(100);
-            await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) });
+            await sleep(deleteDelay);
+            // 3. Delete the message from Discord servers
+            await RestAPI.del({
+                url: Constants.Endpoints.MESSAGE(channelId, messageId)
+            });
         }
 
         return true;
