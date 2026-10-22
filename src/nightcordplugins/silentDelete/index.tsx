@@ -101,16 +101,19 @@ async function silentDeleteMessage(channelId: string, messageId: string, deleteO
 }
 
 const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { message }) => {
-    if (!message || message.author?.id !== UserStore.getCurrentUser()?.id || !message.deleted) return;
+    if (!message || message.author?.id !== UserStore.getCurrentUser()?.id) return;
 
     const Icon = iconsModule?.TrashIcon || SilentDeleteIcon;
-    const group = findGroupChildrenByChildId("remove-message-history", children) ?? children;
+    const group = findGroupChildrenByChildId("edit", children)
+        ?? findGroupChildrenByChildId("delete", children)
+        ?? findGroupChildrenByChildId("remove-message-history", children)
+        ?? children;
     group.push(
         <Menu.MenuItem
-            id="silent-delete-history"
+            id="silent-delete"
             color="danger"
-            label={t("Silent Delete History")}
-            action={() => silentDeleteMessage(message.channel_id, message.id, false)}
+            label={t("Silent Delete")}
+            action={() => silentDeleteMessage(message.channel_id, message.id, !message.deleted)}
             icon={Icon}
             iconLeft={Icon}
             leadingAccessory={{
