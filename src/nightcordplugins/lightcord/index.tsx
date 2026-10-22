@@ -92,6 +92,20 @@ const settings = definePluginSettings({
         restartNeeded: false,
         onChange() { updateCssIfRunning(); }
     },
+    disableActiveNowSidebar: {
+        type: OptionType.BOOLEAN,
+        description: "Hides the Active Now activity column on the right side of the friends list.",
+        default: true,
+        restartNeeded: false,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableDiscoveryButton: {
+        type: OptionType.BOOLEAN,
+        description: "Removes the Server Discovery compass button from the server list sidebar.",
+        default: true,
+        restartNeeded: true,
+        onChange() { updateCssIfRunning(); }
+    },
     disableQuestsAndShop: {
         type: OptionType.BOOLEAN,
         description: "Removes Quests, Shop, and Nitro tabs from the direct messages sidebar and hides quest popups.",
@@ -370,6 +384,54 @@ div:has(> [class*="profileEffectBackground-"]) {
 `);
     }
 
+    // 11. Active Now Activity Sidebar (Right side of Friends tab)
+    if (settings.store.disableActiveNowSidebar || settings.store.disableActivities) {
+        rules.push(`
+/* Lightcord: Active Now sidebar in Friends tab */
+[class*="nowPlayingColumn"],
+[class*="nowPlayingSidebar"],
+aside[aria-label*="Active Now" i],
+aside[aria-label*="En ligne actuellement" i],
+aside[aria-label*="Actif" i],
+aside:has([class*="nowPlayingColumn"]),
+[class*="tabBody-"] > [class*="nowPlayingColumn"],
+[class*="container-"] > [class*="nowPlayingColumn"],
+[class*="peopleColumn-"] + [class*="nowPlayingColumn"] {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex-basis: 0 !important;
+}
+[class*="peopleColumn"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+}
+`);
+    }
+
+    // 12. Server Discovery Button (Compass icon in server list)
+    if (settings.store.disableDiscoveryButton || settings.store.disableQuestsAndShop) {
+        rules.push(`
+/* Lightcord: Server Discovery button in Guild list */
+[class*="listItem"]:has([data-list-item-id*="discover"]),
+[class*="listItem"]:has([data-list-item-id*="guild-discover-button"]),
+[class*="listItem"]:has(a[href="/discovery"]),
+[class*="listItem"]:has(svg path[d*="M7.74 9.3"]),
+[data-list-id="guildsnav"] [class*="footer"],
+[data-list-id="guildsnav"] [data-list-item-id="guildsnav___guild-discover-button"],
+[data-list-id="guildsnav"] [class*="guild-discover-button"],
+[class*="guild-discover-button"],
+[class*="guildDiscoveryButton"] {
+    display: none !important;
+}
+[class*="unreadMentionsFixedFooter"] {
+    bottom: 0px !important;
+}
+`);
+    }
+
     // 11. Quests, Shop, Nitro Home
     if (settings.store.disableQuestsAndShop) {
         rules.push(`
@@ -491,6 +553,8 @@ function LightcordSettingsAbout() {
         settings.store.disableRoleColors = true;
         settings.store.disableUsernameStyling = true;
         settings.store.disableStatusIndicatorOnProfile = true;
+        settings.store.disableActiveNowSidebar = true;
+        settings.store.disableDiscoveryButton = true;
         settings.store.disableQuestsAndShop = true;
         settings.store.disableChatSlop = true;
         settings.store.disableReactionEffects = true;
@@ -511,6 +575,8 @@ function LightcordSettingsAbout() {
         settings.store.disableRoleColors = true;
         settings.store.disableUsernameStyling = true;
         settings.store.disableStatusIndicatorOnProfile = true;
+        settings.store.disableActiveNowSidebar = true;
+        settings.store.disableDiscoveryButton = true;
         settings.store.disableQuestsAndShop = true;
         settings.store.disableChatSlop = true;
         settings.store.disableReactionEffects = true;
@@ -620,6 +686,15 @@ export default definePlugin({
                 replace: "$1null",
             },
             predicate: () => settings.store.disableProfileEffects && !isPluginEnabled("Decor"),
+        },
+        {
+            // Server Discovery button in guild list
+            find: '("guildsnav")',
+            replacement: {
+                match: /(guildDiscoveryButton:)\i/g,
+                replace: "$1null",
+            },
+            predicate: () => settings.store.disableDiscoveryButton,
         },
     ],
 
