@@ -8,8 +8,9 @@ import { ApplicationCommandInputType, ApplicationCommandOptionType, sendBotMessa
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessagePopoverButton as addButton, removeMessagePopoverButton as removeButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
+import { iconsModule } from "@plugins/_core/concatenatedModules";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelStore, Constants, Menu, RestAPI, UserStore } from "@webpack/common";
+import { ChannelStore, Constants, Menu, MessageStore, RestAPI, UserStore } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 const settings = definePluginSettings({
@@ -20,8 +21,8 @@ const settings = definePluginSettings({
     },
     deleteDelay: {
         type: OptionType.NUMBER,
-        description: "Delay in milliseconds before deleting the message after overwriting it (recommended: 200-500ms to allow clients to receive the edit).",
-        default: 250
+        description: "Delay in milliseconds before deleting the replacement message (recommended: 100-500).",
+        default: 200
     },
     suppressNotifications: {
         type: OptionType.BOOLEAN,
@@ -30,8 +31,13 @@ const settings = definePluginSettings({
     },
     deleteOriginal: {
         type: OptionType.BOOLEAN,
-        description: "Delete the message from the server after replacing it. If disabled, the message will remain overwritten with the replacement text.",
+        description: "Delete the original message from server. If disabled, the original message will reappear on client restart.",
         default: true
+    },
+    silentDeleteOnEmptyEdit: {
+        type: OptionType.BOOLEAN,
+        description: "Silently delete a message whenever you submit an edit with the content fully erased.",
+        default: false
     },
     purgeInterval: {
         type: OptionType.NUMBER,
@@ -39,8 +45,6 @@ const settings = definePluginSettings({
         default: 500
     }
 });
-
-import { iconsModule } from "@plugins/_core/concatenatedModules";
 
 const SilentDeleteIcon = (props: any) => (
     <svg aria-hidden="true" role="img" width={18} height={18} viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -51,33 +55,32 @@ const SilentDeleteIcon = (props: any) => (
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-let _silentPurgeActive = false;
-
 async function silentDeleteMessage(channelId: string, messageId: string, deleteOriginal = true): Promise<boolean> {
     try {
         const {
             replacementText = "** **",
-            deleteDelay = 250,
+            deleteDelay = 200,
+            suppressNotifications = true,
             deleteOriginal: shouldDelete = true
         } = settings.store;
 
-        // 1. Overwrite the message on Discord servers to wipe the original content and attachments
-        await RestAPI.patch({
-            url: Constants.Endpoints.MESSAGE(channelId, messageId),
+        const response = await RestAPI.post({
+            url: Constants.Endpoints.MESSAGES(channelId),
             body: {
-                content: replacementText || "** **",
-                attachments: [],
-                allowed_mentions: { parse: [] }
+                content: replacementText,
+                flags: suppressNotifications ? 4096 : 0,
+                mobile_network_type: "unknown",
+                nonce: messageId,
+                tts: false
             }
         });
 
-        // 2. Wait for the MESSAGE_UPDATE gateway event to propagate to all clients (updating MessageStore and MessageLogger cache)
+        await sleep(deleteDelay);
+        await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, response.body.id) });
+
         if (deleteOriginal && shouldDelete) {
-            await sleep(deleteDelay);
-            // 3. Delete the message from Discord servers
-            await RestAPI.del({
-                url: Constants.Endpoints.MESSAGE(channelId, messageId)
-            });
+            await sleep(100);
+            await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) });
         }
 
         return true;
@@ -88,16 +91,16 @@ async function silentDeleteMessage(channelId: string, messageId: string, deleteO
 }
 
 const messageContextMenuPatch: NavContextMenuPatchCallback = (children, { message }) => {
-    if (!message || message.author?.id !== UserStore.getCurrentUser()?.id) return;
+    if (!message || message.author?.id !== UserStore.getCurrentUser()?.id || !message.deleted) return;
 
     const Icon = iconsModule?.TrashIcon || SilentDeleteIcon;
-    const group = findGroupChildrenByChildId("edit", children) ?? children;
+    const group = findGroupChildrenByChildId("remove-message-history", children) ?? children;
     group.push(
         <Menu.MenuItem
-            id="silent-delete"
+            id="silent-delete-history"
             color="danger"
-            label={t("Silent Delete")}
-            action={() => silentDeleteMessage(message.channel_id, message.id, !message.deleted)}
+            label={t("Silent Delete History")}
+            action={() => silentDeleteMessage(message.channel_id, message.id, false)}
             icon={Icon}
             iconLeft={Icon}
             leadingAccessory={{
@@ -113,16 +116,25 @@ export default definePlugin({
     enabledByDefault: true,
     description: "\"Silently\" deletes a message. Bypass message loggers by replacing the message with a placeholder.",
     authors: [
-        { name: "Aurick",
-     id: 1348025017233047634n },
-        { name: "appleflyer",
-     id: 1209096766075703368n }
+        { name: "Aurick", id: 1348025017233047634n },
+        { name: "appleflyer", id: 1209096766075703368n }
     ],
-    dependencies: ["MessagePopoverAPI", "CommandsAPI"],
+    dependencies: ["MessagePopoverAPI", "CommandsAPI", "MessageEventsAPI"],
     settings,
 
     contextMenus: {
         "message": messageContextMenuPatch
+    },
+
+    async onBeforeMessageEdit(channelId, messageId, messageObj) {
+        if (!settings.store.silentDeleteOnEmptyEdit || messageObj.content.length !== 0) return;
+
+        const msg = MessageStore.getMessage(channelId, messageId);
+        if (!msg || msg.author?.id !== UserStore.getCurrentUser()?.id || msg.deleted) return;
+
+        if (await silentDeleteMessage(channelId, messageId)) {
+            return { cancel: true };
+        }
     },
 
     commands: [
@@ -138,7 +150,7 @@ export default definePlugin({
             }],
             execute: (opts, ctx) => {
                 const count = Number(opts.find(o => o.name === "count")?.value);
-                if (!count || count < 1 || count > 100) return;
+                if (!count || count < 1) return;
 
                 const channelId = ctx.channel.id;
                 const currentUserId = UserStore.getCurrentUser().id;
@@ -149,7 +161,6 @@ export default definePlugin({
                         let lastMessageId: string | undefined;
 
                         while (userMessages.length < count) {
-                            if (!_silentPurgeActive) return;
                             const response = await RestAPI.get({
                                 url: Constants.Endpoints.MESSAGES(channelId),
                                 query: { limit: 100, ...(lastMessageId && { before: lastMessageId }) }
@@ -176,7 +187,6 @@ export default definePlugin({
                         let successCount = 0;
 
                         for (let i = 0; i < userMessages.length; i++) {
-                            if (!_silentPurgeActive) return;
                             if (await silentDeleteMessage(channelId, userMessages[i].id)) successCount++;
                             if (i < userMessages.length - 1) await sleep(purgeInterval);
                         }
@@ -191,7 +201,6 @@ export default definePlugin({
     ],
 
     start() {
-        _silentPurgeActive = true;
         addButton("SilentDelete", msg => {
             if (msg.author?.id !== UserStore.getCurrentUser()?.id || msg.deleted) return null;
 
@@ -207,7 +216,6 @@ export default definePlugin({
     },
 
     stop() {
-        _silentPurgeActive = false;
         removeButton("SilentDelete");
     }
 });
