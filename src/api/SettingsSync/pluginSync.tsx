@@ -92,6 +92,7 @@ export async function saveOwnPluginConfig(pluginName: string, token: string, set
 }
 
 export async function getPublicPluginConfig(pluginName: string, userId: string) {
+    if (!userId || userId === "999999999999999999" || userId === "999999999999999990" || userId === "888888888888888880" || userId === "888888888888888888") return null;
     const res = await netFetch(new URL(`/api/sync/${encodeURIComponent(pluginName)}/public?userId=${encodeURIComponent(userId)}`, getCloudUrl()).toString());
     if (!res?.ok) return null;
     return res.data;

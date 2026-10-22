@@ -602,15 +602,6 @@ function convertPostToMessage(post: any): any {
         flags: 1,
     };
 
-    const currentUser = UserStore.getCurrentUser();
-    const mentions = currentUser ? [{
-        id: currentUser.id,
-        username: currentUser.username,
-        discriminator: currentUser.discriminator || "0",
-        avatar: currentUser.avatar,
-        global_name: (currentUser as any).globalName || (currentUser as any).global_name || currentUser.username,
-    }] : [];
-
     const rawMsg = {
         id: postId,
         channel_id: NIGHTCORD_CHANNEL_ID,
@@ -620,7 +611,7 @@ function convertPostToMessage(post: any): any {
         edited_timestamp: null,
         tts: false,
         mention_everyone: false,
-        mentions,
+        mentions: [],
         mention_roles: [],
         attachments: [],
         embeds,
@@ -1616,6 +1607,19 @@ export default definePlugin({
         // Intercept HTTP.get and HTTP.post REST calls to prevent 404 errors for fake channel/user ID
         try {
             const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
+            const createFakeRestChain = (responseObj: any) => {
+                const p = Promise.resolve(responseObj) as any;
+                const chainMethods = ["query", "send", "set", "type", "accept", "timeout", "retry", "redirects", "on", "ok", "end"];
+                for (const m of chainMethods) {
+                    p[m] = function(arg?: any) {
+                        if (m === "end" && typeof arg === "function") {
+                            try { arg(null, responseObj); } catch {}
+                        }
+                        return p;
+                    };
+                }
+                return p;
+            };
             if (HTTP) {
                 if (HTTP.get) {
                     const origGet = HTTP.get;
@@ -1623,7 +1627,7 @@ export default definePlugin({
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(NIGHTCORD_CHANNEL_ID) || url.includes(NIGHTCORD_USER_ID) || url.includes("999999999999999999"))) {
                             if (url.includes("/profile")) {
-                                return Promise.resolve({
+                                return createFakeRestChain({
                                     ok: true,
                                     status: 200,
                                     body: {
@@ -1658,7 +1662,7 @@ export default definePlugin({
                                     headers: {},
                                 });
                             }
-                            return Promise.resolve({
+                            return createFakeRestChain({
                                 ok: true,
                                 status: 200,
                                 body: [],
@@ -1676,7 +1680,7 @@ export default definePlugin({
                     HTTP.post = function(opts: any) {
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(NIGHTCORD_CHANNEL_ID) || url.includes(NIGHTCORD_USER_ID) || url.includes("999999999999999999"))) {
-                            return Promise.resolve({
+                            return createFakeRestChain({
                                 ok: true,
                                 status: 200,
                                 body: {
@@ -1701,7 +1705,7 @@ export default definePlugin({
                     httpAny[fnName] = function(opts: any) {
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(NIGHTCORD_CHANNEL_ID) || url.includes(NIGHTCORD_USER_ID) || url.includes("999999999999999999"))) {
-                            return Promise.resolve({
+                            return createFakeRestChain({
                                 ok: true,
                                 status: 200,
                                 body: {},

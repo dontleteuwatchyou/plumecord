@@ -1,6 +1,6 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2026 Nightcord contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -46,13 +46,35 @@ async function saveAutoMuted() {
     } catch { }
 }
 
+function getGuildVoiceState(guildId: string, userId: string): any {
+    const byGuild = VoiceStateStore?.getVoiceState?.(guildId, userId);
+    if (byGuild?.channelId) return byGuild;
+    const byUser = VoiceStateStore?.getVoiceStateForUser?.(userId);
+    if (!byUser?.channelId) return null;
+    const ch = ChannelStore?.getChannel?.(byUser.channelId);
+    const vsGuildId = byUser.guildId ?? byUser.guild_id ?? ch?.guild_id;
+    if (vsGuildId && vsGuildId !== guildId) return null;
+    return byUser;
+}
+
 async function setServerMute(guildId: string, userId: string, mute: boolean): Promise<boolean> {
     const key = `${guildId}:${userId}`;
     const now = Date.now();
 
-    // Cooldown check (prevent spam on 403 Forbidden or 429 Rate-Limit)
+    // Cooldown check (prevent spam on 400/403/429)
     const cooldownUntil = muteCooldowns.get(key) || 0;
     if (now < cooldownUntil) {
+        return false;
+    }
+
+    const guild = GuildStore?.getGuild?.(guildId);
+    if (!guild || !PermissionStore?.can?.(PermissionsBits.MUTE_MEMBERS, guild)) {
+        muteCooldowns.set(key, now + 15_000);
+        return false;
+    }
+
+    const vs = getGuildVoiceState(guildId, userId);
+    if (!vs?.channelId) {
         return false;
     }
 
@@ -62,14 +84,6 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
     }
     pendingMutes.add(key);
 
-    // 1. Instant native Discord voice action
-    try {
-        if (typeof GuildVoiceActions?.setServerMute === "function") {
-            GuildVoiceActions.setServerMute(guildId, userId, mute);
-        }
-    } catch { }
-
-    // 2. Dual-layer REST API patch
     try {
         await RestAPI.patch({
             url: `/guilds/${guildId}/members/${userId}`,
@@ -79,8 +93,7 @@ async function setServerMute(guildId: string, userId: string, mute: boolean): Pr
         return true;
     } catch (e: any) {
         const status = e?.status || e?.statusCode || e?.body?.code;
-        if (status === 403 || String(e?.message).includes("403")) {
-            // Missing permission or target has higher role hierarchy -> cooldown 10s
+        if (status === 400 || status === 403 || String(e?.message).includes("400") || String(e?.message).includes("403")) {
             muteCooldowns.set(key, Date.now() + 10_000);
         } else if (status === 429 || String(e?.message).includes("429")) {
             const retryAfter = e?.body?.retry_after ? Number(e.body.retry_after) * 1000 : 3000;
@@ -101,10 +114,9 @@ function radarSweepMutes() {
         const [guildId, userId] = key.split(":");
         if (!guildId || !userId) continue;
 
-        const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
-            ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
+        const vs = getGuildVoiceState(guildId, userId);
 
-        // ONLY trigger if user is actively connected in a voice channel AND NOT yet muted
+        // ONLY trigger if user is actively connected in a voice channel in that guild AND NOT yet muted
         if (vs?.channelId && !vs.mute) {
             setServerMute(guildId, userId, true).catch(() => { });
         }
@@ -119,17 +131,16 @@ function processVoiceState(state: any) {
     for (const key of autoMutedUsers) {
         if (key.endsWith(`:${userId}`)) {
             const [guildId] = key.split(":");
-            const stateGuildId = state.guildId || state.guild_id;
+            const rawChannelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+            const ch = rawChannelId ? ChannelStore?.getChannel?.(rawChannelId) : null;
+            const stateGuildId = state.guildId || state.guild_id || ch?.guild_id;
             if (stateGuildId && stateGuildId !== guildId) continue;
 
-            const vs = VoiceStateStore?.getVoiceStateForUser?.(userId)
-                ?? VoiceStateStore?.getVoiceState?.(guildId, userId);
-
-            const rawChannelId = state.channelId !== undefined ? state.channelId : state.channel_id;
+            const vs = getGuildVoiceState(guildId, userId);
             const channelId = rawChannelId !== undefined ? rawChannelId : vs?.channelId;
             const isMuted = state.mute !== undefined ? Boolean(state.mute) : Boolean(vs?.mute);
 
-            // If user is connected to a voice channel and not muted, immediately apply server mute
+            // If user is connected to a voice channel in this guild and not muted, immediately apply server mute
             if (channelId && !isMuted) {
                 setServerMute(guildId, userId, true).catch(() => { });
             }

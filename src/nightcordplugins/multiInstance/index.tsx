@@ -101,6 +101,40 @@ export async function toggleAutoLaunchAccount(userId: string): Promise<boolean> 
     return setAccountAutoLaunch(userId, !isCurrently);
 }
 
+function findByPropsSilent(...props: string[]): any {
+    try {
+        const wreq = (window as any).Vencord?.Webpack?.wreq;
+        if (wreq?.c) {
+            for (const key in wreq.c) {
+                const exp = wreq.c[key]?.exports;
+                if (!exp) continue;
+                if (props.every(p => exp[p] !== undefined)) return exp;
+                if (exp.default && props.every(p => exp.default[p] !== undefined)) return exp.default;
+            }
+        }
+    } catch {}
+    return null;
+}
+
+function getSafeLocalStorage(): Storage | null {
+    try {
+        if (typeof window !== "undefined" && window.localStorage && typeof window.localStorage.setItem === "function") {
+            return window.localStorage;
+        }
+    } catch {}
+    try {
+        if (typeof document !== "undefined" && document.body) {
+            const iframe = document.createElement("iframe");
+            iframe.style.display = "none";
+            document.body.appendChild(iframe);
+            const ls = (iframe as any).contentWindow?.localStorage ?? null;
+            document.body.removeChild(iframe);
+            if (ls && typeof ls.setItem === "function") return ls;
+        }
+    } catch {}
+    return null;
+}
+
 export function captureSharedUiSettings(): Record<string, string> {
     const allowedKeys = [
         "theme",
@@ -114,8 +148,10 @@ export function captureSharedUiSettings(): Record<string, string> {
     ];
     const out: Record<string, string> = {};
     try {
+        const ls = getSafeLocalStorage();
+        if (!ls) return out;
         for (const k of allowedKeys) {
-            const val = window.localStorage.getItem(k);
+            const val = ls.getItem(k);
             if (val !== null) out[k] = val;
         }
     } catch {}
@@ -230,7 +266,7 @@ async function loadTokenCache(): Promise<void> {
 
     // Purge any corrupted or cross-account tokens
     const curUser = UserStore.getCurrentUser();
-    const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+    const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
     const curTok = tokenMod?.getToken?.();
     if (curUser?.id && curTok) {
         tokenCache[curUser.id] = curTok;
@@ -322,7 +358,7 @@ function cacheToken(userId: string, token: string): boolean {
 
 function captureCurrentToken(): void {
     try {
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const token = tokenMod?.getToken?.();
         const user = UserStore.getCurrentUser();
         if (token && user?.id && typeof token === "string") {
@@ -338,7 +374,7 @@ function captureCurrentToken(): void {
 function hookEncryptAndStoreTokens(): void {
     if (encryptHooked) return;
     try {
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         if (!tokenMod?.encryptAndStoreTokens) return;
         const orig = tokenMod.encryptAndStoreTokens.bind(tokenMod);
         tokenMod.encryptAndStoreTokens = async function (tokens: Record<string, string>) {
@@ -381,7 +417,7 @@ function isCurrentInstanceWindow(): boolean {
 
 function captureMasterAudioSettings(): Record<string, any> | null {
     try {
-        const rawLs = window.localStorage.getItem("MediaEngineStore");
+        const rawLs = getSafeLocalStorage()?.getItem("MediaEngineStore") ?? null;
         let parsedLs: any = null;
         if (rawLs) {
             try {
@@ -504,7 +540,7 @@ function applyAudioSettings(audio: any): void {
     }
 
     // 5. Krisp (noiseCancellation) & Noise Suppression
-    const meActions = findByProps("setNoiseCancellation", "setNoiseSuppression") || findByProps("setNoiseCancellation");
+    const meActions = findByPropsSilent("setNoiseCancellation", "setNoiseSuppression") || findByPropsSilent("setNoiseCancellation");
     if (typeof def.noiseCancellation === "boolean") {
         try {
             meActions?.setNoiseCancellation?.(def.noiseCancellation);
@@ -545,7 +581,7 @@ function applyAudioSettings(audio: any): void {
     // Apply mode even when modeOptions is absent (voice activity vs push to talk)
     if (def.mode) {
         try {
-            const modeActions = findByProps("setMode") || meActions;
+            const modeActions = findByPropsSilent("setMode") || meActions;
             modeActions?.setMode?.(def.mode, def.modeOptions ?? {});
         } catch {}
     }
@@ -553,7 +589,7 @@ function applyAudioSettings(audio: any): void {
     // 8. Attenuation
     if (typeof def.attenuation === "number") {
         try {
-            const attActions = findByProps("setAttenuation") || meActions;
+            const attActions = findByPropsSilent("setAttenuation") || meActions;
             attActions?.setAttenuation?.(
                 def.attenuation,
                 Boolean(def.attenuateWhileSpeakingSelf),
@@ -583,7 +619,7 @@ function applyAudioSettings(audio: any): void {
     // 10. Persist to localStorage
     if (audio.rawMediaEngineStore && typeof audio.rawMediaEngineStore === "string") {
         try {
-            window.localStorage.setItem("MediaEngineStore", audio.rawMediaEngineStore);
+            getSafeLocalStorage()?.setItem("MediaEngineStore", audio.rawMediaEngineStore);
         } catch {}
     }
 }
@@ -596,7 +632,7 @@ async function syncInstanceAudioSettings(): Promise<void> {
 
         if (masterAudio.rawMediaEngineStore && typeof masterAudio.rawMediaEngineStore === "string") {
             try {
-                window.localStorage.setItem("MediaEngineStore", masterAudio.rawMediaEngineStore);
+                getSafeLocalStorage()?.setItem("MediaEngineStore", masterAudio.rawMediaEngineStore);
             } catch {}
         }
 
@@ -688,7 +724,7 @@ function getAvatarUrl(id: string, hash?: string | null): string {
 
 function getNativeAccounts(): SavedAccount[] {
     try {
-        const store = findByProps("getUsers", "getValidUsers");
+        const store = findByPropsSilent("getUsers", "getValidUsers");
         const users: any[] = store?.getUsers?.() ?? store?.getValidUsers?.() ?? [];
         return users.filter(u => u?.id).map(u => ({
             id: u.id,
@@ -743,7 +779,7 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
 
     const curUser = UserStore.getCurrentUser();
     if (curUser?.id) {
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         const prev = map.get(curUser.id);
         map.set(curUser.id, {
@@ -775,24 +811,16 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
 function switchToQuick(token: string, userId?: string) {
     const cleanTok = token.trim().replace(/^"+|"+$/g, "");
     try {
-        window.localStorage.setItem("token", `"${cleanTok}"`);
-        window.localStorage.setItem("default_token", `"${cleanTok}"`);
-        if (userId) {
-            window.localStorage.setItem("user_id_cache", `"${userId}"`);
+        const ls = getSafeLocalStorage();
+        if (ls) {
+            ls.setItem("token", `"${cleanTok}"`);
+            ls.setItem("default_token", `"${cleanTok}"`);
+            if (userId) {
+                ls.setItem("user_id_cache", `"${userId}"`);
+            }
         }
         location.reload();
     } catch {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        document.body.appendChild(iframe);
-        try {
-            (iframe as any).contentWindow.localStorage.token = `"${cleanTok}"`;
-            (iframe as any).contentWindow.localStorage.default_token = `"${cleanTok}"`;
-            if (userId) {
-                (iframe as any).contentWindow.localStorage.user_id_cache = `"${userId}"`;
-            }
-        } catch { }
-        document.body.removeChild(iframe);
         location.reload();
     }
 }
@@ -800,7 +828,7 @@ function switchToQuick(token: string, userId?: string) {
 /** Switch pour accounts natifs sans token — utilise le mécanisme Discord natif */
 function switchNativeAccount(userId: string) {
     try {
-        const multiAuth = findByProps("switchAccount", "loginToken") ?? findByProps("switchAccount");
+        const multiAuth = findByPropsSilent("switchAccount", "loginToken") ?? findByPropsSilent("switchAccount");
         if (multiAuth?.switchAccount) {
             multiAuth.switchAccount(userId);
             return;
@@ -859,9 +887,9 @@ function ChangeTokenModal({
         } catch {}
 
         try {
-            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+            const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
             if (tokenMod?.encryptAndStoreTokens) {
-                const tokensJson = window.localStorage.getItem("tokens");
+                const tokensJson = getSafeLocalStorage()?.getItem("tokens") ?? null;
                 const parsed = tokensJson ? JSON.parse(tokensJson) : {};
                 parsed[acc.id] = cleanTok;
                 tokenMod.encryptAndStoreTokens(parsed).catch(() => {});
@@ -1548,7 +1576,12 @@ function MultiInstanceButton() {
     );
 }
 
+let instanceAuthInitialized = false;
+
 async function initInstanceWindowAuth(): Promise<void> {
+    if (instanceAuthInitialized) return;
+    instanceAuthInitialized = true;
+
     let auth: { token: string; userId: string; username: string; } | null = null;
     try {
         if (typeof Native?.getInstanceAuth === "function") {
@@ -1594,29 +1627,18 @@ async function initInstanceWindowAuth(): Promise<void> {
     const syncStorage = () => {
         try {
             const q = JSON.stringify(cleanTok);
-            window.localStorage.setItem("token", q);
-            window.localStorage.setItem("default_token", q);
-            if (miUserId) {
-                window.localStorage.setItem("user_id_cache", JSON.stringify(miUserId));
-            }
-            if (tokensJson) {
-                window.localStorage.setItem("tokens", tokensJson);
-                window.localStorage.setItem("multiaccount_tokens", tokensJson);
-            }
-            const iframe = document.createElement("iframe");
-            iframe.style.display = "none";
-            document.body.appendChild(iframe);
-            const ifLs = (iframe as any).contentWindow?.localStorage;
-            if (ifLs) {
-                ifLs.token = q;
-                ifLs.default_token = q;
-                if (miUserId) ifLs.user_id_cache = JSON.stringify(miUserId);
+            const ls = getSafeLocalStorage();
+            if (ls) {
+                ls.setItem("token", q);
+                ls.setItem("default_token", q);
+                if (miUserId) {
+                    ls.setItem("user_id_cache", JSON.stringify(miUserId));
+                }
                 if (tokensJson) {
-                    ifLs.tokens = tokensJson;
-                    ifLs.multiaccount_tokens = tokensJson;
+                    ls.setItem("tokens", tokensJson);
+                    ls.setItem("multiaccount_tokens", tokensJson);
                 }
             }
-            document.body.removeChild(iframe);
         } catch (e) {
             console.warn("[NightcordMI] syncStorage error:", e);
         }
@@ -1625,10 +1647,10 @@ async function initInstanceWindowAuth(): Promise<void> {
 
     // 2. Check if already authenticated with target account
     const checkAuthAndRoute = () => {
-        const authStore = findByProps("getToken", "getId");
+        const authStore = findByPropsSilent("getToken", "getId");
         if (authStore?.getToken?.() === cleanTok && authStore?.getId?.()) {
             console.log("[NightcordMI] User authenticated successfully!");
-            const router = findByProps("transitionTo", "replaceWith");
+            const router = findByPropsSilent("transitionTo", "replaceWith");
             if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
                 router.transitionTo("/channels/@me");
             }
@@ -1650,7 +1672,7 @@ async function initInstanceWindowAuth(): Promise<void> {
         } catch (e) {
             console.warn("[NightcordMI] loginToken error:", e);
         }
-        const dispatcher = findByProps("dispatch", "subscribe") || FluxDispatcher;
+        const dispatcher = findByPropsSilent("dispatch", "subscribe") || FluxDispatcher;
         if (dispatcher?.dispatch) {
             try {
                 dispatcher.dispatch({ type: "LOGIN", token: cleanTok });
@@ -1666,7 +1688,7 @@ async function initInstanceWindowAuth(): Promise<void> {
         }
     };
 
-    const immediateLoginMod = findByProps("loginToken") || findByProps("switchAccount", "loginToken");
+    const immediateLoginMod = findByPropsSilent("loginToken") || findByPropsSilent("switchAccount", "loginToken");
     if (immediateLoginMod) {
         triggerLogin(immediateLoginMod);
     } else {
@@ -1676,7 +1698,7 @@ async function initInstanceWindowAuth(): Promise<void> {
     // 4. Transition to /channels/@me once gateway connects
     const routeToMe = () => {
         console.log("[NightcordMI] Transitioning to /channels/@me...");
-        const router = findByProps("transitionTo", "replaceWith");
+        const router = findByPropsSilent("transitionTo", "replaceWith");
         if ((window.location.pathname.includes("/login") || window.location.pathname === "/") && router?.transitionTo) {
             router.transitionTo("/channels/@me");
         }
@@ -1701,7 +1723,7 @@ async function initInstanceWindowAuth(): Promise<void> {
         setTimeout(() => {
             syncStorage();
             if (!checkAuthAndRoute() && !loginTriggered) {
-                const mod = findByProps("loginToken") || findByProps("switchAccount", "loginToken");
+                const mod = findByPropsSilent("loginToken") || findByPropsSilent("switchAccount", "loginToken");
                 if (mod) triggerLogin(mod);
             }
         }, delay);

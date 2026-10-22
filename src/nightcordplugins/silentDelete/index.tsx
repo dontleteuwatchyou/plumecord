@@ -56,14 +56,14 @@ const SilentDeleteIcon = (props: any) => (
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 async function silentDeleteMessage(channelId: string, messageId: string, deleteOriginal = true): Promise<boolean> {
-    try {
-        const {
-            replacementText = "** **",
-            deleteDelay = 200,
-            suppressNotifications = true,
-            deleteOriginal: shouldDelete = true
-        } = settings.store;
+    const {
+        replacementText = "** **",
+        deleteDelay = 200,
+        suppressNotifications = true,
+        deleteOriginal: shouldDelete = true
+    } = settings.store;
 
+    try {
         const response = await RestAPI.post({
             url: Constants.Endpoints.MESSAGES(channelId),
             body: {
@@ -76,16 +76,26 @@ async function silentDeleteMessage(channelId: string, messageId: string, deleteO
         });
 
         await sleep(deleteDelay);
-        await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, response.body.id) });
+        if (response?.body?.id) {
+            await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, response.body.id) }).catch(() => {});
+        }
 
         if (deleteOriginal && shouldDelete) {
             await sleep(100);
-            await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) });
+            await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) }).catch(() => {});
         }
 
         return true;
-    } catch (error) {
-        console.error("[SilentDelete] Error:", error);
+    } catch {
+        // Fallback if sending a replacement message is forbidden (e.g. 403 read-only channel)
+        if (deleteOriginal && shouldDelete) {
+            try {
+                await RestAPI.del({ url: Constants.Endpoints.MESSAGE(channelId, messageId) });
+                return true;
+            } catch {
+                return false;
+            }
+        }
         return false;
     }
 }

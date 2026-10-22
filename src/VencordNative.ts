@@ -1,5 +1,5 @@
 /*
- * Vencord, a Discord client mod
+ * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -119,7 +119,7 @@ export default {
         getInstallerPrefs: () => sendSync<{defaultPlugins: boolean, autoUpdate: boolean}>(IpcEvents.GET_INSTALLER_PREFS) || { defaultPlugins: true, autoUpdate: true },
         checkVBCable: () => invoke<{ installed: boolean; }>(IpcEvents.CHECK_VB_CABLE),
         installVBCable: () => invoke<{ success: boolean; error?: string; }>(IpcEvents.INSTALL_VB_CABLE),
-
+        netFetch: (url: string, opts?: any) => invoke<{ ok: boolean; status: number; data: any; } | null>(IpcEvents.NIGHTCORD_NET_FETCH, url, opts),
         relaunch: () => invoke<void>(IpcEvents.RELAUNCH_APP),
     },
 

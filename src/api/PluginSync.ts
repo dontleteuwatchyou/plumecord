@@ -37,8 +37,18 @@ export async function saveOwnPluginConfig(pluginName: string, token: string, set
     return res.data;
 }
 
+const VIRTUAL_USER_IDS = new Set([
+    "999999999999999999",
+    "999999999999999990",
+    "999999999999999991",
+    "888888888888888880",
+    "888888888888888888",
+    "0"
+]);
+
 // No in-memory cache here — caching is handled by callers (e.g. publicProfilesCache in customProfile)
 export async function getPublicPluginConfig(pluginName: string, userId: string) {
+    if (!userId || VIRTUAL_USER_IDS.has(userId)) return null;
     try {
         const nativeFetch = (window as any).VencordNative?.pluginHelpers?.MultiInstance?.fetchPublicConfig;
         if (nativeFetch) {
@@ -50,8 +60,7 @@ export async function getPublicPluginConfig(pluginName: string, userId: string) 
         const res = await netFetch(`${API_BASE}/api/sync/${encodeURIComponent(pluginName)}/public?userId=${encodeURIComponent(userId)}`);
         if (!res?.ok) return null;
         return res.data;
-    } catch (e) {
-        console.error(`Failed to load public config for ${pluginName}/${userId}:`, e);
+    } catch {
         return null;
     }
 }

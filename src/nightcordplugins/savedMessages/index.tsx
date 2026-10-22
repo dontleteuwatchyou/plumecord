@@ -1415,6 +1415,19 @@ export default definePlugin({
         // Intercept HTTP calls for SavedMessages channel/user
         try {
             const HTTP = (findByProps("get", "post", "put", "del") || findByProps("get", "post")) as any;
+            const createFakeRestChain = (responseObj: any) => {
+                const p = Promise.resolve(responseObj) as any;
+                const chainMethods = ["query", "send", "set", "type", "accept", "timeout", "retry", "redirects", "on", "ok", "end"];
+                for (const m of chainMethods) {
+                    p[m] = function(arg?: any) {
+                        if (m === "end" && typeof arg === "function") {
+                            try { arg(null, responseObj); } catch {}
+                        }
+                        return p;
+                    };
+                }
+                return p;
+            };
             if (HTTP) {
                 if (HTTP.get) {
                     const origGet = HTTP.get;
@@ -1423,7 +1436,7 @@ export default definePlugin({
                         if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
                             if (url.includes("messages")) {
                                 const msgs = getSavedMessages().map(convertSavedMessageToDiscordMessage);
-                                return Promise.resolve({
+                                return createFakeRestChain({
                                     ok: true,
                                     status: 200,
                                     body: msgs,
@@ -1460,7 +1473,7 @@ export default definePlugin({
                                     mutual_guilds: [],
                                     mutual_friends_count: 0
                                 };
-                                return Promise.resolve({
+                                return createFakeRestChain({
                                     ok: true,
                                     status: 200,
                                     body: profileBody,
@@ -1468,7 +1481,7 @@ export default definePlugin({
                                     headers: {},
                                 });
                             }
-                            return Promise.resolve({
+                            return createFakeRestChain({
                                 ok: true,
                                 status: 200,
                                 body: [],
@@ -1486,7 +1499,7 @@ export default definePlugin({
                     HTTP.post = function(opts: any) {
                         const url = typeof opts === "string" ? opts : opts?.url;
                         if (url && (url.includes(SAVED_MESSAGES_CHANNEL_ID) || url.includes(SAVED_MESSAGES_USER_ID))) {
-                            return Promise.resolve({
+                            return createFakeRestChain({
                                 ok: true,
                                 status: 200,
                                 body: {
@@ -1516,7 +1529,7 @@ export default definePlugin({
                                 if (match?.[1]) {
                                     deleteSavedMessage(match[1]);
                                 }
-                                return Promise.resolve({
+                                return createFakeRestChain({
                                     ok: true,
                                     status: 200,
                                     body: {},
