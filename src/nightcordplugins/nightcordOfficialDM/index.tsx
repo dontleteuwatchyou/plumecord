@@ -65,8 +65,8 @@ function setItemSafe(key: string, val: string): void {
 let lastSeenPostId = getItemSafe(LS_LAST_SEEN) || "";
 let lastPostTimestamp = Number(getItemSafe(LS_LAST_TS) || 0);
 let lastAckTimestamp = Number(getItemSafe(LS_LAST_ACK) || 0);
-if (!lastAckTimestamp) {
-    lastAckTimestamp = lastPostTimestamp > 0 ? lastPostTimestamp : Date.now();
+if (!lastAckTimestamp && lastPostTimestamp > 0) {
+    lastAckTimestamp = lastPostTimestamp;
     setItemSafe(LS_LAST_ACK, String(lastAckTimestamp));
 }
 
@@ -74,6 +74,52 @@ let pollInterval: ReturnType<typeof setInterval> | null = null;
 let unreadCount = 0;
 let domObserver: MutationObserver | null = null;
 let isAppLoaded = false;
+
+function emitAllNotificationStores(): void {
+    try { (findStore("ReadStateStore") as any)?.emitChange(); } catch {}
+    try { (findStore("GuildReadStateStore") as any)?.emitChange(); } catch {}
+    try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch {}
+    try { (findStore("ChannelStore") as any)?.emitChange(); } catch {}
+    setTimeout(() => {
+        scanAndFixNightcordDmElements();
+    }, 50);
+}
+
+function triggerNightcordNotification(post: any): void {
+    playNotificationSoundSafe();
+
+    try {
+        openUrgentMessageModal();
+    } catch {}
+
+    try {
+        const bodyText = htmlToMarkdown(post?.content || "").slice(0, 120) || t("There's an official message from the Nightcord team that needs your attention.");
+        const Notifications = (window as any).Vencord?.Api?.Notifications;
+        if (Notifications?.showNotification) {
+            Notifications.showNotification({
+                title: "Nightcord",
+                body: bodyText,
+                icon: nightcordAvatarUrl,
+                onClick: () => {
+                    try {
+                        NavigationRouter.transitionTo(`/channels/@me/${NIGHTCORD_CHANNEL_ID}`);
+                    } catch {}
+                }
+            });
+        } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            const notif = new Notification("Nightcord", {
+                body: bodyText,
+                icon: nightcordAvatarUrl
+            });
+            notif.onclick = () => {
+                try {
+                    window.focus();
+                    NavigationRouter.transitionTo(`/channels/@me/${NIGHTCORD_CHANNEL_ID}`);
+                } catch {}
+            };
+        }
+    } catch {}
+}
 
 function playNotificationSoundSafe(): void {
     try {
@@ -180,6 +226,27 @@ function scanAndFixNightcordDmElements() {
                 (el as any).__ncHoverBound = true;
                 el.addEventListener("mouseenter", () => { hoveredIsNightcord = true; });
                 el.addEventListener("mouseleave", () => { hoveredIsNightcord = false; });
+            }
+
+            // 3. Ensure red ping badge is rendered inside the Nightcord DM list item when unreadCount > 0
+            const existingCustomBadge = el.querySelector(".nightcord-dm-ping-badge") as HTMLElement | null;
+            const hasNativeBadge = el.querySelector('[class*="numberBadge"], [class*="mentionsBadge"]');
+            if (unreadCount > 0 && SelectedChannelStore?.getChannelId?.() !== NIGHTCORD_CHANNEL_ID) {
+                if (hasNativeBadge) {
+                    if (existingCustomBadge) existingCustomBadge.remove();
+                } else {
+                    const layoutEl = el.querySelector('[class*="layout"], [class*="children"]') || el;
+                    if (!existingCustomBadge) {
+                        const badge = document.createElement("div");
+                        badge.className = "nightcord-dm-ping-badge";
+                        badge.textContent = String(unreadCount);
+                        layoutEl.appendChild(badge);
+                    } else if (existingCustomBadge.textContent !== String(unreadCount)) {
+                        existingCustomBadge.textContent = String(unreadCount);
+                    }
+                }
+            } else if (existingCustomBadge) {
+                existingCustomBadge.remove();
             }
         }
 
@@ -573,20 +640,26 @@ function convertPostToMessage(post: any): any {
 }
 
 function injectSinglePost(post: any, isInitialLoad = false) {
-    if (!post || !post.id || settings.store.isDmClosed) return;
+    if (!post || !post.id) return;
     const postId = String(post.id);
     if (knownPostIds.has(postId)) return;
     knownPostIds.add(postId);
 
     const postDate = new Date(post.created_at).getTime();
+    const isNew = Boolean(lastSeenPostId) && (function() {
+        try { return BigInt(postId) > BigInt(lastSeenPostId); } catch { return postId !== lastSeenPostId; }
+    })();
+
+    if (isNew && settings.store.isDmClosed) {
+        settings.store.isDmClosed = false;
+    }
+
+    if (settings.store.isDmClosed) return;
+
     if (postDate > lastPostTimestamp) {
         lastPostTimestamp = postDate;
         setItemSafe(LS_LAST_TS, String(lastPostTimestamp));
     }
-
-    const isNew = Boolean(lastSeenPostId) && (function() {
-        try { return BigInt(postId) > BigInt(lastSeenPostId); } catch { return postId !== lastSeenPostId; }
-    })();
 
     if (!lastSeenPostId || isNew) {
         lastSeenPostId = postId;
@@ -623,35 +696,19 @@ function injectSinglePost(post: any, isInitialLoad = false) {
     const isCurrentChannel = SelectedChannelStore.getChannelId() === NIGHTCORD_CHANNEL_ID;
     if (!isCurrentChannel && !isInitialLoad) {
         unreadCount++;
-        playNotificationSoundSafe();
-
-        try {
-            const Notifications = (window as any).Vencord?.Api?.Notifications;
-            if (Notifications && typeof document !== "undefined" && document.hidden) {
-                Notifications.showNotification({
-                    title: "Nightcord",
-                    body: htmlToMarkdown(post.content).slice(0, 100),
-                    icon: nightcordAvatarUrl,
-                    onClick: () => {
-                        try {
-                            NavigationRouter.transitionTo(`/channels/@me/${NIGHTCORD_CHANNEL_ID}`);
-                        } catch {}
-                    }
-                });
-            }
-        } catch {}
+        triggerNightcordNotification(post);
+    } else if (isCurrentChannel) {
+        lastAckTimestamp = Math.max(Date.now(), postDate);
+        setItemSafe(LS_LAST_ACK, String(lastAckTimestamp));
     }
 
-    try { (findStore("ReadStateStore") as any)?.emitChange(); } catch {}
-    try { (findStore("GuildReadStateStore") as any)?.emitChange(); } catch {}
-    try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch {}
-    try { (findStore("ChannelStore") as any)?.emitChange(); } catch {}
+    emitAllNotificationStores();
 }
 
 let wsRetryCount = 0;
 
 function connectMastodonStreaming() {
-    if (streamingSocket || settings.store.isDmClosed) return;
+    if (streamingSocket) return;
 
     try {
         const url = STREAMING_URLS[streamUrlIdx % STREAMING_URLS.length];
@@ -684,12 +741,10 @@ function connectMastodonStreaming() {
 
         ws.onclose = () => {
             streamingSocket = null;
-            if (!settings.store.isDmClosed) {
-                if (reconnectTimer) clearTimeout(reconnectTimer);
-                wsRetryCount++;
-                const delay = Math.min(30000 * Math.pow(1.5, Math.min(wsRetryCount, 4)), 120000);
-                reconnectTimer = setTimeout(connectMastodonStreaming, delay);
-            }
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            wsRetryCount++;
+            const delay = Math.min(30000 * Math.pow(1.5, Math.min(wsRetryCount, 4)), 120000);
+            reconnectTimer = setTimeout(connectMastodonStreaming, delay);
         };
     } catch (e) {
         streamingSocket = null;
@@ -832,7 +887,6 @@ export function openUrgentMessageModal() {
 }
 
 async function checkAndInjectPosts(isInitialLoad = false) {
-    if (settings.store.isDmClosed) return;
     try {
         const posts = await fetchMastodonFeed();
         if (!Array.isArray(posts) || posts.length === 0) return;
@@ -840,7 +894,28 @@ async function checkAndInjectPosts(isInitialLoad = false) {
         const previousLastTs = Number(getItemSafe(LS_LAST_TS) || 0);
         const previousLastSeenId = getItemSafe(LS_LAST_SEEN);
 
-        if (!settings.store.isDmClosed) {
+        // Keep posts ordered NEWEST FIRST (descending timestamp order) for LOAD_MESSAGES_SUCCESS
+        const sortedPosts = [...posts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const messageRecords: any[] = [];
+        const newPostsToNotify: any[] = [];
+        let hasNewWhileOffline = false;
+
+        if (sortedPosts.length > 0) {
+            const newestDate = new Date(sortedPosts[0].created_at).getTime();
+            const newestId = String(sortedPosts[0].id);
+
+            const isNewerThanSaved = (previousLastTs > 0 && newestDate > previousLastTs) ||
+                Boolean(previousLastSeenId && (function() {
+                    try { return BigInt(newestId) > BigInt(previousLastSeenId); } catch { return newestId !== previousLastSeenId; }
+                })());
+
+            // If a brand new post arrived, reopen DM if it had been closed
+            if (isNewerThanSaved && settings.store.isDmClosed) {
+                settings.store.isDmClosed = false;
+            }
+
+            if (settings.store.isDmClosed) return;
+
             setTimeout(() => {
                 try {
                     FluxDispatcher.dispatch({
@@ -849,16 +924,6 @@ async function checkAndInjectPosts(isInitialLoad = false) {
                     });
                 } catch {}
             }, 0);
-        }
-
-        // Keep posts ordered NEWEST FIRST (descending timestamp order) for LOAD_MESSAGES_SUCCESS
-        const sortedPosts = [...posts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        const messageRecords: any[] = [];
-        const newPostsToNotify: any[] = [];
-
-        if (sortedPosts.length > 0) {
-            const newestDate = new Date(sortedPosts[0].created_at).getTime();
-            const newestId = String(sortedPosts[0].id);
 
             try {
                 (NIGHTCORD_CHANNEL as any).lastMessageId = newestId;
@@ -866,20 +931,21 @@ async function checkAndInjectPosts(isInitialLoad = false) {
                 (NIGHTCORD_CHANNEL as any).lastPinTimestamp = newestDate;
             } catch {}
 
-            // Detect if new posts arrived while Discord was closed
-            if (isInitialLoad && previousLastTs > 0) {
-                const isNewerThanSaved = newestDate > previousLastTs || (previousLastSeenId && newestId !== previousLastSeenId);
-                if (isNewerThanSaved && !settings.store.isDmClosed) {
-                    setTimeout(() => {
-                        openUrgentMessageModal();
-                    }, 1200);
-                }
+            if (!lastAckTimestamp) {
+                lastAckTimestamp = previousLastTs > 0 ? previousLastTs : newestDate;
+                setItemSafe(LS_LAST_ACK, String(lastAckTimestamp));
+            }
+
+            if (isInitialLoad && isNewerThanSaved) {
+                hasNewWhileOffline = true;
             }
 
             if (newestDate > lastPostTimestamp) {
                 lastPostTimestamp = newestDate;
                 setItemSafe(LS_LAST_TS, String(lastPostTimestamp));
             }
+        } else if (settings.store.isDmClosed) {
+            return;
         }
 
         for (const post of sortedPosts) {
@@ -894,16 +960,27 @@ async function checkAndInjectPosts(isInitialLoad = false) {
 
             if (!isKnown && isNew && !isInitialLoad) {
                 newPostsToNotify.push(post);
-            } else if (isInitialLoad && isUnread && !isKnown) {
-                unreadCount++;
+            } else {
+                if (isInitialLoad && (isUnread || (hasNewWhileOffline && isNew)) && !isKnown) {
+                    if (SelectedChannelStore.getChannelId() !== NIGHTCORD_CHANNEL_ID) {
+                        unreadCount++;
+                    }
+                }
+                knownPostIds.add(postId);
             }
 
-            knownPostIds.add(postId);
             const msgRecord = convertPostToMessage(post);
             messageRecords.push(msgRecord);
         }
 
-        if (sortedPosts.length > 0) {
+        if (isInitialLoad && hasNewWhileOffline && SelectedChannelStore.getChannelId() !== NIGHTCORD_CHANNEL_ID) {
+            if (unreadCount === 0) unreadCount = 1;
+            setTimeout(() => {
+                triggerNightcordNotification(sortedPosts[0]);
+            }, 1200);
+        }
+
+        if (sortedPosts.length > 0 && newPostsToNotify.length === 0) {
             const newestId = String(sortedPosts[0].id);
             if (!lastSeenPostId || (function() {
                 try { return BigInt(newestId) > BigInt(lastSeenPostId); } catch { return newestId !== lastSeenPostId; }
@@ -927,14 +1004,12 @@ async function checkAndInjectPosts(isInitialLoad = false) {
                 });
             } catch {}
 
-            for (const newPost of newPostsToNotify) {
+            // Inject newest posts chronologically (oldest to newest) so notifications fire cleanly
+            for (const newPost of [...newPostsToNotify].reverse()) {
                 injectSinglePost(newPost, false);
             }
 
-            try { (findStore("ReadStateStore") as any)?.emitChange(); } catch {}
-            try { (findStore("GuildReadStateStore") as any)?.emitChange(); } catch {}
-            try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch {}
-            try { (findStore("ChannelStore") as any)?.emitChange(); } catch {}
+            emitAllNotificationStores();
         }, 10);
     } catch (e) {
         console.warn("[NightcordOfficialDM] Error checking posts:", e);
@@ -979,12 +1054,10 @@ function handleChannelSelect(e: any) {
             }, 0);
         }
         unreadCount = 0;
-        lastAckTimestamp = Date.now();
+        lastAckTimestamp = Math.max(Date.now(), lastPostTimestamp);
         setItemSafe(LS_LAST_ACK, String(lastAckTimestamp));
         setTimeout(() => {
-            try { (findStore("ReadStateStore") as any)?.emitChange(); } catch {}
-            try { (findStore("GuildReadStateStore") as any)?.emitChange(); } catch {}
-            try { (findStore("PrivateChannelSortStore") as any)?.emitChange(); } catch {}
+            emitAllNotificationStores();
         }, 0);
         checkAndInjectPosts(true);
     }
@@ -1866,7 +1939,7 @@ export default definePlugin({
             isAppLoaded = true;
             checkAndInjectPosts(true);
             connectMastodonStreaming();
-            pollInterval = setInterval(() => checkAndInjectPosts(false), 300000);
+            pollInterval = setInterval(() => checkAndInjectPosts(false), 30000);
         }, 1000);
         }, 500); // end deferred startup — all store patches run after first paint + CONNECTION_OPEN
     },

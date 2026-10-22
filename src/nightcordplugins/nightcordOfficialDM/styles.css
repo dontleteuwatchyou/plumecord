@@ -161,3 +161,24 @@
     background: var(--brand-560, #4752c4);
 }
 
+.nightcord-dm-ping-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin-left: auto;
+    margin-right: 4px;
+    border-radius: 8px;
+    background-color: var(--status-danger, #f23f43);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    box-sizing: border-box;
+    pointer-events: none;
+    flex-shrink: 0;
+}
+
+
