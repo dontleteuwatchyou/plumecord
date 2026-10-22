@@ -124,9 +124,18 @@ function LikedPluginsTabIcon() {
     );
 }
 
+function EnabledPluginsTabIcon() {
+    return (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path fill="var(--status-positive, #23a55a)" fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm4.53 8.28a.75.75 0 0 0-1.06-1.06L10.5 14.19l-1.97-1.97a.75.75 0 0 0-1.06 1.06l2.5 2.5a.75.75 0 0 0 1.06 0l5.5-5.5Z" clipRule="evenodd" />
+        </svg>
+    );
+}
+
 const makeCategoryOptions = (othersCount?: number) => [
     { label: "Vencord & Equicord", value: SearchStatus.OTHERS },
     { label: "Nightcord", value: SearchStatus.NIGHTCORD },
+    { label: t("Enabled Plugins"), value: SearchStatus.ENABLED },
     { label: t("User Plugins"), value: SearchStatus.USER_PLUGINS },
     { label: t("Liked Plugins"), value: SearchStatus.LIKED_PLUGINS },
     { label: t("Community Plugins"), value: "community", disabled: true }
@@ -519,10 +528,14 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
 
             if (!pluginFilter(p, newPluginsSet)) continue;
 
-            const isRequired = p.required || p.isDependency || depMap[p.name]?.some(d => isPluginEnabled(d));
+            const isRequired = searchValue.status === SearchStatus.ENABLED
+                ? p.required
+                : (p.required || p.isDependency || depMap[p.name]?.some(d => isPluginEnabled(d)));
 
             if (isRequired) {
                 requiredData.push(p);
+            } else if (searchValue.status === SearchStatus.ENABLED) {
+                nightcordData.push(p);
             } else {
                 const folderName = PluginMeta[p.name]?.folderName ?? "";
                 if (folderName.startsWith("src/nightcordplugins/")) {
@@ -536,13 +549,15 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
         const byLikes = (a: typeof sortedPlugins[number], b: typeof sortedPlugins[number]) => {
             if (a.name === "AutoCallRecorder") return -1;
             if (b.name === "AutoCallRecorder") return 1;
-            return (ratings[b.name]?.likes ?? 0) - (ratings[a.name]?.likes ?? 0);
+            const diff = (ratings[b.name]?.likes ?? 0) - (ratings[a.name]?.likes ?? 0);
+            if (diff !== 0) return diff;
+            return a.name.localeCompare(b.name);
         };
         nightcordData.sort(byLikes);
         othersData.sort(byLikes);
 
         return { nightcordData, othersData, requiredData };
-    }, [sortedPlugins, searchValue, newPluginsSet, depMap, pluginFilter, ratings]);
+    }, [sortedPlugins, searchValue, newPluginsSet, depMap, pluginFilter, ratings, settings.plugins]);
 
     const allDataLength = nightcordData.length + othersData.length;
     const hasMore = visibleCount < allDataLength;
@@ -900,7 +915,12 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                             <div className={cl("stat-title")}>{t("TOTAL PLUGINS")}</div>
                             <div className={cl("stat-value")}>{totalStockPlugins + totalUserPlugins}</div>
                         </div>
-                        <div className={cl("stat-item")}>
+                        <div 
+                            className={cl("stat-item")}
+                            style={{ cursor: "pointer", transition: "0.2s" }}
+                            onClick={() => onStatusChange(SearchStatus.ENABLED)}
+                            title={t("Click to view enabled plugins")}
+                        >
                             <div className={cl("stat-title")}>{t("ENABLED PLUGINS")}</div>
                             <div className={cl("stat-value")}>
                                 {categoryStats.enabled} <span className={cl("stat-percent")}>({percent}%)</span>
@@ -925,12 +945,14 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                                 {searchValue.status === SearchStatus.USER_PLUGINS ? t("USER PLUGINS") : 
                                  searchValue.status === SearchStatus.OTHERS ? t("VENCORD & EQUICORD PLUGINS") : 
                                  searchValue.status === SearchStatus.LIKED_PLUGINS ? t("LIKED PLUGINS") :
+                                 searchValue.status === SearchStatus.ENABLED ? t("ALL ENABLED PLUGINS") :
                                  t("NIGHTCORD PLUGINS")}
                             </div>
                             <div className={cl("stat-value")}>
                                 {searchValue.status === SearchStatus.USER_PLUGINS ? totalUserPlugins : 
                                  searchValue.status === SearchStatus.OTHERS ? totalOtherPlugins : 
                                  searchValue.status === SearchStatus.LIKED_PLUGINS ? categoryStats.total :
+                                 searchValue.status === SearchStatus.ENABLED ? categoryStats.enabled :
                                  totalNightcordPlugins}
                             </div>
                         </div>
@@ -953,6 +975,7 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                             renderOptionPrefix={(o: any) => {
                                 if (o?.value === SearchStatus.NIGHTCORD) return <NightcordTabIcon />;
                                 if (o?.value === SearchStatus.OTHERS) return <VencordEquicordTabIcon />;
+                                if (o?.value === SearchStatus.ENABLED) return <EnabledPluginsTabIcon />;
                                 if (o?.value === SearchStatus.USER_PLUGINS) return <UserPluginsTabIcon />;
                                 if (o?.value === SearchStatus.LIKED_PLUGINS) return <LikedPluginsTabIcon />;
                                 return null;
@@ -1086,7 +1109,19 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                         </div>
                     )}
 
-                    {nightcordData.length === 0 && othersData.length === 0 && searchValue.status !== SearchStatus.USER_PLUGINS && searchValue.status !== SearchStatus.LIKED_PLUGINS && (
+                    {nightcordData.length === 0 && othersData.length === 0 && searchValue.status === SearchStatus.ENABLED && !search.length && (
+                        <div style={{ textAlign: "center", padding: "48px 16px", color: "var(--text-muted)" }}>
+                            <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" style={{ color: "var(--interactive-normal)" }}>
+                                    <path fill="currentColor" fillRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm4.53 8.28a.75.75 0 0 0-1.06-1.06L10.5 14.19l-1.97-1.97a.75.75 0 0 0-1.06 1.06l2.5 2.5a.75.75 0 0 0 1.06 0l5.5-5.5Z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8, color: "var(--header-primary)" }}>{t("No enabled plugins")}</div>
+                            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("Enable any plugin to see it listed here.")}</div>
+                        </div>
+                    )}
+
+                    {nightcordData.length === 0 && othersData.length === 0 && searchValue.status !== SearchStatus.USER_PLUGINS && searchValue.status !== SearchStatus.LIKED_PLUGINS && !(searchValue.status === SearchStatus.ENABLED && !search.length) && (
                         <ExcludedPluginsList search={search} />
                     )}
 
