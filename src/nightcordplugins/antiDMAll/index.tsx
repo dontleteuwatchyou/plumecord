@@ -48,8 +48,8 @@ const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "Target accounts to filter for DM-all spam.",
         options: [
-            { label: "All Unknown Accounts (Bots & Strangers)", value: "all", default: true },
-            { label: "Discord Bots Only", value: "bots_only" },
+            { label: "Discord Bots Only", value: "bots_only", default: true },
+            { label: "All Unknown Accounts (Bots & Strangers)", value: "all" },
             { label: "Strangers Only", value: "strangers_only" }
         ],
         restartNeeded: false
@@ -75,7 +75,7 @@ const settings = definePluginSettings({
     showNotifications: {
         type: OptionType.BOOLEAN,
         description: "Show a notification toast when a DM-all spammer is blocked.",
-        default: true,
+        default: false,
         restartNeeded: false
     }
 });
