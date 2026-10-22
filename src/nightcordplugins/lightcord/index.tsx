@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import {
@@ -11,7 +12,8 @@ import {
     React,
     showToast,
     Text,
-    Toasts
+    Toasts,
+    UserStore
 } from "@webpack/common";
 import { Card } from "@components/Card";
 import { Flex, FlexAlign, FlexJustify } from "@components/Flex";
@@ -41,6 +43,55 @@ const settings = definePluginSettings({
         restartNeeded: false,
         onChange() { updateCssIfRunning(); }
     },
+    disableGuildOnProfile: {
+        type: OptionType.BOOLEAN,
+        description: "Hides clan, guild chips, and guild badges on user profiles.",
+        default: true,
+        restartNeeded: false,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableNameplates: {
+        type: OptionType.BOOLEAN,
+        description: "Removes nameplate frames and collectible backgrounds on member lists and profiles.",
+        default: true,
+        restartNeeded: true,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableProfileEffects: {
+        type: OptionType.BOOLEAN,
+        description: "Removes avatar decorations, profile animation effects, and banner video effects.",
+        default: true,
+        restartNeeded: true,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableProfileThemes: {
+        type: OptionType.BOOLEAN,
+        description: "Neutralizes custom Nitro profile theme colors and gradients back to standard Discord dark/light theme.",
+        default: true,
+        restartNeeded: true,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableRoleColors: {
+        type: OptionType.BOOLEAN,
+        description: "Removes server role colors from usernames, restoring clean default high-contrast text.",
+        default: true,
+        restartNeeded: false,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableUsernameStyling: {
+        type: OptionType.BOOLEAN,
+        description: "Removes custom nickname glows, text-shadows, and special font styling.",
+        default: true,
+        restartNeeded: false,
+        onChange() { updateCssIfRunning(); }
+    },
+    disableStatusIndicatorOnProfile: {
+        type: OptionType.BOOLEAN,
+        description: "Removes status indicator circles (Online, DND, Idle, Offline) on user profiles.",
+        default: true,
+        restartNeeded: false,
+        onChange() { updateCssIfRunning(); }
+    },
     disableQuestsAndShop: {
         type: OptionType.BOOLEAN,
         description: "Removes Quests, Shop, and Nitro tabs from the direct messages sidebar and hides quest popups.",
@@ -51,13 +102,6 @@ const settings = definePluginSettings({
     disableChatSlop: {
         type: OptionType.BOOLEAN,
         description: "Removes the Nitro gift button and the App Launcher (Activities) button from the chat bar.",
-        default: true,
-        restartNeeded: false,
-        onChange() { updateCssIfRunning(); }
-    },
-    disableProfileEffects: {
-        type: OptionType.BOOLEAN,
-        description: "Removes avatar decorations, profile animation effects, nameplates, and banner effects.",
         default: true,
         restartNeeded: false,
         onChange() { updateCssIfRunning(); }
@@ -113,22 +157,34 @@ div[aria-label*="Badges" i],
 `);
     }
 
-    // 2. Activities on people
+    // 2. Activities on people (member list, voice channels, and user profile activity / song shelf)
     if (settings.store.disableActivities) {
         rules.push(`
-/* Lightcord: Activities */
+/* Lightcord: Member Activities and Profile Activity Shelf */
 [class*="activity-"],
 [class*="activityText-"],
 [class*="activityUserPopout-"],
 [class*="userProfileActivity-"],
+[class*="userProfileActivity"],
 [class*="activityProfile-"],
+[class*="activitySection-"],
+[class*="userProfileActivityContainer-"],
+[class*="tabBar-"]:has([id*="activity"]),
+[class*="tabBarItem-"][id*="activity"],
+[class*="tabBarItem-"][id*="song"],
+[class*="tabBarItem-"][id*="wishlist"],
+[class*="tabBar-"]:has([id*="song"]),
+[class*="activityCard-"],
 [class*="hangStatus-"],
 [class*="voiceUser-"] [class*="activity-"],
 [class*="voiceUser-"] [class*="activityText-"],
 [class*="member-"] [class*="subText-"]:has([class*="activity-"]),
 [class*="member-"] [class*="subText-"]:has(svg[class*="icon-"]),
 [class*="channel-"] [class*="subText-"]:has([class*="activity-"]),
-[class*="channel-"] [class*="activityText-"] {
+[class*="channel-"] [class*="activityText-"],
+[class*="profilePanel-"] [class*="activity-"],
+[class*="userProfile"] [class*="activity-"],
+[class*="userPopout"] [class*="activity-"] {
     display: none !important;
 }
 `);
@@ -151,7 +207,170 @@ span:has(> [class*="clanTag-"]),
 `);
     }
 
-    // 4. Quests, Shop, Nitro Home
+    // 4. Guild / Clan chips on profile
+    if (settings.store.disableGuildOnProfile) {
+        rules.push(`
+/* Lightcord: Guild & Clan info on Profile */
+[class*="profileClan-"],
+[class*="guildBadge-"],
+[class*="clanBadge-"],
+[class*="userProfile"] [class*="tags-"],
+[class*="userPopout"] [class*="tags-"],
+[class*="userProfile"] [class*="badgeContainer-"],
+[class*="userPopout"] [class*="badgeContainer-"],
+[class*="userProfile"] [class*="clanTag-"],
+[class*="userPopout"] [class*="clanTag-"] {
+    display: none !important;
+}
+`);
+    }
+
+    // 5. Nameplates & Collectible frames (like on screen 2)
+    if (settings.store.disableNameplates) {
+        rules.push(`
+/* Lightcord: Nameplates & Profile Frames on Member List */
+[class*="nameplate"],
+[class*="nameplate-"],
+[class*="nameplateContainer"],
+[class*="nameplateWrapper"],
+img[src*="nameplates"],
+[style*="nameplates"],
+[class*="member-"] [class*="nameplate"],
+[class*="member-"] img[src*="nameplates"],
+[class*="member-"] [style*="nameplates"],
+[class*="member-"] div:has(> img[src*="nameplates"]),
+[class*="userProfile"] [class*="nameplate"],
+[class*="voiceUser-"] [class*="nameplate"] {
+    display: none !important;
+    background: none !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+[class*="member-"]:has([class*="nameplate"]) [class*="layout-"],
+[class*="member-"]:has(img[src*="nameplates"]) [class*="layout-"] {
+    background: transparent !important;
+    background-image: none !important;
+}
+`);
+    }
+
+    // 6. Profile Effects, Avatar Decorations, Banner Effects
+    if (settings.store.disableProfileEffects) {
+        rules.push(`
+/* Lightcord: Profile Effects, Avatar Decorations, Banner Animations */
+[class*="avatarDecoration-"],
+svg[class*="avatarDecoration-"],
+img[class*="avatarDecoration-"],
+[class*="avatarDecorationHint-"],
+[class*="avatarStack-"] > [class*="avatarDecoration-"],
+[class*="profileEffects-"],
+[class*="profileEffectBackground-"],
+[class*="profileEffect-"],
+canvas[class*="profileEffect"],
+[class*="animationWrapper-"] > [class*="profileEffect-"],
+[class*="bannerEffects-"],
+[class*="profileBanner-"] video,
+[class*="profileBanner-"] img[src*="effects"],
+div:has(> [class*="profileEffectBackground-"]) {
+    display: none !important;
+}
+`);
+    }
+
+    // 7. Profile Themes (Custom Nitro Colors & Gradients)
+    if (settings.store.disableProfileThemes) {
+        rules.push(`
+/* Lightcord: Neutralize Profile Theme Colors */
+[class*="userProfileOuterThemed-"],
+[class*="userProfileInnerThemed-"],
+[class*="userProfile-"],
+[class*="userPopout-"],
+[class*="profileCard-"],
+[class*="userProfileModal-"] {
+    --profile-gradient-primary-color: var(--background-floating, #18191c) !important;
+    --profile-gradient-secondary-color: var(--background-floating, #18191c) !important;
+    --profile-body-background-color: var(--background-secondary, #2b2d31) !important;
+    --profile-avatar-border-color: var(--background-secondary, #2b2d31) !important;
+    background: var(--background-floating, #18191c) !important;
+}
+[class*="userProfileInnerThemed-"],
+[class*="inner-"][class*="themed-"] {
+    background: var(--background-secondary, #2b2d31) !important;
+}
+`);
+    }
+
+    // 8. Role Colors on Usernames
+    if (settings.store.disableRoleColors) {
+        rules.push(`
+/* Lightcord: Remove Role Colors on Usernames */
+[class*="username-"],
+[class*="userTag-"],
+[class*="headerTag-"] [class*="username-"],
+[class*="member-"] [class*="name-"],
+[class*="member-"] [class*="username-"],
+[class*="message-"] [class*="username-"],
+[class*="userProfile"] [class*="username-"],
+[class*="userProfile"] [class*="userTag-"],
+[class*="userProfile"] [class*="nickname-"] {
+    color: var(--header-primary, #ffffff) !important;
+}
+`);
+    }
+
+    // 9. Username Styling, Glows, and Shadows
+    if (settings.store.disableUsernameStyling) {
+        rules.push(`
+/* Lightcord: Remove Nickname Glows and Styling */
+[class*="username-"],
+[class*="userTag-"],
+[class*="nickname-"],
+[class*="headerTag-"] {
+    text-shadow: none !important;
+    filter: none !important;
+    -webkit-text-stroke: 0 !important;
+}
+`);
+    }
+
+    // 10. Status Indicator Circle on Profiles (Online, DND, Idle, Offline)
+    if (settings.store.disableStatusIndicatorOnProfile) {
+        rules.push(`
+/* Lightcord: Remove Status Circle on User Profiles */
+[class*="userProfile"] [class*="avatarWrapper"] svg > rect:not([width="100%"]),
+[class*="userPopout"] [class*="avatarWrapper"] svg > rect:not([width="100%"]),
+[class*="profileCard"] [class*="avatarWrapper"] svg > rect:not([width="100%"]),
+[class*="userProfileModal"] [class*="avatarWrapper"] svg > rect:not([width="100%"]),
+[class*="userProfile"] [class*="avatarWrapper"] rect[mask*="svg-mask-status-"],
+[class*="userPopout"] [class*="avatarWrapper"] rect[mask*="svg-mask-status-"],
+[class*="userProfile"] [class*="avatarWrapper"] [class*="status-"],
+[class*="userPopout"] [class*="avatarWrapper"] [class*="status-"],
+[class*="userProfile"] [class*="avatarWrapper"] rect[fill*="status"],
+[class*="userPopout"] [class*="avatarWrapper"] rect[fill*="status"],
+[class*="userProfile"] [class*="avatarWrapper"] svg[class*="cursor-"] > rect,
+[class*="userPopout"] [class*="avatarWrapper"] svg[class*="cursor-"] > rect {
+    display: none !important;
+}
+
+/* Remove avatar cutout on profiles for an intact round avatar */
+[class*="userProfile"] [class*="avatarWrapper"] svg foreignObject,
+[class*="userPopout"] [class*="avatarWrapper"] svg foreignObject,
+[class*="profileCard"] [class*="avatarWrapper"] svg foreignObject,
+[class*="userProfileModal"] [class*="avatarWrapper"] svg foreignObject {
+    mask: none !important;
+    border-radius: 50% !important;
+}
+[class*="userProfile"] [class*="avatarWrapper"] img[class*="avatar-"],
+[class*="userPopout"] [class*="avatarWrapper"] img[class*="avatar-"],
+[class*="profileCard"] [class*="avatarWrapper"] img[class*="avatar-"],
+[class*="userProfileModal"] [class*="avatarWrapper"] img[class*="avatar-"] {
+    border-radius: 50% !important;
+}
+`);
+    }
+
+    // 11. Quests, Shop, Nitro Home
     if (settings.store.disableQuestsAndShop) {
         rules.push(`
 /* Lightcord: Quests, Shop, Nitro Home */
@@ -181,7 +400,7 @@ div:has(> [class*="questBar-"]) {
 `);
     }
 
-    // 5. Chat Bar Slop (Gift button, App launcher)
+    // 12. Chat Bar Slop (Gift button, App launcher)
     if (settings.store.disableChatSlop) {
         rules.push(`
 /* Lightcord: Chat Bar Gift & App Launcher */
@@ -196,30 +415,7 @@ button[aria-label*="Applications" i],
 `);
     }
 
-    // 6. Profile Effects & Avatar Decorations
-    if (settings.store.disableProfileEffects) {
-        rules.push(`
-/* Lightcord: Profile Effects, Avatar Decorations, Nameplates */
-[class*="avatarDecoration-"],
-svg[class*="avatarDecoration-"],
-img[class*="avatarDecoration-"],
-[class*="avatarDecorationHint-"],
-[class*="avatarStack-"] > [class*="avatarDecoration-"],
-[class*="profileEffects-"],
-[class*="profileEffectBackground-"],
-[class*="profileEffect-"],
-canvas[class*="profileEffect"],
-[class*="animationWrapper-"] > [class*="profileEffect-"],
-[class*="nameplate-"],
-div[class*="nameplate-"],
-[class*="bannerEffects-"],
-[class*="profileBanner-"] video {
-    display: none !important;
-}
-`);
-    }
-
-    // 7. Super Reactions & Reaction Effects
+    // 13. Super Reactions & Reaction Effects
     if (settings.store.disableReactionEffects) {
         rules.push(`
 /* Lightcord: Super Reactions & Burst Glow */
@@ -235,7 +431,7 @@ div[class*="nameplate-"],
 `);
     }
 
-    // 8. Voice Call & Soundboard Effects
+    // 14. Voice Call & Soundboard Effects
     if (settings.store.disableVoiceEffects) {
         rules.push(`
 /* Lightcord: Soundboard waves & animations */
@@ -246,7 +442,7 @@ div[class*="nameplate-"],
 `);
     }
 
-    // 9. Nitro Upsells & Server Boost Bar
+    // 15. Nitro Upsells & Server Boost Bar
     if (settings.store.disableNitroUpsells) {
         rules.push(`
 /* Lightcord: Nitro Upsells & Boost Bar */
@@ -288,9 +484,15 @@ function LightcordSettingsAbout() {
         settings.store.disableBadges = true;
         settings.store.disableActivities = true;
         settings.store.disableNametags = true;
+        settings.store.disableGuildOnProfile = true;
+        settings.store.disableNameplates = true;
+        settings.store.disableProfileEffects = true;
+        settings.store.disableProfileThemes = true;
+        settings.store.disableRoleColors = true;
+        settings.store.disableUsernameStyling = true;
+        settings.store.disableStatusIndicatorOnProfile = true;
         settings.store.disableQuestsAndShop = true;
         settings.store.disableChatSlop = true;
-        settings.store.disableProfileEffects = true;
         settings.store.disableReactionEffects = true;
         settings.store.disableVoiceEffects = true;
         settings.store.disableNitroUpsells = true;
@@ -302,9 +504,15 @@ function LightcordSettingsAbout() {
         settings.store.disableBadges = true;
         settings.store.disableActivities = true;
         settings.store.disableNametags = true;
+        settings.store.disableGuildOnProfile = true;
+        settings.store.disableNameplates = true;
+        settings.store.disableProfileEffects = true;
+        settings.store.disableProfileThemes = true;
+        settings.store.disableRoleColors = true;
+        settings.store.disableUsernameStyling = true;
+        settings.store.disableStatusIndicatorOnProfile = true;
         settings.store.disableQuestsAndShop = true;
         settings.store.disableChatSlop = true;
-        settings.store.disableProfileEffects = true;
         settings.store.disableReactionEffects = true;
         settings.store.disableVoiceEffects = true;
         settings.store.disableNitroUpsells = true;
@@ -375,6 +583,47 @@ export default definePlugin({
     enabledByDefault: false,
     settings,
     settingsAboutComponent: LightcordSettingsAbout,
+
+    patches: [
+        {
+            // Nameplate component (frames on member list items and profiles)
+            find: ".MINI_PREVIEW,[",
+            replacement: {
+                match: /function \i\((\i)\)\{(?=let.{1,5}\{nameplate:\i,)/,
+                replace: '$&if($1.placement!=="preview"&&$1.placement!=="mini_preview")return null;',
+            },
+            predicate: () => settings.store.disableNameplates,
+        },
+        {
+            // Remove profile theme colors for all other users
+            find: "hasThemeColors(){",
+            replacement: {
+                match: /get canUsePremiumProfileCustomization\(\){return /,
+                replace: "$&$self.isCurrentUser(this?.userId)&&"
+            },
+            predicate: () => settings.store.disableProfileThemes,
+        },
+        {
+            // Profile banner animation effect
+            find: "bannerAdjustment,isHovering",
+            replacement: {
+                match: /\i=function\((\i)\)\{(?=.{0,50}\.useReducedMotion\))/,
+                replace: "$&if(!$1.shopPreview)return null;",
+            },
+            predicate: () => settings.store.disableProfileEffects,
+        },
+        {
+            // Avatar decoration
+            find: "isAvatarDecorationAnimating:",
+            replacement: {
+                match: /(?<=\{avatarDecoration:.{0,40}?)(void 0!==\i\?\i:)\i(?=\)?,canAnimate:)/,
+                replace: "$1null",
+            },
+            predicate: () => settings.store.disableProfileEffects && !isPluginEnabled("Decor"),
+        },
+    ],
+
+    isCurrentUser: (userId?: string) => userId === UserStore.getCurrentUser()?.id,
 
     start() {
         isRunning = true;
