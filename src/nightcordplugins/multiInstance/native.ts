@@ -345,6 +345,22 @@ app.on("before-quit", () => {
     isAppQuitting = true;
 });
 
+/**
+ * Discord ouvre des popouts internes (overlay de jeu, activite, clips, appel...)
+ * via window.open("https://discord.com/popout", "DISCORD_<key>").
+ * Dans une instance multi, ces popouts ne doivent jamais partir dans le navigateur.
+ */
+function isDiscordPopoutRequest(url: string, frameName?: string): boolean {
+    if (frameName && frameName.startsWith("DISCORD_")) return true;
+    try {
+        const parsed = new URL(url);
+        if (!/(^|\.)discord\.com$/.test(parsed.hostname) && parsed.protocol !== "about:") return false;
+        return /^\/(popout|popup|overlay)(\/|$)/.test(parsed.pathname) || parsed.protocol === "about:";
+    } catch {
+        return url === "" || url.startsWith("about:");
+    }
+}
+
 function registerWindowControlIpc(win: BrowserWindow): () => void {
     const wc = win.webContents as any; // webContents.ipc existe depuis Electron 20
 
@@ -356,19 +372,34 @@ function registerWindowControlIpc(win: BrowserWindow): () => void {
     const FULLSCREEN = "DISCORD_WINDOW_TOGGLE_FULLSCREEN";
 
     // webContents.ipc.handle est prioritaire sur ipcMain.handle pour ce sender
-    const handleClose = () => {
+    // Discord passe une "windowKey" quand il veut fermer un popout (overlay, activite,
+    // jeu detecte...). Une instance multi n'a pas de popout : on ignore ces appels pour
+    // ne JAMAIS fermer la fenetre de l'instance a la place du popout.
+    const isPopoutKey = (key: unknown): boolean => typeof key === "string" && key.length > 0;
+
+    const handleClose = (_event?: unknown, key?: unknown) => {
+        if (isPopoutKey(key)) return;
         if (!win.isDestroyed()) {
             (win as any)._userRequestedClose = true;
             win.close();
         }
     };
-    const handleMinimize = () => { if (!win.isDestroyed()) win.minimize(); };
-    const handleMaximize = () => {
-        if (win.isDestroyed()) return;
+    const handleMinimize = (_event?: unknown, key?: unknown) => {
+        if (isPopoutKey(key)) return;
+        if (!win.isDestroyed()) win.minimize();
+    };
+    const handleMaximize = (_event?: unknown, key?: unknown) => {
+        if (isPopoutKey(key) || win.isDestroyed()) return;
         if (win.isMaximized()) win.unmaximize(); else win.maximize();
     };
-    const handleRestore = () => { if (!win.isDestroyed()) win.restore(); };
-    const handleFullscreen = () => { if (!win.isDestroyed()) win.setFullScreen(!win.isFullScreen()); };
+    const handleRestore = (_event?: unknown, key?: unknown) => {
+        if (isPopoutKey(key)) return;
+        if (!win.isDestroyed()) win.restore();
+    };
+    const handleFullscreen = (_event?: unknown, key?: unknown) => {
+        if (isPopoutKey(key)) return;
+        if (!win.isDestroyed()) win.setFullScreen(!win.isFullScreen());
+    };
 
     try {
         // webContents.ipc.handle (Electron 20+)
@@ -384,9 +415,9 @@ function registerWindowControlIpc(win: BrowserWindow): () => void {
         // IMPORTANT: DISCORD_WINDOW_TOGGLE_FULLSCREEN est deja enregistre globalement
         // par le patcher principal. On ne le re-enregistre PAS ici pour eviter
         // "Attempted to register a second handler" qui crashe Discord au demarrage.
-        const guardedHandle = (fn: () => void) => (event: Electron.IpcMainInvokeEvent) => {
+        const guardedHandle = (fn: (event?: unknown, key?: unknown) => void) => (event: Electron.IpcMainInvokeEvent, key?: unknown) => {
             if (BrowserWindow.fromWebContents(event.sender) !== win) return;
-            fn();
+            fn(event, key);
         };
         // removeHandler d'abord pour eviter le crash en cas de double appel
         ipcMain.removeHandler(CLOSE);
@@ -848,7 +879,7 @@ function createTokenPreload(token: string, sharedSettings: Record<string, string
         "      var dn = window.DiscordNative;",
         "      if (dn && dn.window && dn.window.close && !dn.window._miPatched) {",
         "        var orig = dn.window.close;",
-        "        dn.window.close = function() { if (Date.now() - lastUI < 2000) orig.apply(this, arguments); };",
+        "        dn.window.close = function(key) { if (typeof key === 'string' && key) return; if (Date.now() - lastUI < 2000) orig.apply(this, arguments); };",
         "        dn.window._miPatched = true;",
         "      }",
         "    }",
@@ -1224,8 +1255,9 @@ export async function openInstanceWindow(
             if (!/^https:\/\/(ptb\.|canary\.)?discord\.com/.test(url)) e.preventDefault();
         });
 
-        wc.setWindowOpenHandler(({ url }) => {
+        wc.setWindowOpenHandler(({ url, frameName }) => {
             if (url.includes("/handoff")) return { action: "deny" };
+            if (isDiscordPopoutRequest(url, frameName)) return { action: "deny" };
             if (url.startsWith("http")) require("electron").shell.openExternal(url);
             return { action: "deny" };
         });
@@ -1482,8 +1514,9 @@ export async function openInstanceWindowGrouped(
             if (!/^https:\/\/(ptb\.|canary\.)?discord\.com/.test(url)) e.preventDefault();
         });
 
-        wc.setWindowOpenHandler(({ url }) => {
+        wc.setWindowOpenHandler(({ url, frameName }) => {
             if (url.includes("/handoff")) return { action: "deny" };
+            if (isDiscordPopoutRequest(url, frameName)) return { action: "deny" };
             if (url.startsWith("http")) require("electron").shell.openExternal(url);
             return { action: "deny" };
         });
