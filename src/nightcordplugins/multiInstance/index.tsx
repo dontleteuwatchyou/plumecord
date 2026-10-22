@@ -266,7 +266,7 @@ async function loadTokenCache(): Promise<void> {
 
     // Purge any corrupted or cross-account tokens
     const curUser = UserStore.getCurrentUser();
-    const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
+    const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens") ?? findByPropsSilent("getToken", "getId");
     const curTok = tokenMod?.getToken?.();
     if (curUser?.id && curTok) {
         tokenCache[curUser.id] = curTok;
@@ -358,7 +358,7 @@ function cacheToken(userId: string, token: string): boolean {
 
 function captureCurrentToken(): void {
     try {
-        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens") ?? findByPropsSilent("getToken", "getId");
         const token = tokenMod?.getToken?.();
         const user = UserStore.getCurrentUser();
         if (token && user?.id && typeof token === "string") {
@@ -724,7 +724,7 @@ function getAvatarUrl(id: string, hash?: string | null): string {
 
 function getNativeAccounts(): SavedAccount[] {
     try {
-        const store = findByPropsSilent("getUsers", "getValidUsers");
+        const store = findStore("MultiAccountStore") ?? findByPropsSilent("getUsers", "getValidUsers");
         const users: any[] = store?.getUsers?.() ?? store?.getValidUsers?.() ?? [];
         return users.filter(u => u?.id).map(u => ({
             id: u.id,

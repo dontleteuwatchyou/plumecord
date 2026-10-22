@@ -1126,8 +1126,8 @@ export default definePlugin({
         {
             find: '"sticker")',
             replacement: {
-                match: /0===(\i)\.length(?=.{0,25}?\(0,\i\.jsxs?\)\(.{0,75}?children:\1)/,
-                replace: "(Vencord.Api.ChatButtons._injectButtons($1,arguments[0]),$self.isNightcordChannel(arguments[0])?$self.renderBanner():$&)"
+                match: /0===(\i)\.length(?=\)\?null:\(0,\i\.jsxs?\)\("div")/,
+                replace: "($self.isNightcordChannel(arguments[0])?$self.renderBanner():$&)"
             }
         },
         // Inject username + creation date in DM sidebar profile panel
@@ -1942,7 +1942,6 @@ export default definePlugin({
         setTimeout(() => {
             isAppLoaded = true;
             checkAndInjectPosts(true);
-            connectMastodonStreaming();
             pollInterval = setInterval(() => checkAndInjectPosts(false), 30000);
         }, 1000);
         }, 500); // end deferred startup — all store patches run after first paint + CONNECTION_OPEN

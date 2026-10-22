@@ -126,7 +126,7 @@ export default definePlugin({
             replacement: [
                 {
                     // Do not show confirmation to join a voice channel when already connected to another if clicking on a hidden voice channel
-                    match: /(?<=getIgnoredUsersForVoiceChannel\((\i)\.id\)[^;]+?;return\()/,
+                    match: /(?<=getIgnoredUsersForVoiceChannel\((\i)\.id\)[^;]*?;return\()/,
                     replace: (_, channel) => `!$self.isHiddenChannel(${channel})&&`
                 },
                 {
@@ -406,6 +406,7 @@ export default definePlugin({
         },
         {
             find: '"HasBeenInStageChannel"',
+            noWarn: true,
             replacement: [
                 {
                     // Render our HiddenChannelLockScreen component instead of the main stage channel component
@@ -431,6 +432,7 @@ export default definePlugin({
         },
         {
             find: "#{intl::STAGE_FULL_MODERATOR_TITLE}",
+            noWarn: true,
             replacement: [
                 {
                     // Remove the divider and amount of users in stage channel components for the HiddenChannelLockScreen

@@ -728,8 +728,8 @@ export default definePlugin({
         {
             find: '"sticker")',
             replacement: {
-                match: /0===(\i)\.length(?=.{0,25}?\(0,\i\.jsxs?\)\(.{0,75}?children:\1)/,
-                replace: "(Vencord.Api.ChatButtons._injectButtons($1,arguments[0]),$self.isSavedMessagesChannel(arguments[0])?$self.renderBanner():$&)"
+                match: /0===(\i)\.length(?=\)\?null:\(0,\i\.jsxs?\)\("div")/,
+                replace: "($self.isSavedMessagesChannel(arguments[0])?$self.renderBanner():$&)"
             }
         },
         // Direct React Component patch for DM list

@@ -1,20 +1,8 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import { traceFunction } from "@debug/Tracer";
 import { makeLazy, proxyLazy } from "@utils/lazy";
@@ -244,8 +232,14 @@ export const find = traceFunction("find", function find(filter: FilterFn, { isIn
         for (const nestedMod in mod.exports) {
             try {
                 const nested = mod.exports[nestedMod];
-                if (nested && filter(nested)) {
+                if (nested) {
+                    if (nested[Symbol.toStringTag] === "IntlMessagesProxy") {
+                        makePropertyNonEnumerable(mod.exports, nestedMod);
+                        continue;
+                    }
+                    if (filter(nested)) {
                     return isWaitFor ? [nested, key] : nested;
+                    }
                 }
             } catch { }
         }
@@ -276,7 +270,7 @@ export function findAll(filter: FilterFn, { topLevelOnly = false }: { topLevelOn
         for (const nestedMod in mod.exports) {
             try {
                 const nested = mod.exports[nestedMod];
-                if (nested && filter(nested)) ret.push(nested);
+                if (nested && nested[Symbol.toStringTag] !== "IntlMessagesProxy" && filter(nested)) ret.push(nested);
             } catch { }
         }
     }
@@ -335,7 +329,7 @@ export const findBulk = traceFunction("findBulk", function findBulk(...filterFns
 
             for (const nestedMod in mod.exports) {
                 const nested = mod.exports[nestedMod];
-                if (nested && filter(nested)) {
+                if (nested && nested[Symbol.toStringTag] !== "IntlMessagesProxy" && filter(nested)) {
                     results[j] = nested;
                     filters[j] = undefined;
                     if (++found === length) break outer;

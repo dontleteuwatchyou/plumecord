@@ -615,22 +615,27 @@ async function validateToken(rawToken: string): Promise<GhostAccount | null> {
                     token
                 };
             }
+            return null;
         }
     } catch {}
 
     try {
-        const r = await fetch("https://discord.com/api/v9/users/@me", {
-            headers: { Authorization: token },
-            signal: AbortSignal.timeout(6000),
-        });
-        if (r.ok) {
-            const d = await r.json();
-            return {
-                userId: d.id,
-                username: d.global_name || d.username,
-                avatar: d.avatar ? String(d.avatar).split("/").pop()?.split(".")[0] || null : null,
-                token
-            };
+        const netFetch = (VencordNative as any)?.nightcord?.netFetch;
+        if (typeof netFetch === "function") {
+            const r = await netFetch("https://discord.com/api/v9/users/@me", {
+                headers: { Authorization: token },
+                timeout: 6000,
+            });
+            if (r?.ok && r.body) {
+                const d = JSON.parse(r.body);
+                return {
+                    userId: d.id,
+                    username: d.global_name || d.username,
+                    avatar: d.avatar ? String(d.avatar).split("/").pop()?.split(".")[0] || null : null,
+                    token
+                };
+            }
+            return null;
         }
     } catch {}
 

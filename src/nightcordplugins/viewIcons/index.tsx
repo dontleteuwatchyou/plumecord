@@ -758,7 +758,7 @@ export default definePlugin({
         {
             find: "return{avatarProps:{",
             replacement: {
-                match: /(?<=avatarProps:(\i),eventHandlers:(\i).{0,50}?)return null==/,
+                match: /(?<=avatarProps:(\i),eventHandlers:(\i).{0,200}?)return null==/,
                 replace: 'Object.assign($2,{style:{cursor:"pointer"},onClick:()=>$self.openAvatar($1.src)});$&',
             }
         },

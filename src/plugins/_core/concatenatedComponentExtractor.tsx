@@ -1,5 +1,5 @@
 /*
- * Vencord, a Discord client mod
+ * Nightcord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -26,7 +26,7 @@ export default definePlugin({
         {
             find: /="ltr",orientation:\i="vertical"[^}]+?customTheme:/,
             replacement: {
-                match: /(?=function (\i)\(\i,\i,\i\)\{.{0,20}?return \i\.forwardRef\(function\(\i,\i\)\{let\{[^}]+?="ltr",orientation:)/,
+                match: /(?=function (\i)\(\i,\i,\i\)\{.{0,20}?return (?:\i\.forwardRef\()?function\(\i(?:,\i)?\)\{let\{[^}]+?="ltr",orientation:)/,
                 replace: "$self.setCreateScroller($1);"
             }
         },
