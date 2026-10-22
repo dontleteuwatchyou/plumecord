@@ -33,6 +33,7 @@ function formatDate(date: Date): string {
 
 const LS_LAST_SEEN = "nightcord_official_dm_last_seen";
 const LS_LAST_TS = "nightcord_official_dm_last_ts";
+const LS_LAST_ACK = "nightcord_official_dm_last_ack";
 
 export const settings = definePluginSettings({
     isDmClosed: {
