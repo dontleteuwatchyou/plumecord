@@ -169,7 +169,12 @@ async function loadMessagesSuccessHandler(payload: any) {
                 (r.status === idb.DBMessageStatus.DELETED || r.status === idb.DBMessageStatus.GHOST_PINGED) &&
                 !existingIds.has(r.message_id)
             )
-            .map(r => messageJsonToMessageClass({ message: r.message }));
+            .map(r => {
+                r.message.deleted = true;
+                const msg = messageJsonToMessageClass({ message: r.message });
+                if (msg) msg.deleted = true;
+                return msg;
+            });
 
         if (!toInject.length) return;
 
@@ -204,6 +209,7 @@ export async function startEnhanced(this: any) {
 
         if (MLMessage.deleted) {
             const combined = messageJsonToMessageClass({ message: MLMessage });
+            if (combined) combined.deleted = true;
             combinedMessageCache.set(messageId, combined);
             return combined;
         }

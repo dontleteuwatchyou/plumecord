@@ -70,6 +70,9 @@ async function cacheRecord(record?: DBMessageRecord | null) {
     if (!record) return record;
 
     stripTransientRenderState(record.message);
+    if (record.status === DBMessageStatus.DELETED || record.status === DBMessageStatus.GHOST_PINGED) {
+        record.message.deleted = true;
+    }
     setCachedMessage(record.message_id, record.message);
     return record;
 }
@@ -333,6 +336,9 @@ export async function getMessagesByChannelBetweenTimestampsIDB(channel_id: strin
 
 export async function addMessageIDB(message: LoggedMessageJSON, status: DBMessageStatus) {
     stripTransientRenderState(message);
+    if (status === DBMessageStatus.DELETED || status === DBMessageStatus.GHOST_PINGED) {
+        message.deleted = true;
+    }
 
     if (!(await ensureDbReady())) {
         setCachedMessage(message.id, message);
@@ -355,6 +361,9 @@ export async function addMessageIDB(message: LoggedMessageJSON, status: DBMessag
 
 export async function addMessagesBulkIDB(messages: LoggedMessageJSON[], status?: DBMessageStatus) {
     messages.forEach(stripTransientRenderState);
+    if (status === DBMessageStatus.DELETED || status === DBMessageStatus.GHOST_PINGED) {
+        messages.forEach(m => (m.deleted = true));
+    }
 
     if (!(await ensureDbReady())) {
         messages.forEach(message => setCachedMessage(message.id, message));

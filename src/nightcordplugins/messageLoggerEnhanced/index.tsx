@@ -261,7 +261,13 @@ async function processMessageFetch(response: FetchMessagesResponse) {
             }
         }
 
-        response.body.extra = deletedMessages.map(m => m.message);
+        deletedMessages.forEach(m => {
+            m.message.deleted = true;
+        });
+        response.body.extra = deletedMessages.map(m => {
+            m.message.deleted = true;
+            return m.message;
+        });
 
     } catch (e) {
         Flogger.error("Failed to fetch messages", e);
@@ -359,6 +365,7 @@ export default definePlugin({
     coolReAddDeletedMessages: (messages: LoggedMessageJSON[] & { extra: LoggedMessageJSON[]; }, payload: LoadMessagePayload) => {
         try {
             if (messages.extra && messages.length > 0) {
+                messages.extra.forEach(m => { m.deleted = true; });
                 const isAtBottom = !payload.hasMoreAfter && !payload.isBefore;
                 const oldestId = messages[messages.length - 1].id;
                 const newestId = messages[0].id;
@@ -430,6 +437,7 @@ export default definePlugin({
 
             if (MLMessage.deleted) {
                 const combined = messageJsonToMessageClass({ message: MLMessage });
+                if (combined) combined.deleted = true;
                 combinedMessageCache.set(messageId, combined);
                 return combined;
             }

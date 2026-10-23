@@ -926,8 +926,9 @@ export default definePlugin({
             find: "}addReaction(",
             replacement: [
                 {
-                    match: /this\.customRenderedContent=(\i)\.customRenderedContent,/,
+                    match: /this\.channel_id=(\i)\.channel_id,/,
                     replace:
+                        "$&" +
                         "this.customRenderedContent = $1.customRenderedContent," +
                         "this.deleted = $1.deleted || false," +
                         "this.editHistory = $1.editHistory || []," +

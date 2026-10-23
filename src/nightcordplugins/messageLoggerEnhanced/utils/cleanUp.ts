@@ -48,9 +48,9 @@ export function cleanupMessage(message: any, removeDetails: boolean = true): Log
     ret.ghostPinged = ret.mentioned ?? isGhostPinged(message);
     ret.guildId = ret.guild_id ?? getGuildIdByChannel(ret.channel_id);
     ret.embeds = (ret.embeds ?? []).map(cleanupEmbed);
-    ret.deleted = ret.deleted ?? false;
-    ret.deletedTimestamp = ret.deleted ? (new Date()).toISOString() : undefined;
-    ret.editHistory = ret.editHistory ?? [];
+    ret.deleted = message.deleted ?? ret.deleted ?? false;
+    ret.deletedTimestamp = ret.deleted ? (message.deletedTimestamp ?? (new Date()).toISOString()) : undefined;
+    ret.editHistory = message.editHistory ?? ret.editHistory ?? [];
     if (ret.type === 19) {
         ret.message_reference = message.message_reference || message.messageReference;
         if (ret.message_reference) {
