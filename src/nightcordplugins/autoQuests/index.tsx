@@ -255,20 +255,21 @@ async function enrollQuest(quest: any): Promise<boolean> {
                 type: "QUESTS_ENROLL_SUCCESS",
                 enrolledQuestUserStatus: snakeToCamel(response.body)
             });
+
+            if (freshQuest) {
+                if (!freshQuest.userStatus) freshQuest.userStatus = {};
+                freshQuest.userStatus.enrolledAt = new Date().toISOString();
+            }
             return true;
         }
     } catch (err) {
         console.warn(`[AutoQuests] Enrollment failed for ${questId}:`, err);
-    } finally {
-        const updated = getResolvedQuestsStore()?.getQuest?.(questId);
-        if (!updated?.userStatus?.enrolledAt) {
-            FluxDispatcher.dispatch({
-                type: "QUESTS_ENROLL_FAILURE",
-                questId
-            });
-        }
     }
 
+    FluxDispatcher.dispatch({
+        type: "QUESTS_ENROLL_FAILURE",
+        questId
+    });
     return false;
 }
 
@@ -292,7 +293,6 @@ function getVoiceOrDMChannelId(): string | null {
 }
 
 export function refreshActiveQuests(): QuestItemState[] {
-    clearStuckEnrollments();
     const allQuests = getAllQuestsFromStore();
     const result: QuestItemState[] = [];
 
@@ -326,6 +326,23 @@ export function refreshActiveQuests(): QuestItemState[] {
         });
     }
 
+    // Sort quests:
+    // 1. Enrolled & in-progress
+    // 2. Enrolled
+    // 3. Unenrolled
+    // 4. Completed
+    result.sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        const aEnrolled = Boolean(a.quest?.userStatus?.enrolledAt);
+        const bEnrolled = Boolean(b.quest?.userStatus?.enrolledAt);
+        if (aEnrolled && !bEnrolled) return -1;
+        if (!aEnrolled && bEnrolled) return 1;
+        if (aEnrolled && bEnrolled) {
+            return (b.currentProgress || 0) - (a.currentProgress || 0);
+        }
+        return 0;
+    });
+
     activeQuestStates = result;
     notifyStateChanged();
     return result;
@@ -333,29 +350,30 @@ export function refreshActiveQuests(): QuestItemState[] {
 
 async function processVideoStep(state: QuestItemState): Promise<boolean> {
     const { quest, secondsNeeded } = state;
-    const nextTime = Math.min(secondsNeeded, Math.floor(state.currentProgress + 1));
+    const nextTime = Math.min(secondsNeeded, Math.round((state.currentProgress + 1.0 + Math.random() * 0.2) * 10) / 10);
 
     let reported = false;
     let isCompletedOnServer = false;
 
-    if (typeof reportVideoProgressNative === "function") {
-        try {
-            await reportVideoProgressNative(quest.id, nextTime);
-            reported = true;
-        } catch {}
-    }
-
-    if (!reported) {
-        try {
-            const res = await RestAPI.post({
-                url: `/quests/${quest.id}/video-progress`,
-                body: { timestamp: nextTime }
-            });
-            reported = true;
-            if (res?.body?.completed_at || res?.body?.user_status?.completed_at || res?.body?.enrolled_quest_user_status?.completed_at) {
-                isCompletedOnServer = true;
+    try {
+        const res = await RestAPI.post({
+            url: `/quests/${quest.id}/video-progress`,
+            body: { timestamp: nextTime }
+        });
+        reported = true;
+        if (res?.body?.completed_at || res?.body?.user_status?.completed_at || res?.body?.enrolled_quest_user_status?.completed_at) {
+            isCompletedOnServer = true;
+        }
+    } catch (err) {
+        console.warn(`[AutoQuests] REST video progress failed for ${quest.id}, trying native:`, err);
+        if (typeof reportVideoProgressNative === "function") {
+            try {
+                await reportVideoProgressNative(quest.id, nextTime);
+                reported = true;
+            } catch (nativeErr) {
+                console.warn(`[AutoQuests] Video progress failed for ${quest.id}:`, nativeErr);
             }
-        } catch {}
+        }
     }
 
     if (reported) {
@@ -363,31 +381,24 @@ async function processVideoStep(state: QuestItemState): Promise<boolean> {
         questProgressCache.set(quest.id, nextTime);
 
         const freshQuest = getResolvedQuestsStore()?.getQuest?.(quest.id) || quest;
-        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer) {
-            state.completed = true;
-            questProgressCache.set(quest.id, secondsNeeded);
-        } else if (nextTime >= secondsNeeded) {
+        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer || nextTime >= secondsNeeded) {
             try {
-                if (typeof reportVideoProgressNative === "function") {
-                    await reportVideoProgressNative(quest.id, secondsNeeded);
-                } else {
-                    const res = await RestAPI.post({
-                        url: `/quests/${quest.id}/video-progress`,
-                        body: { timestamp: secondsNeeded }
-                    });
-                    if (res?.body?.completed_at || res?.body?.user_status?.completed_at) {
-                        isCompletedOnServer = true;
-                    }
+                await RestAPI.post({
+                    url: `/quests/${quest.id}/video-progress`,
+                    body: { timestamp: secondsNeeded }
+                });
+            } catch {}
+
+            try {
+                if (typeof fetchAndDispatchQuests === "function") {
+                    await fetchAndDispatchQuests();
                 }
             } catch {}
 
-            if (typeof fetchAndDispatchQuests === "function") {
-                try { await fetchAndDispatchQuests(); } catch {}
-            }
-
             const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
-            if (updated?.userStatus?.completedAt || isCompletedOnServer) {
+            if (updated?.userStatus?.completedAt || isCompletedOnServer || nextTime >= secondsNeeded) {
                 state.completed = true;
+                state.currentProgress = secondsNeeded;
                 questProgressCache.set(quest.id, secondsNeeded);
             }
         }
@@ -404,7 +415,8 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
 
     const channelId = getVoiceOrDMChannelId();
     const streamKey = channelId ? `call:${channelId}:1` : `call:${quest.id}:1`;
-    const appId = state.quest?.config?.taskConfig?.tasks?.[taskType]?.applications?.[0]?.id;
+    const appId = state.quest?.config?.taskConfig?.tasks?.[taskType]?.applications?.[0]?.id
+        ?? state.quest?.config?.taskConfigV2?.tasks?.[taskType]?.applications?.[0]?.id;
 
     activeStreamKey = streamKey;
     currentQuestBeingHeartbeated = quest;
@@ -412,35 +424,36 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
     let reported = false;
     let isCompletedOnServer = false;
 
-    if (typeof sendHeartbeatNative === "function") {
-        try {
-            await sendHeartbeatNative({
-                questId: quest.id,
-                streamKey,
-                applicationId: appId,
-                terminal: false
-            });
-            reported = true;
-        } catch {}
-    }
-
-    if (!reported) {
-        try {
-            const response = await RestAPI.post({
-                url: `/quests/${quest.id}/heartbeat`,
-                body: { stream_key: streamKey, terminal: false }
-            });
-            const srv = response?.body?.progress?.[taskType]?.value;
-            if (typeof srv === "number") {
-                state.currentProgress = srv;
-            } else {
-                state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
+    try {
+        const response = await RestAPI.post({
+            url: `/quests/${quest.id}/heartbeat`,
+            body: { stream_key: streamKey, terminal: false }
+        });
+        const srv = response?.body?.progress?.[taskType]?.value;
+        if (typeof srv === "number") {
+            state.currentProgress = srv;
+        } else {
+            state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
+        }
+        if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
+            isCompletedOnServer = true;
+        }
+        reported = true;
+    } catch (err) {
+        console.warn(`[AutoQuests] REST heartbeat failed for ${quest.id}, trying native:`, err);
+        if (typeof sendHeartbeatNative === "function") {
+            try {
+                await sendHeartbeatNative({
+                    questId: quest.id,
+                    streamKey,
+                    applicationId: appId,
+                    terminal: false
+                });
+                reported = true;
+            } catch (nativeErr) {
+                console.warn(`[AutoQuests] Heartbeat failed for ${quest.id}:`, nativeErr);
             }
-            if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
-                isCompletedOnServer = true;
-            }
-            reported = true;
-        } catch {}
+        }
     }
 
     if (reported) {
@@ -454,10 +467,7 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
 
         questProgressCache.set(quest.id, state.currentProgress);
 
-        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer) {
-            state.completed = true;
-            questProgressCache.set(quest.id, secondsNeeded);
-        } else if (state.currentProgress >= secondsNeeded) {
+        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer || state.currentProgress >= secondsNeeded) {
             try {
                 if (typeof sendHeartbeatNative === "function") {
                     await sendHeartbeatNative({
@@ -477,13 +487,16 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
                 }
             } catch {}
 
-            if (typeof fetchAndDispatchQuests === "function") {
-                try { await fetchAndDispatchQuests(); } catch {}
-            }
+            try {
+                if (typeof fetchAndDispatchQuests === "function") {
+                    await fetchAndDispatchQuests();
+                }
+            } catch {}
 
             const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
-            if (updated?.userStatus?.completedAt || isCompletedOnServer) {
+            if (updated?.userStatus?.completedAt || isCompletedOnServer || state.currentProgress >= secondsNeeded) {
                 state.completed = true;
+                state.currentProgress = secondsNeeded;
                 questProgressCache.set(quest.id, secondsNeeded);
             }
             activeStreamKey = null;
@@ -577,14 +590,31 @@ export async function startQuestRunner(preferredQuestId?: string) {
             lastActiveQuestId = state.id;
             notifyStateChanged();
 
-            if (!state.quest?.userStatus?.enrolledAt) {
-                const enrolled = await enrollQuest(state.id);
+            const liveQuest = getResolvedQuestsStore()?.getQuest?.(state.id) || state.quest;
+            if (liveQuest?.userStatus?.completedAt) {
+                state.completed = true;
+                notifyStateChanged();
+                continue;
+            }
+
+            if (!liveQuest?.userStatus?.enrolledAt) {
+                const enrolled = await enrollQuest(liveQuest || state.id);
+                const okSleep = await interruptibleSleep(1500, signal);
+                if (!okSleep || !isRunnerActive) break;
                 if (!enrolled) {
                     console.warn("[AutoQuests] Could not enroll in quest, skipping to next:", state.questName);
+                    continue;
                 }
-                const okSleep = await interruptibleSleep(1000, signal);
-                if (!okSleep || !isRunnerActive) break;
             }
+
+            // Resync progress with the server-side value so resumes continue where Discord left off
+            const syncedQuest = getResolvedQuestsStore()?.getQuest?.(state.id) || liveQuest;
+            const serverProgress = syncedQuest?.userStatus?.progress?.[state.taskType]?.value
+                ?? syncedQuest?.userStatus?.streamProgressSeconds ?? 0;
+            if (typeof serverProgress === "number" && serverProgress > state.currentProgress) {
+                state.currentProgress = Math.min(state.secondsNeeded, serverProgress);
+            }
+            if (syncedQuest) state.quest = syncedQuest;
 
             const isVideo = state.taskType.startsWith("WATCH_VIDEO");
             let failCount = 0;
