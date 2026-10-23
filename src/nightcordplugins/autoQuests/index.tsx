@@ -13,6 +13,7 @@ import { find, findByCodeLazy, findStore } from "@webpack";
 import {
     ChannelStore,
     createRoot,
+    FluxDispatcher,
     GuildChannelStore,
     QuestStore,
     React,
@@ -92,11 +93,6 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Automatically accept and enroll in available quests",
         default: true
-    },
-    showEverywhere: {
-        type: OptionType.BOOLEAN,
-        description: "Show the floating quest button on all Discord screens",
-        default: false
     },
     showToasts: {
         type: OptionType.BOOLEAN,
@@ -728,32 +724,103 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
     );
 }
 
+let originalPushState: typeof history.pushState | null = null;
+let originalReplaceState: typeof history.replaceState | null = null;
+
+function setupHistoryListener() {
+    if (originalPushState || typeof window === "undefined" || !window.history) return;
+    originalPushState = history.pushState;
+    originalReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+        const result = originalPushState!.apply(this, args);
+        try {
+            window.dispatchEvent(new Event("nightcord:locationchange"));
+        } catch {}
+        return result;
+    };
+
+    history.replaceState = function (...args) {
+        const result = originalReplaceState!.apply(this, args);
+        try {
+            window.dispatchEvent(new Event("nightcord:locationchange"));
+        } catch {}
+        return result;
+    };
+}
+
+function teardownHistoryListener() {
+    if (originalPushState && typeof window !== "undefined" && window.history) {
+        history.pushState = originalPushState;
+        originalPushState = null;
+    }
+    if (originalReplaceState && typeof window !== "undefined" && window.history) {
+        history.replaceState = originalReplaceState;
+        originalReplaceState = null;
+    }
+}
+
+function isCurrentlyOnQuestPage(): boolean {
+    if (typeof window === "undefined" || !window.location) return false;
+    const pathname = window.location.pathname || "";
+    if (pathname.includes("quest-home")) {
+        return true;
+    }
+    if (typeof document !== "undefined") {
+        const selectedQuestTab = document.querySelector(
+            'a[href*="/quest-home"][aria-selected="true"], [data-list-item-id*="quest-home"][aria-selected="true"], [data-list-item-id*="quest-home"].selected_f5f62a, [data-list-item-id*="quest-home"][class*="selected"]'
+        );
+        if (selectedQuestTab) return true;
+
+        const questHomeContainer = document.querySelector('[class*="questHome"], [data-quest-home]');
+        if (questHomeContainer) return true;
+    }
+    return false;
+}
+
 function FloatingQuestWidget() {
     const { quests, isRunning, currentQuestId } = useAutoQuests();
     const [expanded, setExpanded] = useState(false);
-    const [currentPath, setCurrentPath] = useState(window.location.pathname);
+    const [isOnQuestTab, setIsOnQuestTab] = useState(isCurrentlyOnQuestPage);
 
     useEffect(() => {
-        const updatePath = () => setCurrentPath(window.location.pathname);
-        window.addEventListener("popstate", updatePath);
+        const checkLocation = () => {
+            const onQuest = isCurrentlyOnQuestPage();
+            setIsOnQuestTab(prev => (prev !== onQuest ? onQuest : prev));
+        };
 
-        const observer = new MutationObserver(() => {
-            if (window.location.pathname !== currentPath) {
-                updatePath();
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+        checkLocation();
+
+        const handleLocationChange = () => {
+            checkLocation();
+            setTimeout(checkLocation, 50);
+            setTimeout(checkLocation, 200);
+        };
+
+        window.addEventListener("nightcord:locationchange", handleLocationChange);
+        window.addEventListener("popstate", handleLocationChange);
+        window.addEventListener("hashchange", handleLocationChange);
+
+        const handleFlux = () => {
+            handleLocationChange();
+        };
+
+        FluxDispatcher?.subscribe?.("CHANNEL_SELECT", handleFlux);
+        FluxDispatcher?.subscribe?.("NAVIGATE", handleFlux);
+
+        const interval = setInterval(checkLocation, 250);
 
         return () => {
-            window.removeEventListener("popstate", updatePath);
-            observer.disconnect();
+            window.removeEventListener("nightcord:locationchange", handleLocationChange);
+            window.removeEventListener("popstate", handleLocationChange);
+            window.removeEventListener("hashchange", handleLocationChange);
+            FluxDispatcher?.unsubscribe?.("CHANNEL_SELECT", handleFlux);
+            FluxDispatcher?.unsubscribe?.("NAVIGATE", handleFlux);
+            clearInterval(interval);
         };
-    }, [currentPath]);
+    }, []);
 
-    const isQuestPage = currentPath.includes("/quest-home") || currentPath.includes("/discovery");
-    const shouldShow = settings.store.showEverywhere || isQuestPage;
-
-    if (!shouldShow) return null;
+    if (!isOnQuestTab) return null;
 
     const uncompletedCount = quests.filter(q => !q.completed).length;
 
@@ -988,7 +1055,6 @@ function AutoQuestsSettingsPanel() {
     const { quests, isRunning, currentQuestId } = useAutoQuests();
     const [autoStartVal, setAutoStartVal] = useState(settings.store.autoStart);
     const [autoEnrollVal, setAutoEnrollVal] = useState(settings.store.autoEnroll);
-    const [showEverywhereVal, setShowEverywhereVal] = useState(settings.store.showEverywhere);
     const [showToastsVal, setShowToastsVal] = useState(settings.store.showToasts);
 
     return (
@@ -1034,17 +1100,6 @@ function AutoQuestsSettingsPanel() {
                     note={t("Automatically accept and enroll in available quests")}
                 >
                     {t("Auto Enroll")}
-                </FormSwitch>
-
-                <FormSwitch
-                    value={showEverywhereVal}
-                    onChange={(val: boolean) => {
-                        setShowEverywhereVal(val);
-                        settings.store.showEverywhere = val;
-                    }}
-                    note={t("Show the floating quest button on all Discord screens")}
-                >
-                    {t("Show Everywhere")}
                 </FormSwitch>
 
                 <FormSwitch
@@ -1144,6 +1199,7 @@ export default definePlugin({
     settingsPanel: AutoQuestsSettingsPanel,
 
     start() {
+        setupHistoryListener();
         mountFloatingWidget();
 
         setTimeout(() => {
@@ -1157,5 +1213,6 @@ export default definePlugin({
     stop() {
         void stopQuestRunner();
         unmountFloatingWidget();
+        teardownHistoryListener();
     }
 });
