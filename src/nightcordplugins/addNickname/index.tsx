@@ -45,7 +45,7 @@ const settings = definePluginSettings({
 
 function AddNicknameIcon() {
     return (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#ffffff", flexShrink: 0 }}>
             <path d="M12 20h9" />
             <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
         </svg>
@@ -150,17 +150,17 @@ function AddNicknameModal({ modalProps, user }: { modalProps: ModalProps; user: 
     return (
         <ModalRoot {...modalProps} size={ModalSize.SMALL}>
             <ModalHeader separator={false} style={{ padding: "20px 24px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#ffffff" }}>
                     <AddNicknameIcon />
-                    <Text variant="heading-lg/bold" style={{ color: "var(--header-primary)", fontWeight: 700 }}>
+                    <Text variant="heading-lg/bold" style={{ color: "#ffffff", fontWeight: 700, margin: 0 }}>
                         {currentCustom ? t("Edit Nickname") : t("Add Nickname")}
                     </Text>
                 </div>
                 <ModalCloseButton onClick={modalProps.onClose} />
             </ModalHeader>
             <ModalContent style={{ padding: "0 24px 20px" }}>
-                <Text variant="text-sm/normal" style={{ color: "var(--text-muted)", marginBottom: 14 }}>
-                    {t("Custom nickname for this user")}: <strong style={{ color: "var(--header-primary)" }}>{displayName}</strong>
+                <Text variant="text-sm/normal" style={{ color: "var(--text-muted, #949ba4)", marginBottom: 14 }}>
+                    {t("Custom nickname for this user")}: <strong style={{ color: "#ffffff" }}>{displayName}</strong>
                 </Text>
                 <TextInput
                     value={value}
