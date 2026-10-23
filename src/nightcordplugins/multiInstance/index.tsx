@@ -1757,6 +1757,73 @@ export default definePlugin({
         captureCurrentToken();
         fetchAllAccounts().catch(() => {});
         if (!isCurrentInstanceWindow()) {
+            // Auto-recover session if Discord wiped localStorage["token"] (e.g., due to DevTools hideToken or crash)
+            (async () => {
+                try {
+                    const authStore = findByPropsSilent("getToken", "getId");
+                    const ls = getSafeLocalStorage();
+                    const hasToken = !!(authStore?.getToken?.() || ls?.getItem("token"));
+                    if (!hasToken && ls) {
+                        let targetUserId: string | null = null;
+                        try {
+                            const uidCache = ls.getItem("user_id_cache");
+                            if (uidCache) targetUserId = JSON.parse(uidCache);
+                        } catch {}
+                        if (!targetUserId) {
+                            try {
+                                const maRaw = ls.getItem("MultiAccountStore");
+                                if (maRaw) {
+                                    const ma = JSON.parse(maRaw);
+                                    const users = ma?._state?.users;
+                                    if (Array.isArray(users) && users.length > 0) {
+                                        targetUserId = users[0]?.id ?? null;
+                                    }
+                                }
+                            } catch {}
+                        }
+                        let recoveredTok: string | null = targetUserId ? (tokenCache[targetUserId] ?? null) : null;
+                        if (!recoveredTok) {
+                            const saved = await fetchAllAccounts();
+                            if (targetUserId) {
+                                recoveredTok = saved.find(a => a.id === targetUserId)?.token ?? null;
+                            }
+                            if (!recoveredTok && saved.length > 0) {
+                                recoveredTok = saved[0]?.token ?? null;
+                                targetUserId = saved[0]?.id ?? targetUserId;
+                            }
+                        }
+                        if (!recoveredTok && Object.keys(tokenCache).length > 0) {
+                            const [firstId, firstTok] = Object.entries(tokenCache)[0];
+                            recoveredTok = firstTok;
+                            targetUserId = targetUserId || firstId;
+                        }
+                        if (recoveredTok) {
+                            let cleanTok = recoveredTok.trim().replace(/^"+|"+$/g, "");
+                            if (cleanTok.startsWith("dQw4w9WgXcQ:") && typeof Native?.decryptToken === "function") {
+                                const dec = await Native.decryptToken(cleanTok).catch(() => null);
+                                if (dec) cleanTok = dec;
+                            }
+                            if (cleanTok && !cleanTok.startsWith("dQw4w9WgXcQ:")) {
+                                console.log("[NightcordMI] Auto-recovering wiped main window session for userId:", targetUserId);
+                                ls.setItem("token", JSON.stringify(cleanTok));
+                                if (targetUserId) ls.setItem("user_id_cache", JSON.stringify(targetUserId));
+                                const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
+                                if (tokenMod?.encryptAndStoreTokens && targetUserId) {
+                                    const allMap: Record<string, string> = { ...tokenCache, [targetUserId]: cleanTok };
+                                    tokenMod.encryptAndStoreTokens(allMap).catch(() => {});
+                                }
+                                const loginMod = findByPropsSilent("loginToken") || findByPropsSilent("switchAccount", "loginToken");
+                                if (loginMod?.loginToken) {
+                                    loginMod.loginToken(cleanTok);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("[NightcordMI] Session auto-recovery error:", e);
+                }
+            })();
+
             scheduleMasterAudioSave();
             hookAudioSettingsWatcher();
 

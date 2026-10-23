@@ -15,7 +15,7 @@ export default definePlugin({
         {
             find: "#{intl::MESSAGE_UTILITIES_A11Y_LABEL}",
             replacement: {
-                match: /(?<=\((\i),\{label:[^}]+?\},"reply-self"\):null\]\}\):null,)\i\?\(0,\i\.jsxs?\)\(\i\.Fragment,\{children:\[.{0,200}?togglePopout:.+?message:(\i)\}\)\]\}\):null,/,
+                match: /(?<=\((\i\.qv),\{label:[^}]+?\},"reply-self"\):null\]\}\):null,)\i\?\(0,\i\.jsxs?\)\(\i\.Fragment,\{children:\[.{0,200}?togglePopout:.+?message:(\i)\}\)\]\}\):null,/,
                 replace: "$&Vencord.Api.MessagePopover._buildPopoverElements($1,$2),"
             }
         }

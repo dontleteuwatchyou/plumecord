@@ -1,20 +1,8 @@
 /*
- * Vencord, a modification for Discord's desktop app
- * Copyright (c) 2022 Vendicated and contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
@@ -24,11 +12,22 @@ export default definePlugin({
     description: "Disables the 'HOLD UP' banner in the console. As a side effect, also prevents Discord from hiding your token, which prevents random logouts.",
     authors: [Devs.Ven],
     tags: ["Developers", "Console"],
-    patches: [{
-        find: "setDevtoolsCallbacks",
-        replacement: {
-            match: /if\(null!=\i&&"0.0.0"===\i\.app\.getVersion\(\)\)/,
-            replace: "if(true)"
+    required: true,
+    enabledByDefault: true,
+    patches: [
+        {
+            find: "setDevtoolsCallbacks",
+            replacement: {
+                match: /if\(null==\i\|\|"0\.0\.0"!==\i\.app\.getVersion\(\)\)/,
+                replace: "if(false)"
+            }
+        },
+        {
+            find: "encryptAndStoreTokens",
+            replacement: {
+                match: /hideToken:\(\)=>(\i)/,
+                replace: "hideToken:()=>{}"
+            }
         }
-    }]
+    ]
 });

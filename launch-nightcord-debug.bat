@@ -12,8 +12,10 @@ set "NIGHTCORD_LOG_FILE=%TEMP%\nightcord-debug.log"
 :: Clear previous log file
 type nul > "%NIGHTCORD_LOG_FILE%"
 
-:: Close existing Discord instances so our debug hooks attach cleanly to the main instance
+:: Close existing Discord instances gracefully first so LevelDB flushes localStorage tokens cleanly
 echo [*] Fermeture des instances Discord existantes...
+taskkill /IM Discord.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
 taskkill /F /IM Discord.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 

@@ -728,7 +728,7 @@ export default definePlugin({
         {
             find: '"sticker")',
             replacement: {
-                match: /0===(\i)\.length(?=\)\?null:\(0,\i\.jsxs?\)\("div")/,
+                match: /0===(\i)\.length(?=\)+\?null:\(0,\i\.jsxs?\)\("div")/,
                 replace: "($self.isSavedMessagesChannel(arguments[0])?$self.renderBanner():$&)"
             }
         },
