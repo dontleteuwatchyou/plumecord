@@ -10,7 +10,7 @@ import { Button } from "@components/Button";
 import { copyToClipboard } from "@utils/clipboard";
 import { closeModal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { makeRange, OptionType } from "@utils/types";
-import { ChannelStore, Constants, Menu, MessageStore, React, RestAPI, Text, Toasts } from "@webpack/common";
+import { ChannelStore, Constants, GuildMemberStore, Menu, MessageStore, React, RestAPI, Text, Toasts } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { getGroqKey, groqChat } from "../nightcordAI/groqManager";
 
@@ -141,6 +141,17 @@ function resolveLanguageInstruction(langChoice: string): string {
         return "the same predominant language used in the source content";
     }
     return langChoice;
+}
+
+function getAuthorDisplayName(author: any, guildId?: string): string {
+    if (!author) return "User";
+    if (guildId && GuildMemberStore?.getNick) {
+        try {
+            const nick = GuildMemberStore.getNick(guildId, author.id);
+            if (nick) return nick;
+        } catch {}
+    }
+    return author.globalName || author.global_name || author.username || "User";
 }
 
 interface SummaryModalProps {
@@ -293,7 +304,9 @@ async function summarizeMessage(message: any) {
 
     const lines = settings.store.messageSummaryLines ?? 2;
     const lang = resolveLanguageInstruction(settings.store.summaryLanguage);
-    const authorName = message?.author?.globalName || message?.author?.username || "User";
+    const ch = ChannelStore.getChannel(message?.channel_id);
+    const guildId = message?.guild_id || ch?.guild_id || ch?.guildId || ch?.getGuildId?.();
+    const authorName = getAuthorDisplayName(message?.author, guildId);
 
     openModal(props => (
         <SummaryModal
@@ -301,11 +314,14 @@ async function summarizeMessage(message: any) {
             title={t("Message Summary")}
             subtitle={`${t("Message from")} @${authorName}`}
             generateSummary={async () => {
-                const systemPrompt = `You are an expert AI summarizer.
+                const systemPrompt = `You are a smart, modern Discord AI summarizer.
 Analyze the provided Discord message and produce a concise, faithful summary in exactly ${lines} lines (or sentences).
-You MUST understand informal chat slang, idioms, cultural expressions, abbreviations, humor, sarcasm, and typos in any language.
-Respond strictly in ${lang}.
-Provide ONLY the final summary text without conversational preamble, introduction, or quotes.`;
+Rules:
+1. Always use the author's Discord pseudo (${authorName}) and the names of anyone mentioned. NEVER say generic words like "l'auteur", "l'interlocuteur" or "la personne".
+2. Use a natural, dynamic, slightly informal tone (like a sharp Discord friend explaining what happened, not a formal academic paper or corporate report).
+3. Understand informal chat slang, idioms, abbreviations, humor, sarcasm, typos, and multilingual messages.
+4. Respond strictly in ${lang}.
+5. Output ONLY the summary text directly without introductory filler, greetings, or quotes.`;
 
                 const userPrompt = `Message from ${authorName}:\n"${content}"`;
 
@@ -314,7 +330,7 @@ Provide ONLY the final summary text without conversational preamble, introductio
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userPrompt }
                     ],
-                    temperature: 0.3,
+                    temperature: 0.5,
                     maxTokens: 500,
                 });
             }}
@@ -329,6 +345,7 @@ async function summarizeChannel(channel: any) {
     const msgCount = settings.store.conversationMessageCount ?? 50;
     const lines = settings.store.conversationSummaryLines ?? 3;
     const lang = resolveLanguageInstruction(settings.store.summaryLanguage);
+    const guildId = channel.guild_id || channel.guildId || channel.getGuildId?.();
 
     openModal(props => (
         <SummaryModal
@@ -344,11 +361,11 @@ async function summarizeChannel(channel: any) {
                 // Filter out pure bot/system messages or format text
                 const formattedList = rawMessages
                     .map(m => {
-                        const author = m.author?.global_name || m.author?.username || m.author?.globalName || "User";
+                        const author = getAuthorDisplayName(m.author, guildId);
                         const text = (m.content || "").trim();
                         if (!text && (!m.attachments || m.attachments.length === 0)) return null;
                         const attachmentNote = m.attachments?.length ? ` [${m.attachments.length} attachment(s)]` : "";
-                        return `[${author}]: ${text}${attachmentNote}`;
+                        return `${author}: ${text}${attachmentNote}`;
                     })
                     .filter(Boolean);
 
@@ -356,23 +373,27 @@ async function summarizeChannel(channel: any) {
                     throw new Error(t("No readable text messages found in the last batch of messages."));
                 }
 
+                const participants = Array.from(new Set(rawMessages.map(m => getAuthorDisplayName(m.author, guildId)).filter(Boolean)));
                 const transcript = formattedList.join("\n");
 
-                const systemPrompt = `You are an expert conversational AI summarizer.
-Analyze the following Discord conversation transcript (${formattedList.length} messages) and produce an accurate, coherent summary in exactly ${lines} lines (or sentences).
-You MUST accurately understand informal language, internet chat slang, colloquialisms, sarcasm, inside jokes, emojis, and multilingual conversation.
-Capture the main topics discussed, key points, questions raised, and final decisions or conclusions.
-Respond strictly in ${lang}.
-Provide ONLY the clean summary text directly without any introductory filler or preamble.`;
+                const systemPrompt = `You are a smart, modern Discord AI summarizer.
+Analyze the following Discord conversation transcript (${formattedList.length} messages between: ${participants.join(", ")}) and produce an accurate, lively summary in exactly ${lines} lines (or sentences).
+Rules:
+1. ALWAYS explicitly name each participant by their Discord pseudo (e.g. ${participants.slice(0, 3).join(", ")}). NEVER use vague terms like "Deux amis", "Des personnes", "Des utilisateurs", "L'un", "L'autre", or "Son interlocuteur". Clearly state what each person said, asked, argued, or decided using their pseudos.
+2. Tone: Natural, direct, modern, and slightly informal. Write like a concise, sharp overview on Discord—not a dry bureaucratic essay, court transcript, or stiff novel.
+3. Highlight the core topics, who suggested what, key jokes or debates, and the conclusion or current status.
+4. Understand internet slang, chat abbreviations, sarcasm, memes, emojis, and multilingual conversation.
+5. Respond strictly in ${lang}.
+6. Output ONLY the summary text directly without introductory filler, bullet points, headers, or quotes.`;
 
-                const userPrompt = `Conversation transcript:\n\n${transcript}`;
+                const userPrompt = `Participants: ${participants.join(", ")}\n\nConversation transcript:\n${transcript}`;
 
                 return await groqChat({
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: userPrompt }
                     ],
-                    temperature: 0.3,
+                    temperature: 0.5,
                     maxTokens: 800,
                 });
             }}
