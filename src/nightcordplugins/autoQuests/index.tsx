@@ -49,15 +49,37 @@ export interface QuestItemState {
 let activeQuestStates: QuestItemState[] = [];
 let isRunnerActive = false;
 let currentRunningQuestId: string | null = null;
+let lastActiveQuestId: string | null = null;
 let activeStreamKey: string | null = null;
 let currentQuestBeingHeartbeated: any = null;
+let runnerAbortController: AbortController | null = null;
 
+const questProgressCache = new Map<string, number>();
 const stateListeners = new Set<() => void>();
 
 function notifyStateChanged() {
     for (const listener of stateListeners) {
         try { listener(); } catch {}
     }
+}
+
+function interruptibleSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
+    return new Promise(resolve => {
+        if (signal?.aborted) {
+            resolve(false);
+            return;
+        }
+        let timer: any = null;
+        const abortHandler = () => {
+            if (timer) clearTimeout(timer);
+            resolve(false);
+        };
+        timer = setTimeout(() => {
+            signal?.removeEventListener("abort", abortHandler);
+            resolve(true);
+        }, ms);
+        signal?.addEventListener("abort", abortHandler, { once: true });
+    });
 }
 
 export const settings = definePluginSettings({
@@ -248,7 +270,9 @@ export function refreshActiveQuests(): QuestItemState[] {
 
         const taskData = taskConfig.tasks[taskType];
         const secondsNeeded = taskData?.target ?? 0;
-        const currentProgress = quest.userStatus?.progress?.[taskType]?.value ?? quest.userStatus?.streamProgressSeconds ?? 0;
+        const storeProgress = quest.userStatus?.progress?.[taskType]?.value ?? quest.userStatus?.streamProgressSeconds ?? 0;
+        const cachedProgress = questProgressCache.get(quest.id) ?? 0;
+        const currentProgress = Math.max(storeProgress, cachedProgress);
         const questName = quest.config.messages?.questName || quest.config.questName || quest.config.messages?.gameTitle || quest.id;
 
         result.push({
@@ -295,8 +319,10 @@ async function processVideoStep(state: QuestItemState): Promise<boolean> {
 
     if (reported) {
         state.currentProgress = nextTime;
+        questProgressCache.set(quest.id, nextTime);
         if (state.currentProgress >= secondsNeeded) {
             state.completed = true;
+            questProgressCache.set(quest.id, secondsNeeded);
         }
         notifyStateChanged();
         return true;
@@ -348,8 +374,11 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
         if (state.currentProgress < secondsNeeded) {
             state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
         }
+        questProgressCache.set(quest.id, state.currentProgress);
+
         if (state.currentProgress >= secondsNeeded) {
             state.completed = true;
+            questProgressCache.set(quest.id, secondsNeeded);
             try {
                 if (typeof sendHeartbeatNative === "function") {
                     await sendHeartbeatNative({
@@ -379,6 +408,11 @@ export async function stopQuestRunner() {
     if (!isRunnerActive) return;
     isRunnerActive = false;
 
+    if (runnerAbortController) {
+        runnerAbortController.abort();
+        runnerAbortController = null;
+    }
+
     if (activeStreamKey && currentQuestBeingHeartbeated) {
         try {
             if (typeof sendHeartbeatNative === "function") {
@@ -406,7 +440,7 @@ export async function stopQuestRunner() {
     }
 }
 
-export async function startQuestRunner() {
+export async function startQuestRunner(preferredQuestId?: string) {
     if (isRunnerActive) return;
 
     isRunnerActive = true;
@@ -424,13 +458,23 @@ export async function startQuestRunner() {
             if (!isRunnerActive) break;
             if (q && !q.userStatus?.enrolledAt && !q.userStatus?.completedAt) {
                 await enrollQuest(q.id);
-                await new Promise(r => setTimeout(r, 300));
+                await new Promise(r => setTimeout(r, 250));
             }
         }
         refreshActiveQuests();
     }
 
-    const eligibleQuests = activeQuestStates.filter(q => !q.completed);
+    const targetId = preferredQuestId || lastActiveQuestId;
+    let eligibleQuests = activeQuestStates.filter(q => !q.completed);
+
+    if (targetId) {
+        const targetIdx = eligibleQuests.findIndex(q => q.id === targetId);
+        if (targetIdx > 0) {
+            const [targetQuest] = eligibleQuests.splice(targetIdx, 1);
+            eligibleQuests = [targetQuest, ...eligibleQuests];
+        }
+    }
+
     if (eligibleQuests.length === 0) {
         isRunnerActive = false;
         notifyStateChanged();
@@ -440,33 +484,40 @@ export async function startQuestRunner() {
         return;
     }
 
+    runnerAbortController = new AbortController();
+    const signal = runnerAbortController.signal;
+
     try {
         for (const state of eligibleQuests) {
-            if (!isRunnerActive) break;
+            if (!isRunnerActive || signal.aborted) break;
             if (state.completed) continue;
 
             currentRunningQuestId = state.id;
+            lastActiveQuestId = state.id;
             notifyStateChanged();
 
             if (!state.quest?.userStatus?.enrolledAt) {
                 await enrollQuest(state.id);
-                await new Promise(r => setTimeout(r, 400));
+                const okSleep = await interruptibleSleep(350, signal);
+                if (!okSleep || !isRunnerActive) break;
             }
 
             const isVideo = state.taskType.startsWith("WATCH_VIDEO");
             let failCount = 0;
 
-            while (!state.completed && isRunnerActive) {
+            while (!state.completed && isRunnerActive && !signal.aborted) {
                 let ok = false;
                 if (isVideo) {
                     ok = await processVideoStep(state);
-                    if (!state.completed && isRunnerActive) {
-                        await new Promise(r => setTimeout(r, 1000 + Math.random() * 400));
+                    if (!state.completed && isRunnerActive && !signal.aborted) {
+                        const slept = await interruptibleSleep(1000 + Math.random() * 400, signal);
+                        if (!slept) break;
                     }
                 } else {
                     ok = await processHeartbeatStep(state);
-                    if (!state.completed && isRunnerActive) {
-                        await new Promise(r => setTimeout(r, 16000 + Math.random() * 2000));
+                    if (!state.completed && isRunnerActive && !signal.aborted) {
+                        const slept = await interruptibleSleep(16000 + Math.random() * 2000, signal);
+                        if (!slept) break;
                     }
                 }
 
@@ -476,14 +527,21 @@ export async function startQuestRunner() {
                         console.warn("[AutoQuests] Quest step failed 5 times, proceeding to next quest:", state.questName);
                         break;
                     }
-                    await new Promise(r => setTimeout(r, 2000));
+                    const slept = await interruptibleSleep(2000, signal);
+                    if (!slept) break;
                 } else {
                     failCount = 0;
                 }
             }
 
-            if (state.completed && settings.store.showToasts) {
-                showToast(`${t("Quest completed")}: ${state.questName}`, Toasts.Type.SUCCESS);
+            if (state.completed) {
+                questProgressCache.set(state.id, state.secondsNeeded);
+                if (lastActiveQuestId === state.id) {
+                    lastActiveQuestId = null;
+                }
+                if (settings.store.showToasts) {
+                    showToast(`${t("Quest completed")}: ${state.questName}`, Toasts.Type.SUCCESS);
+                }
             }
         }
 
@@ -496,6 +554,7 @@ export async function startQuestRunner() {
         currentRunningQuestId = null;
         activeStreamKey = null;
         currentQuestBeingHeartbeated = null;
+        runnerAbortController = null;
         notifyStateChanged();
     }
 }
@@ -550,6 +609,15 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
     const displayProgress = Math.floor(item.currentProgress);
     const displayTarget = Math.floor(item.secondsNeeded);
 
+    const handleActionClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isCurrent && isRunnerActive) {
+            void stopQuestRunner();
+        } else {
+            void startQuestRunner(item.id);
+        }
+    };
+
     return (
         <div
             style={{
@@ -571,7 +639,7 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
             }}
         >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}>
                     {isCurrent && (
                         <div
                             style={{
@@ -607,9 +675,31 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
                             </Text>
                         </div>
                     ) : (
-                        <Text variant="text-xs/medium" style={{ color: "var(--text-muted, #949ba4)", fontFamily: "monospace" }}>
-                            {displayProgress} / {displayTarget}s
-                        </Text>
+                        <>
+                            <Text variant="text-xs/medium" style={{ color: "var(--text-muted, #949ba4)", fontFamily: "monospace" }}>
+                                {displayProgress} / {displayTarget}s
+                            </Text>
+                            <button
+                                onClick={handleActionClick}
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: 22,
+                                    height: 22,
+                                    borderRadius: "50%",
+                                    border: "none",
+                                    backgroundColor: isCurrent ? "var(--status-danger, #f23f43)" : "rgba(255, 255, 255, 0.1)",
+                                    color: "#ffffff",
+                                    cursor: "pointer",
+                                    padding: 0,
+                                    transition: "background-color 0.2s ease"
+                                }}
+                                title={isCurrent ? t("Stop Quests") : t("Run Quests")}
+                            >
+                                {isCurrent ? <StopSquareIcon size={10} /> : <PlayIcon size={10} />}
+                            </button>
+                        </>
                     )}
                 </div>
             </div>
@@ -738,7 +828,7 @@ function FloatingQuestWidget() {
                         <Button
                             color={isRunning ? Button.Colors.RED : Button.Colors.BRAND}
                             size={Button.Sizes.SMALL}
-                            onClick={isRunning ? stopQuestRunner : startQuestRunner}
+                            onClick={isRunning ? stopQuestRunner : () => startQuestRunner()}
                             style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 600 }}
                         >
                             {isRunning ? <StopSquareIcon size={14} /> : <PlayIcon size={14} />}
@@ -773,7 +863,7 @@ function FloatingQuestWidget() {
                 }}
             >
                 <button
-                    onClick={isRunning ? stopQuestRunner : startQuestRunner}
+                    onClick={isRunning ? stopQuestRunner : () => startQuestRunner()}
                     style={{
                         display: "flex",
                         alignItems: "center",
@@ -876,7 +966,7 @@ function AutoQuestsModal({ modalProps }: { modalProps: ModalProps; }) {
                     <Button
                         color={isRunning ? Button.Colors.RED : Button.Colors.BRAND}
                         size={Button.Sizes.SMALL}
-                        onClick={isRunning ? stopQuestRunner : startQuestRunner}
+                        onClick={isRunning ? stopQuestRunner : () => startQuestRunner()}
                         style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}
                     >
                         {isRunning ? <StopSquareIcon size={14} /> : <PlayIcon size={14} />}
@@ -915,7 +1005,7 @@ function AutoQuestsSettingsPanel() {
                 <Button
                     color={isRunning ? Button.Colors.RED : Button.Colors.BRAND}
                     size={Button.Sizes.SMALL}
-                    onClick={isRunning ? stopQuestRunner : startQuestRunner}
+                    onClick={isRunning ? stopQuestRunner : () => startQuestRunner()}
                     style={{ display: "flex", alignItems: "center", gap: 6 }}
                 >
                     {isRunning ? <StopSquareIcon size={14} /> : <PlayIcon size={14} />}
