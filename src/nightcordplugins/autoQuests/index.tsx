@@ -109,6 +109,7 @@ const sendHeartbeatNative = findByCodeLazy(".QUESTS_HEARTBEAT(") as ((options: {
     terminal?: boolean;
 }) => Promise<void>) | undefined;
 const enrollInQuestNative = findByCodeLazy('type:"QUESTS_ENROLL_BEGIN",') as ((questId: string, options?: any) => Promise<any>) | undefined;
+const fetchAndDispatchQuests = findByCodeLazy("QUESTS_FETCH_CURRENT_QUESTS_BEGIN") as (() => Promise<void>) | undefined;
 
 function QuestCompassIcon({ size = 18 }: { size?: number; }) {
     return (
@@ -202,30 +203,72 @@ function getAllQuestsFromStore(): any[] {
     return [];
 }
 
-async function enrollQuest(questId: string): Promise<boolean> {
-    if (typeof enrollInQuestNative === "function") {
-        try {
-            await enrollInQuestNative(questId, {
-                questContent: 1,
-                questContentCTA: "ACCEPT_QUEST"
-            });
-            return true;
-        } catch {}
+export function snakeToCamel(obj: any): any {
+    if (Array.isArray(obj)) return obj.map(snakeToCamel);
+    if (obj && typeof obj === "object") {
+        return Object.fromEntries(
+            Object.entries(obj).map(([key, value]) => [
+                key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()),
+                snakeToCamel(value)
+            ])
+        );
     }
+    return obj;
+}
+
+export function clearStuckEnrollments() {
     try {
-        await RestAPI.post({
+        const all = getAllQuestsFromStore();
+        for (const q of all) {
+            if (!q.userStatus?.enrolledAt) {
+                FluxDispatcher.dispatch({
+                    type: "QUESTS_ENROLL_FAILURE",
+                    questId: q.id
+                });
+            }
+        }
+    } catch {}
+}
+
+async function enrollQuest(quest: any): Promise<boolean> {
+    const questId = typeof quest === "string" ? quest : quest?.id;
+    if (!questId) return false;
+
+    const freshQuest = getResolvedQuestsStore()?.getQuest?.(questId) || (typeof quest === "object" ? quest : null);
+    if (freshQuest?.userStatus?.enrolledAt) {
+        return true;
+    }
+
+    FluxDispatcher.dispatch({
+        type: "QUESTS_ENROLL_BEGIN",
+        questId
+    });
+
+    try {
+        const response = await RestAPI.post({
             url: `/quests/${questId}/enroll`,
             body: { location: 11 }
         });
-        return true;
-    } catch {}
-    try {
-        await RestAPI.post({
-            url: `/quests/${questId}/enroll`,
-            body: {}
-        });
-        return true;
-    } catch {}
+
+        if (response?.body) {
+            FluxDispatcher.dispatch({
+                type: "QUESTS_ENROLL_SUCCESS",
+                enrolledQuestUserStatus: snakeToCamel(response.body)
+            });
+            return true;
+        }
+    } catch (err) {
+        console.warn(`[AutoQuests] Enrollment failed for ${questId}:`, err);
+    } finally {
+        const updated = getResolvedQuestsStore()?.getQuest?.(questId);
+        if (!updated?.userStatus?.enrolledAt) {
+            FluxDispatcher.dispatch({
+                type: "QUESTS_ENROLL_FAILURE",
+                questId
+            });
+        }
+    }
+
     return false;
 }
 
@@ -249,6 +292,7 @@ function getVoiceOrDMChannelId(): string | null {
 }
 
 export function refreshActiveQuests(): QuestItemState[] {
+    clearStuckEnrollments();
     const allQuests = getAllQuestsFromStore();
     const result: QuestItemState[] = [];
 
@@ -268,7 +312,7 @@ export function refreshActiveQuests(): QuestItemState[] {
         const secondsNeeded = taskData?.target ?? 0;
         const storeProgress = quest.userStatus?.progress?.[taskType]?.value ?? quest.userStatus?.streamProgressSeconds ?? 0;
         const cachedProgress = questProgressCache.get(quest.id) ?? 0;
-        const currentProgress = Math.max(storeProgress, cachedProgress);
+        const currentProgress = isCompleted ? secondsNeeded : Math.min(secondsNeeded, Math.max(storeProgress, cachedProgress));
         const questName = quest.config.messages?.questName || quest.config.questName || quest.config.messages?.gameTitle || quest.id;
 
         result.push({
@@ -277,7 +321,7 @@ export function refreshActiveQuests(): QuestItemState[] {
             taskType,
             secondsNeeded,
             currentProgress,
-            completed: isCompleted || currentProgress >= secondsNeeded,
+            completed: isCompleted,
             quest
         });
     }
@@ -289,10 +333,11 @@ export function refreshActiveQuests(): QuestItemState[] {
 
 async function processVideoStep(state: QuestItemState): Promise<boolean> {
     const { quest, secondsNeeded } = state;
-    const speed = 1.5;
-    const nextTime = Math.min(secondsNeeded, Math.floor(state.currentProgress + speed + Math.random()));
+    const nextTime = Math.min(secondsNeeded, Math.floor(state.currentProgress + 1));
 
     let reported = false;
+    let isCompletedOnServer = false;
+
     if (typeof reportVideoProgressNative === "function") {
         try {
             await reportVideoProgressNative(quest.id, nextTime);
@@ -306,20 +351,47 @@ async function processVideoStep(state: QuestItemState): Promise<boolean> {
                 url: `/quests/${quest.id}/video-progress`,
                 body: { timestamp: nextTime }
             });
-            if (res?.body?.completed_at != null || nextTime >= secondsNeeded) {
-                state.completed = true;
-            }
             reported = true;
+            if (res?.body?.completed_at || res?.body?.user_status?.completed_at || res?.body?.enrolled_quest_user_status?.completed_at) {
+                isCompletedOnServer = true;
+            }
         } catch {}
     }
 
     if (reported) {
         state.currentProgress = nextTime;
         questProgressCache.set(quest.id, nextTime);
-        if (state.currentProgress >= secondsNeeded) {
+
+        const freshQuest = getResolvedQuestsStore()?.getQuest?.(quest.id) || quest;
+        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer) {
             state.completed = true;
             questProgressCache.set(quest.id, secondsNeeded);
+        } else if (nextTime >= secondsNeeded) {
+            try {
+                if (typeof reportVideoProgressNative === "function") {
+                    await reportVideoProgressNative(quest.id, secondsNeeded);
+                } else {
+                    const res = await RestAPI.post({
+                        url: `/quests/${quest.id}/video-progress`,
+                        body: { timestamp: secondsNeeded }
+                    });
+                    if (res?.body?.completed_at || res?.body?.user_status?.completed_at) {
+                        isCompletedOnServer = true;
+                    }
+                }
+            } catch {}
+
+            if (typeof fetchAndDispatchQuests === "function") {
+                try { await fetchAndDispatchQuests(); } catch {}
+            }
+
+            const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
+            if (updated?.userStatus?.completedAt || isCompletedOnServer) {
+                state.completed = true;
+                questProgressCache.set(quest.id, secondsNeeded);
+            }
         }
+
         notifyStateChanged();
         return true;
     }
@@ -338,6 +410,8 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
     currentQuestBeingHeartbeated = quest;
 
     let reported = false;
+    let isCompletedOnServer = false;
+
     if (typeof sendHeartbeatNative === "function") {
         try {
             await sendHeartbeatNative({
@@ -362,19 +436,28 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
             } else {
                 state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
             }
+            if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
+                isCompletedOnServer = true;
+            }
             reported = true;
         } catch {}
     }
 
     if (reported) {
-        if (state.currentProgress < secondsNeeded) {
+        const freshQuest = getResolvedQuestsStore()?.getQuest?.(quest.id) || quest;
+        const storeVal = freshQuest?.userStatus?.progress?.[taskType]?.value;
+        if (typeof storeVal === "number" && storeVal > state.currentProgress) {
+            state.currentProgress = storeVal;
+        } else if (state.currentProgress < secondsNeeded) {
             state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
         }
+
         questProgressCache.set(quest.id, state.currentProgress);
 
-        if (state.currentProgress >= secondsNeeded) {
+        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer) {
             state.completed = true;
             questProgressCache.set(quest.id, secondsNeeded);
+        } else if (state.currentProgress >= secondsNeeded) {
             try {
                 if (typeof sendHeartbeatNative === "function") {
                     await sendHeartbeatNative({
@@ -384,15 +467,29 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
                         terminal: true
                     });
                 } else {
-                    await RestAPI.post({
+                    const res = await RestAPI.post({
                         url: `/quests/${quest.id}/heartbeat`,
                         body: { stream_key: streamKey, terminal: true }
                     });
+                    if (res?.body?.completed_at || res?.body?.user_status?.completed_at) {
+                        isCompletedOnServer = true;
+                    }
                 }
             } catch {}
+
+            if (typeof fetchAndDispatchQuests === "function") {
+                try { await fetchAndDispatchQuests(); } catch {}
+            }
+
+            const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
+            if (updated?.userStatus?.completedAt || isCompletedOnServer) {
+                state.completed = true;
+                questProgressCache.set(quest.id, secondsNeeded);
+            }
             activeStreamKey = null;
             currentQuestBeingHeartbeated = null;
         }
+
         notifyStateChanged();
         return true;
     }
@@ -448,18 +545,6 @@ export async function startQuestRunner(preferredQuestId?: string) {
 
     refreshActiveQuests();
 
-    if (settings.store.autoEnroll) {
-        const allQuests = getAllQuestsFromStore();
-        for (const q of allQuests) {
-            if (!isRunnerActive) break;
-            if (q && !q.userStatus?.enrolledAt && !q.userStatus?.completedAt) {
-                await enrollQuest(q.id);
-                await new Promise(r => setTimeout(r, 250));
-            }
-        }
-        refreshActiveQuests();
-    }
-
     const targetId = preferredQuestId || lastActiveQuestId;
     let eligibleQuests = activeQuestStates.filter(q => !q.completed);
 
@@ -493,8 +578,11 @@ export async function startQuestRunner(preferredQuestId?: string) {
             notifyStateChanged();
 
             if (!state.quest?.userStatus?.enrolledAt) {
-                await enrollQuest(state.id);
-                const okSleep = await interruptibleSleep(350, signal);
+                const enrolled = await enrollQuest(state.id);
+                if (!enrolled) {
+                    console.warn("[AutoQuests] Could not enroll in quest, skipping to next:", state.questName);
+                }
+                const okSleep = await interruptibleSleep(1000, signal);
                 if (!okSleep || !isRunnerActive) break;
             }
 
@@ -519,11 +607,11 @@ export async function startQuestRunner(preferredQuestId?: string) {
 
                 if (!ok) {
                     failCount++;
-                    if (failCount >= 5) {
-                        console.warn("[AutoQuests] Quest step failed 5 times, proceeding to next quest:", state.questName);
+                    if (failCount >= 8) {
+                        console.warn("[AutoQuests] Quest step failed 8 times, proceeding to next quest:", state.questName);
                         break;
                     }
-                    const slept = await interruptibleSleep(2000, signal);
+                    const slept = await interruptibleSleep(3000, signal);
                     if (!slept) break;
                 } else {
                     failCount = 0;
@@ -541,7 +629,7 @@ export async function startQuestRunner(preferredQuestId?: string) {
             }
         }
 
-        const allFinished = activeQuestStates.every(q => q.completed);
+        const allFinished = activeQuestStates.length > 0 && activeQuestStates.every(q => q.completed);
         if (allFinished && settings.store.showToasts) {
             showToast(t("All active quests completed!"), Toasts.Type.SUCCESS);
         }
@@ -1201,13 +1289,15 @@ export default definePlugin({
     start() {
         setupHistoryListener();
         mountFloatingWidget();
+        clearStuckEnrollments();
 
         setTimeout(() => {
+            clearStuckEnrollments();
             refreshActiveQuests();
             if (settings.store.autoStart) {
                 void startQuestRunner();
             }
-        }, 3000);
+        }, 1500);
     },
 
     stop() {
