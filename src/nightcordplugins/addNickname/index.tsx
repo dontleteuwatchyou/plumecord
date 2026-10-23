@@ -8,7 +8,7 @@ import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
-import { closeModal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
 import {
     FluxDispatcher,
@@ -21,6 +21,7 @@ import {
     TextInput,
     Toasts,
     UserStore,
+    UsernameUtils,
     useState
 } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
@@ -71,23 +72,16 @@ async function resetCustomNickname(userId: string) {
 
 function triggerRerender(userId: string) {
     const user = UserStore.getUser(userId);
-    if (user) {
-        if (Object.prototype.hasOwnProperty.call(user, "globalName")) {
-            (user as any).__addNickname_origGlobalName = user.globalName;
-            delete (user as any).globalName;
-        }
-
-        try {
-            FluxDispatcher.dispatch({
-                type: "USER_UPDATE",
-                user: {
-                    ...user,
-                    id: userId,
-                    globalName: customNicknames[userId] || (user as any).__addNickname_origGlobalName || (user as any).globalName
-                }
-            });
-        } catch {}
-    }
+    try {
+        FluxDispatcher.dispatch({
+            type: "USER_UPDATE",
+            user: user ? {
+                ...user,
+                id: userId,
+                globalName: customNicknames[userId] || user.globalName
+            } : { id: userId }
+        });
+    } catch {}
 
     try {
         FluxDispatcher.dispatch({
@@ -145,7 +139,7 @@ function AddNicknameModal({ modalProps, user }: { modalProps: ModalProps; user: 
         modalProps.onClose();
     };
 
-    const displayName = (user as any).__addNickname_origGlobalName ?? user.globalName ?? user.username;
+    const displayName = customNicknames[user.id] ?? RelationshipStore?.getNickname?.(user.id) ?? user.globalName ?? user.username;
 
     return (
         <ModalRoot {...modalProps} size={ModalSize.SMALL}>
@@ -217,117 +211,85 @@ function openAddNicknameModal(user: any) {
     ));
 }
 
-let origGlobalNameDesc: PropertyDescriptor | null = null;
-let origDisplayNameDesc: PropertyDescriptor | null = null;
+const userProxyMap = new WeakMap<any, { proxy: any; nick: string; }>();
+
+function getOrWrapUserProxy(user: any, nickname: string) {
+    if (!user) return user;
+    const existing = userProxyMap.get(user);
+    if (existing && existing.nick === nickname) {
+        return existing.proxy;
+    }
+    const proxy = new Proxy(user, {
+        get(target, prop, receiver) {
+            if (prop === "globalName" || prop === "displayName") {
+                return customNicknames[target.id] || target[prop];
+            }
+            if (prop === "getGlobalName") {
+                return () => customNicknames[target.id] || target.globalName;
+            }
+            const val = Reflect.get(target, prop, receiver);
+            if (typeof val === "function") {
+                return val.bind(target);
+            }
+            return val;
+        }
+    });
+    userProxyMap.set(user, { proxy, nick: nickname });
+    return proxy;
+}
+
 let origGetNickname: typeof RelationshipStore.getNickname | null = null;
 let origGetNicknames: typeof RelationshipStore.getNicknames | null = null;
 let origGetNick: typeof GuildMemberStore.getNick | null = null;
 let origGetMember: typeof GuildMemberStore.getMember | null = null;
 let origGetUser: typeof UserStore.getUser | null = null;
+let origGetCurrentUser: typeof UserStore.getCurrentUser | null = null;
+let origGetName: any = null;
+let origUseName: any = null;
+let origGetGlobalName: any = null;
+let origGetFormattedName: any = null;
 
-function patchUserPrototype() {
-    const currentUser = UserStore.getCurrentUser();
-    const UserProto = currentUser ? Object.getPrototypeOf(currentUser) : null;
-    if (!UserProto || origGlobalNameDesc) return;
-
-    origGlobalNameDesc = Object.getOwnPropertyDescriptor(UserProto, "globalName") || {
-        configurable: true,
-        enumerable: true,
-        writable: true,
-        value: null
-    };
-
-    Object.defineProperty(UserProto, "globalName", {
-        get() {
-            const custom = customNicknames[this.id];
-            if (custom) return custom;
-            if (origGlobalNameDesc?.get) {
-                return origGlobalNameDesc.get.call(this);
-            }
-            return this.__addNickname_origGlobalName;
-        },
-        set(val: string | null) {
-            this.__addNickname_origGlobalName = val;
-            if (origGlobalNameDesc?.set) {
-                origGlobalNameDesc.set.call(this, val);
-            }
-        },
-        configurable: true,
-        enumerable: true
-    });
-
-    if (Object.prototype.hasOwnProperty.call(UserProto, "displayName")) {
-        origDisplayNameDesc = Object.getOwnPropertyDescriptor(UserProto, "displayName") || null;
-        if (origDisplayNameDesc) {
-            Object.defineProperty(UserProto, "displayName", {
-                get() {
-                    const custom = customNicknames[this.id];
-                    if (custom) return custom;
-                    if (origDisplayNameDesc?.get) {
-                        return origDisplayNameDesc.get.call(this);
-                    }
-                    return this.__addNickname_origDisplayName ?? this.globalName ?? this.username;
-                },
-                set(val: string | null) {
-                    this.__addNickname_origDisplayName = val;
-                    if (origDisplayNameDesc?.set) {
-                        origDisplayNameDesc.set.call(this, val);
-                    }
-                },
-                configurable: true,
-                enumerable: true
-            });
-        }
-    }
-
-    applyToExistingUsers();
-}
-
-function applyToExistingUsers() {
+function healCorruptedUsers() {
     try {
+        const currentUser = UserStore?.getCurrentUser?.();
+        const UserProto = currentUser ? Object.getPrototypeOf(currentUser) : null;
+        if (UserProto) {
+            const globalDesc = Object.getOwnPropertyDescriptor(UserProto, "globalName");
+            if (globalDesc && (globalDesc.get || globalDesc.set)) {
+                delete (UserProto as any).globalName;
+            }
+            const displayDesc = Object.getOwnPropertyDescriptor(UserProto, "displayName");
+            if (displayDesc && (displayDesc.get || displayDesc.set)) {
+                delete (UserProto as any).displayName;
+            }
+        }
+
         const users = (UserStore as any)?._users;
         if (users && typeof users === "object") {
             for (const id in users) {
                 const u = users[id];
-                if (u && typeof u === "object" && Object.prototype.hasOwnProperty.call(u, "globalName")) {
-                    u.__addNickname_origGlobalName = u.globalName;
-                    delete u.globalName;
+                if (u && typeof u === "object") {
+                    if ("__addNickname_origGlobalName" in u) {
+                        if (u.__addNickname_origGlobalName !== undefined) {
+                            u.globalName = u.__addNickname_origGlobalName;
+                        }
+                        delete u.__addNickname_origGlobalName;
+                    }
+                    if ("__addNickname_origDisplayName" in u) {
+                        if (u.__addNickname_origDisplayName !== undefined) {
+                            u.displayName = u.__addNickname_origDisplayName;
+                        }
+                        delete u.__addNickname_origDisplayName;
+                    }
                 }
             }
         }
     } catch {}
 }
 
-function unpatchUserPrototype() {
-    const currentUser = UserStore.getCurrentUser();
-    const UserProto = currentUser ? Object.getPrototypeOf(currentUser) : null;
-    if (UserProto && origGlobalNameDesc) {
-        Object.defineProperty(UserProto, "globalName", origGlobalNameDesc);
-        origGlobalNameDesc = null;
-
-        if (origDisplayNameDesc) {
-            Object.defineProperty(UserProto, "displayName", origDisplayNameDesc);
-            origDisplayNameDesc = null;
-        }
-
-        const users = (UserStore as any)?._users;
-        if (users && typeof users === "object") {
-            for (const id in users) {
-                const u = users[id];
-                if (u && typeof u === "object" && "__addNickname_origGlobalName" in u) {
-                    u.globalName = u.__addNickname_origGlobalName;
-                    delete u.__addNickname_origGlobalName;
-                }
-                if (u && typeof u === "object" && "__addNickname_origDisplayName" in u) {
-                    u.displayName = u.__addNickname_origDisplayName;
-                    delete u.__addNickname_origDisplayName;
-                }
-            }
-        }
-    }
-}
-
 function patchStores() {
+    healCorruptedUsers();
+
     if (RelationshipStore && !origGetNickname && typeof RelationshipStore.getNickname === "function") {
         origGetNickname = RelationshipStore.getNickname.bind(RelationshipStore);
         RelationshipStore.getNickname = (userId: string) => {
@@ -376,12 +338,65 @@ function patchStores() {
         origGetUser = UserStore.getUser.bind(UserStore);
         UserStore.getUser = (userId: string) => {
             const user = origGetUser!(userId);
-            if (user && Object.prototype.hasOwnProperty.call(user, "globalName")) {
-                (user as any).__addNickname_origGlobalName = user.globalName;
-                delete (user as any).globalName;
+            if (!user || !customNicknames[userId]) {
+                return user;
             }
-            return user;
+            return getOrWrapUserProxy(user, customNicknames[userId]);
         };
+    }
+
+    if (UserStore && !origGetCurrentUser && typeof UserStore.getCurrentUser === "function") {
+        origGetCurrentUser = UserStore.getCurrentUser.bind(UserStore);
+        UserStore.getCurrentUser = () => {
+            const user = origGetCurrentUser!();
+            if (!user || !customNicknames[user.id]) {
+                return user;
+            }
+            return getOrWrapUserProxy(user, customNicknames[user.id]);
+        };
+    }
+
+    if (UsernameUtils) {
+        if (!origGetName && typeof (UsernameUtils as any).getName === "function") {
+            origGetName = (UsernameUtils as any).getName;
+            (UsernameUtils as any).getName = function (...args: any[]) {
+                const user = args.find(a => a && typeof a === "object" && typeof a.id === "string");
+                if (user && customNicknames[user.id]) {
+                    return customNicknames[user.id];
+                }
+                return origGetName.apply(this, args);
+            };
+        }
+        if (!origUseName && typeof (UsernameUtils as any).useName === "function") {
+            origUseName = (UsernameUtils as any).useName;
+            (UsernameUtils as any).useName = function (...args: any[]) {
+                const user = args.find(a => a && typeof a === "object" && typeof a.id === "string");
+                if (user && customNicknames[user.id]) {
+                    return customNicknames[user.id];
+                }
+                return origUseName.apply(this, args);
+            };
+        }
+        if (!origGetGlobalName && typeof (UsernameUtils as any).getGlobalName === "function") {
+            origGetGlobalName = (UsernameUtils as any).getGlobalName;
+            (UsernameUtils as any).getGlobalName = function (...args: any[]) {
+                const user = args.find(a => a && typeof a === "object" && typeof a.id === "string");
+                if (user && customNicknames[user.id]) {
+                    return customNicknames[user.id];
+                }
+                return origGetGlobalName.apply(this, args);
+            };
+        }
+        if (!origGetFormattedName && typeof (UsernameUtils as any).getFormattedName === "function") {
+            origGetFormattedName = (UsernameUtils as any).getFormattedName;
+            (UsernameUtils as any).getFormattedName = function (...args: any[]) {
+                const user = args.find(a => a && typeof a === "object" && typeof a.id === "string");
+                if (user && customNicknames[user.id]) {
+                    return customNicknames[user.id];
+                }
+                return origGetFormattedName.apply(this, args);
+            };
+        }
     }
 }
 
@@ -406,6 +421,29 @@ function unpatchStores() {
         UserStore.getUser = origGetUser;
         origGetUser = null;
     }
+    if (origGetCurrentUser && UserStore) {
+        UserStore.getCurrentUser = origGetCurrentUser;
+        origGetCurrentUser = null;
+    }
+    if (UsernameUtils) {
+        if (origGetName) {
+            (UsernameUtils as any).getName = origGetName;
+            origGetName = null;
+        }
+        if (origUseName) {
+            (UsernameUtils as any).useName = origUseName;
+            origUseName = null;
+        }
+        if (origGetGlobalName) {
+            (UsernameUtils as any).getGlobalName = origGetGlobalName;
+            origGetGlobalName = null;
+        }
+        if (origGetFormattedName) {
+            (UsernameUtils as any).getFormattedName = origGetFormattedName;
+            origGetFormattedName = null;
+        }
+    }
+    healCorruptedUsers();
 }
 
 const UserContextMenuPatch: NavContextMenuPatchCallback = (children, { user, userId }: { user?: any; userId?: string; }) => {
@@ -531,20 +569,12 @@ export default definePlugin({
         "gdm-context": ChannelContextMenuPatch
     },
 
-    flux: {
-        CONNECTION_OPEN() {
-            patchUserPrototype();
-        }
-    },
-
     async start() {
         customNicknames = (await DataStore.get<NicknameDictionary>(DATA_STORE_KEY)) ?? {};
         patchStores();
-        patchUserPrototype();
     },
 
     stop() {
         unpatchStores();
-        unpatchUserPrototype();
     }
 });
