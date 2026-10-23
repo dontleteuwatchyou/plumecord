@@ -9,7 +9,7 @@ import { Button } from "@components/Button";
 import { FormSwitch } from "@components/FormSwitch";
 import { closeModal, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { find, findStore } from "@webpack";
+import { find, findByCodeLazy, findStore } from "@webpack";
 import {
     ChannelStore,
     createRoot,
@@ -83,11 +83,20 @@ export const settings = definePluginSettings({
     }
 });
 
+const reportVideoProgressNative = findByCodeLazy(".QUESTS_VIDEO_PROGRESS(") as ((questId: string, progress: number) => Promise<void>) | undefined;
+const sendHeartbeatNative = findByCodeLazy(".QUESTS_HEARTBEAT(") as ((options: {
+    questId: string;
+    streamKey?: string;
+    applicationId?: string;
+    terminal?: boolean;
+}) => Promise<void>) | undefined;
+const enrollInQuestNative = findByCodeLazy('type:"QUESTS_ENROLL_BEGIN",') as ((questId: string, options?: any) => Promise<any>) | undefined;
+
 function QuestCompassIcon({ size = 18 }: { size?: number; }) {
     return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <circle cx="12" cy="12" r="10" />
-            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" fillOpacity="0.2" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor" fillOpacity="0.25" />
         </svg>
     );
 }
@@ -175,20 +184,31 @@ function getAllQuestsFromStore(): any[] {
     return [];
 }
 
-async function enrollInQuest(questId: string) {
+async function enrollQuest(questId: string): Promise<boolean> {
+    if (typeof enrollInQuestNative === "function") {
+        try {
+            await enrollInQuestNative(questId, {
+                questContent: 1,
+                questContentCTA: "ACCEPT_QUEST"
+            });
+            return true;
+        } catch {}
+    }
     try {
         await RestAPI.post({
             url: `/quests/${questId}/enroll`,
-            body: { location: 1 }
+            body: { location: 11 }
         });
-    } catch {
-        try {
-            await RestAPI.post({
-                url: `/quests/${questId}/enroll`,
-                body: {}
-            });
-        } catch {}
-    }
+        return true;
+    } catch {}
+    try {
+        await RestAPI.post({
+            url: `/quests/${questId}/enroll`,
+            body: {}
+        });
+        return true;
+    } catch {}
+    return false;
 }
 
 function getVoiceOrDMChannelId(): string | null {
@@ -247,63 +267,112 @@ export function refreshActiveQuests(): QuestItemState[] {
     return result;
 }
 
-async function processVideoStep(state: QuestItemState) {
+async function processVideoStep(state: QuestItemState): Promise<boolean> {
     const { quest, secondsNeeded } = state;
-    const speed = 1;
-    const nextTime = Math.min(secondsNeeded, state.currentProgress + speed + Math.random());
+    const speed = 1.5;
+    const nextTime = Math.min(secondsNeeded, Math.floor(state.currentProgress + speed + Math.random()));
 
-    try {
-        const res = await RestAPI.post({
-            url: `/quests/${quest.id}/video-progress`,
-            body: { timestamp: nextTime }
-        });
-        state.currentProgress = nextTime;
-        notifyStateChanged();
-
-        if (res.body?.completed_at !== null && res.body?.completed_at !== undefined || state.currentProgress >= secondsNeeded) {
-            state.completed = true;
-            notifyStateChanged();
-            await RestAPI.post({
-                url: `/quests/${quest.id}/video-progress`,
-                body: { timestamp: secondsNeeded }
-            });
-        }
-    } catch (err) {
-        console.error("[Nightcord AutoQuests] Video progress error:", err);
+    let reported = false;
+    if (typeof reportVideoProgressNative === "function") {
+        try {
+            await reportVideoProgressNative(quest.id, nextTime);
+            reported = true;
+        } catch {}
     }
+
+    if (!reported) {
+        try {
+            const res = await RestAPI.post({
+                url: `/quests/${quest.id}/video-progress`,
+                body: { timestamp: nextTime }
+            });
+            if (res?.body?.completed_at != null || nextTime >= secondsNeeded) {
+                state.completed = true;
+            }
+            reported = true;
+        } catch {}
+    }
+
+    if (reported) {
+        state.currentProgress = nextTime;
+        if (state.currentProgress >= secondsNeeded) {
+            state.completed = true;
+        }
+        notifyStateChanged();
+        return true;
+    }
+
+    return false;
 }
 
-async function processHeartbeatStep(state: QuestItemState) {
+async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
     const { quest, taskType, secondsNeeded } = state;
 
     const channelId = getVoiceOrDMChannelId();
     const streamKey = channelId ? `call:${channelId}:1` : `call:${quest.id}:1`;
+    const appId = state.quest?.config?.taskConfig?.tasks?.[taskType]?.applications?.[0]?.id;
+
     activeStreamKey = streamKey;
     currentQuestBeingHeartbeated = quest;
 
-    try {
-        const response = await RestAPI.post({
-            url: `/quests/${quest.id}/heartbeat`,
-            body: { stream_key: streamKey, terminal: false }
-        });
-
-        const serverProgress = response.body?.progress?.[taskType]?.value ?? (state.currentProgress + 20);
-        state.currentProgress = serverProgress;
-        notifyStateChanged();
-
-        if (state.currentProgress >= secondsNeeded) {
-            await RestAPI.post({
-                url: `/quests/${quest.id}/heartbeat`,
-                body: { stream_key: streamKey, terminal: true }
+    let reported = false;
+    if (typeof sendHeartbeatNative === "function") {
+        try {
+            await sendHeartbeatNative({
+                questId: quest.id,
+                streamKey,
+                applicationId: appId,
+                terminal: false
             });
+            reported = true;
+        } catch {}
+    }
+
+    if (!reported) {
+        try {
+            const response = await RestAPI.post({
+                url: `/quests/${quest.id}/heartbeat`,
+                body: { stream_key: streamKey, terminal: false }
+            });
+            const srv = response?.body?.progress?.[taskType]?.value;
+            if (typeof srv === "number") {
+                state.currentProgress = srv;
+            } else {
+                state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
+            }
+            reported = true;
+        } catch {}
+    }
+
+    if (reported) {
+        if (state.currentProgress < secondsNeeded) {
+            state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
+        }
+        if (state.currentProgress >= secondsNeeded) {
             state.completed = true;
+            try {
+                if (typeof sendHeartbeatNative === "function") {
+                    await sendHeartbeatNative({
+                        questId: quest.id,
+                        streamKey,
+                        applicationId: appId,
+                        terminal: true
+                    });
+                } else {
+                    await RestAPI.post({
+                        url: `/quests/${quest.id}/heartbeat`,
+                        body: { stream_key: streamKey, terminal: true }
+                    });
+                }
+            } catch {}
             activeStreamKey = null;
             currentQuestBeingHeartbeated = null;
-            notifyStateChanged();
         }
-    } catch (err) {
-        console.error("[Nightcord AutoQuests] Heartbeat error:", err);
+        notifyStateChanged();
+        return true;
     }
+
+    return false;
 }
 
 export async function stopQuestRunner() {
@@ -312,10 +381,18 @@ export async function stopQuestRunner() {
 
     if (activeStreamKey && currentQuestBeingHeartbeated) {
         try {
-            await RestAPI.post({
-                url: `/quests/${currentQuestBeingHeartbeated.id}/heartbeat`,
-                body: { stream_key: activeStreamKey, terminal: true }
-            });
+            if (typeof sendHeartbeatNative === "function") {
+                await sendHeartbeatNative({
+                    questId: currentQuestBeingHeartbeated.id,
+                    streamKey: activeStreamKey,
+                    terminal: true
+                });
+            } else {
+                await RestAPI.post({
+                    url: `/quests/${currentQuestBeingHeartbeated.id}/heartbeat`,
+                    body: { stream_key: activeStreamKey, terminal: true }
+                });
+            }
         } catch {}
         activeStreamKey = null;
         currentQuestBeingHeartbeated = null;
@@ -332,14 +409,22 @@ export async function stopQuestRunner() {
 export async function startQuestRunner() {
     if (isRunnerActive) return;
 
+    isRunnerActive = true;
+    notifyStateChanged();
+
+    if (settings.store.showToasts) {
+        showToast(t("Quests runner started"), Toasts.Type.NORMAL);
+    }
+
     refreshActiveQuests();
 
     if (settings.store.autoEnroll) {
         const allQuests = getAllQuestsFromStore();
         for (const q of allQuests) {
+            if (!isRunnerActive) break;
             if (q && !q.userStatus?.enrolledAt && !q.userStatus?.completedAt) {
-                await enrollInQuest(q.id);
-                await new Promise(r => setTimeout(r, 400));
+                await enrollQuest(q.id);
+                await new Promise(r => setTimeout(r, 300));
             }
         }
         refreshActiveQuests();
@@ -347,17 +432,12 @@ export async function startQuestRunner() {
 
     const eligibleQuests = activeQuestStates.filter(q => !q.completed);
     if (eligibleQuests.length === 0) {
+        isRunnerActive = false;
+        notifyStateChanged();
         if (settings.store.showToasts) {
             showToast(t("You don't have any uncompleted active quests!"), Toasts.Type.NORMAL);
         }
         return;
-    }
-
-    isRunnerActive = true;
-    notifyStateChanged();
-
-    if (settings.store.showToasts) {
-        showToast(t("Quests runner started"), Toasts.Type.NORMAL);
     }
 
     try {
@@ -368,24 +448,37 @@ export async function startQuestRunner() {
             currentRunningQuestId = state.id;
             notifyStateChanged();
 
-            if (!state.quest.userStatus?.enrolledAt && settings.store.autoEnroll) {
-                await enrollInQuest(state.id);
-                await new Promise(r => setTimeout(r, 500));
+            if (!state.quest?.userStatus?.enrolledAt) {
+                await enrollQuest(state.id);
+                await new Promise(r => setTimeout(r, 400));
             }
 
             const isVideo = state.taskType.startsWith("WATCH_VIDEO");
+            let failCount = 0;
 
             while (!state.completed && isRunnerActive) {
+                let ok = false;
                 if (isVideo) {
-                    await processVideoStep(state);
+                    ok = await processVideoStep(state);
                     if (!state.completed && isRunnerActive) {
-                        await new Promise(r => setTimeout(r, 1000 + Math.random() * 500));
+                        await new Promise(r => setTimeout(r, 1000 + Math.random() * 400));
                     }
                 } else {
-                    await processHeartbeatStep(state);
+                    ok = await processHeartbeatStep(state);
                     if (!state.completed && isRunnerActive) {
-                        await new Promise(r => setTimeout(r, 20000 + Math.random() * 2000));
+                        await new Promise(r => setTimeout(r, 16000 + Math.random() * 2000));
                     }
+                }
+
+                if (!ok) {
+                    failCount++;
+                    if (failCount >= 5) {
+                        console.warn("[AutoQuests] Quest step failed 5 times, proceeding to next quest:", state.questName);
+                        break;
+                    }
+                    await new Promise(r => setTimeout(r, 2000));
+                } else {
+                    failCount = 0;
                 }
             }
 
@@ -432,15 +525,19 @@ function formatTaskBadge(taskType: SupportedTask): string {
     return t("Desktop Game / Stream Quest");
 }
 
-function QuestProgressBar({ progress, target, completed }: { progress: number; target: number; completed: boolean; }) {
+function QuestProgressBar({ progress, target, completed, isCurrent }: { progress: number; target: number; completed: boolean; isCurrent: boolean; }) {
     const pct = target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : (completed ? 100 : 0);
     return (
-        <div style={{ width: "100%", height: 6, borderRadius: 3, backgroundColor: "var(--background-secondary, #2b2d31)", overflow: "hidden", marginTop: 6 }}>
+        <div style={{ width: "100%", height: 5, borderRadius: 3, backgroundColor: "rgba(0, 0, 0, 0.4)", overflow: "hidden", marginTop: 7 }}>
             <div
                 style={{
                     height: "100%",
                     width: `${pct}%`,
-                    backgroundColor: completed ? "var(--status-positive, #23a55a)" : "var(--brand-500, #5865f2)",
+                    backgroundColor: completed
+                        ? "var(--status-positive, #23a55a)"
+                        : isCurrent
+                        ? "var(--brand-500, #5865f2)"
+                        : "var(--text-muted, #72767d)",
                     borderRadius: 3,
                     transition: "width 0.3s ease"
                 }}
@@ -459,26 +556,49 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
                 padding: "10px 12px",
                 marginBottom: 8,
                 borderRadius: 8,
-                backgroundColor: isCurrent ? "rgba(88, 101, 242, 0.12)" : "var(--background-secondary, #2b2d31)",
-                border: isCurrent ? "1px solid var(--brand-500, #5865f2)" : "1px solid transparent",
+                backgroundColor: item.completed
+                    ? "rgba(35, 165, 90, 0.08)"
+                    : isCurrent
+                    ? "rgba(88, 101, 242, 0.14)"
+                    : "var(--background-secondary, #2b2d31)",
+                border: item.completed
+                    ? "1px solid rgba(35, 165, 90, 0.25)"
+                    : isCurrent
+                    ? "1px solid var(--brand-500, #5865f2)"
+                    : "1px solid rgba(255, 255, 255, 0.05)",
+                boxShadow: isCurrent ? "0 2px 10px rgba(0, 0, 0, 0.25)" : "none",
                 transition: "all 0.2s ease"
             }}
         >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <Text
-                    variant="text-sm/semibold"
-                    style={{
-                        color: "#ffffff",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: 190
-                    }}
-                    title={item.questName}
-                >
-                    {item.questName}
-                </Text>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    {isCurrent && (
+                        <div
+                            style={{
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                backgroundColor: "var(--brand-500, #5865f2)",
+                                boxShadow: "0 0 6px var(--brand-500, #5865f2)",
+                                flexShrink: 0
+                            }}
+                        />
+                    )}
+                    <Text
+                        variant="text-sm/semibold"
+                        style={{
+                            color: "#ffffff",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis"
+                        }}
+                        title={item.questName}
+                    >
+                        {item.questName}
+                    </Text>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {item.completed ? (
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <CheckmarkIcon size={13} />
@@ -507,13 +627,13 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
                     {formatTaskBadge(item.taskType)}
                 </span>
                 {!item.completed && displayTarget > 0 && (
-                    <span style={{ fontSize: 10, color: "var(--text-muted, #949ba4)" }}>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: isCurrent ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)" }}>
                         {Math.min(100, Math.round((displayProgress / displayTarget) * 100))}%
                     </span>
                 )}
             </div>
 
-            <QuestProgressBar progress={displayProgress} target={displayTarget} completed={item.completed} />
+            <QuestProgressBar progress={displayProgress} target={displayTarget} completed={item.completed} isCurrent={isCurrent} />
         </div>
     );
 }
@@ -548,17 +668,17 @@ function FloatingQuestWidget() {
     const uncompletedCount = quests.filter(q => !q.completed).length;
 
     return (
-        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 10000, display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 10000, display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
             {expanded && (
                 <div
                     style={{
-                        width: 320,
-                        maxHeight: 440,
+                        width: 340,
+                        maxHeight: 460,
                         backgroundColor: "var(--background-floating, #18191c)",
-                        border: "1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08))",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
                         borderRadius: 12,
                         padding: 16,
-                        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.6)",
+                        boxShadow: "0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05)",
                         marginBottom: 12,
                         display: "flex",
                         flexDirection: "column"
@@ -567,28 +687,42 @@ function FloatingQuestWidget() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#ffffff" }}>
                             <QuestCompassIcon size={18} />
-                            <Text variant="heading-sm/bold" style={{ color: "#ffffff", margin: 0 }}>
+                            <Text variant="heading-sm/bold" style={{ color: "#ffffff", fontWeight: 700, margin: 0 }}>
                                 {t("Auto Quests")}
                             </Text>
                         </div>
                         <div
                             style={{
-                                padding: "2px 8px",
-                                borderRadius: 10,
-                                backgroundColor: isRunning ? "rgba(88, 101, 242, 0.2)" : "rgba(148, 155, 164, 0.15)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "3px 10px",
+                                borderRadius: 12,
+                                backgroundColor: isRunning ? "rgba(88, 101, 242, 0.2)" : "rgba(255, 255, 255, 0.06)",
                                 color: isRunning ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)",
                                 fontSize: 11,
                                 fontWeight: 700,
                                 textTransform: "uppercase"
                             }}
                         >
+                            {isRunning && (
+                                <div
+                                    style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: "50%",
+                                        backgroundColor: "var(--brand-500, #5865f2)",
+                                        boxShadow: "0 0 6px var(--brand-500, #5865f2)"
+                                    }}
+                                />
+                            )}
                             {isRunning ? t("Running") : t("Idle")}
                         </div>
                     </div>
 
-                    <div style={{ overflowY: "auto", maxHeight: 260, paddingRight: 4, marginBottom: 12 }}>
+                    <div className="nightcord-autoquests-scroller" style={{ overflowY: "auto", maxHeight: 280, paddingRight: 6, marginBottom: 14 }}>
                         {quests.length === 0 ? (
-                            <div style={{ padding: "24px 8px", textAlign: "center" }}>
+                            <div style={{ padding: "28px 12px", textAlign: "center" }}>
                                 <Text variant="text-sm/normal" style={{ color: "var(--text-muted, #949ba4)" }}>
                                     {t("No active quests found")}
                                 </Text>
@@ -605,20 +739,20 @@ function FloatingQuestWidget() {
                             color={isRunning ? Button.Colors.RED : Button.Colors.BRAND}
                             size={Button.Sizes.SMALL}
                             onClick={isRunning ? stopQuestRunner : startQuestRunner}
-                            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                            style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 600 }}
                         >
                             {isRunning ? <StopSquareIcon size={14} /> : <PlayIcon size={14} />}
-                            {isRunning ? t("Stop Quests") : t("Run Quests")}
+                            {isRunning ? t("Stop Quests") : (uncompletedCount > 0 ? `${t("Run Quests")} (${uncompletedCount})` : t("Run Quests"))}
                         </Button>
                         <Button
                             color={Button.Colors.PRIMARY}
-                            look={Button.Looks.LINK}
                             size={Button.Sizes.SMALL}
                             onClick={() => {
                                 refreshActiveQuests();
                                 openAutoQuestsModal();
                             }}
-                            style={{ padding: "0 10px" }}
+                            style={{ padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center" }}
+                            title={t("Auto Quests Manager")}
                         >
                             <ExternalIcon size={14} />
                         </Button>
@@ -630,12 +764,12 @@ function FloatingQuestWidget() {
                 style={{
                     display: "flex",
                     alignItems: "center",
-                    backgroundColor: "var(--background-secondary, #2b2d31)",
-                    border: "1px solid var(--background-modifier-accent, rgba(255, 255, 255, 0.08))",
+                    backgroundColor: isRunning ? "var(--brand-500, #5865f2)" : "var(--background-secondary, #2b2d31)",
+                    border: isRunning ? "1px solid var(--brand-500, #5865f2)" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 10,
-                    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.3)",
+                    boxShadow: "0 6px 20px rgba(0, 0, 0, 0.4)",
                     overflow: "hidden",
-                    transition: "all 0.2s ease"
+                    transition: "all 0.25s ease"
                 }}
             >
                 <button
@@ -644,7 +778,7 @@ function FloatingQuestWidget() {
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
-                        padding: "8px 14px",
+                        padding: "9px 15px",
                         background: "transparent",
                         border: "none",
                         color: "#ffffff",
@@ -655,20 +789,22 @@ function FloatingQuestWidget() {
                 >
                     <QuestCompassIcon size={16} />
                     <span>
-                        {isRunning ? `${t("Running Quests")}...` : (uncompletedCount > 0 ? `${t("Run Quests")} (${uncompletedCount})` : t("Run Quests"))}
+                        {isRunning
+                            ? `${t("Running Quests")}...`
+                            : (uncompletedCount > 0 ? `${t("Run Quests")} (${uncompletedCount})` : t("Run Quests"))}
                     </span>
                 </button>
-                <div style={{ width: 1, height: 20, backgroundColor: "var(--background-modifier-accent, rgba(255, 255, 255, 0.1))" }} />
+                <div style={{ width: 1, height: 22, backgroundColor: "rgba(255, 255, 255, 0.15)" }} />
                 <button
                     onClick={() => setExpanded(e => !e)}
                     style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        padding: "8px 10px",
+                        padding: "9px 12px",
                         background: "transparent",
                         border: "none",
-                        color: "var(--text-muted, #949ba4)",
+                        color: "#ffffff",
                         cursor: "pointer"
                     }}
                     title={t("Auto Quests")}
@@ -682,6 +818,7 @@ function FloatingQuestWidget() {
 
 function AutoQuestsModal({ modalProps }: { modalProps: ModalProps; }) {
     const { quests, isRunning, currentQuestId } = useAutoQuests();
+    const uncompletedCount = quests.filter(q => !q.completed).length;
 
     return (
         <ModalRoot {...modalProps} size={ModalSize.MEDIUM}>
@@ -700,9 +837,9 @@ function AutoQuestsModal({ modalProps }: { modalProps: ModalProps; }) {
                     {t("Automate completion of Discord video, game, and streaming quests.")}
                 </Text>
 
-                <div style={{ maxHeight: 360, overflowY: "auto", paddingRight: 4 }}>
+                <div className="nightcord-autoquests-scroller" style={{ maxHeight: 380, overflowY: "auto", paddingRight: 6 }}>
                     {quests.length === 0 ? (
-                        <div style={{ padding: "32px 16px", textAlign: "center", backgroundColor: "var(--background-secondary, #2b2d31)", borderRadius: 8 }}>
+                        <div style={{ padding: "36px 16px", textAlign: "center", backgroundColor: "var(--background-secondary, #2b2d31)", borderRadius: 8 }}>
                             <Text variant="text-md/normal" style={{ color: "var(--text-muted, #949ba4)" }}>
                                 {t("No active quests found")}
                             </Text>
@@ -727,7 +864,7 @@ function AutoQuestsModal({ modalProps }: { modalProps: ModalProps; }) {
                     {t("Open Quests Page")}
                 </Button>
 
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <Button
                         color={Button.Colors.PRIMARY}
                         look={Button.Looks.LINK}
@@ -740,10 +877,10 @@ function AutoQuestsModal({ modalProps }: { modalProps: ModalProps; }) {
                         color={isRunning ? Button.Colors.RED : Button.Colors.BRAND}
                         size={Button.Sizes.SMALL}
                         onClick={isRunning ? stopQuestRunner : startQuestRunner}
-                        style={{ display: "flex", alignItems: "center", gap: 6 }}
+                        style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}
                     >
                         {isRunning ? <StopSquareIcon size={14} /> : <PlayIcon size={14} />}
-                        {isRunning ? t("Stop Quests") : t("Run Quests")}
+                        {isRunning ? t("Stop Quests") : (uncompletedCount > 0 ? `${t("Run Quests")} (${uncompletedCount})` : t("Run Quests"))}
                     </Button>
                 </div>
             </ModalFooter>
@@ -837,7 +974,7 @@ function AutoQuestsSettingsPanel() {
                     <Text variant="text-sm/bold" style={{ color: "#ffffff", marginBottom: 10 }}>
                         {t("Auto Quests")} ({quests.length})
                     </Text>
-                    <div style={{ maxHeight: 280, overflowY: "auto", paddingRight: 4 }}>
+                    <div className="nightcord-autoquests-scroller" style={{ maxHeight: 280, overflowY: "auto", paddingRight: 6 }}>
                         {quests.map(q => (
                             <QuestListItem key={q.id} item={q} isCurrent={q.id === currentQuestId} />
                         ))}
@@ -850,9 +987,46 @@ function AutoQuestsSettingsPanel() {
 
 let widgetRootNode: HTMLDivElement | null = null;
 let widgetRoot: ReturnType<typeof createRoot> | null = null;
+let styleElement: HTMLStyleElement | null = null;
+
+const SCROLLER_CSS = `
+.nightcord-autoquests-scroller::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.nightcord-autoquests-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+.nightcord-autoquests-scroller::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+}
+.nightcord-autoquests-scroller::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+.nightcord-autoquests-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+`;
+
+function injectStyles() {
+    if (document.getElementById("nightcord-autoquests-styles")) return;
+    styleElement = document.createElement("style");
+    styleElement.id = "nightcord-autoquests-styles";
+    styleElement.textContent = SCROLLER_CSS;
+    document.head.appendChild(styleElement);
+}
+
+function removeStyles() {
+    const el = document.getElementById("nightcord-autoquests-styles");
+    if (el) el.remove();
+    styleElement = null;
+}
 
 function mountFloatingWidget() {
     if (widgetRootNode) return;
+    injectStyles();
     widgetRootNode = document.createElement("div");
     widgetRootNode.id = "nightcord-autoquests-floating-container";
     document.body.appendChild(widgetRootNode);
@@ -869,6 +1043,7 @@ function unmountFloatingWidget() {
         widgetRootNode.remove();
         widgetRootNode = null;
     }
+    removeStyles();
 }
 
 export default definePlugin({
