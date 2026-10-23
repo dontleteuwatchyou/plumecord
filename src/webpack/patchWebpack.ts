@@ -1,6 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2024 Vendicated, Nuckyz, and contributors
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -425,6 +425,7 @@ function runFactoryWithWrap(patchedFactory: PatchedModuleFactory, thisArg: unkno
         }
 
         logger.error("Error in patched module factory:\n", err);
+        argArray[1] = module.exports = {};
         return originalFactory.apply(thisArg, argArray);
     }
 
@@ -529,9 +530,11 @@ function patchFactory(moduleId: PropertyKey, originalFactory: AnyModuleFactory):
             continue;
         }
 
-        const moduleMatches = typeof patch.find === "string"
-            ? code.includes(patch.find)
-            : (patch.find.global && (patch.find.lastIndex = 0), patch.find.test(code));
+        const moduleMatches = Array.isArray(patch.find)
+            ? patch.find.every(f => typeof f === "string" ? code.includes(f) : (f.global && (f.lastIndex = 0), f.test(code)))
+            : typeof patch.find === "string"
+                ? code.includes(patch.find)
+                : (patch.find.global && (patch.find.lastIndex = 0), patch.find.test(code));
 
         if (!moduleMatches) {
             continue;
