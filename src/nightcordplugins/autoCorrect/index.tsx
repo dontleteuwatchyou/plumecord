@@ -118,6 +118,13 @@ function shouldSkipCorrection(text: string): boolean {
 export async function correctText(text: string): Promise<string> {
     if (shouldSkipCorrection(text)) return text;
 
+    const trimmedInput = text.trimEnd();
+    const hasTrailingAsterisk = /(?<!\*)\*$/.test(trimmedInput) && !/^\*(?!\*).+\*$/.test(trimmedInput.trimStart());
+    const trailingAsteriskSuffix = hasTrailingAsterisk ? (trimmedInput.match(/(\s*\*)$/)?.[1] ?? "*") : "";
+    const coreText = hasTrailingAsterisk ? trimmedInput.slice(0, -trailingAsteriskSuffix.length) : text;
+
+    if (shouldSkipCorrection(coreText)) return text;
+
     const lang = settings.store.language ?? "auto";
     const aggr = settings.store.aggressiveness ?? "low";
     const cacheKey = `${lang}:${aggr}:${text}`;
@@ -133,10 +140,10 @@ export async function correctText(text: string): Promise<string> {
         const rawResult = await groqChat({
             messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: text },
+                { role: "user", content: coreText },
             ],
             temperature: 0.1,
-            maxTokens: Math.max(256, Math.min(1024, text.length * 2)),
+            maxTokens: Math.max(256, Math.min(1024, coreText.length * 2)),
             forceModel: "qwen/qwen3.8-27b",
             timeoutMs: 4000,
             immediate: true,
@@ -172,6 +179,14 @@ export async function correctText(text: string): Promise<string> {
         ];
         for (const p of prefixes) {
             clean = clean.replace(p, "").trim();
+        }
+
+        if (hasTrailingAsterisk) {
+            clean = clean.replace(/\*+$/, "").trimEnd();
+            if (!coreText.trimEnd().endsWith(".") && clean.endsWith(".") && !clean.endsWith("...")) {
+                clean = clean.slice(0, -1).trimEnd();
+            }
+            clean = `${clean}${trailingAsteriskSuffix}`;
         }
 
         // Safety check: identical or empty
