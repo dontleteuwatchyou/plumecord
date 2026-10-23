@@ -4,11 +4,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
 import * as crypto from "crypto";
 import { net, safeStorage } from "electron";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, promises as fsp } from "fs";
 import { join } from "path";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
+const dpapiMasterKeyCache = new Map<string, Buffer>();
+let activeFindTokensPromise: Promise<string[]> | null = null;
 
 // Verification token via Electron net.request (utilise le moteur réseau Chromium d'Electron avec le bon fingerprint TLS)
 export async function checkToken(_: any, token: string): Promise<{ valid: boolean; user?: any; error?: string; }> {
@@ -74,7 +79,10 @@ export async function decryptTokenNative(_: any, encryptedBase64: string): Promi
     }
 }
 
-function decryptDPAPI(encryptedKeyBase64: string): Buffer {
+async function decryptDPAPI(encryptedKeyBase64: string): Promise<Buffer> {
+    const cached = dpapiMasterKeyCache.get(encryptedKeyBase64);
+    if (cached) return cached;
+
     const buf = Buffer.from(encryptedKeyBase64, "base64").slice(5);
     const hexStr = buf.toString("hex");
     const script = `
@@ -87,15 +95,16 @@ function decryptDPAPI(encryptedKeyBase64: string): Buffer {
         $unprotected = [System.Security.Cryptography.ProtectedData]::Unprotect([byte[]]$bytes, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
         [BitConverter]::ToString($unprotected) -replace '-'
     `;
-    try {
-        const res = execFileSync("powershell", ["-NoProfile", "-Command", script], {
-            encoding: "utf8",
-            windowsHide: true // Fix brief terminal window appearance
-        });
-        return Buffer.from(res.trim(), "hex");
-    } catch (e: any) {
-        throw e;
+    const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 8000,
+    });
+    const key = Buffer.from(stdout.trim(), "hex");
+    if (key.length > 0) {
+        dpapiMasterKeyCache.set(encryptedKeyBase64, key);
     }
+    return key;
 }
 
 function decryptToken(encryptedBase64: string, masterKey: Buffer): string {
@@ -113,6 +122,14 @@ function decryptToken(encryptedBase64: string, masterKey: Buffer): string {
 }
 
 export async function findLocalTokens(): Promise<string[]> {
+    if (activeFindTokensPromise) return activeFindTokensPromise;
+    activeFindTokensPromise = _findLocalTokensImpl().finally(() => {
+        activeFindTokensPromise = null;
+    });
+    return activeFindTokensPromise;
+}
+
+async function _findLocalTokensImpl(): Promise<string[]> {
     const tokens = new Set<string>();
 
     if (process.platform !== "win32") return [];
@@ -141,11 +158,10 @@ export async function findLocalTokens(): Promise<string[]> {
         candidatePaths.push(join(local, app));
     }
 
-    // Also scan Roaming\Vencord and Local\Vencord (Vencord injected clients share Discord's data)
-    // These are the same paths as above, but kept explicit for clarity.
     // Additionally discover any folder whose name contains "discord" or "cord" in %LOCALAPPDATA%
     try {
-        for (const entry of readdirSync(local)) {
+        const localEntries = await fsp.readdir(local);
+        for (const entry of localEntries) {
             if (/discord|cord|vencord|equicord/i.test(entry)) {
                 const p = join(local, entry);
                 if (!candidatePaths.includes(p)) candidatePaths.push(p);
@@ -165,13 +181,14 @@ export async function findLocalTokens(): Promise<string[]> {
             const localStatePath = join(appPath, "Local State");
             if (!existsSync(localStatePath)) continue;
 
-            const localState = JSON.parse(readFileSync(localStatePath, "utf8"));
+            const rawState = await fsp.readFile(localStatePath, "utf8");
+            const localState = JSON.parse(rawState);
             const encryptedKey = localState.os_crypt?.encrypted_key;
             if (!encryptedKey) continue;
 
             let masterKey: Buffer;
             try {
-                masterKey = decryptDPAPI(encryptedKey);
+                masterKey = await decryptDPAPI(encryptedKey);
             } catch {
                 continue; // Can't decrypt master key — skip this app
             }
@@ -188,7 +205,7 @@ export async function findLocalTokens(): Promise<string[]> {
                 if (!existsSync(dir)) continue;
 
                 let files: string[];
-                try { files = readdirSync(dir); } catch { continue; }
+                try { files = await fsp.readdir(dir); } catch { continue; }
 
                 for (const file of files) {
                     // Only scan data files; skip LOCK, MANIFEST, CURRENT, LOG
@@ -196,7 +213,7 @@ export async function findLocalTokens(): Promise<string[]> {
 
                     let content: string;
                     try {
-                        content = readFileSync(join(dir, file), "latin1");
+                        content = await fsp.readFile(join(dir, file), "latin1");
                     } catch { continue; }
 
                     // ── Encrypted tokens (v10 / dQw4 format) ──────────────────

@@ -3007,7 +3007,7 @@ export default definePlugin({
         Native.setEq(ghostEqBass, ghostEqTreble, ghostEqMid, ghostEqEnabled).catch(() => {});
         Native.setAmpPanParams(ghostAmpConfig || defaultAmpConfig).catch(() => {});
 
-        const allAccs = await getAllSavedAccounts(true);
+        const allAccs = await getAllSavedAccounts(false);
         if (allAccs.length > 0) savedAccounts = allAccs;
 
         setTimeout(() => {
