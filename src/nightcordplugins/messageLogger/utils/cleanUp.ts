@@ -49,6 +49,9 @@ export function cleanupMessage(message: any, removeDetails: boolean = true): Log
     ret.guildId = ret.guild_id ?? getGuildIdByChannel(ret.channel_id);
     ret.embeds = (ret.embeds ?? []).map(cleanupEmbed);
     ret.deleted = message.deleted ?? ret.deleted ?? false;
+    if (ret.deleted && Array.isArray(ret.attachments)) {
+        ret.attachments.forEach((a: any) => { a.deleted = true; });
+    }
     ret.deletedTimestamp = ret.deleted ? (message.deletedTimestamp ?? (new Date()).toISOString()) : undefined;
     ret.editHistory = message.editHistory ?? ret.editHistory ?? [];
     if (ret.type === 19) {

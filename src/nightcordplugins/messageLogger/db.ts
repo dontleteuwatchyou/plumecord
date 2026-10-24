@@ -72,6 +72,7 @@ async function cacheRecord(record?: DBMessageRecord | null) {
     stripTransientRenderState(record.message);
     if (record.status === DBMessageStatus.DELETED || record.status === DBMessageStatus.GHOST_PINGED) {
         record.message.deleted = true;
+        if (Array.isArray(record.message.attachments)) { record.message.attachments.forEach(a => { a.deleted = true; }); }
     }
     setCachedMessage(record.message_id, record.message);
     return record;

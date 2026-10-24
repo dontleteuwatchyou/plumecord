@@ -263,9 +263,11 @@ async function processMessageFetch(response: FetchMessagesResponse) {
 
         deletedMessages.forEach(m => {
             m.message.deleted = true;
+            if (Array.isArray(m.message.attachments)) { m.message.attachments.forEach(a => { a.deleted = true; }); }
         });
         response.body.extra = deletedMessages.map(m => {
             m.message.deleted = true;
+            if (Array.isArray(m.message.attachments)) { m.message.attachments.forEach(a => { a.deleted = true; }); }
             return m.message;
         });
 
@@ -365,7 +367,10 @@ export default definePlugin({
     coolReAddDeletedMessages: (messages: LoggedMessageJSON[] & { extra: LoggedMessageJSON[]; }, payload: LoadMessagePayload) => {
         try {
             if (messages.extra && messages.length > 0) {
-                messages.extra.forEach(m => { m.deleted = true; });
+                messages.extra.forEach(m => {
+                    m.deleted = true;
+                    if (Array.isArray(m.attachments)) { m.attachments.forEach(a => { a.deleted = true; }); }
+                });
                 const isAtBottom = !payload.hasMoreAfter && !payload.isBefore;
                 const oldestId = messages[messages.length - 1].id;
                 const newestId = messages[0].id;
@@ -437,7 +442,10 @@ export default definePlugin({
 
             if (MLMessage.deleted) {
                 const combined = messageJsonToMessageClass({ message: MLMessage });
-                if (combined) combined.deleted = true;
+                if (combined) {
+                    combined.deleted = true;
+                    if (Array.isArray(combined.attachments)) { combined.attachments.forEach(a => { a.deleted = true; }); }
+                }
                 combinedMessageCache.set(messageId, combined);
                 return combined;
             }

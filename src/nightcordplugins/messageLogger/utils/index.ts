@@ -58,6 +58,9 @@ export function reAddDeletedMessages(messages: LoggedMessageJSON[], deletedMessa
     for (const record of deletedMessages) {
         if (record && isMessageObject(record) && !existingIds.has(record.id)) {
             record.deleted = true;
+            if (Array.isArray(record.attachments)) {
+                record.attachments.forEach((a: any) => { a.deleted = true; });
+            }
             allMessages.push({
                 id: record.id,
                 time: (parseInt(record.id) / 4194304) + DISCORD_EPOCH,

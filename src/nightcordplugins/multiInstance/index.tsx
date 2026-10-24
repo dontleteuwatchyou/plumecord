@@ -12,7 +12,7 @@ import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
 import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
-import { findByProps, waitFor } from "@webpack";
+import { findByProps, findByPropsSilent, findStore, waitFor } from "@webpack";
 import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, TextInput, Toasts, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
@@ -44,7 +44,14 @@ const settings = definePluginSettings({
     }
 });
 
-const Native = VencordNative.pluginHelpers.MultiInstance as PluginNative<typeof import("./native")>;
+const Native = new Proxy({} as PluginNative<typeof import("./native")>, {
+    get(_, prop) {
+        const helper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
+            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance
+            ?? (VencordNative?.pluginHelpers as any)?.MultiInstance;
+        return helper?.[prop];
+    }
+});
 const STORE_KEY = "TokenImporter_accounts";
 const MI_TOKEN_CACHE_KEY = "nightcord-mi-token-cache";
 const MI_AUTO_LAUNCH_KEY = "nightcord-mi-autolaunch-ids";
@@ -745,10 +752,16 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
 
     let shared: SavedAccount[] = [];
     try {
-        if (typeof (Native as any)?.getSharedAccounts === "function") {
-            shared = (await (Native as any).getSharedAccounts()) ?? [];
+        const helper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
+            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance
+            ?? (VencordNative?.pluginHelpers as any)?.MultiInstance
+            ?? Native;
+        if (typeof helper?.getSharedAccounts === "function") {
+            shared = (await helper.getSharedAccounts()) ?? [];
         }
-    } catch {}
+    } catch (e) {
+        console.warn("[MultiInstance] Failed to load shared accounts:", e);
+    }
 
     const map = new Map<string, SavedAccount>();
     for (const a of shared) {
@@ -800,10 +813,12 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
         }
     }
 
-    if (typeof (Native as any)?.saveSharedAccounts === "function") {
-        (Native as any).saveSharedAccounts(merged).catch(() => {});
+    if (merged.length > 0) {
+        if (typeof (Native as any)?.saveSharedAccounts === "function" && (merged.length >= shared.length || shared.length === 0)) {
+            (Native as any).saveSharedAccounts(merged).catch(() => {});
+        }
+        DataStore.set(STORE_KEY, merged).catch(() => {});
     }
-    DataStore.set(STORE_KEY, merged).catch(() => {});
     return merged;
 }
 
@@ -1137,7 +1152,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     const allAccounts = React.useMemo<AccountEntry[]>(() => {
         const seen = new Set<string>();
         const result: AccountEntry[] = [];
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
 
         // 1. Current logged-in user (appears first among accounts)
@@ -1219,7 +1234,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     const handleNewWindow = async (acc: AccountEntry) => {
         if (!acc.hasToken || !acc.token) return;
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
             showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
@@ -1242,7 +1257,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
             switchNativeAccount(acc.id);
             return;
         }
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
             showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
@@ -1262,7 +1277,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     const handleNewGrouped = async (acc: AccountEntry) => {
         if (!acc.hasToken || !acc.token) return;
-        const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
         const curTok = tokenMod?.getToken?.();
         if (curTok && acc.token === curTok && acc.id !== currentUser?.id) {
             showToast(t("Cannot launch: Token collision detected."), Toasts.Type.FAILURE);
@@ -1307,7 +1322,7 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
                 FluxDispatcher.dispatch({ type: "MULTI_ACCOUNT_REMOVE_ACCOUNT", userId: acc.id });
             }
 
-            const tokenMod = findByProps("getToken", "encryptAndStoreTokens");
+            const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
             if (tokenMod?.encryptAndStoreTokens) {
                 const tokensJson = window.localStorage.getItem("tokens");
                 if (tokensJson) {

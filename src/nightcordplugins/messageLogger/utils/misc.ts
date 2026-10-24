@@ -104,7 +104,12 @@ export const messageJsonToMessageClass = memoize((log: { message: LoggedMessageJ
     if (!log?.message) return null;
 
     const message: any = new MessageClass(log.message);
-    if (log.message.deleted) message.deleted = true;
+    if (log.message.deleted) {
+        message.deleted = true;
+        if (Array.isArray(message.attachments)) {
+            message.attachments.forEach(a => { a.deleted = true; });
+        }
+    }
     if (log.message.editHistory) message.editHistory = log.message.editHistory;
     message.timestamp = getTimestamp(message.timestamp);
 

@@ -171,8 +171,16 @@ async function loadMessagesSuccessHandler(payload: any) {
             )
             .map(r => {
                 r.message.deleted = true;
+                if (Array.isArray(r.message.attachments)) {
+                    r.message.attachments.forEach((a: any) => { a.deleted = true; });
+                }
                 const msg = messageJsonToMessageClass({ message: r.message });
-                if (msg) msg.deleted = true;
+                if (msg) {
+                    msg.deleted = true;
+                    if (Array.isArray(msg.attachments)) {
+                        msg.attachments.forEach((a: any) => { a.deleted = true; });
+                    }
+                }
                 return msg;
             });
 
@@ -209,7 +217,12 @@ export async function startEnhanced(this: any) {
 
         if (MLMessage.deleted) {
             const combined = messageJsonToMessageClass({ message: MLMessage });
-            if (combined) combined.deleted = true;
+            if (combined) {
+                combined.deleted = true;
+                if (Array.isArray(combined.attachments)) {
+                    combined.attachments.forEach((a: any) => { a.deleted = true; });
+                }
+            }
             combinedMessageCache.set(messageId, combined);
             return combined;
         }

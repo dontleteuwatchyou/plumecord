@@ -34,6 +34,109 @@ export { Native };
 
 export const Flogger = new Logger("MessageLogger", "#f26c6c");
 
+const DELETED_STORAGE_KEY = "nightcord_ml_deleted_data";
+
+interface PersistedDeletedData {
+    ids: string[];
+    channels: Record<string, string[]>;
+    attachments?: string[];
+}
+
+function loadPersistedDeletedData(): PersistedDeletedData {
+    try {
+        const raw = localStorage.getItem(DELETED_STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch {}
+    return { ids: [], channels: {}, attachments: [] };
+}
+
+const initialDeletedData = loadPersistedDeletedData();
+export const deletedMessageIds = new Set<string>(initialDeletedData.ids);
+export const channelDeletedMap = new Map<string, Set<string>>();
+export const deletedAttachmentIds = new Set<string>(initialDeletedData.attachments || []);
+
+for (const [chId, ids] of Object.entries(initialDeletedData.channels)) {
+    channelDeletedMap.set(chId, new Set(ids));
+}
+
+let saveTimeout: any = null;
+function savePersistedDeletedData() {
+    if (saveTimeout) return;
+    saveTimeout = setTimeout(() => {
+        saveTimeout = null;
+        try {
+            const channels: Record<string, string[]> = {};
+            for (const [chId, set] of channelDeletedMap.entries()) {
+                if (set.size > 0) {
+                    channels[chId] = Array.from(set);
+                }
+            }
+            const data: PersistedDeletedData = {
+                ids: Array.from(deletedMessageIds),
+                channels,
+                attachments: Array.from(deletedAttachmentIds)
+            };
+            localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(data));
+        } catch {}
+    }, 200);
+}
+
+export function recordDeleted(id: string, channelId?: string, attachments?: any[]) {
+    if (!id) return;
+    deletedMessageIds.add(id);
+    if (channelId) {
+        let set = channelDeletedMap.get(channelId);
+        if (!set) {
+            set = new Set();
+            channelDeletedMap.set(channelId, set);
+        }
+        set.add(id);
+    }
+    if (Array.isArray(attachments)) {
+        attachments.forEach((a: any) => {
+            if (a?.id) deletedAttachmentIds.add(String(a.id));
+        });
+    }
+    savePersistedDeletedData();
+}
+
+export function removeDeleted(id: string, channelId?: string) {
+    deletedMessageIds.delete(id);
+    if (channelId) {
+        channelDeletedMap.get(channelId)?.delete(id);
+    } else {
+        channelDeletedMap.forEach(set => set.delete(id));
+    }
+    savePersistedDeletedData();
+}
+
+export function clearDeletedForChannel(channelId: string) {
+    const set = channelDeletedMap.get(channelId);
+    if (set) {
+        set.forEach(id => deletedMessageIds.delete(id));
+        channelDeletedMap.delete(channelId);
+    }
+    savePersistedDeletedData();
+}
+
+export function isDeleted(id: string): boolean {
+    if (!id) return false;
+    return deletedMessageIds.has(id);
+}
+
+export function hasDeletedForChannel(channelId: string): boolean {
+    if (!channelId) return false;
+    return (channelDeletedMap.get(channelId)?.size ?? 0) > 0;
+}
+
+export function isAttachmentDeleted(item: any): boolean {
+    if (!item) return false;
+    if (item.deleted || item.originalItem?.deleted) return true;
+    if (item.id && deletedAttachmentIds.has(String(item.id))) return true;
+    if (item.originalItem?.id && deletedAttachmentIds.has(String(item.originalItem.id))) return true;
+    return false;
+}
+
 interface MLMessage extends Message {
     deleted?: boolean;
     editHistory?: { timestamp: Date; content: string; }[];
@@ -69,7 +172,8 @@ const patchMessageContextMenu: NavContextMenuPatchCallback = (
     props,
 ) => {
     const { message } = props;
-    const { deleted, editHistory, id, channel_id } = message;
+    const { editHistory, id, channel_id } = message;
+    const deleted = message.deleted || isDeleted(id);
 
     if (!deleted && !editHistory?.length) return;
 
@@ -130,6 +234,7 @@ const patchMessageContextMenu: NavContextMenuPatchCallback = (
             color="danger"
             action={() => {
                 if (deleted) {
+                    removeDeleted(id, channel_id);
                     FluxDispatcher.dispatch({
                         type: "MESSAGE_DELETE",
                         channelId: channel_id,
@@ -142,6 +247,9 @@ const patchMessageContextMenu: NavContextMenuPatchCallback = (
                     Promise.resolve().then(() =>
                         Promise.resolve().then(() => updateMessage(channel_id, id))
                     );
+                    import("./db").then(async ({ deleteMessageIDB }) => {
+                        await deleteMessageIDB(id);
+                    });
                 } else {
                     // Clear all edit-related state on the cached message object directly
                     // so React sees the change immediately without needing a channel switch.
@@ -181,7 +289,8 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
     if (!targetChannelId) return;
 
     const messages = getChannelMessages(targetChannelId);
-    if (!messages?.some(msg => msg?.deleted || msg?.editHistory?.length)) return;
+    const hasDeleted = messages?.some(msg => msg?.deleted || isDeleted(msg?.id) || msg?.editHistory?.length) || hasDeletedForChannel(targetChannelId);
+    if (!hasDeleted) return;
 
     const clearMenuItem = (
         <Menu.MenuItem
@@ -192,8 +301,9 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
             action={() => {
                 const affectedIds = new Set<string>();
                 messages.forEach(msg => {
-                    if (msg?.deleted) {
+                    if (msg?.deleted || isDeleted(msg.id)) {
                         affectedIds.add(msg.id);
+                        removeDeleted(msg.id, targetChannelId);
                         FluxDispatcher.dispatch({
                             type: "MESSAGE_DELETE",
                             channelId: targetChannelId,
@@ -213,6 +323,22 @@ const patchChannelContextMenu: NavContextMenuPatchCallback = (
                         });
                     }
                 });
+
+                const channelDeleted = channelDeletedMap.get(targetChannelId);
+                if (channelDeleted) {
+                    channelDeleted.forEach(id => {
+                        affectedIds.add(id);
+                        removeDeleted(id, targetChannelId);
+                        FluxDispatcher.dispatch({
+                            type: "MESSAGE_DELETE",
+                            channelId: targetChannelId,
+                            id,
+                            mlDeleted: true,
+                        });
+                    });
+                }
+                clearDeletedForChannel(targetChannelId);
+
                 // Force immediate UI update for all affected messages
                 Promise.resolve().then(() =>
                     Promise.resolve().then(() => {
@@ -639,11 +765,30 @@ export default definePlugin({
     start() {
         addDeleteStyle();
         startEnhanced();
+        import("./db").then(async ({ initIDB, db, DBMessageStatus }) => {
+            try {
+                await initIDB();
+                const deletedRecords = await db?.getAllFromIndex("messages", "by_status", DBMessageStatus.DELETED);
+                const ghostRecords = await db?.getAllFromIndex("messages", "by_status", DBMessageStatus.GHOST_PINGED);
+                [...(deletedRecords || []), ...(ghostRecords || [])].forEach(r => {
+                    recordDeleted(r.message_id, r.channel_id, r.message?.attachments);
+                });
+            } catch (e) {
+                Flogger.error("Failed to load deleted records on startup", e);
+            }
+        });
     },
 
     stop() {
         stopEnhanced();
     },
+
+    isDeleted,
+    hasDeletedForChannel,
+    isAttachmentDeleted,
+    recordDeleted,
+    removeDeleted,
+    clearDeletedForChannel,
 
     renderEdits: ErrorBoundary.wrap(
         ({
@@ -780,7 +925,9 @@ export default definePlugin({
 
                 if (shouldIgnore) {
                     cache = cache.remove(id);
+                    removeDeleted(id, cache?.channel_id || msg.channel_id);
                 } else {
+                    recordDeleted(id, cache?.channel_id || msg.channel_id, msg.attachments);
                     cache = cache.update(id, m =>
                         m.set("deleted", true).set(
                             "attachments",
@@ -930,10 +1077,14 @@ export default definePlugin({
                     replace:
                         "$&" +
                         "this.customRenderedContent = $1.customRenderedContent," +
-                        "this.deleted = $1.deleted || false," +
+                        "this.deleted = Boolean($1.deleted || $self.isDeleted?.($1.id))," +
                         "this.editHistory = $1.editHistory || []," +
                         "this.firstEditTimestamp = $1.firstEditTimestamp || this.editedTimestamp || this.timestamp," +
-                        "this.diffViewDisabled = $1.diffViewDisabled || false,",
+                        "this.diffViewDisabled = $1.diffViewDisabled || false," +
+                        "if(this.deleted){" +
+                        "if(Array.isArray($1.attachments))$1.attachments.forEach(a=>{a.deleted=true;});" +
+                        "if(Array.isArray(this.attachments))this.attachments.forEach(a=>{a.deleted=true;});" +
+                        "},",
                 },
             ],
         },
@@ -967,7 +1118,7 @@ export default definePlugin({
             replacement: [
                 {
                     match: /\.SPOILER,(?=\[\i\.\i\]:)/,
-                    replace: '$&"messagelogger-deleted-attachment":arguments[0]?.item?.originalItem?.deleted,'
+                    replace: '$&"messagelogger-deleted-attachment":Boolean(arguments[0]?.item?.originalItem?.deleted || arguments[0]?.item?.deleted || $self.isAttachmentDeleted?.(arguments[0]?.item)),'
                 }
             ]
         },
@@ -980,7 +1131,7 @@ export default definePlugin({
                     // Append messagelogger-deleted to classNames if deleted
                     match: /\)\("li",\{(.+?),className:/,
                     replace:
-                        ')("li",{$1,className:(arguments[0].message.deleted ? "messagelogger-deleted " : "")+',
+                        ')("li",{$1,className:((arguments[0].message.deleted || $self.isDeleted?.(arguments[0].message.id)) ? "messagelogger-deleted " : "")+',
                 },
             ],
         },
@@ -1026,7 +1177,7 @@ export default definePlugin({
                 {
                     // Remove the first section if message is deleted
                     match: /children:(\[""===.+?\])/,
-                    replace: "children:arguments[0].message.deleted?[]:$1",
+                    replace: "children:(arguments[0].message.deleted || $self.isDeleted?.(arguments[0].message.id))?[]:$1",
                 },
             ],
         },
@@ -1035,7 +1186,7 @@ export default definePlugin({
             find: "NON_COLLAPSIBLE.has(",
             replacement: {
                 match: /if\((\i)\.blocked\)return \i\.\i\.MESSAGE_GROUP_BLOCKED;/,
-                replace: '$&else if($1.deleted) return"MESSAGE_GROUP_DELETED";',
+                replace: '$&else if($1.deleted || $self.isDeleted?.($1.id)) return"MESSAGE_GROUP_DELETED";',
             },
             predicate: () => settings.store.collapseDeleted,
         },

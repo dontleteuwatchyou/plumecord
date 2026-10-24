@@ -54,12 +54,6 @@ try {
     if (saved) deleteDelay = Math.max(50, Math.min(5000, parseInt(saved, 10) || 800));
 } catch { }
 
-let useSilentDelete = false;
-try {
-    const saved = localStorage.getItem("nightcord_mc_silent_delete");
-    if (saved !== null) useSilentDelete = saved === "true";
-} catch { }
-
 export function getDeleteDelay(): number {
     return deleteDelay;
 }
@@ -68,17 +62,6 @@ export function setDeleteDelay(val: number) {
     deleteDelay = Math.max(50, Math.min(5000, val));
     try {
         localStorage.setItem("nightcord_mc_delay", deleteDelay.toString());
-    } catch { }
-}
-
-export function getUseSilentDelete(): boolean {
-    return useSilentDelete;
-}
-
-export function setUseSilentDelete(val: boolean) {
-    useSilentDelete = val;
-    try {
-        localStorage.setItem("nightcord_mc_silent_delete", val.toString());
     } catch { }
 }
 
@@ -103,10 +86,29 @@ function canDeleteMessage(message: any, currentUserId: string): boolean {
     }
 }
 
-async function deleteMessage(channelId: string, messageId: string, retryCount = 0): Promise<boolean> {
+/**
+ * Outcome of a deletion attempt.
+ * - "deleted": the message was removed by this call
+ * - "missing": the message no longer exists (already deleted / stale search index)
+ * - "forbidden": the message cannot be deleted (system message, missing permissions)
+ * - "failed": any other error
+ */
+type DeleteResult = "deleted" | "missing" | "forbidden" | "failed";
+
+function classifyDeleteError(error: any): DeleteResult {
+    const statusCode = error?.status || error?.statusCode;
+    const code = error?.body?.code;
+    // 10008 = Unknown Message
+    if (statusCode === 404 || code === 10008) return "missing";
+    // 50021 = Cannot execute action on a system message, 50013 = Missing permissions
+    if (statusCode === 403 || code === 50021 || code === 50013) return "forbidden";
+    return "failed";
+}
+
+async function deleteMessage(channelId: string, messageId: string, retryCount = 0): Promise<DeleteResult> {
     try {
         await RestAPI.del({ url: `/channels/${channelId}/messages/${messageId}` });
-        return true;
+        return "deleted";
     } catch (error: any) {
         const statusCode = error?.status || error?.statusCode;
         if (statusCode === 429 && retryCount < 3) {
@@ -114,47 +116,33 @@ async function deleteMessage(channelId: string, messageId: string, retryCount = 
             await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
             return deleteMessage(channelId, messageId, retryCount + 1);
         }
-        return false;
+        return classifyDeleteError(error);
     }
 }
 
-async function silentDeleteMessage(channelId: string, messageId: string, retryCount = 0): Promise<boolean> {
-    try {
-        const response = await RestAPI.post({
-            url: `/channels/${channelId}/messages`,
-            body: {
-                content: "** **",
-                flags: 4096, // suppress notifications
-                mobile_network_type: "unknown",
-                nonce: messageId,
-                tts: false
-            }
-        });
-
-        await new Promise(r => setTimeout(r, 150));
-        if (response?.body?.id) {
-            await RestAPI.del({ url: `/channels/${channelId}/messages/${response.body.id}` }).catch(() => {});
-        }
-        await new Promise(r => setTimeout(r, 100));
-        await RestAPI.del({ url: `/channels/${channelId}/messages/${messageId}` }).catch(() => {});
-        return true;
-    } catch (error: any) {
-        const statusCode = error?.status || error?.statusCode;
-        if (statusCode === 429 && retryCount < 3) {
-            const retryAfter = error?.body?.retry_after ?? 5;
-            await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-            return silentDeleteMessage(channelId, messageId, retryCount + 1);
-        }
-        return deleteMessage(channelId, messageId);
-    }
-}
-
-async function deleteTargetMessage(channelId: string, message: any): Promise<boolean> {
+async function deleteTargetMessage(channelId: string, message: any, skipCalls: Set<string>): Promise<DeleteResult> {
     const isCall = isCallMessage(message);
-    if (useSilentDelete || isCall) {
-        return silentDeleteMessage(channelId, message.id);
+    if (isCall) {
+        // Call system messages are often undeletable: once one fails in a channel,
+        // skip the others instead of attempting repeatedly.
+        if (skipCalls.has(channelId)) return "forbidden";
+        const res = await deleteMessage(channelId, message.id);
+        if (res === "forbidden") skipCalls.add(channelId);
+        return res;
     }
     return deleteMessage(channelId, message.id);
+}
+
+function applyDeleteResult(logEntry: LogEntry, message: any, res: DeleteResult) {
+    if (res === "deleted") {
+        logEntry.deleted++;
+        logEntry.messages.push(`[${message.timestamp}] ${message.content || "<attachment/embed>"}`);
+    } else if (res === "failed") {
+        logEntry.failed++;
+    } else {
+        // Already gone or undeletable: nothing to do, do not count as a deletion
+        logEntry.skipped++;
+    }
 }
 
 async function getChannelMessages(channelId: string, before?: string): Promise<any[]> {
@@ -175,6 +163,7 @@ async function cleanChannel(channelId: string, logEntry: LogEntry, taskName: str
     let lastMessageId: string | undefined;
     let keepRunning = true;
     let totalProcessed = 0;
+    const skipCalls = new Set<string>();
     
     let initialTotalResults: number = 0;
     try {
@@ -202,14 +191,12 @@ async function cleanChannel(channelId: string, logEntry: LogEntry, taskName: str
             for (const message of validMessages) {
                 if (shouldStop) break;
 
-                const success = await deleteTargetMessage(channelId, message);
-                if (success) {
-                    logEntry.deleted++;
-                    logEntry.messages.push(`[${message.timestamp}] ${message.content || "<attachment/embed>"}`);
-                } else {
-                    logEntry.failed++;
-                }
+                // Messages were just fetched from the channel, no need to re-verify them
+                const res = await deleteTargetMessage(channelId, message, skipCalls);
+                applyDeleteResult(logEntry, message, res);
                 totalProcessed++;
+                // Nothing was actually sent to Discord for skipped messages: no need to wait
+                if (res === "missing" || res === "forbidden") continue;
                 // Keep total as max(initial, deleted) so bar never goes backwards
                 const effectiveTotal = Math.max(initialTotalResults, logEntry.deleted);
                 currentTask = { 
@@ -244,6 +231,8 @@ async function cleanGuild(guildId: string, logEntry: LogEntry, taskName: string)
     let maxId: string | undefined;
     let totalProcessed = 0;
     let initialTotalResults: number = 0;
+    const skipCalls = new Set<string>();
+    const handledIds = new Set<string>();
     
     currentTask = { name: taskName, progress: "Searching...", percentage: 0 };
     emit();
@@ -294,16 +283,15 @@ async function cleanGuild(guildId: string, logEntry: LogEntry, taskName: string)
             for (const message of validMessages) {
                 if (shouldStop) break;
                 if (!message.channel_id) continue;
+                // The search index lags behind real deletions: never act twice on the same id
+                if (handledIds.has(message.id)) continue;
+                handledIds.add(message.id);
 
-                const success = await deleteTargetMessage(message.channel_id, message);
-                if (success) {
-                    logEntry.deleted++;
-                    logEntry.messages.push(`[${message.timestamp}] ${message.content || "<attachment/embed>"}`);
-                } else {
-                    logEntry.failed++;
-                }
+                const res = await deleteTargetMessage(message.channel_id, message, skipCalls);
+                applyDeleteResult(logEntry, message, res);
 
                 totalProcessed++;
+                if (res === "missing" || res === "forbidden") continue;
                 // Keep total as max(initial, deleted) so bar never goes backwards
                 const effectiveTotal = Math.max(initialTotalResults, logEntry.deleted);
                 currentTask = { 
@@ -907,16 +895,10 @@ function ChannelsCleanerTab() {
 
 function SettingsTab() {
     const [delay, setDelay] = React.useState(getDeleteDelay);
-    const [silent, setSilent] = React.useState(getUseSilentDelete);
 
     const handleDelayChange = (val: number) => {
         setDelay(val);
         setDeleteDelay(val);
-    };
-
-    const handleSilentToggle = (val: boolean) => {
-        setSilent(val);
-        setUseSilentDelete(val);
     };
 
     const getSpeedLabel = (ms: number) => {
@@ -957,27 +939,6 @@ function SettingsTab() {
                     <span>50ms ({t("Fast")})</span>
                     <span style={{ color: "#dbdee1", fontWeight: 600 }}>{getSpeedLabel(delay)}</span>
                     <span>2500ms ({t("Safe")})</span>
-                </div>
-            </div>
-
-            <div className="mcv2-setting-card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div style={{ paddingRight: "16px" }}>
-                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#ffffff" }}>
-                            {t("Silent Delete Mode")}
-                        </div>
-                        <div style={{ fontSize: "13px", color: "#949ba4", marginTop: "4px" }}>
-                            {t("When enabled, all messages are deleted using the SilentDelete technique (bypassing loggers). When disabled, regular messages are deleted normally and calls launched by you are silently deleted.")}
-                        </div>
-                    </div>
-                    <button
-                        className={`mcv2-switch-btn ${silent ? "active" : ""}`}
-                        onClick={() => handleSilentToggle(!silent)}
-                        type="button"
-                        title={silent ? t("Enabled") : t("Disabled")}
-                    >
-                        <span className="mcv2-switch-knob" />
-                    </button>
                 </div>
             </div>
         </div>
