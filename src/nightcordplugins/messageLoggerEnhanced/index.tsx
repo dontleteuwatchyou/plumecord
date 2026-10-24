@@ -366,21 +366,31 @@ export default definePlugin({
 
     coolReAddDeletedMessages: (messages: LoggedMessageJSON[] & { extra: LoggedMessageJSON[]; }, payload: LoadMessagePayload) => {
         try {
-            if (messages.extra && messages.length > 0) {
+            if (messages.extra && messages.extra.length > 0) {
                 messages.extra.forEach(m => {
                     m.deleted = true;
                     if (Array.isArray(m.attachments)) { m.attachments.forEach(a => { a.deleted = true; }); }
                 });
-                const isAtBottom = !payload.hasMoreAfter && !payload.isBefore;
-                const oldestId = messages[messages.length - 1].id;
-                const newestId = messages[0].id;
-                
-                const validExtra = messages.extra.filter(msg => {
-                    if (isAtBottom) return BigInt(msg.id) >= BigInt(oldestId);
-                    return BigInt(msg.id) >= BigInt(oldestId) && BigInt(msg.id) <= BigInt(newestId);
-                });
-                
-                reAddDeletedMessages(messages, validExtra, isAtBottom, !payload.hasMoreBefore && !payload.isAfter);
+                const isAtBottom = !payload?.hasMoreAfter && !payload?.isBefore;
+                const oldestMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+                const newestMsg = messages.length > 0 ? messages[0] : null;
+                const oldestId = oldestMsg?.id ? BigInt(oldestMsg.id) : null;
+                const newestId = newestMsg?.id ? BigInt(newestMsg.id) : null;
+
+                const validExtra = messages.length === 0
+                    ? messages.extra
+                    : messages.extra.filter(msg => {
+                        if (!msg?.id) return false;
+                        const msgId = BigInt(msg.id);
+                        if (isAtBottom) {
+                            return oldestId ? msgId >= oldestId : true;
+                        }
+                        if (oldestId && msgId < oldestId) return false;
+                        if (newestId && msgId > newestId) return false;
+                        return true;
+                    });
+
+                reAddDeletedMessages(messages, validExtra, isAtBottom, !payload?.hasMoreBefore && !payload?.isAfter);
             }
         }
         catch (e) {

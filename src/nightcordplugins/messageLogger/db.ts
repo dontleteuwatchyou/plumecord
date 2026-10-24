@@ -89,6 +89,14 @@ export async function initIDB(): Promise<void> {
             const currentDb = await openDB<MLIDB>(DB_NAME);
             if (currentDb.objectStoreNames.contains("messages")) {
                 db = currentDb;
+                try {
+                    const statusIdx = db.transaction("messages", "readonly").store.index("by_status");
+                    const [deletedList, ghostList] = await Promise.all([
+                        statusIdx.getAll(DBMessageStatus.DELETED),
+                        statusIdx.getAll(DBMessageStatus.GHOST_PINGED)
+                    ]);
+                    await cacheRecords([...deletedList, ...ghostList]);
+                } catch {}
                 return;
             }
 
@@ -106,6 +114,17 @@ export async function initIDB(): Promise<void> {
                     }
                 }
             });
+
+            if (db && db.objectStoreNames.contains("messages")) {
+                try {
+                    const statusIdx = db.transaction("messages", "readonly").store.index("by_status");
+                    const [deletedList, ghostList] = await Promise.all([
+                        statusIdx.getAll(DBMessageStatus.DELETED),
+                        statusIdx.getAll(DBMessageStatus.GHOST_PINGED)
+                    ]);
+                    await cacheRecords([...deletedList, ...ghostList]);
+                } catch {}
+            }
         } catch (err) {
             console.warn("[MessageLogger] Failed to initialize IDB:", err);
             db = null;

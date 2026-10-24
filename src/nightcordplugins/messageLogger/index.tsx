@@ -30,6 +30,7 @@ import { createMessageDiff, DiffPart } from "./diffUtils";
 import { openHistoryModal } from "./HistoryModal";
 import { t } from "../autoTranslateNightcord";
 import { startEnhanced, stopEnhanced, Native } from "./enhancedLogic";
+import { cachedMessages as idbCachedMessages } from "./db";
 export { Native };
 
 export const Flogger = new Logger("MessageLogger", "#f26c6c");
@@ -121,19 +122,58 @@ export function clearDeletedForChannel(channelId: string) {
 
 export function isDeleted(id: string): boolean {
     if (!id) return false;
-    return deletedMessageIds.has(id);
+    if (deletedMessageIds.has(id)) return true;
+    if (idbCachedMessages?.has(id)) {
+        const cached = idbCachedMessages.get(id);
+        if (cached?.deleted) {
+            deletedMessageIds.add(id);
+            if (cached.channel_id) {
+                let set = channelDeletedMap.get(cached.channel_id);
+                if (!set) {
+                    set = new Set();
+                    channelDeletedMap.set(cached.channel_id, set);
+                }
+                set.add(id);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 export function hasDeletedForChannel(channelId: string): boolean {
     if (!channelId) return false;
-    return (channelDeletedMap.get(channelId)?.size ?? 0) > 0;
+    if ((channelDeletedMap.get(channelId)?.size ?? 0) > 0) return true;
+    if (idbCachedMessages) {
+        for (const msg of idbCachedMessages.values()) {
+            if (msg.channel_id === channelId && msg.deleted) return true;
+        }
+    }
+    return false;
 }
 
 export function isAttachmentDeleted(item: any): boolean {
     if (!item) return false;
     if (item.deleted || item.originalItem?.deleted) return true;
-    if (item.id && deletedAttachmentIds.has(String(item.id))) return true;
-    if (item.originalItem?.id && deletedAttachmentIds.has(String(item.originalItem.id))) return true;
+    const id = item.id ? String(item.id) : null;
+    const origId = item.originalItem?.id ? String(item.originalItem.id) : null;
+    if (id && deletedAttachmentIds.has(id)) return true;
+    if (origId && deletedAttachmentIds.has(origId)) return true;
+
+    const msgId = item.message_id || item.originalItem?.message_id || item.messageId || item.originalItem?.messageId;
+    if (msgId && isDeleted(msgId)) return true;
+
+    if (idbCachedMessages) {
+        for (const msg of idbCachedMessages.values()) {
+            if (msg.deleted && Array.isArray(msg.attachments)) {
+                if (msg.attachments.some(a => (id && String(a.id) === id) || (origId && String(a.id) === origId))) {
+                    if (id) deletedAttachmentIds.add(id);
+                    if (origId) deletedAttachmentIds.add(origId);
+                    return true;
+                }
+            }
+        }
+    }
     return false;
 }
 
@@ -790,6 +830,27 @@ export default definePlugin({
     removeDeleted,
     clearDeletedForChannel,
 
+    initMessage(msg: any, raw: any) {
+        if (!msg) return;
+        const deleted = Boolean(msg.deleted || raw?.deleted || isDeleted(msg.id) || isDeleted(raw?.id));
+        if (deleted) {
+            msg.deleted = true;
+            if (raw) raw.deleted = true;
+            if (Array.isArray(msg.attachments)) {
+                msg.attachments.forEach((a: any) => {
+                    a.deleted = true;
+                    if (a.id) deletedAttachmentIds.add(String(a.id));
+                });
+            }
+            if (Array.isArray(raw?.attachments)) {
+                raw.attachments.forEach((a: any) => {
+                    a.deleted = true;
+                    if (a.id) deletedAttachmentIds.add(String(a.id));
+                });
+            }
+        }
+    },
+
     renderEdits: ErrorBoundary.wrap(
         ({
             message: { id: messageId, channel_id: channelId },
@@ -1081,10 +1142,7 @@ export default definePlugin({
                         "this.editHistory = $1.editHistory || []," +
                         "this.firstEditTimestamp = $1.firstEditTimestamp || this.editedTimestamp || this.timestamp," +
                         "this.diffViewDisabled = $1.diffViewDisabled || false," +
-                        "if(this.deleted){" +
-                        "if(Array.isArray($1.attachments))$1.attachments.forEach(a=>{a.deleted=true;});" +
-                        "if(Array.isArray(this.attachments))this.attachments.forEach(a=>{a.deleted=true;});" +
-                        "},",
+                        "$self.initMessage?.(this, $1),",
                 },
             ],
         },
@@ -1131,7 +1189,7 @@ export default definePlugin({
                     // Append messagelogger-deleted to classNames if deleted
                     match: /\)\("li",\{(.+?),className:/,
                     replace:
-                        ')("li",{$1,className:((arguments[0].message.deleted || $self.isDeleted?.(arguments[0].message.id)) ? "messagelogger-deleted " : "")+',
+                        ')("li",{$1,className:((arguments[0]?.message?.deleted || $self.isDeleted?.(arguments[0]?.message?.id)) ? "messagelogger-deleted " : "")+',
                 },
             ],
         },
@@ -1177,7 +1235,7 @@ export default definePlugin({
                 {
                     // Remove the first section if message is deleted
                     match: /children:(\[""===.+?\])/,
-                    replace: "children:(arguments[0].message.deleted || $self.isDeleted?.(arguments[0].message.id))?[]:$1",
+                    replace: "children:(arguments[0]?.message?.deleted || $self.isDeleted?.(arguments[0]?.message?.id))?[]:$1",
                 },
             ],
         },
@@ -1186,7 +1244,7 @@ export default definePlugin({
             find: "NON_COLLAPSIBLE.has(",
             replacement: {
                 match: /if\((\i)\.blocked\)return \i\.\i\.MESSAGE_GROUP_BLOCKED;/,
-                replace: '$&else if($1.deleted || $self.isDeleted?.($1.id)) return"MESSAGE_GROUP_DELETED";',
+                replace: '$&else if($1?.deleted || $self.isDeleted?.($1?.id)) return"MESSAGE_GROUP_DELETED";',
             },
             predicate: () => settings.store.collapseDeleted,
         },

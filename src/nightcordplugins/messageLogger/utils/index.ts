@@ -46,7 +46,7 @@ function isMessageObject(m: unknown): m is LoggedMessageJSON {
 }
 
 export function reAddDeletedMessages(messages: LoggedMessageJSON[], deletedMessages: LoggedMessageJSON[], channelStart: boolean, channelEnd: boolean) {
-    if (!messages.length || !deletedMessages?.length) return;
+    if (!deletedMessages?.length) return;
 
     // Séparer les objets Message valides des snowflakes/primitives bruts que Discord peut injecter
     const validMessages = messages.filter(isMessageObject);

@@ -1,12 +1,12 @@
 /*
  * Nightcord, a Discord client mod
- * Copyright (c) 2024 Vendicated and contributors
+ * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 import { FluxDispatcher, MessageStore, SelectedChannelStore } from "@webpack/common";
 
-import { Flogger, settings } from ".";
+import { Flogger, settings, recordDeleted } from ".";
 import * as idb from "./db";
 import { addMessage } from "./LoggedMessageManager";
 import { LoggedMessage, LoggedMessageJSON } from "./types";
@@ -135,31 +135,26 @@ function messageCreateHandler(payload: any) {
 async function loadMessagesSuccessHandler(payload: any) {
     try {
         const messages: any[] = payload.messages;
-        if (!Array.isArray(messages) || messages.length === 0) return;
+        if (!Array.isArray(messages)) return;
 
         const channelId: string = payload.channelId;
         if (!channelId) return;
 
-        // Discord sorts DESC (newest first), so [0] = newest, [last] = oldest
-        const newestMsg = messages[0];
-        const oldestMsg = messages[messages.length - 1];
-
-        const newestTs: string = newestMsg.timestamp;
-        const oldestTs: string = oldestMsg.timestamp;
-
-        // Query ONLY messages within the exact time window of this batch
-        const records = await idb.getMessagesByChannelBetweenTimestampsIDB(channelId, oldestTs, newestTs);
+        // Query all logged messages for this channel
+        const records = await idb.getMessagesForChannelIDB(channelId);
         if (!records.length) return;
 
-        const existingIds = new Set(messages.map((m: any) => m.id));
+        const existingIds = new Set(messages.map((m: any) => m?.id));
 
-        // Attach edit history to existing messages
+        // Attach edit history to existing messages and re-register deleted state
         for (const record of records) {
             if (record.status === idb.DBMessageStatus.EDITED) {
-                const existing = messages.find((m: any) => m.id === record.message_id);
+                const existing = messages.find((m: any) => m?.id === record.message_id);
                 if (existing && record.message.editHistory?.length) {
                     existing.editHistory = record.message.editHistory;
                 }
+            } else if (record.status === idb.DBMessageStatus.DELETED || record.status === idb.DBMessageStatus.GHOST_PINGED) {
+                recordDeleted(record.message_id, record.channel_id, record.message?.attachments);
             }
         }
 
@@ -182,17 +177,28 @@ async function loadMessagesSuccessHandler(payload: any) {
                     }
                 }
                 return msg;
-            });
+            })
+            .filter(Boolean);
 
         if (!toInject.length) return;
 
-        // Insert deleted messages into the array, maintaining timestamp order (DESC)
-        const DISCORD_EPOCH = 14200704e5;
-        const getTime = (id: string) => (parseInt(id) / 4194304) + DISCORD_EPOCH;
+        // Sort descending by ID (newest first)
+        toInject.sort((a: any, b: any) => {
+            try {
+                return BigInt(b.id) > BigInt(a.id) ? 1 : -1;
+            } catch {
+                return 0;
+            }
+        });
 
+        // Insert deleted messages into the array, maintaining snowflake ID order (DESC)
         for (const deleted of toInject) {
-            const deletedTime = getTime((deleted as any).id);
-            let insertAt = messages.findIndex((m: any) => getTime(m.id) < deletedTime);
+            const delId = (deleted as any).id;
+            let insertAt = -1;
+            try {
+                const delBig = BigInt(delId);
+                insertAt = messages.findIndex((m: any) => m?.id && BigInt(m.id) < delBig);
+            } catch {}
             if (insertAt === -1) insertAt = messages.length;
             messages.splice(insertAt, 0, deleted);
         }
