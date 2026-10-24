@@ -26,7 +26,29 @@ const settings = definePluginSettings({
     }
 });
 
-const Native = VencordNative.pluginHelpers.TokenImporter as PluginNative<typeof import("./native")>;
+function getVencordNative(): any {
+    if (typeof window !== "undefined") {
+        if ((window as any).VencordNative) return (window as any).VencordNative;
+        if ((window as any).NightcordNative) return (window as any).NightcordNative;
+        if ((window as any).EquicordNative) return (window as any).EquicordNative;
+    }
+    try {
+        if (typeof VencordNative !== "undefined") return VencordNative;
+    } catch {}
+    return null;
+}
+
+function getNativeHelper(): any {
+    const vn = getVencordNative();
+    return vn?.pluginHelpers?.TokenImporter ?? null;
+}
+
+const Native = new Proxy({} as PluginNative<typeof import("./native")>, {
+    get(_, prop) {
+        const helper = getNativeHelper();
+        return helper?.[prop];
+    }
+});
 const STORE_KEY = "TokenImporter_accounts";
 
 export interface SavedAccount { id: string; token: string; username: string; discriminator: string; avatar: string; }
@@ -37,25 +59,40 @@ let loadPromise: Promise<SavedAccount[]> | null = null;
 export function getAccounts(): Promise<SavedAccount[]> {
     if (accountsCache !== null) return Promise.resolve(accountsCache);
     if (!loadPromise) {
-        loadPromise = DataStore.get<SavedAccount[]>(STORE_KEY).then(async v => {
-            const rawAccounts = v ?? [];
-            const decrypted: SavedAccount[] = [];
-            for (const acc of rawAccounts) {
-                let tok = acc.token;
-                if (tok.startsWith("dQw4w9WgXcQ:")) {
-                    try {
-                        const dec = await Native.decryptTokenNative(tok);
-                        if (dec) tok = dec;
-                    } catch (e) {
-                        console.error("[Nightcord] decyption failed for ", acc.username, e);
+        loadPromise = (async () => {
+            try {
+                const rawAccounts = (await DataStore.get<SavedAccount[]>(STORE_KEY)) ?? [];
+                const decrypted: SavedAccount[] = [];
+                for (const acc of rawAccounts) {
+                    if (!acc) continue;
+                    let tok = typeof acc.token === "string" ? acc.token : "";
+                    if (tok.startsWith("dQw4w9WgXcQ:")) {
+                        try {
+                            const dec = await Native.decryptTokenNative?.(tok);
+                            if (dec && typeof dec === "string" && !dec.startsWith("dQw4w9WgXcQ:")) {
+                                tok = dec;
+                            }
+                        } catch (e) {
+                            console.error("[TokenImporter] decryption failed for", acc.username, e);
+                        }
                     }
+                    decrypted.push({
+                        id: String(acc.id || ""),
+                        token: tok,
+                        username: acc.username || "",
+                        discriminator: acc.discriminator ?? "0",
+                        avatar: acc.avatar || ""
+                    });
                 }
-                decrypted.push({ ...acc, token: tok });
+                accountsCache = decrypted;
+                return accountsCache;
+            } catch (err) {
+                console.error("[TokenImporter] getAccounts error:", err);
+                return accountsCache ?? [];
+            } finally {
+                loadPromise = null;
             }
-            accountsCache = decrypted;
-            loadPromise = null;
-            return accountsCache;
-        });
+        })();
     }
     return loadPromise;
 }
@@ -83,8 +120,8 @@ async function saveAccounts(accounts: SavedAccount[]): Promise<void> {
     }
     await DataStore.set(STORE_KEY, encrypted);
     try {
-        const miHelper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
-            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance;
+        const vn = getVencordNative();
+        const miHelper = vn?.pluginHelpers?.MultiInstance;
         if (typeof miHelper?.saveSharedAccounts === "function") {
             miHelper.saveSharedAccounts(deduplicated).catch(() => {});
         }
@@ -223,8 +260,10 @@ function switchToAccount(token: string, userId?: string) {
     try {
         const isMultiInstance = window.location.href.includes("multi-instance=true") || (window as any).IS_MULTI_INSTANCE;
         if (isMultiInstance && userId) {
-            if (typeof VencordNative?.pluginHelpers?.MultiInstance?.openInstanceWindow === "function") {
-                VencordNative.pluginHelpers.MultiInstance.openInstanceWindow(token, userId, true);
+            const vn = getVencordNative();
+            const miHelper = vn?.pluginHelpers?.MultiInstance;
+            if (typeof miHelper?.openInstanceWindow === "function") {
+                miHelper.openInstanceWindow(token, userId, true);
                 window.close();
                 return;
             }

@@ -45,11 +45,31 @@ const settings = definePluginSettings({
     }
 });
 
+function getVencordNative(): any {
+    if (typeof window !== "undefined") {
+        if ((window as any).VencordNative) return (window as any).VencordNative;
+        if ((window as any).NightcordNative) return (window as any).NightcordNative;
+        if ((window as any).EquicordNative) return (window as any).EquicordNative;
+    }
+    try {
+        if (typeof VencordNative !== "undefined") return VencordNative;
+    } catch {}
+    return null;
+}
+
+function getNativeHelper(): any {
+    const vn = getVencordNative();
+    return vn?.pluginHelpers?.MultiInstance ?? null;
+}
+
+function getTiNativeHelper(): any {
+    const vn = getVencordNative();
+    return vn?.pluginHelpers?.TokenImporter ?? null;
+}
+
 const Native = new Proxy({} as PluginNative<typeof import("./native")>, {
     get(_, prop) {
-        const helper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
-            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance
-            ?? (VencordNative?.pluginHelpers as any)?.MultiInstance;
+        const helper = getNativeHelper();
         return helper?.[prop];
     }
 });
@@ -748,17 +768,42 @@ function getNativeAccounts(): SavedAccount[] {
 async function fetchAllAccounts(): Promise<SavedAccount[]> {
     const map = new Map<string, SavedAccount>();
 
-    // 1. First priority: Load from TokenImporter (source of truth for saved accounts)
+    // 1. Direct DataStore "TokenImporter_accounts" (source of truth from TokenImporter)
+    try {
+        const dsAccounts = (await DataStore.get<any[]>(STORE_KEY)) ?? [];
+        if (Array.isArray(dsAccounts)) {
+            for (const a of dsAccounts) {
+                if (a && a.id) {
+                    const id = String(a.id);
+                    map.set(id, {
+                        id,
+                        username: a.username || "",
+                        avatar: a.avatar || "",
+                        token: typeof a.token === "string" ? a.token : "",
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("[MultiInstance] Failed to read DataStore TokenImporter_accounts:", e);
+    }
+
+    // 2. TokenImporter plugin's getAccounts() (in-memory decrypted cache)
     try {
         const tiAccounts = await getTokenImporterAccounts().catch(() => []);
         if (Array.isArray(tiAccounts)) {
             for (const a of tiAccounts) {
                 if (a && a.id) {
-                    map.set(a.id, {
-                        id: a.id,
-                        username: a.username || "",
-                        avatar: a.avatar || "",
-                        token: a.token || "",
+                    const id = String(a.id);
+                    const prev = map.get(id);
+                    const tok = (typeof a.token === "string" && a.token && !a.token.startsWith("dQw4w9WgXcQ:"))
+                        ? a.token
+                        : (prev?.token || a.token || "");
+                    map.set(id, {
+                        id,
+                        username: a.username || prev?.username || "",
+                        avatar: a.avatar || prev?.avatar || "",
+                        token: tok,
                     });
                 }
             }
@@ -767,89 +812,116 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
         console.warn("[MultiInstance] Failed to load TokenImporter accounts:", e);
     }
 
-    // 2. Second priority: Shared accounts file (nightcord-mi-accounts.json)
+    // 3. Shared accounts file on disk (nightcord-mi-accounts.json) via native helper
     try {
-        const helper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
-            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance
-            ?? (VencordNative?.pluginHelpers as any)?.MultiInstance
-            ?? Native;
+        const helper = getNativeHelper();
         if (typeof helper?.getSharedAccounts === "function") {
-            const shared = (await helper.getSharedAccounts()) ?? [];
-            for (const a of shared) {
-                if (!a || !a.id) continue;
-                const prev = map.get(a.id);
-                map.set(a.id, {
-                    id: a.id,
-                    username: a.username || prev?.username || "",
-                    avatar: a.avatar || prev?.avatar || "",
-                    token: a.token || prev?.token || "",
-                });
+            const shared = (await helper.getSharedAccounts().catch(() => [])) ?? [];
+            if (Array.isArray(shared)) {
+                for (const a of shared) {
+                    if (!a || !a.id) continue;
+                    const id = String(a.id);
+                    const prev = map.get(id);
+                    const tok = (typeof a.token === "string" && a.token && !a.token.startsWith("dQw4w9WgXcQ:"))
+                        ? a.token
+                        : (prev?.token || a.token || "");
+                    map.set(id, {
+                        id,
+                        username: a.username || prev?.username || "",
+                        avatar: a.avatar || prev?.avatar || "",
+                        token: tok,
+                    });
+                }
             }
         }
     } catch (e) {
         console.warn("[MultiInstance] Failed to load shared accounts:", e);
     }
 
-    // 3. Fallback: DataStore TokenImporter_accounts
+    // 4. GhostClient tokens from DataStore
     try {
-        const local = (await DataStore.get<SavedAccount[]>(STORE_KEY)) ?? [];
-        for (const a of local) {
+        const ghost = (await DataStore.get<any[]>("nightcord-ghost-v2-tokens")) ?? [];
+        if (Array.isArray(ghost)) {
+            for (const a of ghost) {
+                if (a && a.id) {
+                    const id = String(a.id);
+                    const prev = map.get(id);
+                    map.set(id, {
+                        id,
+                        username: a.username || prev?.username || "",
+                        avatar: a.avatar || prev?.avatar || "",
+                        token: typeof a.token === "string" ? a.token : (prev?.token || ""),
+                    });
+                }
+            }
+        }
+    } catch {}
+
+    // 5. Native Discord MultiAccountStore
+    try {
+        const nativeAccs = getNativeAccounts();
+        for (const a of nativeAccs) {
             if (!a || !a.id) continue;
-            const prev = map.get(a.id);
-            map.set(a.id, {
-                id: a.id,
+            const id = String(a.id);
+            const prev = map.get(id);
+            map.set(id, {
+                id,
                 username: a.username || prev?.username || "",
                 avatar: a.avatar || prev?.avatar || "",
-                token: a.token || prev?.token || "",
+                token: a.token || prev?.token || tokenCache[id] || "",
             });
         }
     } catch {}
 
-    // 4. Native Discord MultiAccountStore
-    const nativeAccs = getNativeAccounts();
-    for (const a of nativeAccs) {
-        if (!a || !a.id) continue;
-        const prev = map.get(a.id);
-        map.set(a.id, {
-            id: a.id,
-            username: a.username || prev?.username || "",
-            avatar: a.avatar || prev?.avatar || "",
-            token: a.token || prev?.token || tokenCache[a.id] || "",
-        });
-    }
+    // 6. Currently logged-in active account
+    try {
+        const curUser = UserStore.getCurrentUser();
+        if (curUser?.id) {
+            const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
+            const curTok = tokenMod?.getToken?.();
+            const id = String(curUser.id);
+            const prev = map.get(id);
+            map.set(id, {
+                id,
+                username: (curUser as any).globalName || curUser.username || prev?.username || "",
+                avatar: getAvatarUrl(id, curUser.avatar) || prev?.avatar || "",
+                token: curTok || prev?.token || tokenCache[id] || "",
+            });
+        }
+    } catch {}
 
-    // 5. Currently logged-in active account
-    const curUser = UserStore.getCurrentUser();
-    if (curUser?.id) {
-        const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
-        const curTok = tokenMod?.getToken?.();
-        const prev = map.get(curUser.id);
-        map.set(curUser.id, {
-            id: curUser.id,
-            username: (curUser as any).globalName || curUser.username || prev?.username || "",
-            avatar: getAvatarUrl(curUser.id, curUser.avatar) || prev?.avatar || "",
-            token: curTok || prev?.token || tokenCache[curUser.id] || "",
-        });
-    }
-
+    // 7. Decrypt any tokens that are still encrypted (in parallel)
     const merged = Array.from(map.values());
-    for (const acc of merged) {
-        if (acc.token && acc.token.startsWith("dQw4w9WgXcQ:")) {
-            try {
-                const dec = await (Native.decryptToken?.(acc.token) ?? (VencordNative?.pluginHelpers as any)?.TokenImporter?.decryptTokenNative?.(acc.token));
-                if (dec) acc.token = dec;
-            } catch {}
-        }
-        if (acc.token && !tokenCache[acc.id]) {
-            tokenCache[acc.id] = acc.token;
-        }
-    }
+    await Promise.all(merged.map(async acc => {
+        try {
+            if (acc.token && typeof acc.token === "string" && acc.token.startsWith("dQw4w9WgXcQ:")) {
+                const helper = getNativeHelper();
+                const tiHelper = getTiNativeHelper();
+                let dec: string | null = null;
+                if (typeof helper?.decryptToken === "function") {
+                    dec = await helper.decryptToken(acc.token).catch(() => null);
+                }
+                if (!dec && typeof tiHelper?.decryptTokenNative === "function") {
+                    dec = await tiHelper.decryptTokenNative(acc.token).catch(() => null);
+                }
+                if (dec && typeof dec === "string" && !dec.startsWith("dQw4w9WgXcQ:")) {
+                    acc.token = dec;
+                }
+            }
+            if (acc.token && !tokenCache[acc.id] && !acc.token.startsWith("dQw4w9WgXcQ:")) {
+                tokenCache[acc.id] = acc.token;
+            }
+        } catch {}
+    }));
 
-    if (merged.length > 0) {
-        if (typeof (Native as any)?.saveSharedAccounts === "function") {
-            (Native as any).saveSharedAccounts(merged).catch(() => {});
+    // 8. Sync valid accounts back to shared accounts JSON file
+    try {
+        const helper = getNativeHelper();
+        if (merged.length > 0 && typeof helper?.saveSharedAccounts === "function") {
+            helper.saveSharedAccounts(merged).catch(() => {});
         }
-    }
+    } catch {}
+
     return merged;
 }
 
@@ -1167,7 +1239,10 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     const refreshAccounts = async () => {
         captureCurrentToken();
-        const accs = await fetchAllAccounts().catch(() => []);
+        const accs = await fetchAllAccounts().catch(e => {
+            console.error("[MultiInstance] fetchAllAccounts failed:", e);
+            return [];
+        });
         setSavedAccounts(accs);
         setNativeAccounts(getNativeAccounts());
         const ids = await Native.getOpenInstances().catch(() => []);
