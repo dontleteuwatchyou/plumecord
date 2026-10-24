@@ -213,7 +213,7 @@ export interface SharedAccountData {
     avatar: string;
 }
 
-export async function getSharedAccounts(): Promise<SharedAccountData[]> {
+export async function getSharedAccounts(_?: any): Promise<SharedAccountData[]> {
     try {
         if (!existsSync(SHARED_ACCOUNTS_FILE)) return [];
         const raw = readFileSync(SHARED_ACCOUNTS_FILE, "utf-8");

@@ -29,12 +29,12 @@ const settings = definePluginSettings({
 const Native = VencordNative.pluginHelpers.TokenImporter as PluginNative<typeof import("./native")>;
 const STORE_KEY = "TokenImporter_accounts";
 
-interface SavedAccount { id: string; token: string; username: string; discriminator: string; avatar: string; }
+export interface SavedAccount { id: string; token: string; username: string; discriminator: string; avatar: string; }
 
 let accountsCache: SavedAccount[] | null = null;
 let loadPromise: Promise<SavedAccount[]> | null = null;
 
-function getAccounts(): Promise<SavedAccount[]> {
+export function getAccounts(): Promise<SavedAccount[]> {
     if (accountsCache !== null) return Promise.resolve(accountsCache);
     if (!loadPromise) {
         loadPromise = DataStore.get<SavedAccount[]>(STORE_KEY).then(async v => {
@@ -82,6 +82,13 @@ async function saveAccounts(accounts: SavedAccount[]): Promise<void> {
         encrypted.push({ ...a, token: tok });
     }
     await DataStore.set(STORE_KEY, encrypted);
+    try {
+        const miHelper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
+            ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance;
+        if (typeof miHelper?.saveSharedAccounts === "function") {
+            miHelper.saveSharedAccounts(deduplicated).catch(() => {});
+        }
+    } catch {}
 }
 
 function autoCaptureActiveAccount() {

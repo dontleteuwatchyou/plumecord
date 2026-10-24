@@ -16,6 +16,7 @@ import { findByProps, findByPropsSilent, findStore, waitFor } from "@webpack";
 import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, TextInput, Toasts, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
+import { getAccounts as getTokenImporterAccounts } from "../tokenImporter";
 
 const settings = definePluginSettings({
     domain: {
@@ -745,39 +746,66 @@ function getNativeAccounts(): SavedAccount[] {
 }
 
 async function fetchAllAccounts(): Promise<SavedAccount[]> {
-    let local: SavedAccount[] = [];
-    try {
-        local = (await DataStore.get<SavedAccount[]>(STORE_KEY)) ?? [];
-    } catch {}
+    const map = new Map<string, SavedAccount>();
 
-    let shared: SavedAccount[] = [];
+    // 1. First priority: Load from TokenImporter (source of truth for saved accounts)
+    try {
+        const tiAccounts = await getTokenImporterAccounts().catch(() => []);
+        if (Array.isArray(tiAccounts)) {
+            for (const a of tiAccounts) {
+                if (a && a.id) {
+                    map.set(a.id, {
+                        id: a.id,
+                        username: a.username || "",
+                        avatar: a.avatar || "",
+                        token: a.token || "",
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("[MultiInstance] Failed to load TokenImporter accounts:", e);
+    }
+
+    // 2. Second priority: Shared accounts file (nightcord-mi-accounts.json)
     try {
         const helper = (window as any).VencordNative?.pluginHelpers?.MultiInstance
             ?? (window as any).NightcordNative?.pluginHelpers?.MultiInstance
             ?? (VencordNative?.pluginHelpers as any)?.MultiInstance
             ?? Native;
         if (typeof helper?.getSharedAccounts === "function") {
-            shared = (await helper.getSharedAccounts()) ?? [];
+            const shared = (await helper.getSharedAccounts()) ?? [];
+            for (const a of shared) {
+                if (!a || !a.id) continue;
+                const prev = map.get(a.id);
+                map.set(a.id, {
+                    id: a.id,
+                    username: a.username || prev?.username || "",
+                    avatar: a.avatar || prev?.avatar || "",
+                    token: a.token || prev?.token || "",
+                });
+            }
         }
     } catch (e) {
         console.warn("[MultiInstance] Failed to load shared accounts:", e);
     }
 
-    const map = new Map<string, SavedAccount>();
-    for (const a of shared) {
-        if (a && a.id) map.set(a.id, a);
-    }
-    for (const a of local) {
-        if (!a || !a.id) continue;
-        const prev = map.get(a.id);
-        map.set(a.id, {
-            id: a.id,
-            username: a.username || prev?.username || "",
-            avatar: a.avatar || prev?.avatar || "",
-            token: a.token || prev?.token || "",
-        });
-    }
+    // 3. Fallback: DataStore TokenImporter_accounts
+    try {
+        const local = (await DataStore.get<SavedAccount[]>(STORE_KEY)) ?? [];
+        for (const a of local) {
+            if (!a || !a.id) continue;
+            const prev = map.get(a.id);
+            map.set(a.id, {
+                id: a.id,
+                username: a.username || prev?.username || "",
+                avatar: a.avatar || prev?.avatar || "",
+                token: a.token || prev?.token || "",
+            });
+        }
+    } catch {}
 
+    // 4. Native Discord MultiAccountStore
     const nativeAccs = getNativeAccounts();
     for (const a of nativeAccs) {
         if (!a || !a.id) continue;
@@ -790,6 +818,7 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
         });
     }
 
+    // 5. Currently logged-in active account
     const curUser = UserStore.getCurrentUser();
     if (curUser?.id) {
         const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
@@ -807,17 +836,19 @@ async function fetchAllAccounts(): Promise<SavedAccount[]> {
     for (const acc of merged) {
         if (acc.token && acc.token.startsWith("dQw4w9WgXcQ:")) {
             try {
-                const dec = await Native.decryptToken(acc.token);
+                const dec = await (Native.decryptToken?.(acc.token) ?? (VencordNative?.pluginHelpers as any)?.TokenImporter?.decryptTokenNative?.(acc.token));
                 if (dec) acc.token = dec;
             } catch {}
+        }
+        if (acc.token && !tokenCache[acc.id]) {
+            tokenCache[acc.id] = acc.token;
         }
     }
 
     if (merged.length > 0) {
-        if (typeof (Native as any)?.saveSharedAccounts === "function" && (merged.length >= shared.length || shared.length === 0)) {
+        if (typeof (Native as any)?.saveSharedAccounts === "function") {
             (Native as any).saveSharedAccounts(merged).catch(() => {});
         }
-        DataStore.set(STORE_KEY, merged).catch(() => {});
     }
     return merged;
 }
