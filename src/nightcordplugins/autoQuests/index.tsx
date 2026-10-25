@@ -18,21 +18,26 @@ import {
     QuestStore,
     React,
     RestAPI,
+    SelectedChannelStore,
     showToast,
     Text,
     Toasts,
     useCallback,
     useEffect,
-    useState
+    useState,
+    UserStore
 } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
 const SUPPORTED_TASKS = [
     "WATCH_VIDEO",
+    "WATCH_VIDEO_ON_MOBILE",
+    "PLAY_ON_DESKTOP_V2",
     "PLAY_ON_DESKTOP",
-    "STREAM_ON_DESKTOP",
     "PLAY_ACTIVITY",
-    "WATCH_VIDEO_ON_MOBILE"
+    "PLAY_ON_XBOX",
+    "PLAY_ON_PLAYSTATION",
+    "STREAM_ON_DESKTOP"
 ] as const;
 
 type SupportedTask = typeof SUPPORTED_TASKS[number];
@@ -88,6 +93,11 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Automatically run active quests in the background when Discord opens",
         default: false
+    },
+    autoResume: {
+        type: OptionType.BOOLEAN,
+        description: "Automatically resume in-progress quests on Discord startup",
+        default: true
     },
     autoEnroll: {
         type: OptionType.BOOLEAN,
@@ -273,23 +283,125 @@ async function enrollQuest(quest: any): Promise<boolean> {
     return false;
 }
 
-function getVoiceOrDMChannelId(): string | null {
+interface HeartbeatDispatchResult {
+    type: "success" | "failure" | "timeout";
+    userStatus?: any;
+    error?: unknown;
+}
+
+function waitForHeartbeatDispatchResult(questId: string, timeoutMs: number = 8000): { promise: Promise<HeartbeatDispatchResult>; cancel: () => void; } {
+    let settled = false;
+    let cleanup = () => { };
+    const promise = new Promise<HeartbeatDispatchResult>(resolve => {
+        const successEvent = "QUESTS_SEND_HEARTBEAT_SUCCESS";
+        const failureEvent = "QUESTS_SEND_HEARTBEAT_FAILURE";
+        const timeoutId = setTimeout(() => {
+            cleanup();
+            resolve({ type: "timeout" });
+        }, timeoutMs);
+
+        cleanup = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            FluxDispatcher.unsubscribe(successEvent, onSuccess);
+            FluxDispatcher.unsubscribe(failureEvent, onFailure);
+        };
+
+        function onSuccess(data: { questId?: string; userStatus?: any; }) {
+            if (data?.questId !== questId) return;
+            cleanup();
+            resolve({ type: "success", userStatus: data.userStatus ?? null });
+        }
+
+        function onFailure(data: { questId?: string; error?: unknown; }) {
+            if (data?.questId !== questId) return;
+            cleanup();
+            resolve({ type: "failure", error: data?.error });
+        }
+
+        FluxDispatcher.subscribe(successEvent, onSuccess);
+        FluxDispatcher.subscribe(failureEvent, onFailure);
+    });
+
+    return { promise, cancel: cleanup };
+}
+
+function getVoiceOrDMChannelInfo(): { channelId: string; isVoice: boolean; guildId?: string; } | null {
     try {
+        const voiceChannelId = SelectedChannelStore?.getVoiceChannelId?.();
+        if (voiceChannelId) {
+            const channel = ChannelStore?.getChannel?.(voiceChannelId);
+            return {
+                channelId: voiceChannelId,
+                isVoice: true,
+                guildId: channel?.guild_id
+            };
+        }
         const sortedDMs = (ChannelStore as any)?.getSortedPrivateChannels?.();
         if (sortedDMs && sortedDMs.length > 0 && sortedDMs[0]?.id) {
-            return sortedDMs[0].id;
+            return { channelId: sortedDMs[0].id, isVoice: false };
         }
         const dmIds = (ChannelStore as any)?.getDMChannelIds?.() || (ChannelStore as any)?.getPrivateChannelIds?.();
         if (dmIds && dmIds.length > 0) {
-            return dmIds[0];
+            return { channelId: dmIds[0], isVoice: false };
         }
         if (GuildChannelStore && typeof (GuildChannelStore as any).getAllGuilds === "function") {
             const guilds = Object.values((GuildChannelStore as any).getAllGuilds());
             const voice = guilds.find((g: any) => g?.VOCAL && g.VOCAL.length > 0);
-            if (voice) return voice.VOCAL[0].channel.id;
+            if (voice) return { channelId: voice.VOCAL[0].channel.id, isVoice: true };
         }
     } catch {}
     return null;
+}
+
+function getStreamKey(questId: string): string {
+    const info = getVoiceOrDMChannelInfo();
+    const currentUserId = UserStore?.getCurrentUser?.()?.id || "1";
+    if (info) {
+        if (info.isVoice && info.guildId) {
+            return `guild:${info.guildId}:${info.channelId}:${currentUserId}`;
+        }
+        return `call:${info.channelId}:${currentUserId}`;
+    }
+    return `call:${questId}:1`;
+}
+
+function getStoredProgressForQuest(quest: any, taskType: SupportedTask): number {
+    if (quest?.userStatus?.completedAt) {
+        return Infinity;
+    }
+    const progressMap = quest?.userStatus?.progress;
+    if (progressMap && typeof progressMap === "object") {
+        const directVal = progressMap[taskType]?.value;
+        if (typeof directVal === "number") {
+            return directVal;
+        }
+
+        if (taskType.startsWith("PLAY")) {
+            for (const key of ["PLAY_ON_DESKTOP_V2", "PLAY_ON_DESKTOP", "PLAY_ACTIVITY", "PLAY_ON_XBOX", "PLAY_ON_PLAYSTATION"]) {
+                const val = progressMap[key]?.value;
+                if (typeof val === "number") return val;
+            }
+        } else if (taskType.startsWith("WATCH")) {
+            for (const key of ["WATCH_VIDEO", "WATCH_VIDEO_ON_MOBILE"]) {
+                const val = progressMap[key]?.value;
+                if (typeof val === "number") return val;
+            }
+        }
+
+        for (const entry of Object.values(progressMap) as any[]) {
+            if (typeof entry?.value === "number") {
+                return entry.value;
+            }
+        }
+    }
+
+    if (typeof quest?.userStatus?.streamProgressSeconds === "number") {
+        return quest.userStatus.streamProgressSeconds;
+    }
+
+    return 0;
 }
 
 export function refreshActiveQuests(): QuestItemState[] {
@@ -310,7 +422,7 @@ export function refreshActiveQuests(): QuestItemState[] {
 
         const taskData = taskConfig.tasks[taskType];
         const secondsNeeded = taskData?.target ?? 0;
-        const storeProgress = quest.userStatus?.progress?.[taskType]?.value ?? quest.userStatus?.streamProgressSeconds ?? 0;
+        const storeProgress = getStoredProgressForQuest(quest, taskType);
         const cachedProgress = questProgressCache.get(quest.id) ?? 0;
         const currentProgress = isCompleted ? secondsNeeded : Math.min(secondsNeeded, Math.max(storeProgress, cachedProgress));
         const questName = quest.config.messages?.questName || quest.config.questName || quest.config.messages?.gameTitle || quest.id;
@@ -327,8 +439,8 @@ export function refreshActiveQuests(): QuestItemState[] {
     }
 
     // Sort quests:
-    // 1. Enrolled & in-progress
-    // 2. Enrolled
+    // 1. Enrolled & in-progress (highest completion % first so nearly completed quests finish right away)
+    // 2. Enrolled with 0 progress
     // 3. Unenrolled
     // 4. Completed
     result.sort((a, b) => {
@@ -338,7 +450,9 @@ export function refreshActiveQuests(): QuestItemState[] {
         if (aEnrolled && !bEnrolled) return -1;
         if (!aEnrolled && bEnrolled) return 1;
         if (aEnrolled && bEnrolled) {
-            return (b.currentProgress || 0) - (a.currentProgress || 0);
+            const aRatio = a.secondsNeeded > 0 ? (a.currentProgress || 0) / a.secondsNeeded : 0;
+            const bRatio = b.secondsNeeded > 0 ? (b.currentProgress || 0) / b.secondsNeeded : 0;
+            return bRatio - aRatio;
         }
         return 0;
     });
@@ -412,55 +526,84 @@ async function processVideoStep(state: QuestItemState): Promise<boolean> {
 
 async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
     const { quest, taskType, secondsNeeded } = state;
+    const isPlayQuest = taskType.startsWith("PLAY");
+    const isStreamQuest = taskType === "STREAM_ON_DESKTOP";
 
-    const channelId = getVoiceOrDMChannelId();
-    const streamKey = channelId ? `call:${channelId}:1` : `call:${quest.id}:1`;
     const appId = state.quest?.config?.taskConfig?.tasks?.[taskType]?.applications?.[0]?.id
-        ?? state.quest?.config?.taskConfigV2?.tasks?.[taskType]?.applications?.[0]?.id;
+        ?? state.quest?.config?.taskConfigV2?.tasks?.[taskType]?.applications?.[0]?.id
+        ?? state.quest?.config?.taskConfig?.tasks?.PLAY_ON_DESKTOP_V2?.applications?.[0]?.id
+        ?? state.quest?.config?.taskConfig?.tasks?.PLAY_ON_DESKTOP?.applications?.[0]?.id
+        ?? state.quest?.config?.taskConfigV2?.tasks?.PLAY_ON_DESKTOP_V2?.applications?.[0]?.id
+        ?? state.quest?.config?.taskConfigV2?.tasks?.PLAY_ON_DESKTOP?.applications?.[0]?.id
+        ?? state.quest?.config?.application?.id
+        ?? state.quest?.config?.applicationId;
 
-    activeStreamKey = streamKey;
+    const streamKey = isStreamQuest ? getStreamKey(quest.id) : undefined;
+    activeStreamKey = streamKey || null;
     currentQuestBeingHeartbeated = quest;
 
     let reported = false;
     let isCompletedOnServer = false;
+    let newProgressValue: number | null = null;
 
-    try {
-        const response = await RestAPI.post({
-            url: `/quests/${quest.id}/heartbeat`,
-            body: { stream_key: streamKey, terminal: false }
-        });
-        const srv = response?.body?.progress?.[taskType]?.value;
-        if (typeof srv === "number") {
-            state.currentProgress = srv;
-        } else {
-            state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
-        }
-        if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
-            isCompletedOnServer = true;
-        }
-        reported = true;
-    } catch (err) {
-        console.warn(`[AutoQuests] REST heartbeat failed for ${quest.id}, trying native:`, err);
-        if (typeof sendHeartbeatNative === "function") {
+    if (typeof sendHeartbeatNative === "function") {
+        try {
+            const dispatchWaiter = waitForHeartbeatDispatchResult(quest.id, 8000);
             try {
                 await sendHeartbeatNative({
                     questId: quest.id,
-                    streamKey,
-                    applicationId: appId,
+                    streamKey: isStreamQuest ? streamKey : undefined,
+                    applicationId: isPlayQuest ? appId : undefined,
                     terminal: false
                 });
                 reported = true;
-            } catch (nativeErr) {
-                console.warn(`[AutoQuests] Heartbeat failed for ${quest.id}:`, nativeErr);
+            } catch (err) {
+                dispatchWaiter.cancel();
+                throw err;
             }
+
+            const dispatchRes = await dispatchWaiter.promise;
+            if (dispatchRes.type === "success" && dispatchRes.userStatus) {
+                const srv = getStoredProgressForQuest({ userStatus: dispatchRes.userStatus }, taskType);
+                if (Number.isFinite(srv)) newProgressValue = srv;
+                if (dispatchRes.userStatus.completedAt) isCompletedOnServer = true;
+            }
+        } catch (nativeErr) {
+            console.warn(`[AutoQuests] Native heartbeat failed for ${quest.id}, falling back to REST:`, nativeErr);
+        }
+    }
+
+    if (!reported) {
+        try {
+            const body: any = { terminal: false };
+            if (isStreamQuest && streamKey) body.stream_key = streamKey;
+            if (isPlayQuest && appId) body.application_id = appId;
+
+            const response = await RestAPI.post({
+                url: `/quests/${quest.id}/heartbeat`,
+                body
+            });
+            reported = true;
+            const srv = response?.body?.progress?.[taskType]?.value
+                ?? response?.body?.user_status?.progress?.[taskType]?.value
+                ?? response?.body?.enrolled_quest_user_status?.progress?.[taskType]?.value;
+            if (typeof srv === "number") newProgressValue = srv;
+            if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
+                isCompletedOnServer = true;
+            }
+        } catch (err) {
+            console.warn(`[AutoQuests] REST heartbeat failed for ${quest.id}:`, err);
         }
     }
 
     if (reported) {
         const freshQuest = getResolvedQuestsStore()?.getQuest?.(quest.id) || quest;
-        const storeVal = freshQuest?.userStatus?.progress?.[taskType]?.value;
-        if (typeof storeVal === "number" && storeVal > state.currentProgress) {
-            state.currentProgress = storeVal;
+        const freshProgress = getStoredProgressForQuest(freshQuest, taskType);
+
+        if (newProgressValue !== null && newProgressValue > state.currentProgress) {
+            state.currentProgress = Math.min(secondsNeeded, newProgressValue);
+        } else if (Number.isFinite(freshProgress) && freshProgress > state.currentProgress) {
+            state.currentProgress = Math.min(secondsNeeded, freshProgress);
         } else if (state.currentProgress < secondsNeeded) {
             state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
         }
@@ -472,14 +615,17 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
                 if (typeof sendHeartbeatNative === "function") {
                     await sendHeartbeatNative({
                         questId: quest.id,
-                        streamKey,
-                        applicationId: appId,
+                        streamKey: isStreamQuest ? streamKey : undefined,
+                        applicationId: isPlayQuest ? appId : undefined,
                         terminal: true
                     });
                 } else {
+                    const termBody: any = { terminal: true };
+                    if (isStreamQuest && streamKey) termBody.stream_key = streamKey;
+                    if (isPlayQuest && appId) termBody.application_id = appId;
                     const res = await RestAPI.post({
                         url: `/quests/${quest.id}/heartbeat`,
-                        body: { stream_key: streamKey, terminal: true }
+                        body: termBody
                     });
                     if (res?.body?.completed_at || res?.body?.user_status?.completed_at) {
                         isCompletedOnServer = true;
@@ -519,18 +665,27 @@ export async function stopQuestRunner() {
         runnerAbortController = null;
     }
 
-    if (activeStreamKey && currentQuestBeingHeartbeated) {
+    if (currentQuestBeingHeartbeated) {
         try {
+            const isPlayQuest = currentQuestBeingHeartbeated.taskType?.startsWith("PLAY");
+            const appId = currentQuestBeingHeartbeated.quest?.config?.taskConfig?.tasks?.[currentQuestBeingHeartbeated.taskType]?.applications?.[0]?.id
+                ?? currentQuestBeingHeartbeated.quest?.config?.taskConfigV2?.tasks?.[currentQuestBeingHeartbeated.taskType]?.applications?.[0]?.id
+                ?? currentQuestBeingHeartbeated.quest?.config?.application?.id;
+
             if (typeof sendHeartbeatNative === "function") {
                 await sendHeartbeatNative({
                     questId: currentQuestBeingHeartbeated.id,
-                    streamKey: activeStreamKey,
+                    streamKey: activeStreamKey || undefined,
+                    applicationId: isPlayQuest ? appId : undefined,
                     terminal: true
                 });
             } else {
+                const termBody: any = { terminal: true };
+                if (activeStreamKey) termBody.stream_key = activeStreamKey;
+                if (isPlayQuest && appId) termBody.application_id = appId;
                 await RestAPI.post({
                     url: `/quests/${currentQuestBeingHeartbeated.id}/heartbeat`,
-                    body: { stream_key: activeStreamKey, terminal: true }
+                    body: termBody
                 });
             }
         } catch {}
@@ -609,9 +764,8 @@ export async function startQuestRunner(preferredQuestId?: string) {
 
             // Resync progress with the server-side value so resumes continue where Discord left off
             const syncedQuest = getResolvedQuestsStore()?.getQuest?.(state.id) || liveQuest;
-            const serverProgress = syncedQuest?.userStatus?.progress?.[state.taskType]?.value
-                ?? syncedQuest?.userStatus?.streamProgressSeconds ?? 0;
-            if (typeof serverProgress === "number" && serverProgress > state.currentProgress) {
+            const serverProgress = getStoredProgressForQuest(syncedQuest, state.taskType);
+            if (Number.isFinite(serverProgress) && serverProgress > state.currentProgress) {
                 state.currentProgress = Math.min(state.secondsNeeded, serverProgress);
             }
             if (syncedQuest) state.quest = syncedQuest;
@@ -630,7 +784,11 @@ export async function startQuestRunner(preferredQuestId?: string) {
                 } else {
                     ok = await processHeartbeatStep(state);
                     if (!state.completed && isRunnerActive && !signal.aborted) {
-                        const slept = await interruptibleSleep(16000 + Math.random() * 2000, signal);
+                        const remaining = Math.max(0, state.secondsNeeded - state.currentProgress);
+                        const waitTime = (remaining > 0 && remaining < 20)
+                            ? Math.max(2000, (remaining + 1) * 1000)
+                            : (18000 + Math.random() * 3000);
+                        const slept = await interruptibleSleep(waitTime, signal);
                         if (!slept) break;
                     }
                 }
@@ -1172,6 +1330,7 @@ export function openAutoQuestsModal() {
 function AutoQuestsSettingsPanel() {
     const { quests, isRunning, currentQuestId } = useAutoQuests();
     const [autoStartVal, setAutoStartVal] = useState(settings.store.autoStart);
+    const [autoResumeVal, setAutoResumeVal] = useState(settings.store.autoResume);
     const [autoEnrollVal, setAutoEnrollVal] = useState(settings.store.autoEnroll);
     const [showToastsVal, setShowToastsVal] = useState(settings.store.showToasts);
 
@@ -1198,6 +1357,17 @@ function AutoQuestsSettingsPanel() {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <FormSwitch
+                    value={autoResumeVal}
+                    onChange={(val: boolean) => {
+                        setAutoResumeVal(val);
+                        settings.store.autoResume = val;
+                    }}
+                    note={t("Automatically resume in-progress quests on Discord startup")}
+                >
+                    {t("Auto-Resume In-Progress Quests")}
+                </FormSwitch>
+
                 <FormSwitch
                     value={autoStartVal}
                     onChange={(val: boolean) => {
@@ -1309,6 +1479,24 @@ function unmountFloatingWidget() {
     removeStyles();
 }
 
+let hasTriggeredAutoResume = false;
+
+function onQuestsFluxEvent() {
+    refreshActiveQuests();
+
+    if (isRunnerActive) return;
+
+    const inProgress = activeQuestStates.filter(q => !q.completed && Boolean(q.quest?.userStatus?.enrolledAt) && (q.currentProgress > 0 || (q.secondsNeeded > 0 && q.currentProgress / q.secondsNeeded > 0)));
+    const hasUncompleted = activeQuestStates.filter(q => !q.completed);
+
+    if (settings.store.autoStart && hasUncompleted.length > 0) {
+        void startQuestRunner();
+    } else if (settings.store.autoResume && inProgress.length > 0 && !hasTriggeredAutoResume) {
+        hasTriggeredAutoResume = true;
+        void startQuestRunner(inProgress[0].id);
+    }
+}
+
 export default definePlugin({
     name: "AutoQuests",
     description: "Automate completion of Discord video, game, and streaming quests.",
@@ -1317,22 +1505,32 @@ export default definePlugin({
     settingsPanel: AutoQuestsSettingsPanel,
 
     start() {
+        hasTriggeredAutoResume = false;
         setupHistoryListener();
         mountFloatingWidget();
         clearStuckEnrollments();
 
-        setTimeout(() => {
-            clearStuckEnrollments();
-            refreshActiveQuests();
-            if (settings.store.autoStart) {
-                void startQuestRunner();
-            }
-        }, 1500);
+        FluxDispatcher.subscribe("QUESTS_FETCH_SUCCESS", onQuestsFluxEvent);
+        FluxDispatcher.subscribe("QUESTS_FETCH_CURRENT_QUESTS_SUCCESS", onQuestsFluxEvent);
+        FluxDispatcher.subscribe("QUESTS_USER_STATUS_UPDATE", onQuestsFluxEvent);
+        FluxDispatcher.subscribe("QUESTS_ENROLL_SUCCESS", onQuestsFluxEvent);
+
+        [1200, 3000, 6000, 10000].forEach(delay => {
+            setTimeout(() => {
+                clearStuckEnrollments();
+                onQuestsFluxEvent();
+            }, delay);
+        });
     },
 
     stop() {
         void stopQuestRunner();
         unmountFloatingWidget();
         teardownHistoryListener();
+
+        FluxDispatcher.unsubscribe("QUESTS_FETCH_SUCCESS", onQuestsFluxEvent);
+        FluxDispatcher.unsubscribe("QUESTS_FETCH_CURRENT_QUESTS_SUCCESS", onQuestsFluxEvent);
+        FluxDispatcher.unsubscribe("QUESTS_USER_STATUS_UPDATE", onQuestsFluxEvent);
+        FluxDispatcher.unsubscribe("QUESTS_ENROLL_SUCCESS", onQuestsFluxEvent);
     }
 });
