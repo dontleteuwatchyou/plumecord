@@ -115,6 +115,9 @@ export function getTheme(): Theme {
 }
 
 export function insertTextIntoChatInputBox(text: string) {
+    try {
+        ComponentDispatch?.dispatchToLastSubscribed?.("TEXTAREA_FOCUS");
+    } catch {}
     ComponentDispatch.dispatchToLastSubscribed("INSERT_TEXT", {
         rawText: text,
         plainText: text

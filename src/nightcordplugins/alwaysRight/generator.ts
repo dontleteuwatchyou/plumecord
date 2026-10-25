@@ -5,7 +5,6 @@
  */
 
 import { showApiKeyWarning } from "@utils/apiKeyWarning";
-import { insertTextIntoChatInputBox } from "@utils/discord";
 import { findByPropsLazy } from "@webpack";
 import {
     ChannelStore,
@@ -14,6 +13,7 @@ import {
     GuildMemberStore,
     MessageStore,
     RestAPI,
+    SelectedChannelStore,
     Toasts,
     UserStore
 } from "@webpack/common";
@@ -22,6 +22,176 @@ import { getGroqKey, groqChat } from "../nightcordAI/groqManager";
 import { settings } from "./index";
 
 const TypingActions = findByPropsLazy("startTyping", "stopTyping");
+const DraftManager = findByPropsLazy("clearDraft", "saveDraft");
+
+function getSlateEditor(target: HTMLElement | null): any {
+    if (!target) return null;
+    const slateEl = (
+        target.closest?.('[data-slate-editor="true"]') ||
+        target.closest?.('[role="textbox"]') ||
+        target
+    ) as HTMLElement | null;
+    if (!slateEl) return null;
+
+    let current: HTMLElement | null = slateEl;
+    while (current && current !== document.body) {
+        const keys = Object.keys(current);
+        const fiberKey = keys.find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
+        if (fiberKey) {
+            let fiber = (current as any)[fiberKey];
+            let depth = 0;
+            while (fiber && depth < 40) {
+                const editor =
+                    fiber.memoizedProps?.editor ||
+                    fiber.stateNode?.editor ||
+                    fiber.memoizedState?.editor ||
+                    fiber.stateNode?.props?.editor;
+
+                if (editor && typeof editor.insertText === "function") {
+                    return editor;
+                }
+                fiber = fiber.return;
+                depth++;
+            }
+        }
+        current = current.parentElement;
+    }
+    return null;
+}
+
+export async function insertReplyIntoChat(channelId: string, text: string): Promise<boolean> {
+    const getSlateEl = () => (
+        document.querySelector<HTMLElement>('div[role="textbox"][contenteditable="true"]') ||
+        document.querySelector<HTMLElement>('div[role="textbox"]') ||
+        document.querySelector<HTMLElement>('[data-slate-editor="true"]')
+    );
+
+    let slateEl = getSlateEl();
+
+    // 1. Dispatch focus to Discord's chat input bus and focus the DOM node
+    try {
+        ComponentDispatch?.dispatchToLastSubscribed?.("TEXTAREA_FOCUS");
+    } catch {}
+    try {
+        ComponentDispatch?.dispatch?.("TEXTAREA_FOCUS");
+    } catch {}
+
+    if (slateEl) {
+        try {
+            slateEl.focus();
+        } catch {}
+    }
+
+    // Wait a tick to ensure Slate updates focus state and selection
+    await new Promise(resolve => setTimeout(resolve, 40));
+
+    slateEl = getSlateEl();
+
+    // 2. Clear old text from the chat input
+    try {
+        ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
+    } catch {}
+    try {
+        ComponentDispatch?.dispatch?.("CLEAR_TEXT");
+    } catch {}
+
+    // 3. Dispatch insert text
+    try {
+        ComponentDispatch?.dispatchToLastSubscribed?.("INSERT_TEXT", {
+            rawText: text,
+            plainText: text,
+        });
+    } catch {}
+    try {
+        ComponentDispatch?.dispatch?.("INSERT_TEXT", {
+            rawText: text,
+            plainText: text,
+        });
+    } catch {}
+
+    // Wait a tick to verify if text was accepted by Slate
+    await new Promise(resolve => setTimeout(resolve, 40));
+
+    // 4. Verify insertion in DOM. If missing or incomplete, run Slate fiber + execCommand fallbacks
+    const updatedEl = getSlateEl();
+    const currentText = updatedEl?.textContent?.trim() || "";
+    const prefixToCheck = text.slice(0, Math.min(15, text.length)).trim();
+
+    if (!currentText || !currentText.includes(prefixToCheck)) {
+        let insertedViaFiber = false;
+
+        // Try direct Slate Editor instance via React Fiber
+        if (updatedEl) {
+            try {
+                const editor = getSlateEditor(updatedEl);
+                if (editor && typeof editor.insertText === "function") {
+                    if (Array.isArray(editor.children) && editor.children.length > 0) {
+                        const lastIdx = editor.children.length - 1;
+                        const lastChild = editor.children[lastIdx];
+                        const leaves = Array.isArray(lastChild?.children) ? lastChild.children : [lastChild];
+                        const lastLeafIdx = Math.max(0, leaves.length - 1);
+                        const leaf = leaves[lastLeafIdx];
+                        const endOffset = typeof leaf?.text === "string" ? leaf.text.length : 0;
+                        editor.selection = {
+                            anchor: { path: [0, 0], offset: 0 },
+                            focus: { path: [lastIdx, lastLeafIdx], offset: endOffset }
+                        };
+                    }
+                    if (typeof editor.deleteFragment === "function") {
+                        try { editor.deleteFragment(); } catch {}
+                    }
+                    editor.insertText(text);
+                    insertedViaFiber = true;
+                }
+            } catch (e) {
+                console.warn("[AlwaysRight] Slate fiber insertion fallback error:", e);
+            }
+        }
+
+        // Try DOM Range + execCommand
+        if (!insertedViaFiber && updatedEl) {
+            try {
+                updatedEl.focus();
+                const sel = window.getSelection();
+                if (sel) {
+                    const range = document.createRange();
+                    range.selectNodeContents(updatedEl);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+                document.execCommand("selectAll", false, undefined);
+                document.execCommand("insertText", false, text);
+                updatedEl.dispatchEvent(new InputEvent("input", {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: "insertText",
+                    data: text
+                }));
+            } catch {}
+        }
+    }
+
+    // 5. Backup to DraftManager so Discord persists the draft
+    if (channelId) {
+        try {
+            DraftManager?.saveDraft?.(channelId, text, 0);
+        } catch {}
+    }
+
+    // 6. Ensure the chat input remains focused for immediate user editing/sending
+    const finalEl = getSlateEl();
+    if (finalEl) {
+        try {
+            finalEl.focus();
+        } catch {}
+    } else {
+        try {
+            ComponentDispatch?.dispatchToLastSubscribed?.("TEXTAREA_FOCUS");
+        } catch {}
+    }
+
+    return true;
+}
 
 let isGenerating = false;
 const generatingListeners = new Set<(val: boolean) => void>();
@@ -393,12 +563,8 @@ Compose the user's reply message now:`;
             } catch {}
         }
 
-        // Clear existing text draft and insert the AI-generated reply
-        try {
-            ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
-        } catch {}
-
-        insertTextIntoChatInputBox(finalReply);
+        // Insert the AI-generated reply into chat input robustly
+        await insertReplyIntoChat(channel?.id || SelectedChannelStore?.getChannelId?.(), finalReply);
 
         Toasts.show({
             message: t("AI response placed in chat input."),
