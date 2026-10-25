@@ -5,10 +5,11 @@
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import { openModal } from "@utils/modal";
 import definePlugin, { OptionType } from "@utils/types";
-import { React } from "@webpack/common";
+import { FluxDispatcher, Menu, React } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { AlwaysRightModal } from "./AlwaysRightModal";
 import { generateAndInsertReply, getIsGenerating, onGeneratingChange } from "./generator";
@@ -154,6 +155,34 @@ const AlwaysRightChatBarButton: ChatBarButtonFactory = ({ channel, isMainChat })
     );
 };
 
+const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
+    const { channel, message } = props ?? {};
+    if (!channel || !message) return;
+
+    children.push(
+        <Menu.MenuGroup key="always-right-msg-group">
+            <Menu.MenuItem
+                id="always-right-reply-msg"
+                key="always-right-reply-msg"
+                label={t("AlwaysRight - Reply to this message")}
+                icon={() => <AlwaysRightIcon width={16} height={16} />}
+                action={() => {
+                    try {
+                        FluxDispatcher.dispatch({
+                            type: "CREATE_PENDING_REPLY",
+                            channel,
+                            message,
+                            shouldMention: true,
+                            showMentionToggle: true
+                        });
+                    } catch {}
+                    void generateAndInsertReply(channel, undefined, message);
+                }}
+            />
+        </Menu.MenuGroup>
+    );
+};
+
 export default definePlugin({
     name: "AlwaysRight",
     description: "Generates smart, persuasive, and perfectly phrased AI responses based on conversation context.",
@@ -165,5 +194,9 @@ export default definePlugin({
     chatBarButton: {
         icon: () => <AlwaysRightIcon />,
         render: AlwaysRightChatBarButton,
+    },
+
+    contextMenus: {
+        "message": messageContextMenuPatch,
     },
 });

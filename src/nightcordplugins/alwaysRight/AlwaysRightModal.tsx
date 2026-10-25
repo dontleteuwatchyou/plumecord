@@ -6,7 +6,7 @@
 
 import { Button } from "@components/Button";
 import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalProps, ModalRoot } from "@utils/modal";
-import { React, TextArea } from "@webpack/common";
+import { PendingReplyStore, React, TextArea } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { generateAndInsertReply } from "./generator";
 import { AlwaysRightIcon } from "./Icon";
@@ -21,6 +21,9 @@ export function AlwaysRightModal({
     const [guidance, setGuidance] = React.useState("");
     const [submitting, setSubmitting] = React.useState(false);
 
+    const pendingReply = PendingReplyStore?.getPendingReply?.(channel?.id);
+    const targetMsg = pendingReply?.message;
+
     const presetChips = [
         t("Contradict them"),
         t("Prove them wrong"),
@@ -33,7 +36,7 @@ export function AlwaysRightModal({
         if (submitting) return;
         setSubmitting(true);
         rootProps.onClose();
-        await generateAndInsertReply(channel, guidance);
+        await generateAndInsertReply(channel, guidance, targetMsg);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<any>) => {
@@ -61,6 +64,25 @@ export function AlwaysRightModal({
             </ModalHeader>
 
             <ModalContent style={{ padding: "12px 24px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+                {targetMsg && (
+                    <div style={{
+                        padding: "8px 12px",
+                        borderRadius: "6px",
+                        backgroundColor: "var(--background-secondary, #2b2d31)",
+                        borderLeft: "3px solid var(--brand-500)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2
+                    }}>
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--brand-500)", textTransform: "uppercase" }}>
+                            {t("Replying to message")}
+                        </span>
+                        <span style={{ fontSize: "13px", color: "var(--text-normal, #dbdee1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <strong style={{ color: "#ffffff" }}>@{targetMsg.author?.username || "User"}:</strong> {targetMsg.content || "[Media]"}
+                        </span>
+                    </div>
+                )}
+
                 <TextArea
                     placeholder={t("Additional instructions (e.g. 'contradict them', 'prove them wrong', 'be sarcastic')...")}
                     value={guidance}

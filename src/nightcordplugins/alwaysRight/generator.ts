@@ -12,6 +12,7 @@ import {
     Constants,
     GuildMemberStore,
     MessageStore,
+    PendingReplyStore,
     RestAPI,
     SelectedChannelStore,
     Toasts,
@@ -358,7 +359,7 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
     return content.trim();
 }
 
-export async function generateAndInsertReply(channel: any, quickGuidance?: string): Promise<void> {
+export async function generateAndInsertReply(channel: any, quickGuidance?: string, explicitTargetMessage?: any): Promise<void> {
     if (!channel?.id) {
         Toasts.show({
             message: t("No active channel found."),
@@ -399,37 +400,55 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
     setGenerating(true);
 
     try {
-        const rawMessages = await fetchRecentMessages(channel.id, 50);
-        if (!rawMessages || rawMessages.length === 0) {
-            Toasts.show({
-                message: t("No messages found in this channel to reply to."),
-                type: Toasts.Type.FAILURE,
-                id: Toasts.genId()
-            });
-            return;
-        }
-
         const myUser = UserStore?.getCurrentUser?.();
         const myId = myUser?.id;
         const guildId = channel.guild_id || channel.guildId || channel.getGuildId?.();
 
-        // Find the target message to reply to: the latest message not sent by current user
-        let targetMsg = null;
-        for (let i = rawMessages.length - 1; i >= 0; i--) {
-            const m = rawMessages[i];
-            if (m?.author?.id !== myId && m?.content?.trim()) {
-                targetMsg = m;
-                break;
-            }
-        }
+        // Check if there is an explicitly selected message to reply to:
+        // 1. Directly passed message (e.g. from context menu)
+        // 2. Or from Discord's active PendingReplyStore for this channel
+        const pendingReply = PendingReplyStore?.getPendingReply?.(channel.id);
+        const selectedReplyMsg = explicitTargetMessage || pendingReply?.message;
+        const isDirectReply = Boolean(selectedReplyMsg);
 
-        // If no message from someone else was found, fallback to the latest message with content
+        let targetMsg: any = selectedReplyMsg || null;
+        let rawMessages: any[] = [];
+
+        // If no explicit message was selected, fetch channel history to find the latest interlocutor message
         if (!targetMsg) {
+            rawMessages = await fetchRecentMessages(channel.id, 50);
+            if (!rawMessages || rawMessages.length === 0) {
+                Toasts.show({
+                    message: t("No messages found in this channel to reply to."),
+                    type: Toasts.Type.FAILURE,
+                    id: Toasts.genId()
+                });
+                return;
+            }
+
             for (let i = rawMessages.length - 1; i >= 0; i--) {
-                if (rawMessages[i]?.content?.trim()) {
-                    targetMsg = rawMessages[i];
+                const m = rawMessages[i];
+                if (m?.author?.id !== myId && m?.content?.trim()) {
+                    targetMsg = m;
                     break;
                 }
+            }
+
+            // Fallback to latest message if none from someone else
+            if (!targetMsg) {
+                for (let i = rawMessages.length - 1; i >= 0; i--) {
+                    if (rawMessages[i]?.content?.trim()) {
+                        targetMsg = rawMessages[i];
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Replying to a specific selected message: fetch recent messages for light background context
+            try {
+                rawMessages = await fetchRecentMessages(channel.id, 15);
+            } catch {
+                rawMessages = [];
             }
         }
 
@@ -508,13 +527,24 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
             ? `\nIMMEDIATE PRIORITY INSTRUCTION FOR THIS MESSAGE: ${quickGuidance.trim()}`
             : "";
 
+        const replyScopeInstruction = isDirectReply
+            ? `\n\nCRITICAL SCOPE DIRECTIVE (SPECIFIC MESSAGE REPLY):
+The user has explicitly selected ONE single message to reply to:
+- From: @${targetAuthor}
+- Message: "${targetContent}"
+Your response MUST content itself with replying SOLELY, DIRECTLY, and EXCLUSIVELY to this particular message.
+- Address ONLY what is stated, argued, asked, or claimed in this specific message.
+- Do NOT bring in, merge, or get sidetracked by other unrelated conversation threads, side discussions, or other messages from the channel.
+- Be razor-focused on answering, countering, or addressing this exact message.`
+            : "";
+
         const systemPrompt = `You are AlwaysRight, an elite conversation strategist and articulate partner for Discord.
 Your goal is to write the user's exact next message in reply to their conversation partner.
 
 CONTEXT & STANCE CONSISTENCY:
 - The conversation history contains messages labeled as [You] (sent by the user) and [@Username] (sent by the interlocutor).
 - CAREFULLY ANALYZE [You]'s previous messages: identify the user's exact opinions, arguments, perspective, and past claims. Your reply MUST remain 100% faithful and consistent with what [You] has been defending. Never contradict the user's established position or flip sides.
-- CAREFULLY ANALYZE the interlocutor's messages: detect their mindset, claims, questions, or logical fallacies, and address them with precision, wit, and authority.
+- CAREFULLY ANALYZE the interlocutor's messages: detect their mindset, claims, questions, or logical fallacies, and address them with precision, wit, and authority.${replyScopeInstruction}
 
 Analyze the target message and the surrounding context:
 - If the partner is asking a question or seeking information, provide a clear, accurate, and insightful answer.
@@ -539,7 +569,18 @@ CRITICAL RULES:
 - NO CLICHÉ CONVERSATION ENDERS: NEVER use artificial, arrogant conversation stoppers like "le débat est clos", "point final", "c'est indiscutable", "fin de l'histoire", "circulez", or "case closed". They sound unnatural, childish, and forced. Sound like a real person, confident, grounded, and articulate.
 - COMPLETENESS: Always ensure every message is 100% complete and finishes its final sentence properly with valid punctuation. Never stop or cut off mid-thought.`;
 
-        const userPrompt = `=== CONVERSATION BACKGROUND (Up to 50 previous messages) ===
+        let userPrompt = "";
+        if (isDirectReply) {
+            userPrompt = `=== SPECIFIC MESSAGE SELECTED TO REPLY TO ===
+From: @${targetAuthor}
+Content: "${targetContent}"
+
+=== BACKGROUND CONTEXT (Recent messages for context only - focus strictly on replying to the specific message above) ===
+${recentLines.join("\n")}
+
+Compose the reply directly to @${targetAuthor}'s message above:`;
+        } else {
+            userPrompt = `=== CONVERSATION BACKGROUND (Up to 50 previous messages) ===
 ${historyLines.join("\n")}
 
 === RECENT EXCHANGES (Last 10 messages) ===
@@ -550,6 +591,7 @@ From: @${targetAuthor}
 Content: "${targetContent}"
 
 Compose the user's reply message now:`;
+        }
 
         let reply = "";
         if (provider === "gemini") {
