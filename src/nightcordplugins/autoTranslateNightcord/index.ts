@@ -5474,6 +5474,13 @@ export const translations: TranslationMap = {
     "Gemini 1.5 Flash": {"en":"Gemini 1.5 Flash","fr":"Gemini 1.5 Flash","ar":"Gemini 1.5 Flash","es":"Gemini 1.5 Flash","ru":"Gemini 1.5 Flash","zh":"Gemini 1.5 Flash"},
     "Gemini 1.5 Pro": {"en":"Gemini 1.5 Pro","fr":"Gemini 1.5 Pro","ar":"Gemini 1.5 Pro","es":"Gemini 1.5 Pro","ru":"Gemini 1.5 Pro","zh":"Gemini 1.5 Pro"},
     "Gemini API key missing — configure it in AlwaysRight settings.": {"en":"Gemini API key missing — configure it in AlwaysRight settings.","fr":"Clé API Gemini manquante — configurez-la dans les paramètres AlwaysRight.","ar":"مفتاح Gemini API مفقود — يرجى ضبطه في إعدادات AlwaysRight.","es":"Falta la clave API de Gemini — configúrala en los ajustes de AlwaysRight.","ru":"Ключ Gemini API отсутствует — укажите его в настройках AlwaysRight.","zh":"缺少 Gemini API 密钥 — 请在 AlwaysRight 设置中进行配置。"},
+    "Response delay and typing simulation duration": {"en":"Response delay and typing simulation duration","fr":"Délai de réponse et durée de simulation d'écriture","ar":"تأخير الرد ومدة محاكاة الكتابة","es":"Retardo de respuesta y duración de simulación de escritura","ru":"Задержка ответа и длительность имитации набора","zh":"回复延迟与打字模拟时长"},
+    "No delay (Instant)": {"en":"No delay (Instant)","fr":"Aucun délai (Instantané)","ar":"بدون تأخير (فوري)","es":"Sin retardo (Instantáneo)","ru":"Без задержки (мгновенно)","zh":"无延迟 (即时)"},
+    "3 seconds (Default)": {"en":"3 seconds (Default)","fr":"3 secondes (Par défaut)","ar":"3 ثوانٍ (افتراضي)","es":"3 segundos (Predeterminado)","ru":"3 секунды (по умолчанию)","zh":"3 秒 (默认)"},
+    "10 seconds": {"en":"10 seconds","fr":"10 secondes","ar":"10 ثوانٍ","es":"10 segundos","ru":"10 секунд","zh":"10 秒"},
+    "20 seconds": {"en":"20 seconds","fr":"20 secondes","ar":"20 ثانية","es":"20 segundos","ru":"20 секунд","zh":"20 秒"},
+    "3 minutes": {"en":"3 minutes","fr":"3 minutes","ar":"3 دقائق","es":"3 minutos","ru":"3 минуты","zh":"3 分钟"},
+    "Simulating typing in channel...": {"en":"Simulating typing in channel...","fr":"Simulation d'écriture en cours dans le salon...","ar":"جارٍ محاكاة الكتابة في القناة...","es":"Simulando escritura en el canal...","ru":"Имитация набора текста в канале...","zh":"正在频道中模拟打字..."},
 };
 
 export default definePlugin({

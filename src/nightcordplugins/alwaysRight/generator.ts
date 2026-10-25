@@ -6,6 +6,7 @@
 
 import { showApiKeyWarning } from "@utils/apiKeyWarning";
 import { insertTextIntoChatInputBox } from "@utils/discord";
+import { findByPropsLazy } from "@webpack";
 import {
     ChannelStore,
     ComponentDispatch,
@@ -20,10 +21,29 @@ import { t } from "../autoTranslateNightcord";
 import { getGroqKey, groqChat } from "../nightcordAI/groqManager";
 import { settings } from "./index";
 
+const TypingActions = findByPropsLazy("startTyping", "stopTyping");
+
 let isGenerating = false;
+const generatingListeners = new Set<(val: boolean) => void>();
 
 export function getIsGenerating() {
     return isGenerating;
+}
+
+export function onGeneratingChange(cb: (val: boolean) => void) {
+    generatingListeners.add(cb);
+    return () => {
+        generatingListeners.delete(cb);
+    };
+}
+
+function setGenerating(val: boolean) {
+    isGenerating = val;
+    generatingListeners.forEach(cb => {
+        try {
+            cb(val);
+        } catch {}
+    });
 }
 
 export async function resolveApiKey(): Promise<string> {
@@ -163,7 +183,24 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
         }
     }
 
-    isGenerating = true;
+    setGenerating(true);
+
+    const delaySeconds = Math.max(0, Number(settings.store.typingDelay ?? 3));
+    let typingInterval: any = null;
+
+    if (delaySeconds > 0 && channel.id) {
+        try {
+            TypingActions?.startTyping?.(channel.id);
+        } catch {}
+
+        typingInterval = setInterval(() => {
+            try {
+                TypingActions?.startTyping?.(channel.id);
+            } catch {}
+        }, 7_000);
+    }
+
+    const startTime = Date.now();
 
     try {
         const rawMessages = await fetchRecentMessages(channel.id, 50);
@@ -335,6 +372,26 @@ Compose the user's reply message now:`;
             throw new Error(t("The AI generated an empty response."));
         }
 
+        // If typing simulation delay was requested, wait for the remaining duration
+        if (delaySeconds > 0) {
+            const elapsedMs = Date.now() - startTime;
+            const remainingMs = Math.max(0, (delaySeconds * 1000) - elapsedMs);
+            if (remainingMs > 0) {
+                await new Promise(resolve => setTimeout(resolve, remainingMs));
+            }
+        }
+
+        // Stop typing indicator before inserting text
+        if (typingInterval) {
+            clearInterval(typingInterval);
+            typingInterval = null;
+        }
+        if (channel.id) {
+            try {
+                TypingActions?.stopTyping?.(channel.id);
+            } catch {}
+        }
+
         // Clear existing text draft and insert the AI-generated reply
         try {
             ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
@@ -356,6 +413,15 @@ Compose the user's reply message now:`;
             id: Toasts.genId()
         });
     } finally {
-        isGenerating = false;
+        if (typingInterval) {
+            clearInterval(typingInterval);
+            typingInterval = null;
+        }
+        if (channel?.id) {
+            try {
+                TypingActions?.stopTyping?.(channel.id);
+            } catch {}
+        }
+        setGenerating(false);
     }
 }

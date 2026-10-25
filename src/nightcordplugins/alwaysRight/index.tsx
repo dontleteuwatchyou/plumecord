@@ -11,7 +11,7 @@ import definePlugin, { OptionType } from "@utils/types";
 import { React } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 import { AlwaysRightModal } from "./AlwaysRightModal";
-import { generateAndInsertReply, getIsGenerating } from "./generator";
+import { generateAndInsertReply, getIsGenerating, onGeneratingChange } from "./generator";
 import { AlwaysRightIcon } from "./Icon";
 
 export const settings = definePluginSettings({
@@ -39,6 +39,19 @@ export const settings = definePluginSettings({
             { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
         ],
         default: "gemini-2.5-flash",
+    },
+    typingDelay: {
+        type: OptionType.SELECT,
+        description: "Response delay and typing simulation duration",
+        options: [
+            { label: "No delay (Instant)", value: 0 },
+            { label: "3 seconds (Default)", value: 3, default: true },
+            { label: "10 seconds", value: 10 },
+            { label: "20 seconds", value: 20 },
+            { label: "1 minute", value: 60 },
+            { label: "3 minutes", value: 180 },
+        ],
+        default: 3,
     },
     tone: {
         type: OptionType.SELECT,
@@ -117,7 +130,11 @@ const AlwaysRightChatBarButton: ChatBarButtonFactory = ({ channel, isMainChat })
     if (!isMainChat) return null;
     if (!settings.store.showChatBarButton) return null;
 
-    const generating = getIsGenerating();
+    const [generating, setGeneratingState] = React.useState(getIsGenerating());
+
+    React.useEffect(() => {
+        return onGeneratingChange(setGeneratingState);
+    }, []);
 
     const handleClick = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -133,9 +150,13 @@ const AlwaysRightChatBarButton: ChatBarButtonFactory = ({ channel, isMainChat })
         ));
     };
 
+    const tooltip = generating
+        ? t("AlwaysRight is analyzing and composing reply...")
+        : t("AlwaysRight - AI Reply (Right-click for prompt)");
+
     return (
         <ChatBarButton
-            tooltip={t("AlwaysRight - AI Reply (Right-click for prompt)")}
+            tooltip={tooltip}
             onClick={handleClick}
             onContextMenu={handleContextMenu}
             buttonProps={{ "aria-haspopup": "dialog" }}
