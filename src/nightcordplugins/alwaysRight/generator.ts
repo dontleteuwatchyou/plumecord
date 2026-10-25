@@ -259,6 +259,32 @@ function cleanAiOutput(text: string): string {
     return cleaned;
 }
 
+async function fetchLiveWebGrounding(query: string): Promise<string> {
+    try {
+        const cleanQuery = query.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+        if (!cleanQuery || cleanQuery.length < 3) return "";
+        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
+        const res = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+            }
+        });
+        if (!res.ok) return "";
+        const html = await res.text();
+        const matches = [...html.matchAll(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g)];
+        const snippets = matches
+            .map(m => m[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())
+            .filter(Boolean)
+            .slice(0, 4);
+
+        if (snippets.length === 0) return "";
+        return `\n\n=== LIVE REAL-TIME WEB SEARCH GROUNDING ===\nFactual web results retrieved live for this query:\n${snippets.map(s => `- ${s}`).join("\n")}\nDirectly utilize these facts, numbers, dates, vanity names, links, or statistics if relevant to answer accurately and convincingly. Never claim you don't know if the answer is present above.`;
+    } catch {
+        return "";
+    }
+}
+
 let cachedGeminiModel: string | null = null;
 
 async function resolveGeminiModel(apiKey: string, requestedModel?: string): Promise<string> {
@@ -287,10 +313,11 @@ async function resolveGeminiModel(apiKey: string, requestedModel?: string): Prom
                     return requestedModel;
                 }
 
-                // Prefer modern 2.0 / 1.5 flash models
+                // Prefer modern flash models
                 const best =
+                    supported.find((m: string) => m.includes("flash-latest")) ||
+                    supported.find((m: string) => m.includes("3.8-flash")) ||
                     supported.find((m: string) => m.includes("2.0-flash")) ||
-                    supported.find((m: string) => m.includes("1.5-flash")) ||
                     supported.find((m: string) => m.includes("flash")) ||
                     supported.find((m: string) => m.includes("pro")) ||
                     supported[0];
@@ -305,7 +332,7 @@ async function resolveGeminiModel(apiKey: string, requestedModel?: string): Prom
         console.warn("[AlwaysRight] Failed to fetch Gemini model list:", e);
     }
 
-    return requestedModel || "gemini-2.0-flash";
+    return requestedModel || "gemini-flash-latest";
 }
 
 async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model?: string): Promise<string> {
@@ -358,8 +385,12 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
 
     // If still 404 or 400 on requested model, try standard fallbacks
     if (!res.ok && (res.status === 404 || res.status === 400)) {
-        const fallbacks = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-            .filter(m => m !== targetModel);
+        const fallbacks = [
+            "gemini-flash-latest",
+            "gemini-3.8-flash",
+            "gemini-2.0-flash",
+            "gemini-pro-latest"
+        ].filter(m => m !== targetModel);
 
         for (const fb of fallbacks) {
             console.warn(`[AlwaysRight] Model ${targetModel} failed (${res.status}), trying fallback: ${fb}`);
@@ -378,6 +409,9 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
 
     if (!res.ok) {
         const body = await res.text().catch(() => "");
+        if (res.status === 403 && body.includes("denied access")) {
+            throw new Error("Google Gemini (403): Votre projet Google Cloud requiert une facturation active en France. Utilisez le provider Groq (100% gratuit et instantané avec recherche web intégrée) !");
+        }
         throw new Error(`Google Gemini error (${res.status}): ${body.slice(0, 160)}`);
     }
 
@@ -569,8 +603,15 @@ Your response MUST content itself with replying SOLELY, DIRECTLY, and EXCLUSIVEL
 - Be razor-focused on answering, countering, or addressing this exact message.`
             : "";
 
+        const now = new Date();
+        const currentDateStr = now.toLocaleDateString("fr-FR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
         const systemPrompt = `You are AlwaysRight, an elite conversation strategist and articulate partner for Discord.
 Your goal is to write the user's exact next message in reply to their conversation partner.
+
+TEMPORAL ANCHOR & REAL-WORLD CLOCK:
+- Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
+- When answering questions about the current year, date, today, or recent releases, always anchor to this real-world date.
 
 CONTEXT & STANCE CONSISTENCY:
 - The conversation history contains messages labeled as [You] (sent by the user) and [@Username] (sent by the interlocutor).
@@ -624,10 +665,16 @@ Content: "${targetContent}"
 Compose the user's reply message now:`;
         }
 
+        // Retrieve live real-time web grounding (DuckDuckGo factual snippets) for live facts, figures, vanity, dates, stats
+        const webGrounding = await fetchLiveWebGrounding(`${targetContent} ${quickGuidance || ""}`.trim());
+        if (webGrounding) {
+            userPrompt += webGrounding;
+        }
+
         let reply = "";
         if (provider === "gemini") {
             const geminiKey = settings.store.geminiApiKey?.trim();
-            const model = settings.store.geminiModel || "gemini-1.5-flash";
+            const model = settings.store.geminiModel || "gemini-flash-latest";
             reply = await callGeminiApi(systemPrompt, userPrompt, geminiKey, model);
         } else {
             reply = await groqChat({
