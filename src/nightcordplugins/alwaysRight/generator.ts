@@ -86,6 +86,45 @@ function cleanAiOutput(text: string): string {
     return cleaned;
 }
 
+async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model: string): Promise<string> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            },
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: userPrompt }]
+                }
+            ],
+            generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: settings.store.responseFormat === "long" ? 1000 : 500,
+            }
+        })
+    });
+
+    if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        // If 404 on model, fallback to gemini-2.0-flash or gemini-1.5-flash
+        if (res.status === 404 && model !== "gemini-2.0-flash" && model !== "gemini-1.5-flash") {
+            return callGeminiApi(systemPrompt, userPrompt, apiKey, "gemini-2.0-flash");
+        }
+        throw new Error(`Google Gemini error (${res.status}): ${body.slice(0, 160)}`);
+    }
+
+    const data = await res.json().catch(() => null);
+    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof content !== "string" || !content.trim()) {
+        throw new Error(t("The AI generated an empty response."));
+    }
+    return content.trim();
+}
+
 export async function generateAndInsertReply(channel: any, quickGuidance?: string): Promise<void> {
     if (!channel?.id) {
         Toasts.show({
@@ -105,10 +144,23 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
         return;
     }
 
-    const apiKey = await resolveApiKey();
-    if (!apiKey) {
-        showApiKeyWarning("AlwaysRight");
-        return;
+    const provider = settings.store.apiProvider ?? "nightcord";
+    if (provider === "gemini") {
+        const geminiKey = settings.store.geminiApiKey?.trim();
+        if (!geminiKey) {
+            Toasts.show({
+                message: t("Gemini API key missing — configure it in AlwaysRight settings."),
+                type: Toasts.Type.FAILURE,
+                id: Toasts.genId()
+            });
+            return;
+        }
+    } else {
+        const apiKey = await resolveApiKey();
+        if (!apiKey) {
+            showApiKeyWarning("AlwaysRight");
+            return;
+        }
     }
 
     isGenerating = true;
@@ -253,14 +305,21 @@ Content: "${targetContent}"
 
 Compose the user's reply message now:`;
 
-        const reply = await groqChat({
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ],
-            temperature: 0.7,
-            maxTokens: settings.store.responseFormat === "long" ? 1000 : 500,
-        });
+        let reply = "";
+        if (provider === "gemini") {
+            const geminiKey = settings.store.geminiApiKey?.trim();
+            const model = settings.store.geminiModel || "gemini-2.5-flash";
+            reply = await callGeminiApi(systemPrompt, userPrompt, geminiKey, model);
+        } else {
+            reply = await groqChat({
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: 0.7,
+                maxTokens: settings.store.responseFormat === "long" ? 1000 : 500,
+            });
+        }
 
         let finalReply = cleanAiOutput(reply);
 

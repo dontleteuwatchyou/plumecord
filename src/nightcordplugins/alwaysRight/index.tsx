@@ -15,6 +15,31 @@ import { generateAndInsertReply, getIsGenerating } from "./generator";
 import { AlwaysRightIcon } from "./Icon";
 
 export const settings = definePluginSettings({
+    apiProvider: {
+        type: OptionType.SELECT,
+        description: "AI Provider & API Key to use",
+        options: [
+            { label: "Nightcord AI (Shared Groq Key)", value: "nightcord", default: true },
+            { label: "Google Gemini AI (Direct Gemini Key)", value: "gemini" },
+        ],
+        default: "nightcord",
+    },
+    geminiApiKey: {
+        type: OptionType.STRING,
+        description: "Google Gemini API Key (get free at aistudio.google.com)",
+        default: "",
+    },
+    geminiModel: {
+        type: OptionType.SELECT,
+        description: "Google Gemini Model",
+        options: [
+            { label: "Gemini 2.5 Flash (Fastest & Smartest)", value: "gemini-2.5-flash", default: true },
+            { label: "Gemini 2.0 Flash", value: "gemini-2.0-flash" },
+            { label: "Gemini 1.5 Flash", value: "gemini-1.5-flash" },
+            { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
+        ],
+        default: "gemini-2.5-flash",
+    },
     tone: {
         type: OptionType.SELECT,
         description: "Tone and attitude for AI replies",
