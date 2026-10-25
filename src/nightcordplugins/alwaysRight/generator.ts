@@ -263,23 +263,55 @@ async function fetchLiveWebGrounding(query: string): Promise<string> {
     try {
         const cleanQuery = query.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
         if (!cleanQuery || cleanQuery.length < 3) return "";
-        const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
-        const res = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+
+        const snippets: string[] = [];
+
+        // 1. Google News RSS (Direct real-time Google search for live events, dates, protests, news)
+        try {
+            const googleNewsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cleanQuery)}&hl=fr&gl=FR&ceid=FR:fr`;
+            const newsRes = await fetch(googleNewsUrl);
+            if (newsRes.ok) {
+                const text = await newsRes.text();
+                const items = [...text.matchAll(/<item>[\s\S]*?<title>(.*?)<\/title>[\s\S]*?<pubDate>(.*?)<\/pubDate>[\s\S]*?<\/item>/g)];
+                for (const item of items.slice(0, 4)) {
+                    const title = item[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").trim();
+                    const date = item[2].trim();
+                    if (title && !title.includes("Google Actualités")) {
+                        snippets.push(`${title} (Date: ${date})`);
+                    }
+                }
             }
-        });
-        if (!res.ok) return "";
-        const html = await res.text();
-        const matches = [...html.matchAll(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g)];
-        const snippets = matches
-            .map(m => m[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())
-            .filter(Boolean)
-            .slice(0, 4);
+        } catch {
+            // fallback
+        }
+
+        // 2. DuckDuckGo Search (General facts, vanity URLs, products, tech)
+        if (snippets.length < 3) {
+            try {
+                const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
+                const ddgRes = await fetch(ddgUrl, {
+                    headers: {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+                    }
+                });
+                if (ddgRes.ok) {
+                    const html = await ddgRes.text();
+                    const matches = [...html.matchAll(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g)];
+                    for (const m of matches.slice(0, 4)) {
+                        const snip = m[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+                        if (snip && !snippets.includes(snip)) {
+                            snippets.push(snip);
+                        }
+                    }
+                }
+            } catch {
+                // fallback
+            }
+        }
 
         if (snippets.length === 0) return "";
-        return `\n\n=== LIVE REAL-TIME WEB SEARCH GROUNDING ===\nFactual web results retrieved live for this query:\n${snippets.map(s => `- ${s}`).join("\n")}\nDirectly utilize these facts, numbers, dates, vanity names, links, or statistics if relevant to answer accurately and convincingly. Never claim you don't know if the answer is present above.`;
+        return `\n\n=== LIVE REAL-TIME WEB & GOOGLE SEARCH GROUNDING ===\nFactual results retrieved live from Google News & Web for this topic:\n${snippets.map(s => `- ${s}`).join("\n")}\nCRITICAL MANDATE: Directly utilize these real-world facts, dates, news headlines, and numbers above to answer accurately and with complete confidence. Never claim you don't know when the data is provided above.`;
     } catch {
         return "";
     }
