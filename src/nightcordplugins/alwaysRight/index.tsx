@@ -53,11 +53,12 @@ export const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "Length and detail of the generated response",
         options: [
+            { label: "Adaptive (Matches partner & context length)", value: "adaptive", default: true },
             { label: "Short (1-2 sentences)", value: "short" },
-            { label: "Medium (1 paragraph)", value: "medium", default: true },
+            { label: "Medium (1 paragraph)", value: "medium" },
             { label: "Detailed (Full argument)", value: "long" },
         ],
-        default: "medium",
+        default: "adaptive",
     },
     capitalization: {
         type: OptionType.SELECT,

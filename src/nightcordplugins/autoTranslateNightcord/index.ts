@@ -5473,6 +5473,7 @@ export const translations: TranslationMap = {
     "Gemini 1.5 Pro (Deep Reasoning)": {"en":"Gemini 1.5 Pro (Deep Reasoning)","fr":"Gemini 1.5 Pro (Raisonnement approfondi)","ar":"Gemini 1.5 Pro (استدلال عميق)","es":"Gemini 1.5 Pro (Razonamiento profundo)","ru":"Gemini 1.5 Pro (глубокие рассуждения)","zh":"Gemini 1.5 Pro (深度推理)"},
     "Gemini 1.5 Flash-8B (Ultra Fast)": {"en":"Gemini 1.5 Flash-8B (Ultra Fast)","fr":"Gemini 1.5 Flash-8B (Ultra rapide)","ar":"Gemini 1.5 Flash-8B (فائق السرعة)","es":"Gemini 1.5 Flash-8B (Ultrarrápido)","ru":"Gemini 1.5 Flash-8B (сверхбыстрый)","zh":"Gemini 1.5 Flash-8B (超快速)"},
     "Gemini API key missing — configure it in AlwaysRight settings.": {"en":"Gemini API key missing — configure it in AlwaysRight settings.","fr":"Clé API Gemini manquante — configurez-la dans les paramètres AlwaysRight.","ar":"مفتاح Gemini API مفقود — يرجى ضبطه في إعدادات AlwaysRight.","es":"Falta la clave API de Gemini — configúrala en los ajustes de AlwaysRight.","ru":"Ключ Gemini API отсутствует — укажите его в настройках AlwaysRight.","zh":"缺少 Gemini API 密钥 — 请在 AlwaysRight 设置中进行配置。"},
+    "Adaptive (Matches partner & context length)": {"en":"Adaptive (Matches partner & context length)","fr":"Adaptatif (S'adapte à la longueur du partenaire et du contexte)","ar":"متكيف (يتناسب مع طول رسالة الشريك وسياقها)","es":"Adaptativo (Se adapta a la longitud del interlocutor y contexto)","ru":"Адаптивный (подстраивается под длину сообщения собеседника)","zh":"自适应 (匹配对方消息长度与上下文)"},
 };
 
 export default definePlugin({

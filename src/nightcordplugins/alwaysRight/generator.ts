@@ -241,14 +241,20 @@ function stripEmojis(text: string): string {
 
 function cleanAiOutput(text: string): string {
     let cleaned = text.trim();
-    // Remove surrounding quotes if the AI wrapped the entire response
-    cleaned = cleaned.replace(/^["'«“]+|["'»”]+$/g, "").trim();
 
     // Remove leading AI prefixes like "Response:", "Reply:", "AlwaysRight:"
     cleaned = cleaned.replace(/^(?:response|reply|alwaysright|ai):\s*/i, "").trim();
 
-    // If still wrapped in quotes
-    cleaned = cleaned.replace(/^["'«“]+|["'»”]+$/g, "").trim();
+    // Only strip quotes if the ENTIRE message was wrapped in quotes from start to finish
+    if (
+        (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+        (cleaned.startsWith("'") && cleaned.endsWith("'")) ||
+        (cleaned.startsWith("«") && cleaned.endsWith("»")) ||
+        (cleaned.startsWith("“") && cleaned.endsWith("”"))
+    ) {
+        cleaned = cleaned.slice(1, -1).trim();
+    }
+
     return cleaned;
 }
 
@@ -270,7 +276,7 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
             ],
             generationConfig: {
                 temperature: 0.7,
-                maxOutputTokens: settings.store.responseFormat === "long" ? 1000 : 500,
+                maxOutputTokens: settings.store.responseFormat === "long" ? 1500 : 800,
             }
         })
     });
@@ -404,9 +410,11 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
         }
 
         // Length directive
-        let lengthInstruction = "Medium length (1 balanced paragraph, around 2 to 4 sentences).";
+        let lengthInstruction = "Adaptive: Dynamically match the interlocutor's message length and depth. If they sent a short 1-line message, reply with a concise, punchy 1-line response. If they sent a longer message or asked for an in-depth explanation or sources, reply with a proportionate, well-reasoned paragraph.";
         if (settings.store.responseFormat === "short") {
-            lengthInstruction = "Short and punchy (1 to 2 crisp sentences maximum).";
+            lengthInstruction = "Short and punchy (1 to 2 crisp, complete sentences maximum).";
+        } else if (settings.store.responseFormat === "medium") {
+            lengthInstruction = "Medium length (1 balanced paragraph, around 2 to 4 sentences).";
         } else if (settings.store.responseFormat === "long") {
             lengthInstruction = "Detailed and thorough (1 to 2 comprehensive paragraphs with complete reasoning).";
         }
@@ -444,8 +452,11 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
 Your goal is to write the user's exact next message in reply to their conversation partner.
 Analyze the target message and the surrounding context:
 - If the partner is asking a question or seeking information, provide a clear, accurate, and insightful answer.
+- If the partner asks for sources, proof, or links (e.g. "sortez la source", "source ?", "d'où tu sors ça", "t'as des preuves ?"):
+  * NEVER say "google it" or "cherche sur internet".
+  * ALWAYS cite concrete, real-world authorities, peer-reviewed journals, recognized organizations, or specific landmark studies (e.g. PubMed, OMS/WHO, INSERM, CDC, Nature, Journal of Applied Physiology, INSEE, Pew Research, or specific researchers like Janssen et al.).
 - If the partner makes a claim, argument, or debate point, construct a persuasive, unassailable, and witty response that proves the user is right or debunks misconceptions.
-- If the partner is bantering or discussing casually, keep the momentum going smoothly and cleverly.
+- If the partner is bantering or discussing casually, keep the momentum going smoothly and cleverly without forcing an argument.
 
 Guidelines:
 1. Tone: ${toneInstruction}
@@ -458,7 +469,9 @@ CRITICAL RULES:
 - Output ONLY the text of the message itself.
 - NEVER wrap your output in quotation marks.
 - NEVER add introductory phrases like "Here's what you can say:", "Reply:", or "AlwaysRight:".
-- NEVER state that you are an AI. Write as if you are the user themselves typing into Discord chat.`;
+- NEVER state that you are an AI. Write as if you are the user themselves typing into Discord chat.
+- NO CLICHÉ CONVERSATION ENDERS: NEVER use artificial, arrogant conversation stoppers like "le débat est clos", "point final", "c'est indiscutable", "fin de l'histoire", "circulez", or "case closed". They sound unnatural, childish, and forced. Sound like a real person, confident, grounded, and articulate.
+- COMPLETENESS: Always ensure every message is 100% complete and finishes its final sentence properly with valid punctuation. Never stop or cut off mid-thought.`;
 
         const userPrompt = `=== CONVERSATION BACKGROUND (Up to 50 previous messages) ===
 ${historyLines.join("\n")}
@@ -484,7 +497,7 @@ Compose the user's reply message now:`;
                     { role: "user", content: userPrompt }
                 ],
                 temperature: 0.7,
-                maxTokens: settings.store.responseFormat === "long" ? 1000 : 500,
+                maxTokens: settings.store.responseFormat === "long" ? 1200 : 800,
             });
         }
 
