@@ -21,9 +21,6 @@ import { t } from "../autoTranslateNightcord";
 import { getGroqKey, groqChat } from "../nightcordAI/groqManager";
 import { settings } from "./index";
 
-const TypingActions = findByPropsLazy("startTyping", "stopTyping");
-const DraftManager = findByPropsLazy("clearDraft", "saveDraft");
-
 function getSlateEditor(target: HTMLElement | null): any {
     if (!target) return null;
     const slateEl = (
@@ -72,9 +69,6 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("TEXTAREA_FOCUS");
     } catch {}
-    try {
-        ComponentDispatch?.dispatch?.("TEXTAREA_FOCUS");
-    } catch {}
 
     if (slateEl) {
         try {
@@ -83,27 +77,16 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
     }
 
     // Wait a tick to ensure Slate updates focus state and selection
-    await new Promise(resolve => setTimeout(resolve, 40));
-
-    slateEl = getSlateEl();
+    await new Promise(resolve => setTimeout(resolve, 35));
 
     // 2. Clear old text from the chat input
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
     } catch {}
-    try {
-        ComponentDispatch?.dispatch?.("CLEAR_TEXT");
-    } catch {}
 
-    // 3. Dispatch insert text
+    // 3. Dispatch insert text ONCE to the active chat input
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("INSERT_TEXT", {
-            rawText: text,
-            plainText: text,
-        });
-    } catch {}
-    try {
-        ComponentDispatch?.dispatch?.("INSERT_TEXT", {
             rawText: text,
             plainText: text,
         });
@@ -112,10 +95,10 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
     // Wait a tick to verify if text was accepted by Slate
     await new Promise(resolve => setTimeout(resolve, 40));
 
-    // 4. Verify insertion in DOM. If missing or incomplete, run Slate fiber + execCommand fallbacks
+    // 4. Verify insertion in DOM. If missing or empty, run Slate fiber + execCommand fallbacks
     const updatedEl = getSlateEl();
-    const currentText = updatedEl?.textContent?.trim() || "";
-    const prefixToCheck = text.slice(0, Math.min(15, text.length)).trim();
+    const currentText = (updatedEl?.textContent || "").trim();
+    const prefixToCheck = text.slice(0, Math.min(10, text.length)).trim();
 
     if (!currentText || !currentText.includes(prefixToCheck)) {
         let insertedViaFiber = false;
@@ -171,14 +154,7 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
         }
     }
 
-    // 5. Backup to DraftManager so Discord persists the draft
-    if (channelId) {
-        try {
-            DraftManager?.saveDraft?.(channelId, text, 0);
-        } catch {}
-    }
-
-    // 6. Ensure the chat input remains focused for immediate user editing/sending
+    // 5. Ensure the chat input remains focused for immediate user editing/sending
     const finalEl = getSlateEl();
     if (finalEl) {
         try {
@@ -356,23 +332,6 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
 
     setGenerating(true);
 
-    const delaySeconds = Math.max(0, Number(settings.store.typingDelay ?? 3));
-    let typingInterval: any = null;
-
-    if (delaySeconds > 0 && channel.id) {
-        try {
-            TypingActions?.startTyping?.(channel.id);
-        } catch {}
-
-        typingInterval = setInterval(() => {
-            try {
-                TypingActions?.startTyping?.(channel.id);
-            } catch {}
-        }, 7_000);
-    }
-
-    const startTime = Date.now();
-
     try {
         const rawMessages = await fetchRecentMessages(channel.id, 50);
         if (!rawMessages || rawMessages.length === 0) {
@@ -543,26 +502,6 @@ Compose the user's reply message now:`;
             throw new Error(t("The AI generated an empty response."));
         }
 
-        // If typing simulation delay was requested, wait for the remaining duration
-        if (delaySeconds > 0) {
-            const elapsedMs = Date.now() - startTime;
-            const remainingMs = Math.max(0, (delaySeconds * 1000) - elapsedMs);
-            if (remainingMs > 0) {
-                await new Promise(resolve => setTimeout(resolve, remainingMs));
-            }
-        }
-
-        // Stop typing indicator before inserting text
-        if (typingInterval) {
-            clearInterval(typingInterval);
-            typingInterval = null;
-        }
-        if (channel.id) {
-            try {
-                TypingActions?.stopTyping?.(channel.id);
-            } catch {}
-        }
-
         // Insert the AI-generated reply into chat input robustly
         await insertReplyIntoChat(channel?.id || SelectedChannelStore?.getChannelId?.(), finalReply);
 
@@ -580,15 +519,6 @@ Compose the user's reply message now:`;
             id: Toasts.genId()
         });
     } finally {
-        if (typingInterval) {
-            clearInterval(typingInterval);
-            typingInterval = null;
-        }
-        if (channel?.id) {
-            try {
-                TypingActions?.stopTyping?.(channel.id);
-            } catch {}
-        }
         setGenerating(false);
     }
 }

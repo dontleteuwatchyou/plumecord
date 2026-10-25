@@ -39,19 +39,6 @@ export const settings = definePluginSettings({
         ],
         default: "gemini-1.5-flash",
     },
-    typingDelay: {
-        type: OptionType.SELECT,
-        description: "Response delay and typing simulation duration",
-        options: [
-            { label: "No delay (Instant)", value: 0 },
-            { label: "3 seconds (Default)", value: 3, default: true },
-            { label: "10 seconds", value: 10 },
-            { label: "20 seconds", value: 20 },
-            { label: "1 minute", value: 60 },
-            { label: "3 minutes", value: 180 },
-        ],
-        default: 3,
-    },
     tone: {
         type: OptionType.SELECT,
         description: "Tone and attitude for AI replies",
