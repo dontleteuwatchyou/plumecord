@@ -106,8 +106,9 @@ function cleanAiOutput(text: string): string {
     return cleaned;
 }
 
-async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model: string): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model = "gemini-1.5-flash"): Promise<string> {
+    const cleanModel = (!model || model.includes("2.5") || model.includes("2.0")) ? "gemini-1.5-flash" : model;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -130,9 +131,9 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
 
     if (!res.ok) {
         const body = await res.text().catch(() => "");
-        // If 404 on model, fallback to gemini-2.0-flash or gemini-1.5-flash
-        if (res.status === 404 && model !== "gemini-2.0-flash" && model !== "gemini-1.5-flash") {
-            return callGeminiApi(systemPrompt, userPrompt, apiKey, "gemini-2.0-flash");
+        // If 404 or 400 on requested model and it wasn't gemini-1.5-flash, fallback to gemini-1.5-flash
+        if (cleanModel !== "gemini-1.5-flash" && (res.status === 404 || res.status === 400)) {
+            return callGeminiApi(systemPrompt, userPrompt, apiKey, "gemini-1.5-flash");
         }
         throw new Error(`Google Gemini error (${res.status}): ${body.slice(0, 160)}`);
     }
@@ -345,7 +346,7 @@ Compose the user's reply message now:`;
         let reply = "";
         if (provider === "gemini") {
             const geminiKey = settings.store.geminiApiKey?.trim();
-            const model = settings.store.geminiModel || "gemini-2.5-flash";
+            const model = settings.store.geminiModel || "gemini-1.5-flash";
             reply = await callGeminiApi(systemPrompt, userPrompt, geminiKey, model);
         } else {
             reply = await groqChat({
