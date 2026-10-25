@@ -120,18 +120,21 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-    overflow-y: auto;
+    overflow-y: auto !important;
     overflow-x: hidden;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
     flex: 1 1 auto;
     min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .gc-popover-divider {
     height: 1px;
     background: var(--border-subtle, rgba(255, 255, 255, 0.08));
     margin: 2px 0;
+    flex-shrink: 0 !important;
 }
 
 /* Dropdown */
@@ -140,6 +143,7 @@
     flex-direction: column;
     gap: 5px;
     position: relative;
+    flex-shrink: 0 !important;
 }
 
 .gc-dropdown-label {
@@ -266,6 +270,7 @@
     width: 100%;
     box-sizing: border-box;
     transition: background-color 0.15s;
+    flex-shrink: 0 !important;
 }
 .gc-form-switch:hover {
     background: var(--background-secondary-alt, #1e1f22);
@@ -281,6 +286,7 @@
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
     box-sizing: border-box;
+    flex-shrink: 0 !important;
 }
 .gc-delay-info {
     display: flex;
@@ -323,6 +329,7 @@
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     border-radius: 8px;
     box-sizing: border-box;
+    flex-shrink: 0 !important;
 }
 .gc-reset-btn {
     height: 24px !important;
@@ -348,6 +355,7 @@
     white-space: nowrap !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
+    flex-shrink: 0 !important;
 }
 
 .gc-section-label {
@@ -362,12 +370,15 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    max-height: 220px;
+    min-height: 120px;
+    max-height: 280px;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 2px 2px;
+    flex-shrink: 0 !important;
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
+    overscroll-behavior: auto;
 }
 .gc-empty {
     text-align: center;
@@ -385,6 +396,7 @@
     border-radius: 8px;
     transition: all 0.15s ease;
     box-sizing: border-box;
+    flex-shrink: 0 !important;
 }
 .gc-account:hover {
     background: var(--background-secondary-alt, #1e1f22);
@@ -489,6 +501,7 @@
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     cursor: pointer;
     transition: background-color 0.15s;
+    flex-shrink: 0 !important;
 }
 .gc-importer-card:hover {
     background: var(--background-secondary-alt, #1e1f22);
@@ -510,6 +523,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    flex-shrink: 0 !important;
 }
 .gc-server-alert-title {
     font-size: 12px;

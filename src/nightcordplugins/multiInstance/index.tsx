@@ -10,10 +10,10 @@ import { addHeaderBarButton, HeaderBarButton, removeHeaderBarButton } from "@api
 import { DataStore } from "@api/index";
 import { definePluginSettings } from "@api/Settings";
 import { Button } from "@components/Button";
-import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, openModal } from "@utils/modal";
+import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
 import definePlugin, { OptionType, PluginNative } from "@utils/types";
 import { findByProps, findByPropsSilent, findStore, waitFor } from "@webpack";
-import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, TextInput, Toasts, UserStore } from "@webpack/common";
+import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, Text, TextInput, Toasts, Tooltip, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
 import { getAccounts as getTokenImporterAccounts } from "../tokenImporter";
@@ -1522,145 +1522,110 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
     };
 
     return (
-        <ModalRoot {...rootProps} size="medium" className="container__8a031 size-md__8a031 nc-mi-modal-container">
-            <header className="section__8a031 header__8a031 nc-mi-header">
-                <div data-align="stretch" data-justify="start" data-direction="vertical" data-wrap="false" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8, 8px)", padding: 0 }}>
-                    <div className="headerLayout__8a031 nc-mi-header-layout">
-                        <div className="headerMain__8a031">
-                            <h1 className="heading-lg/semibold_cf4812 defaultColor__5345c headerTitle__8a031 nc-mi-title" style={{ color: "var(--text-strong, #f2f3f5)" }}>
-                                {t("Multi Accounts")}
-                            </h1>
-                        </div>
-                        <div className="headerTrailing__8a031">
-                            <button
-                                className="button_a22cb0 md_a22cb0 icon-only_a22cb0 nc-mi-close-btn"
-                                type="button"
-                                aria-label="Close"
-                                onClick={rootProps.onClose}
-                            >
-                                <div className="buttonChildrenWrapper_a22cb0">
-                                    <div className="buttonChildren_a22cb0">
-                                        <svg className="icon_a22cb0" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                                            <path fill="currentColor" d="M19.3 20.7a1 1 0 0 0 1.4-1.4L13.42 12l7.3-7.3a1 1 0 0 0-1.42-1.4L12 10.58l-7.3-7.3a1 1 0 0 0-1.4 1.42L10.58 12l-7.3 7.3a1 1 0 1 0 1.42 1.4L12 13.42l7.3 7.3Z"></path>
-                                        </svg>
-                                    </div>
-                                </div>
-                            </button>
-                        </div>
+        <ModalRoot {...rootProps} size={ModalSize.MEDIUM} className="nc-mi-modal-container">
+            <ModalHeader separator={false} className="nc-mi-header">
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 }}>
+                    <div className="nc-mi-header-layout">
+                        <Forms.FormTitle tag="h2" className="nc-mi-title" style={{ margin: 0 }}>
+                            {t("Multi Accounts")}
+                        </Forms.FormTitle>
+                        <ModalCloseButton onClick={rootProps.onClose} />
                     </div>
-                    <div className="headerSubtitleWrapper__8a031">
-                        <div className="text-md/normal_cf4812 headerSubtitle__8a031 nc-mi-subtitle" style={{ color: "var(--text-subtle, #949ba4)" }}>
-                            {t("Switch accounts, sign in, sign out, go wild.")}
-                        </div>
-                    </div>
+                    <Text variant="text-sm/normal" color="text-muted" className="nc-mi-subtitle">
+                        {t("Switch accounts, sign in, sign out, go wild.")}
+                    </Text>
                 </div>
-            </header>
+            </ModalHeader>
 
-            <div className="body__8a031 nc-mi-body">
-                <main className="bodyInner__8a031">
-                    <div className="list__920b8 nc-mi-list">
-                        {allAccounts.length === 0 ? (
-                            <div className="mi-empty">
-                                {t("No accounts found.")}
-                            </div>
-                        ) : allAccounts.map((acc, index) => {
-                            const isCurrent = acc.id === currentUser?.id;
-                            const isOpen = openInstances.includes(acc.id);
-                            return (
-                                <React.Fragment key={acc.id}>
-                                    {index > 0 && <div role="separator" className="separator__920b8 nc-mi-separator" />}
-                                    <div
-                                        className={`accountCard__920b8 nc-mi-account-card${isCurrent ? " nc-mi-account-card--active" : ""}`}
-                                        onContextMenu={e => openCtx(e, acc)}
-                                    >
-                                        <div className="userDetails__920b8 nc-mi-user-details">
-                                            <div
-                                                className="wrapper__44b0c nc-mi-avatar-wrapper"
-                                                style={{
-                                                    width: 40,
-                                                    height: 40
-                                                }}
-                                            >
-                                                <AccountAvatar url={acc.avatar} name={acc.username} />
-                                            </div>
-                                            <div className="usernameSection__920b8 nc-mi-user-section">
-                                                <div className="username__920b8 nc-mi-username">
-                                                    <div className="lineClamp1__4bd52 text-md/semibold_cf4812" style={{ color: "var(--text-strong, #f2f3f5)" }}>
-                                                        {acc.username}
-                                                    </div>
-                                                </div>
-                                                {isCurrent ? (
-                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-active" style={{ color: "var(--text-feedback-positive, #23a55a)" }}>
-                                                        {t("Active account")}
-                                                    </div>
-                                                ) : isOpen ? (
-                                                    <div className="text-sm/semibold_cf4812 hintText__920b8 nc-mi-hint-open" style={{ color: "var(--brand-500, #5865f2)", display: "flex", alignItems: "center", gap: 4 }}>
-                                                        <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "var(--brand-500, #5865f2)" }} />
+            <ModalContent className="nc-mi-content">
+                <div className="nc-mi-list">
+                    {allAccounts.length === 0 ? (
+                        <div className="mi-empty">
+                            {t("No accounts found.")}
+                        </div>
+                    ) : allAccounts.map((acc, index) => {
+                        const isCurrent = acc.id === currentUser?.id;
+                        const isOpen = openInstances.includes(acc.id);
+                        return (
+                            <React.Fragment key={acc.id}>
+                                {index > 0 && <div role="separator" className="nc-mi-separator" />}
+                                <div
+                                    className={`nc-mi-account-card${isCurrent ? " nc-mi-account-card--active" : ""}`}
+                                    onContextMenu={e => openCtx(e, acc)}
+                                >
+                                    <div className="nc-mi-user-details">
+                                        <div className="nc-mi-avatar-wrapper" style={{ width: 40, height: 40 }}>
+                                            <AccountAvatar url={acc.avatar} name={acc.username} />
+                                        </div>
+                                        <div className="nc-mi-user-section">
+                                            <Text variant="text-md/semibold" color="header-primary" className="nc-mi-username">
+                                                {acc.username}
+                                            </Text>
+                                            {isCurrent ? (
+                                                <Text variant="text-sm/semibold" className="nc-mi-hint-active" style={{ color: "var(--text-feedback-positive, #23a55a)" }}>
+                                                    {t("Active account")}
+                                                </Text>
+                                            ) : isOpen ? (
+                                                <div className="nc-mi-hint-open" style={{ color: "var(--brand-500, #5865f2)", display: "flex", alignItems: "center", gap: 4 }}>
+                                                    <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: "var(--brand-500, #5865f2)" }} />
+                                                    <Text variant="text-sm/semibold" style={{ color: "var(--brand-500, #5865f2)" }}>
                                                         {t("Instance running")}
-                                                    </div>
-                                                ) : (
-                                                    !acc.hasToken ? (
-                                                        <div className="nc-mi-hint-sub">
-                                                            {t("Requires login")}
-                                                        </div>
-                                                    ) : null
-                                                )}
-                                            </div>
-                                            <div className="userActions__920b8 nc-mi-user-actions">
-                                                {!isCurrent && (
-                                                    <button
-                                                        className="button_a22cb0 md_a22cb0 secondary_a22cb0 hasText_a22cb0 nc-mi-switch-btn"
-                                                        type="button"
-                                                        onClick={() => handleNewDetached(acc)}
-                                                    >
-                                                        <div className="buttonChildrenWrapper_a22cb0">
-                                                            <div className="buttonChildren_a22cb0">
-                                                                <span className="lineClamp1__4bd52 text-md/medium_cf4812">{t("Switch")}</span>
-                                                            </div>
-                                                        </div>
-                                                    </button>
-                                                )}
-                                                <button
-                                                    className="button_a22cb0 md_a22cb0 icon-only_a22cb0 nc-mi-options-btn"
-                                                    type="button"
-                                                    aria-label="More Options"
-                                                    onClick={e => openCtx(e, acc)}
+                                                    </Text>
+                                                </div>
+                                            ) : (
+                                                !acc.hasToken ? (
+                                                    <Text variant="text-xs/normal" color="text-muted" className="nc-mi-hint-sub">
+                                                        {t("Requires login")}
+                                                    </Text>
+                                                ) : null
+                                            )}
+                                        </div>
+                                        <div className="nc-mi-user-actions">
+                                            {!isCurrent && (
+                                                <Button
+                                                    size="small"
+                                                    variant="secondary"
+                                                    className="nc-mi-switch-btn"
+                                                    onClick={() => handleNewDetached(acc)}
                                                 >
-                                                    <div className="buttonChildrenWrapper_a22cb0">
-                                                        <div className="buttonChildren_a22cb0">
-                                                            <svg className="icon_a22cb0" aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
-                                                                <path fill="currentColor" fillRule="evenodd" d="M4 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm8 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" clipRule="evenodd"></path>
-                                                            </svg>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            </div>
+                                                    {t("Switch")}
+                                                </Button>
+                                            )}
+                                            <Tooltip text={t("More Options")}>
+                                                {(props: any) => (
+                                                    <Button
+                                                        {...props}
+                                                        size="iconOnly"
+                                                        variant="secondary"
+                                                        className="nc-mi-options-btn"
+                                                        onClick={(e: React.MouseEvent) => openCtx(e, acc)}
+                                                        aria-label={t("More Options")}
+                                                    >
+                                                        <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24">
+                                                            <path fill="currentColor" fillRule="evenodd" d="M4 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm8 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </Button>
+                                                )}
+                                            </Tooltip>
                                         </div>
                                     </div>
-                                </React.Fragment>
-                            );
-                        })}
-                    </div>
-                </main>
-            </div>
-
-            <footer className="actionBar__8a031 section__8a031 nc-mi-footer">
-                <div className="actionBarTrailing__8a031 actionBarTrailingFullWidth__8a031" style={{ width: "100%" }}>
-                    <div data-align="stretch" data-justify="start" data-direction="horizontal" data-wrap="true" data-full-width="true" className="stack_dbd263" style={{ gap: "var(--space-8, 8px)", padding: 0, width: "100%" }}>
-                        <button
-                            className="button_a22cb0 md_a22cb0 secondary_a22cb0 hasText_a22cb0 fullWidth_a22cb0 nc-mi-add-btn"
-                            type="button"
-                            onClick={handleAddAccount}
-                        >
-                            <div className="buttonChildrenWrapper_a22cb0">
-                                <div className="buttonChildren_a22cb0">
-                                    <span className="lineClamp1__4bd52 text-md/medium_cf4812">{t("Add an account")}</span>
                                 </div>
-                            </div>
-                        </button>
-                    </div>
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
-            </footer>
+            </ModalContent>
+
+            <ModalFooter className="nc-mi-footer">
+                <Button
+                    variant="secondary"
+                    className="nc-mi-add-btn"
+                    onClick={handleAddAccount}
+                    style={{ width: "100%" }}
+                >
+                    {t("Add an account")}
+                </Button>
+            </ModalFooter>
         </ModalRoot>
     );
 }

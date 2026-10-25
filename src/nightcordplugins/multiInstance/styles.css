@@ -3,19 +3,21 @@
 .nc-mi-modal-container {
     background-color: var(--modal-background, #313338) !important;
     border-radius: 12px !important;
-    padding: 24px !important;
     box-shadow: var(--elevation-high, 0 8px 32px rgba(0,0,0,0.6)) !important;
     display: flex !important;
     flex-direction: column !important;
     max-width: 520px !important;
     width: 100% !important;
+    overflow: hidden !important;
 }
 
 .nc-mi-header {
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 16px;
-    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 20px 24px 16px 24px !important;
+    border-bottom: none !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
 }
 
 .nc-mi-header-layout {
@@ -61,6 +63,15 @@
 }
 
 /* ── Accounts List Container ── */
+
+.nc-mi-content {
+    padding: 0 24px 16px 24px !important;
+    max-height: 420px !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thin-thumb, rgba(255, 255, 255, 0.2)) transparent;
+}
 
 .nc-mi-body {
     max-height: 380px;
@@ -240,19 +251,24 @@
 /* ── Footer Action Bar ── */
 
 .nc-mi-footer {
-    width: 100%;
-    display: flex;
-    padding: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    padding: 16px 24px 20px 24px !important;
+    background: transparent !important;
+    border-top: none !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
 }
 
 .nc-mi-add-btn {
-    width: 100%;
-    height: 38px;
+    width: 100% !important;
+    height: 38px !important;
+    min-height: 38px !important;
     border-radius: 4px;
     background: var(--button-secondary-background, #4e5058);
     color: #ffffff;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 14px !important;
+    font-weight: 500 !important;
     border: none;
     cursor: pointer;
     display: flex;

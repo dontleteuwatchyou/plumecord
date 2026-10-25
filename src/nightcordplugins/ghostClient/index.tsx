@@ -1825,7 +1825,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
                 <div className="gc-popover-divider" />
 
                 {/* Accounts list header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 2, flexShrink: 0 }}>
                     <Text variant="eyebrow" color="header-secondary">
                         {t("Accounts (Native + Imported)")}
                     </Text>
@@ -1858,7 +1858,7 @@ function GhostPopover({ onClose, anchorRect }: { onClose: () => void; anchorRect
 
                 {/* Batch controls */}
                 {accounts.length > 0 && (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, flexShrink: 0 }}>
                         <Button
                             size="small"
                             variant={accounts.some(a => ghostStates.get(a.userId)?.muted) ? "dangerPrimary" : "secondary"}
