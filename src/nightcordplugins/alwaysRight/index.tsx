@@ -33,11 +33,12 @@ export const settings = definePluginSettings({
         type: OptionType.SELECT,
         description: "Google Gemini Model",
         options: [
-            { label: "Gemini 1.5 Flash (Recommended)", value: "gemini-1.5-flash", default: true },
+            { label: "Gemini 2.0 Flash (Recommended)", value: "gemini-2.0-flash", default: true },
+            { label: "Gemini 2.5 Flash (Latest)", value: "gemini-2.5-flash" },
+            { label: "Gemini 1.5 Flash (Legacy)", value: "gemini-1.5-flash" },
             { label: "Gemini 1.5 Pro (Deep Reasoning)", value: "gemini-1.5-pro" },
-            { label: "Gemini 1.5 Flash-8B (Ultra Fast)", value: "gemini-1.5-flash-8b" },
         ],
-        default: "gemini-1.5-flash",
+        default: "gemini-2.0-flash",
     },
     tone: {
         type: OptionType.SELECT,

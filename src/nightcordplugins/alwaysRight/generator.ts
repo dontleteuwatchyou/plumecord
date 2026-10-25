@@ -258,35 +258,95 @@ function cleanAiOutput(text: string): string {
     return cleaned;
 }
 
-async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model = "gemini-1.5-flash"): Promise<string> {
-    const cleanModel = (!model || model.includes("2.5") || model.includes("2.0")) ? "gemini-1.5-flash" : model;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            systemInstruction: {
-                parts: [{ text: systemPrompt }]
-            },
-            contents: [
-                {
-                    role: "user",
-                    parts: [{ text: userPrompt }]
+let cachedGeminiModel: string | null = null;
+
+async function resolveGeminiModel(apiKey: string, requestedModel?: string): Promise<string> {
+    if (cachedGeminiModel && !requestedModel) {
+        return cachedGeminiModel;
+    }
+
+    try {
+        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+        const listRes = await fetch(listUrl);
+        if (listRes.ok) {
+            const data = await listRes.json();
+            if (Array.isArray(data?.models)) {
+                const supported = data.models
+                    .filter((m: any) => Array.isArray(m?.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+                    .map((m: any) => m.name.replace(/^models\//, ""));
+
+                if (requestedModel && supported.includes(requestedModel)) {
+                    cachedGeminiModel = requestedModel;
+                    return requestedModel;
                 }
-            ],
-            generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: settings.store.responseFormat === "long" ? 1500 : 800,
+
+                // Prefer modern 2.0 / 2.5 flash models
+                const best =
+                    supported.find((m: string) => m.includes("2.0-flash") || m.includes("2.5-flash")) ||
+                    supported.find((m: string) => m.includes("flash")) ||
+                    supported.find((m: string) => m.includes("pro")) ||
+                    supported[0];
+
+                if (best) {
+                    cachedGeminiModel = best;
+                    return best;
+                }
             }
-        })
-    });
+        }
+    } catch (e) {
+        console.warn("[AlwaysRight] Failed to fetch Gemini model list:", e);
+    }
+
+    return requestedModel || "gemini-2.0-flash";
+}
+
+async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model?: string): Promise<string> {
+    let targetModel = await resolveGeminiModel(apiKey, model || settings.store.geminiModel);
+
+    const makeRequest = async (mod: string) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        return fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                contents: [
+                    {
+                        role: "user",
+                        parts: [{ text: userPrompt }]
+                    }
+                ],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: settings.store.responseFormat === "long" ? 1500 : 800,
+                }
+            })
+        });
+    };
+
+    let res = await makeRequest(targetModel);
+
+    // If 404 or 400 on requested model, try fallbacks
+    if (!res.ok && (res.status === 404 || res.status === 400)) {
+        const fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-pro"]
+            .filter(m => m !== targetModel);
+
+        for (const fb of fallbacks) {
+            console.warn(`[AlwaysRight] Model ${targetModel} failed (${res.status}), trying fallback: ${fb}`);
+            const fbRes = await makeRequest(fb);
+            if (fbRes.ok) {
+                res = fbRes;
+                targetModel = fb;
+                cachedGeminiModel = fb;
+                break;
+            }
+        }
+    }
 
     if (!res.ok) {
         const body = await res.text().catch(() => "");
-        // If 404 or 400 on requested model and it wasn't gemini-1.5-flash, fallback to gemini-1.5-flash
-        if (cleanModel !== "gemini-1.5-flash" && (res.status === 404 || res.status === 400)) {
-            return callGeminiApi(systemPrompt, userPrompt, apiKey, "gemini-1.5-flash");
-        }
         throw new Error(`Google Gemini error (${res.status}): ${body.slice(0, 160)}`);
     }
 
