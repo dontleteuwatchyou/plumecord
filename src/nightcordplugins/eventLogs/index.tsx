@@ -12,10 +12,77 @@ import { ModalCloseButton,ModalContent, ModalHeader, ModalRoot, openModal } from
 import definePlugin, { OptionType } from "@utils/types";
 import { definePluginSettings } from "@api/Settings";
 import { findByProps, findByPropsLazy } from "@webpack";
-import { ChannelStore, ContextMenuApi, FluxDispatcher, Forms, GuildStore, IconUtils, Menu, MessageStore, NavigationRouter, React, Select, SelectedChannelStore, showToast, Toasts, useCallback, useEffect, useMemo, UserStore, useState } from "@webpack/common";
+import { ChannelStore, ContextMenuApi, FluxDispatcher, Forms, GuildStore, IconUtils, Menu, MessageStore, NavigationRouter, React, RestAPI, Select, SelectedChannelStore, showToast, Toasts, useCallback, useEffect, useMemo, UserStore, useState } from "@webpack/common";
 import { Switch } from "@components/Switch";
 
 import { t, useTranslation } from "../autoTranslateNightcord";
+
+const recentlyRemovedByMe = new Map<string, number>();
+let restoreRestDel: (() => void) | null = null;
+let restoreRelActions: (() => void) | null = null;
+
+function markSelfRemoved(userId: string) {
+    if (!userId) return;
+    recentlyRemovedByMe.set(String(userId), Date.now());
+    const now = Date.now();
+    for (const [id, time] of recentlyRemovedByMe.entries()) {
+        if (now - time > 120000) recentlyRemovedByMe.delete(id);
+    }
+}
+
+function hookRelationshipRemoval() {
+    try {
+        if (RestAPI && typeof RestAPI.del === "function" && !(RestAPI.del as any).__nc_hooked) {
+            const origDel = RestAPI.del;
+            const hookedDel = function (options: any, ...args: any[]) {
+                try {
+                    const url = typeof options === "string" ? options : options?.url;
+                    if (url && typeof url === "string") {
+                        const match = url.match(/\/users\/@me\/relationships\/(\d+)/);
+                        if (match && match[1]) {
+                            markSelfRemoved(match[1]);
+                        }
+                    }
+                } catch { }
+                return origDel.apply(this, [options, ...args]);
+            };
+            hookedDel.__nc_hooked = true;
+            RestAPI.del = hookedDel;
+            restoreRestDel = () => {
+                if (RestAPI.del === hookedDel) RestAPI.del = origDel;
+            };
+        }
+    } catch { }
+
+    try {
+        const relActions = findByProps("removeRelationship", "addRelationship")
+            || findByProps("removeFriend", "addRelationship");
+        if (relActions) {
+            const origRemRel = relActions.removeRelationship;
+            const origRemFriend = relActions.removeFriend;
+            if (typeof origRemRel === "function" && !(origRemRel as any).__nc_hooked) {
+                const hookedRemRel = function (userId: string, ...args: any[]) {
+                    if (userId) markSelfRemoved(String(userId));
+                    return origRemRel.apply(this, [userId, ...args]);
+                };
+                hookedRemRel.__nc_hooked = true;
+                relActions.removeRelationship = hookedRemRel;
+            }
+            if (typeof origRemFriend === "function" && !(origRemFriend as any).__nc_hooked) {
+                const hookedRemFriend = function (userId: string, ...args: any[]) {
+                    if (userId) markSelfRemoved(String(userId));
+                    return origRemFriend.apply(this, [userId, ...args]);
+                };
+                hookedRemFriend.__nc_hooked = true;
+                relActions.removeFriend = hookedRemFriend;
+            }
+            restoreRelActions = () => {
+                if (origRemRel) relActions.removeRelationship = origRemRel;
+                if (origRemFriend) relActions.removeFriend = origRemFriend;
+            };
+        }
+    } catch { }
+}
 
 // Stratégie de navigation alternative via Dispatcher
 const navigateTo = (path: string) => {
@@ -424,7 +491,14 @@ function isVideo(att: LogAttachment): boolean {
 }
 
 function LogRow({ e, onClose }: { e: LogEntry; onClose?: () => void; }) {
-    const cfg = CFG[e.type] ?? { label: e.type, color: "#747f8d" };
+    let cfg = CFG[e.type] ?? { label: e.type, color: "#747f8d" };
+    if (e.type === "friend_remove") {
+        if (e.extra === "them" || e.content === "Removed you as friend" || e.content === "Removed you") {
+            cfg = { label: "Removed you", color: "#ed4245" };
+        } else if (e.extra === "self" || e.content === "Removed by you") {
+            cfg = { label: "Friend -", color: "#ed4245" };
+        }
+    }
 
     const onDoubleClick = () => {
         if (!e.channelId) return;
@@ -984,7 +1058,11 @@ function LogsModal({ rootProps }: { rootProps: any; }) {
     const saveAsTxt = useCallback(() => {
         try {
             const content = filtered.map(l => {
-                const type = CFG[l.type]?.label || l.type;
+                let type = CFG[l.type]?.label || l.type;
+                if (l.type === "friend_remove") {
+                    if (l.extra === "them" || l.content === "Removed you as friend" || l.content === "Removed you") type = "Removed you";
+                    else if (l.extra === "self" || l.content === "Removed by you") type = "Friend -";
+                }
                 const author = l.authorName || "Unknown";
                 const authorId = l.authorId ? ` (${l.authorId})` : "";
                 const channel = l.channelName ? `#${l.channelName}` : "";
@@ -1392,8 +1470,20 @@ function subscribeToEvents() {
     });
     sub("RELATIONSHIP_REMOVE", d => {
         const b = relUser(d); const t_type = relType(d);
-        const [type, content]: [LogType, string] = (t_type === 3 || t_type === 4) ? ["friend_request_cancel", t("Request cancelled")] : t_type === 2 ? ["unblock", t("Unblocked")] : ["friend_remove", t("Friend removed")];
-        pushLog({ type, content, ...b });
+        if (t_type === 3 || t_type === 4) {
+            pushLog({ type: "friend_request_cancel", content: t("Request cancelled"), ...b });
+        } else if (t_type === 2) {
+            pushLog({ type: "unblock", content: t("Unblocked"), ...b });
+        } else {
+            const userId = b.authorId;
+            const isSelf = Boolean(userId && recentlyRemovedByMe.has(userId) && (Date.now() - (recentlyRemovedByMe.get(userId) || 0) < 60000));
+            if (isSelf) {
+                recentlyRemovedByMe.delete(userId);
+                pushLog({ type: "friend_remove", content: t("Removed by you"), extra: "self", ...b });
+            } else {
+                pushLog({ type: "friend_remove", content: t("Removed you as friend"), extra: "them", ...b });
+            }
+        }
     });
     sub("GUILD_MEMBER_ADD", d => {
         if (!isGuildLoggingEnabled(d.guildId)) return;
@@ -1504,6 +1594,7 @@ export default definePlugin({
 
     start() {
         void loadGuildConfigs();
+        hookRelationshipRemoval();
         // Initialize current voice channel on start
         try {
             const vcId = (SelectedChannelStore as any)?.getVoiceChannelId?.();
@@ -1521,6 +1612,9 @@ export default definePlugin({
         window.addEventListener("beforeunload", savePersistLogs);
     },
     stop() {
+        if (restoreRestDel) { restoreRestDel(); restoreRestDel = null; }
+        if (restoreRelActions) { restoreRelActions(); restoreRelActions = null; }
+        recentlyRemovedByMe.clear();
         saveGuildConfigs();
         window.removeEventListener("beforeunload", savePersistLogs);
         unsubs.forEach(fn => fn()); unsubs = [];
