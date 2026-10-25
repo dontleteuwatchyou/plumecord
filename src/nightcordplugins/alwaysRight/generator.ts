@@ -262,13 +262,19 @@ function cleanAiOutput(text: string): string {
 let cachedGeminiModel: string | null = null;
 
 async function resolveGeminiModel(apiKey: string, requestedModel?: string): Promise<string> {
+    const cleanKey = apiKey.trim();
     if (cachedGeminiModel && !requestedModel) {
         return cachedGeminiModel;
     }
 
     try {
-        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
-        const listRes = await fetch(listUrl);
+        const listUrl = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=100";
+        const listRes = await fetch(listUrl, {
+            headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": cleanKey
+            }
+        });
         if (listRes.ok) {
             const data = await listRes.json();
             if (Array.isArray(data?.models)) {
@@ -281,9 +287,10 @@ async function resolveGeminiModel(apiKey: string, requestedModel?: string): Prom
                     return requestedModel;
                 }
 
-                // Prefer modern 2.0 / 2.5 flash models
+                // Prefer modern 2.0 / 1.5 flash models
                 const best =
-                    supported.find((m: string) => m.includes("2.0-flash") || m.includes("2.5-flash")) ||
+                    supported.find((m: string) => m.includes("2.0-flash")) ||
+                    supported.find((m: string) => m.includes("1.5-flash")) ||
                     supported.find((m: string) => m.includes("flash")) ||
                     supported.find((m: string) => m.includes("pro")) ||
                     supported[0];
@@ -302,41 +309,64 @@ async function resolveGeminiModel(apiKey: string, requestedModel?: string): Prom
 }
 
 async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: string, model?: string): Promise<string> {
-    let targetModel = await resolveGeminiModel(apiKey, model || settings.store.geminiModel);
+    const cleanKey = apiKey.trim();
+    let targetModel = await resolveGeminiModel(cleanKey, model || settings.store.geminiModel);
 
-    const makeRequest = async (mod: string) => {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const makeRequest = async (mod: string, withTools: boolean = true) => {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent`;
+        const bodyPayload: any = {
+            systemInstruction: {
+                parts: [{ text: systemPrompt }]
+            },
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: userPrompt }]
+                }
+            ],
+            generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: settings.store.responseFormat === "long" ? 1500 : 800,
+            }
+        };
+
+        // Enable live Google Search Grounding for real-time web facts, dates, links & answers
+        if (withTools) {
+            bodyPayload.tools = [{ googleSearch: {} }];
+        }
+
         return fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-                contents: [
-                    {
-                        role: "user",
-                        parts: [{ text: userPrompt }]
-                    }
-                ],
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: settings.store.responseFormat === "long" ? 1500 : 800,
-                }
-            })
+            headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": cleanKey
+            },
+            body: JSON.stringify(bodyPayload)
         });
     };
 
-    let res = await makeRequest(targetModel);
+    let res = await makeRequest(targetModel, true);
 
-    // If 404 or 400 on requested model, try fallbacks
+    // If failed, retry without search tools (some preview or older models reject tools)
+    if (!res.ok) {
+        console.warn(`[AlwaysRight] Gemini with googleSearch returned ${res.status}, retrying without tools...`);
+        const retryRes = await makeRequest(targetModel, false);
+        if (retryRes.ok) {
+            res = retryRes;
+        }
+    }
+
+    // If still 404 or 400 on requested model, try standard fallbacks
     if (!res.ok && (res.status === 404 || res.status === 400)) {
-        const fallbacks = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-pro"]
+        const fallbacks = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
             .filter(m => m !== targetModel);
 
         for (const fb of fallbacks) {
             console.warn(`[AlwaysRight] Model ${targetModel} failed (${res.status}), trying fallback: ${fb}`);
-            const fbRes = await makeRequest(fb);
+            let fbRes = await makeRequest(fb, true);
+            if (!fbRes.ok) {
+                fbRes = await makeRequest(fb, false);
+            }
             if (fbRes.ok) {
                 res = fbRes;
                 targetModel = fb;
@@ -352,11 +382,12 @@ async function callGeminiApi(systemPrompt: string, userPrompt: string, apiKey: s
     }
 
     const data = await res.json().catch(() => null);
-    const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (typeof content !== "string" || !content.trim()) {
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const content = Array.isArray(parts) ? parts.map((p: any) => p?.text || "").join("").trim() : "";
+    if (!content) {
         throw new Error(t("The AI generated an empty response."));
     }
-    return content.trim();
+    return content;
 }
 
 export async function generateAndInsertReply(channel: any, quickGuidance?: string, explicitTargetMessage?: any): Promise<void> {
