@@ -17,6 +17,11 @@ const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Show notifications on action",
         default: true
+    },
+    clearMessages: {
+        type: OptionType.BOOLEAN,
+        description: "Clear all your messages in the group before closing",
+        default: false
     }
 });
 
@@ -26,6 +31,65 @@ const CloseGroupIcon = () => (
         <path d="M19.7 3.3a1 1 0 0 0-1.4 0L17 4.6l-1.3-1.3a1 1 0 1 0-1.4 1.4L15.6 6l-1.3 1.3a1 1 0 0 0 1.4 1.4L17 7.4l1.3 1.3a1 1 0 0 0 1.4-1.4L18.4 6l1.3-1.3a1 1 0 0 0 0-1.4z" />
     </svg>
 );
+
+async function clearUserMessagesInGroup(channelId: string, currentUserId: string): Promise<number> {
+    let deletedCount = 0;
+    let lastMessageId: string | undefined;
+    let hasMore = true;
+
+    while (hasMore) {
+        let messages: any[] = [];
+        try {
+            const url = lastMessageId
+                ? `/channels/${channelId}/messages?limit=100&before=${lastMessageId}`
+                : `/channels/${channelId}/messages?limit=100`;
+            const res = await RestAPI.get({ url });
+            messages = Array.isArray(res?.body) ? res.body : [];
+        } catch {
+            break;
+        }
+
+        if (!messages.length) break;
+
+        const myMessages = messages.filter((m: any) => m?.author?.id === currentUserId);
+
+        for (const msg of myMessages) {
+            let attempts = 0;
+            let success = false;
+            while (attempts < 3 && !success) {
+                attempts++;
+                try {
+                    const res = await RestAPI.del({ url: `/channels/${channelId}/messages/${msg.id}` });
+                    if (res?.ok || res?.status === 204 || res?.status === 200 || res?.status === 404) {
+                        success = true;
+                        if (res?.status !== 404) deletedCount++;
+                    } else if (res?.status === 429) {
+                        const retryAfter = Number(res?.body?.retry_after || 1);
+                        await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                    } else {
+                        success = true;
+                    }
+                } catch (err: any) {
+                    const status = err?.status || err?.statusCode;
+                    if (status === 429 || err?.body?.retry_after) {
+                        const retryAfter = Number(err?.body?.retry_after || 1);
+                        await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                    } else {
+                        success = true;
+                    }
+                }
+            }
+            await new Promise(r => setTimeout(r, 120));
+        }
+
+        lastMessageId = messages[messages.length - 1]?.id;
+        if (messages.length < 100) {
+            hasMore = false;
+        }
+    }
+
+    return deletedCount;
+}
 
 async function kickAllMembersFromGroup(channelId: string) {
     const channel = ChannelStore.getChannel(channelId);
@@ -51,60 +115,82 @@ async function kickAllMembersFromGroup(channelId: string) {
         .map(u => (typeof u === "string" ? u : (u?.id || u?.userId)))
         .filter(id => Boolean(id) && String(id) !== String(currentUserId));
 
-    if (targetUserIds.length === 0) {
+    if (targetUserIds.length === 0 && !settings.store.clearMessages) {
         try { showToast(t("No members to kick"), Toasts.Type.MESSAGE); } catch {}
         return;
     }
 
-    showToast(t("Closing group and removing members..."), Toasts.Type.MESSAGE);
+    const startToast = settings.store.clearMessages
+        ? (targetUserIds.length > 0
+            ? t("Closing group, kicking members and deleting your messages...")
+            : t("Closing group and deleting your messages..."))
+        : t("Closing group and removing members...");
 
-    // Iteratively kick members handling Discord rate limits cleanly
-    let kickedCount = 0;
-    for (const userId of targetUserIds) {
-        let attempts = 0;
-        let success = false;
-        while (attempts < 3 && !success) {
-            attempts++;
-            try {
-                const res = await RestAPI.del({ url: `/channels/${channelId}/recipients/${userId}` });
-                if (res?.ok || res?.status === 204 || res?.status === 200) {
-                    success = true;
-                    kickedCount++;
-                } else if (res?.status === 429) {
-                    const retryAfter = Number(res?.body?.retry_after || 0.5);
-                    await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
-                } else {
-                    success = true;
-                }
-            } catch (err: any) {
-                if (err?.status === 429 || err?.body?.retry_after) {
-                    const retryAfter = Number(err?.body?.retry_after || 0.5);
-                    await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
-                } else {
-                    // Ignored if user already left
-                    success = true;
+    try { showToast(startToast, Toasts.Type.MESSAGE); } catch {}
+
+    // 1. Kick members first so they cannot read or save anything while messages are cleared
+    if (targetUserIds.length > 0) {
+        for (const userId of targetUserIds) {
+            let attempts = 0;
+            let success = false;
+            while (attempts < 3 && !success) {
+                attempts++;
+                try {
+                    const res = await RestAPI.del({ url: `/channels/${channelId}/recipients/${userId}` });
+                    if (res?.ok || res?.status === 204 || res?.status === 200) {
+                        success = true;
+                    } else if (res?.status === 429) {
+                        const retryAfter = Number(res?.body?.retry_after || 0.5);
+                        await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                    } else {
+                        success = true;
+                    }
+                } catch (err: any) {
+                    if (err?.status === 429 || err?.body?.retry_after) {
+                        const retryAfter = Number(err?.body?.retry_after || 0.5);
+                        await new Promise(r => setTimeout(r, retryAfter * 1000 + 150));
+                    } else {
+                        success = true;
+                    }
                 }
             }
+            await new Promise(r => setTimeout(r, 120));
         }
-        // Small delay between requests to prevent flooding
-        await new Promise(r => setTimeout(r, 120));
     }
 
-    // Finally, close/leave the empty group
+    // 2. Clear all messages authored by current user if setting is enabled
+    if (settings.store.clearMessages) {
+        await clearUserMessagesInGroup(channelId, currentUserId);
+    }
+
+    // 3. Finally, close/leave the group
     try {
         await RestAPI.del({ url: `/channels/${channelId}` });
     } catch {}
 
+    // 4. Notifications & Toasts
     if (settings.store.showNotifications) {
+        const notifBody = settings.store.clearMessages
+            ? (targetUserIds.length > 0
+                ? t("Group \"{name}\" closed, members removed and your messages deleted").replace("{name}", channelName)
+                : t("Group \"{name}\" closed and your messages deleted").replace("{name}", channelName))
+            : t("Group \"{name}\" closed and members removed").replace("{name}", channelName);
+
         showNotification({
             title: t("CloseGroup"),
-            body: t("Group \"{name}\" closed and members removed").replace("{name}", channelName),
+            body: notifBody,
             icon: undefined
         });
     }
 
     try {
-        showToast(t("Group closed and all members removed"), Toasts.Type.SUCCESS);
+        const endToast = settings.store.clearMessages
+            ? (targetUserIds.length > 0
+                ? t("Group closed, members removed and your messages deleted")
+                : t("Group closed and your messages deleted"))
+            : t("Group closed and all members removed");
+
+        showToast(endToast, Toasts.Type.SUCCESS);
     } catch {}
 }
 
