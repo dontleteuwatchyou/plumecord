@@ -404,6 +404,25 @@ function getStoredProgressForQuest(quest: any, taskType: SupportedTask): number 
     return 0;
 }
 
+async function syncQuestsFromServer(): Promise<void> {
+    try {
+        if (typeof fetchAndDispatchQuests === "function") {
+            await fetchAndDispatchQuests();
+            return;
+        }
+    } catch {}
+
+    try {
+        const res = await RestAPI.get({ url: "/quests/@me" });
+        if (res?.body?.quests) {
+            FluxDispatcher.dispatch({
+                type: "QUESTS_FETCH_CURRENT_QUESTS_SUCCESS",
+                quests: res.body.quests
+            });
+        }
+    } catch {}
+}
+
 export function refreshActiveQuests(): QuestItemState[] {
     const allQuests = getAllQuestsFromStore();
     const result: QuestItemState[] = [];
@@ -423,8 +442,24 @@ export function refreshActiveQuests(): QuestItemState[] {
         const taskData = taskConfig.tasks[taskType];
         const secondsNeeded = taskData?.target ?? 0;
         const storeProgress = getStoredProgressForQuest(quest, taskType);
+
+        // If quest is not completed on server, clean up any erroneous cached completion
+        if (!isCompleted) {
+            const cachedVal = questProgressCache.get(quest.id);
+            if (cachedVal != null && cachedVal >= secondsNeeded) {
+                questProgressCache.delete(quest.id);
+            }
+        }
+
         const cachedProgress = questProgressCache.get(quest.id) ?? 0;
-        const currentProgress = isCompleted ? secondsNeeded : Math.min(secondsNeeded, Math.max(storeProgress, cachedProgress));
+        let currentProgress = isCompleted ? secondsNeeded : Math.max(storeProgress, cachedProgress);
+        if (!isCompleted) {
+            // Uncompleted quests can never exceed secondsNeeded - 1 (or 99%) locally
+            currentProgress = Math.min(secondsNeeded > 0 ? secondsNeeded - 1 : 0, currentProgress);
+        } else {
+            currentProgress = secondsNeeded;
+        }
+
         const questName = quest.config.messages?.questName || quest.config.questName || quest.config.messages?.gameTitle || quest.id;
 
         result.push({
@@ -497,23 +532,27 @@ async function processVideoStep(state: QuestItemState): Promise<boolean> {
         const freshQuest = getResolvedQuestsStore()?.getQuest?.(quest.id) || quest;
         if (freshQuest?.userStatus?.completedAt || isCompletedOnServer || nextTime >= secondsNeeded) {
             try {
-                await RestAPI.post({
+                const finalRes = await RestAPI.post({
                     url: `/quests/${quest.id}/video-progress`,
                     body: { timestamp: secondsNeeded }
                 });
-            } catch {}
-
-            try {
-                if (typeof fetchAndDispatchQuests === "function") {
-                    await fetchAndDispatchQuests();
+                if (finalRes?.body?.completed_at || finalRes?.body?.user_status?.completed_at || finalRes?.body?.enrolled_quest_user_status?.completed_at) {
+                    isCompletedOnServer = true;
                 }
             } catch {}
 
+            await syncQuestsFromServer();
+
             const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
-            if (updated?.userStatus?.completedAt || isCompletedOnServer || nextTime >= secondsNeeded) {
+            if (updated?.userStatus?.completedAt || isCompletedOnServer) {
                 state.completed = true;
                 state.currentProgress = secondsNeeded;
                 questProgressCache.set(quest.id, secondsNeeded);
+            } else {
+                // Not confirmed by server yet: prevent false 100%
+                state.completed = false;
+                state.currentProgress = Math.min(secondsNeeded - 1, nextTime);
+                questProgressCache.set(quest.id, state.currentProgress);
             }
         }
 
@@ -588,7 +627,7 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
                 ?? response?.body?.user_status?.progress?.[taskType]?.value
                 ?? response?.body?.enrolled_quest_user_status?.progress?.[taskType]?.value;
             if (typeof srv === "number") newProgressValue = srv;
-            if (response?.body?.completed_at || response?.body?.user_status?.completed_at) {
+            if (response?.body?.completed_at || response?.body?.user_status?.completed_at || response?.body?.enrolled_quest_user_status?.completed_at) {
                 isCompletedOnServer = true;
             }
         } catch (err) {
@@ -605,12 +644,24 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
         } else if (Number.isFinite(freshProgress) && freshProgress > state.currentProgress) {
             state.currentProgress = Math.min(secondsNeeded, freshProgress);
         } else if (state.currentProgress < secondsNeeded) {
-            state.currentProgress = Math.min(secondsNeeded, state.currentProgress + 20);
+            state.currentProgress = Math.min(secondsNeeded - 1, state.currentProgress + 20);
         }
 
-        questProgressCache.set(quest.id, state.currentProgress);
+        if (freshQuest?.userStatus?.completedAt) {
+            isCompletedOnServer = true;
+        }
 
-        if (freshQuest?.userStatus?.completedAt || isCompletedOnServer || state.currentProgress >= secondsNeeded) {
+        // When approaching the finish line, sync fresh status from server to verify actual completion
+        if (isCompletedOnServer || state.currentProgress >= secondsNeeded - 1) {
+            await syncQuestsFromServer();
+            const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
+            if (updated?.userStatus?.completedAt) {
+                isCompletedOnServer = true;
+            }
+        }
+
+        // Only send terminal: true and mark as completed IF the server actually confirmed completion!
+        if (isCompletedOnServer) {
             try {
                 if (typeof sendHeartbeatNative === "function") {
                     await sendHeartbeatNative({
@@ -623,30 +674,22 @@ async function processHeartbeatStep(state: QuestItemState): Promise<boolean> {
                     const termBody: any = { terminal: true };
                     if (isStreamQuest && streamKey) termBody.stream_key = streamKey;
                     if (isPlayQuest && appId) termBody.application_id = appId;
-                    const res = await RestAPI.post({
+                    await RestAPI.post({
                         url: `/quests/${quest.id}/heartbeat`,
                         body: termBody
                     });
-                    if (res?.body?.completed_at || res?.body?.user_status?.completed_at) {
-                        isCompletedOnServer = true;
-                    }
                 }
             } catch {}
 
-            try {
-                if (typeof fetchAndDispatchQuests === "function") {
-                    await fetchAndDispatchQuests();
-                }
-            } catch {}
-
-            const updated = getResolvedQuestsStore()?.getQuest?.(quest.id);
-            if (updated?.userStatus?.completedAt || isCompletedOnServer || state.currentProgress >= secondsNeeded) {
-                state.completed = true;
-                state.currentProgress = secondsNeeded;
-                questProgressCache.set(quest.id, secondsNeeded);
-            }
+            state.completed = true;
+            state.currentProgress = secondsNeeded;
+            questProgressCache.set(quest.id, secondsNeeded);
             activeStreamKey = null;
             currentQuestBeingHeartbeated = null;
+        } else {
+            state.completed = false;
+            state.currentProgress = Math.min(secondsNeeded - 1, state.currentProgress);
+            questProgressCache.set(quest.id, state.currentProgress);
         }
 
         notifyStateChanged();
@@ -766,7 +809,9 @@ export async function startQuestRunner(preferredQuestId?: string) {
             const syncedQuest = getResolvedQuestsStore()?.getQuest?.(state.id) || liveQuest;
             const serverProgress = getStoredProgressForQuest(syncedQuest, state.taskType);
             if (Number.isFinite(serverProgress) && serverProgress > state.currentProgress) {
-                state.currentProgress = Math.min(state.secondsNeeded, serverProgress);
+                state.currentProgress = syncedQuest?.userStatus?.completedAt
+                    ? state.secondsNeeded
+                    : Math.min(state.secondsNeeded - 1, serverProgress);
             }
             if (syncedQuest) state.quest = syncedQuest;
 
@@ -785,9 +830,10 @@ export async function startQuestRunner(preferredQuestId?: string) {
                     ok = await processHeartbeatStep(state);
                     if (!state.completed && isRunnerActive && !signal.aborted) {
                         const remaining = Math.max(0, state.secondsNeeded - state.currentProgress);
-                        const waitTime = (remaining > 0 && remaining < 20)
-                            ? Math.max(2000, (remaining + 1) * 1000)
-                            : (18000 + Math.random() * 3000);
+                        // Heartbeats on Discord require an ~18-20s interval so the backend properly credits elapsed time
+                        const waitTime = (remaining > 0 && remaining <= 5)
+                            ? (18000 + Math.random() * 2000)
+                            : (19000 + Math.random() * 3000);
                         const slept = await interruptibleSleep(waitTime, signal);
                         if (!slept) break;
                     }
@@ -857,7 +903,7 @@ function formatTaskBadge(taskType: SupportedTask): string {
 }
 
 function QuestProgressBar({ progress, target, completed, isCurrent }: { progress: number; target: number; completed: boolean; isCurrent: boolean; }) {
-    const pct = target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : (completed ? 100 : 0);
+    const pct = completed ? 100 : (target > 0 ? Math.min(99, Math.floor((progress / target) * 100)) : 0);
     return (
         <div style={{ width: "100%", height: 5, borderRadius: 3, backgroundColor: "rgba(0, 0, 0, 0.4)", overflow: "hidden", marginTop: 7 }}>
             <div
@@ -990,7 +1036,7 @@ function QuestListItem({ item, isCurrent }: { item: QuestItemState; isCurrent: b
                 </span>
                 {!item.completed && displayTarget > 0 && (
                     <span style={{ fontSize: 10, fontWeight: 600, color: isCurrent ? "var(--brand-500, #5865f2)" : "var(--text-muted, #949ba4)" }}>
-                        {Math.min(100, Math.round((displayProgress / displayTarget) * 100))}%
+                        {Math.min(99, Math.floor((displayProgress / displayTarget) * 100))}%
                     </span>
                 )}
             </div>
