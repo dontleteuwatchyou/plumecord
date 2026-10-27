@@ -5492,6 +5492,7 @@ export const translations: TranslationMap = {
     "Agree & expand": {"en":"Agree & expand","fr":"Approuve et développe","ar":"وافِق وتوسّع","es":"Concuerda y desarrolla","ru":"Согласись и дополни","zh":"赞同并展开阐述"},
     "Sarcastic & witty": {"en":"Sarcastic & witty","fr":"Sarcastique et spirituel","ar":"ساخر وذكي","es":"Sarcástico e ingenioso","ru":"Саркастично и остроумно","zh":"讽刺且机智"},
     "Witty & sharp": {"en":"Witty & sharp","fr":"Spirituel et pertinent","ar":"ذكي وحاد","es":"Ingenioso y perspicaz","ru":"Остроумно и метко","zh":"机智且犀利"},
+    "Narcissistic & sharp": {"en":"Narcissistic & sharp","fr":"Narcissique et piquant","ar":"نرجسي وحاد","es":"Narcisista y mordaz","ru":"Нарциссично и колко","zh":"自恋且犀利"},
     "Explain simply": {"en":"Explain simply","fr":"Explique simplement","ar":"اشرح ببساطة","es":"Explica de forma simple","ru":"Объясни просто","zh":"通俗易懂地解释"},
     "Generate Reply": {"en":"Generate Reply","fr":"Générer la réponse","ar":"إنشاء الرد","es":"Generar respuesta","ru":"Сгенерировать ответ","zh":"生成回复"},
     "AlwaysRight is analyzing and composing reply...": {"en":"AlwaysRight is analyzing and composing reply...","fr":"AlwaysRight analyse et rédige la réponse...","ar":"AlwaysRight يقوم بالتحليل وصياغة الرد...","es":"AlwaysRight está analizando y redactando la respuesta...","ru":"AlwaysRight анализирует и составляет ответ...","zh":"AlwaysRight 正在分析并编写回复..."},

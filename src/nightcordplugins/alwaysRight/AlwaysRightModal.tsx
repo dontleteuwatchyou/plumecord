@@ -28,7 +28,7 @@ export function AlwaysRightModal({
         t("Contradict them"),
         t("Prove them wrong"),
         t("Agree & expand"),
-        t("Witty & sharp"),
+        t("Narcissistic & sharp"),
         t("Explain simply"),
     ];
 

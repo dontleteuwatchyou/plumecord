@@ -624,6 +624,25 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
             ? `\nIMMEDIATE PRIORITY INSTRUCTION FOR THIS MESSAGE: ${quickGuidance.trim()}`
             : "";
 
+        // Check if the user explicitly requested a narcissistic, sharp, roast, or aggressive tone in custom prompt or guidance
+        const combinedGuidance = `${customPromptSetting || ""} ${quickGuidance || ""}`.toLowerCase();
+        const isNarcissismOrRoastRequested = /(narciss|arrogant|clash|roast|m[eé]chant|hautain|sup[eé]rieur|piquant|cassant|d[eé]truit|humili|provoc)/i.test(combinedGuidance);
+
+        let attitudeDirective = "";
+        if (isNarcissismOrRoastRequested) {
+            attitudeDirective = `USER-REQUESTED COMBATIVE / NARCISSISTIC / ROAST MODE:
+The user has EXPLICITLY requested in their prompt or guidance to be narcissistic, sharp, arrogant, or to roast the interlocutor.
+- You are FULLY AUTHORIZED to be unapologetically narcissistic, sharp, and biting.
+- Make your retort hit hard, leave an unforgettable mark, and dominate the exchange ("marquer les esprits / marquer l'adversaire").
+- CRITICAL EXECUTION: Even when roasting, dismantle the partner precisely ON THE ACTUAL SUBSTANCE of their claims, their factual absurdities, or their logic, showcasing effortless intellectual superiority. Do not just spit empty playground insults; make it a masterclass in factual humiliation and devastating wit while directly addressing their message!`;
+        } else {
+            attitudeDirective = `STRICT RESPECT & SUBSTANCE DIRECTIVE (DEFAULT BEHAVIOR):
+- ABSOLUTELY ZERO NARCISSISM, CONDENSCENSION, OR ARROGANCE BY DEFAULT.
+- FORMAL PROHIBITION: You are strictly forbidden from attacking the partner's grammar, spelling, typos, typing speed (e.g. NEVER say "avant même d'avoir fini ta phrase", "tes 3 lignes de code"), formatting, or their person (e.g. NEVER say "phrase de crade", "tu fais pitié", "chômeur").
+- NO DISMISSIVE BRUSH-OFFS: NEVER say "t'as vraiment rien à faire", "va trouver un travail", "va toucher de l'herbe", "t'as du temps à perdre", "ferme-la", etc.
+- ALWAYS answer calmly, articulately, and factually on the substantive subject matter.`;
+        }
+
         const replyScopeInstruction = isDirectReply
             ? `\n\nCRITICAL SCOPE DIRECTIVE (SPECIFIC MESSAGE REPLY):
 The user has explicitly selected ONE single message to reply to:
@@ -645,25 +664,19 @@ TEMPORAL ANCHOR & REAL-WORLD CLOCK:
 - Current real-world date: ${currentDateStr} (Year: ${now.getFullYear()}).
 - When answering questions about the current year, date, today, or recent releases, always anchor to this real-world date.
 
-CRITICAL DIRECTIVE — ANTI-NARCISSISM & ANTI-EVASION (ABSOLUTE PRIORITY):
-- ABSOLUTELY ZERO NARCISSISM, CONDENSCENSION, OR ARROGANCE: You must NEVER act superior, dismissive, or mocking.
-- MANDATORY SUBSTANTIVE RESPONSE: You MUST directly engage with, answer, compute, or address what the partner actually said. NEVER evade the subject.
-- STRICTLY FORBIDDEN DISMISSIVE PHRASES & PERSONAL ATTACKS:
-  * NEVER use personal brush-offs like: "t'as vraiment rien à faire", "t'as rien d'autre à faire", "va trouver un travail", "va toucher de l'herbe", "t'as du temps à perdre", "tu parles pour rien", "ferme-la", etc.
-  * NEVER attack or insult the partner's typing, formatting, coding, intelligence, or person (e.g. NEVER say "phrase de crade", "3 lignes de code", "tu fais pitié", etc.).
-  * NEVER brush off the conversation as meaningless or pointless.
-- True intelligence is calm, articulate, grounded, and factual. Always address arguments with real facts, logic, and insight, never with personal attacks or petty deflections.
+BEHAVIOR & ATTITUDE DIRECTIVE:
+${attitudeDirective}
 
-SUBSTANTIVE HANDLING BY CONTENT TYPE:
+SUBSTANTIVE HANDLING BY CONTENT TYPE (ALWAYS MANDATORY):
 1. CALCULATIONS, MATH & EXPRESSIONS:
    - If the message contains math, numbers, a formula, or an arithmetic expression (e.g. "10/100**4+!100^8 1", "2+2", "racine de 144", etc.):
    - ALWAYS solve, compute, or explain the mathematical expression and give the concrete calculated result.
-   - NEVER mock the calculation, call it useless, or dismiss the sender.
+   - NEVER mock the calculation, call it useless, or dismiss the sender without solving it.
 2. TECHNICAL, COMPUTING & FACTUAL CLAIMS:
    - If the message discusses operating systems (Linux, Windows, macOS, iOS, Android), coding languages, technology, science, or facts:
    - DIRECTLY ADDRESS THE CLAIMS WITH ACCURATE TECHNICAL FACTS.
-   - For example, if someone claims "macOS est basé sur android et iOS en scratch", factually and calmly correct them: explain that macOS and iOS are based on Apple's Darwin/XNU Unix-like kernel and Cocoa/Cocoa Touch frameworks written in C/Objective-C/Swift, whereas Android is built on the modified Linux kernel, and Scratch is an educational block language.
-   - Correct misconceptions factually, clearly, and constructively, without attacking the person.
+   - For example, if someone claims "macOS est basé sur android et iOS en scratch", factually and clearly explain that macOS and iOS are based on Apple's Darwin/XNU Unix-like kernel and Cocoa/Cocoa Touch frameworks written in C/Objective-C/Swift, whereas Android is built on the modified Linux kernel, and Scratch is an educational block language.
+   - Correct misconceptions factually and clearly.
 3. QUESTIONS & INFORMATION REQUESTS:
    - Provide a clear, accurate, direct, and insightful answer. Never answer with an evasive rhetorical question.
 4. SOURCES & PROOF REQUESTS:
@@ -694,6 +707,10 @@ CRITICAL RULES:
 - COMPLETENESS: Always ensure every message is 100% complete and finishes its final sentence properly with valid punctuation. Never stop or cut off mid-thought.`;
 
         let userPrompt = "";
+        const promptInstructionSuffix = isNarcissismOrRoastRequested
+            ? "Compose the reply now. Be sharp, narcissistic, and devastatingly impactful ('marquer l'adversaire') while dismantling their specific arguments and errors on the substance:"
+            : `Compose the user's reply message now. Address @${targetAuthor}'s actual points, calculations, or claims substantively and constructively without evasion or insults:`;
+
         if (isDirectReply) {
             userPrompt = `=== SPECIFIC MESSAGE SELECTED TO REPLY TO ===
 From: @${targetAuthor}
@@ -702,7 +719,7 @@ Content: "${targetContent}"
 === BACKGROUND CONTEXT (Recent messages for context only - focus strictly on replying to the specific message above) ===
 ${recentLines.join("\n")}
 
-Compose the reply directly to @${targetAuthor}'s message above. Address their actual points, calculations, or claims substantively and constructively without evasion or insults:`;
+${promptInstructionSuffix}`;
         } else {
             userPrompt = `=== CONVERSATION BACKGROUND (Up to 50 previous messages) ===
 ${historyLines.join("\n")}
@@ -714,7 +731,7 @@ ${recentLines.join("\n")}
 From: @${targetAuthor}
 Content: "${targetContent}"
 
-Compose the user's reply message now. Address @${targetAuthor}'s actual points, calculations, or claims substantively and constructively without evasion or insults:`;
+${promptInstructionSuffix}`;
         }
 
         // Retrieve live real-time web grounding (DuckDuckGo factual snippets) for live facts, figures, vanity, dates, stats
