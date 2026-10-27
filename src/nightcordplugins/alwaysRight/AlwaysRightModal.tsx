@@ -28,7 +28,7 @@ export function AlwaysRightModal({
         t("Contradict them"),
         t("Prove them wrong"),
         t("Agree & expand"),
-        t("Sarcastic & witty"),
+        t("Witty & sharp"),
         t("Explain simply"),
     ];
 
@@ -84,7 +84,7 @@ export function AlwaysRightModal({
                 )}
 
                 <TextArea
-                    placeholder={t("Additional instructions (e.g. 'contradict them', 'prove them wrong', 'be sarcastic')...")}
+                    placeholder={t("Additional instructions (e.g. 'contradict them', 'prove them wrong', 'explain with facts')...")}
                     value={guidance}
                     onChange={setGuidance}
                     onKeyDown={handleKeyDown}
