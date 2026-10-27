@@ -5,7 +5,7 @@
  */
 
 import { definePluginSettings } from "@api/Settings";
-import { BackupRestoreIcon, CloudIcon, LogIcon, MagnifyingGlassIcon,MainSettingsIcon, PaintbrushIcon, PatchHelperIcon, PluginsIcon, UpdaterIcon } from "@components/Icons";
+import { BackupRestoreIcon, CloudIcon, LogIcon, MagnifyingGlassIcon, MainSettingsIcon, PaintbrushIcon, PatchHelperIcon, PluginsIcon, TrashIcon, UpdaterIcon } from "@components/Icons";
 import { LangIcon } from "@components/LangIcon";
 import {
     BackupAndRestoreTab,
@@ -52,6 +52,7 @@ function CodeIcon(props: IconProps) {
     );
 }
 import IconsTab from "@nightcordplugins/iconViewer/components/IconsTab";
+import DmPurgerTab from "@nightcordplugins/dmPurger/components/DmPurgerTab";
 import { gitHashShort } from "@shared/vencordUserAgent";
 import { Devs } from "@utils/constants";
 import { isTruthy } from "@utils/guards";
@@ -168,6 +169,7 @@ const settingsSectionMap: [string, string][] = [
     ["EquicordBackupAndRestore", "equicord_backup_restore_panel"],
     ["EquicordPatchHelper", "equicord_patch_helper_panel"],
     ["NightcordFonts", "nightcord_fonts_panel"],
+    ["NightcordDmPurger", "nightcord_dm_purger_panel"],
     ["EquibopSettings", "equicord_equibop_settings_panel"],
 ];
 
@@ -341,6 +343,13 @@ export default definePlugin({
                 panelTitle: "Nightcord Sync",
                 Component: SyncTab,
                 Icon: CloudIcon
+            }),
+            buildEntry({
+                key: "nightcord_dm_purger",
+                title: "DM Purger",
+                panelTitle: "DM Purger",
+                Component: DmPurgerTab,
+                Icon: TrashIcon
             }),
             buildEntry({
                 key: "nightcord_language",
