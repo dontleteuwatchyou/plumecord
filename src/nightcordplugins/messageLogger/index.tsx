@@ -626,7 +626,7 @@ export const settings = definePluginSettings({
     ignoreBots: {
         type: OptionType.BOOLEAN,
         description: "Whether to ignore messages by bots",
-        default: false,
+        default: true,
     },
     ignoreSelf: {
         type: OptionType.BOOLEAN,
@@ -694,7 +694,7 @@ export const settings = definePluginSettings({
     ignoreWebhooks: {
         type: OptionType.BOOLEAN,
         description: "Whether to ignore messages by webhooks",
-        default: false,
+        default: true,
     },
     ignoreMutedGuilds: {
         default: false,
@@ -825,6 +825,12 @@ export default definePlugin({
     },
 
     start() {
+        if (settings.store.ignoreBots === undefined || settings.store.ignoreBots === false) {
+            settings.store.ignoreBots = true;
+        }
+        if (settings.store.ignoreWebhooks === undefined || settings.store.ignoreWebhooks === false) {
+            settings.store.ignoreWebhooks = true;
+        }
         addDeleteStyle();
         startEnhanced();
         import("./db").then(async ({ initIDB, db, DBMessageStatus }) => {
@@ -1047,7 +1053,6 @@ export default definePlugin({
     shouldIgnore(message: any, isEdit = false) {
         try {
             const {
-                ignoreBots,
                 ignoreSelf,
                 ignoreSelfEdits,
                 ignoreUsers,
@@ -1056,11 +1061,25 @@ export default definePlugin({
                 logEdits,
                 logDeletes,
             } = settings.store;
-            const myId = UserStore.getCurrentUser().id;
-            const content = message.content || "";
+            const ignoreBots = settings.store.ignoreBots ?? true;
+            const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+
+            const myId = UserStore.getCurrentUser()?.id;
+            const content = message?.content || "";
+
+            const isBot = Boolean(
+                message?.author?.bot ||
+                (message as any)?.bot ||
+                UserStore.getUser(message?.author?.id)?.bot ||
+                message?.webhook_id ||
+                message?.webhookId ||
+                message?.author?.discriminator === "0000"
+            );
+
+            if (ignoreBots && isBot) return true;
+            if (ignoreWebhooks && (message?.webhook_id || message?.webhookId)) return true;
 
             return (
-                (ignoreBots && message.author?.bot) ||
                 (ignoreSelf && message.author?.id === myId) ||
                 (ignoreSelfEdits && isEdit && message.author?.id === myId) ||
                 content.startsWith("\u200b\u200c\u200bNC_WP:") || // Ignorer les commandes de synchronisation Wallpaper

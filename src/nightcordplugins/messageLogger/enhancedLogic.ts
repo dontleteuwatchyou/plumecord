@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { FluxDispatcher, MessageStore, SelectedChannelStore } from "@webpack/common";
+import { FluxDispatcher, MessageStore, SelectedChannelStore, UserStore } from "@webpack/common";
 
 import { Flogger, settings, recordDeleted, recordDeletedBulk } from ".";
 import * as idb from "./db";
@@ -44,17 +44,38 @@ async function messageDeleteHandler(payload: any) {
             message = { ...cachedMessage, deleted: true } as LoggedMessageJSON;
         }
 
+        const isBot = Boolean(
+            (message as any)?.bot ||
+            message?.author?.bot ||
+            UserStore?.getUser?.(message?.author?.id)?.bot ||
+            (message as any)?.webhookId ||
+            (message as any)?.webhook_id ||
+            message?.author?.discriminator === "0000"
+        );
+
+        const ignoreBots = settings.store.ignoreBots ?? true;
+        const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+
+        if ((ignoreBots && isBot) || (ignoreWebhooks && ((message as any)?.webhookId || (message as any)?.webhook_id))) {
+            return FluxDispatcher.dispatch({
+                type: "MESSAGE_DELETE",
+                channelId: payload.channelId,
+                id: payload.id,
+                mlDeleted: true
+            });
+        }
+
         const ghostPinged = isGhostPinged(message as any);
 
         if (shouldIgnore({
             channelId: message?.channel_id ?? payload.channelId,
             guildId: payload.guildId ?? (message as any).guildId ?? (message as any).guild_id,
             authorId: message?.author?.id,
-            bot: (message as any).bot || message?.author?.bot,
+            bot: isBot,
             flags: message?.flags,
             ghostPinged,
             isCachedByUs: (message as LoggedMessageJSON).ourCache,
-            webhookId: (message as any).webhookId,
+            webhookId: (message as any).webhookId || (message as any).webhook_id,
             content: message?.content
         })) {
             return FluxDispatcher.dispatch({
@@ -80,6 +101,9 @@ async function messageDeleteBulkHandler({ channelId, guildId, ids }: { channelId
     const messages: LoggedMessageJSON[] = [];
     const bulkRecordItems: { id: string; channelId?: string; attachments?: any[]; }[] = [];
 
+    const ignoreBots = settings.store.ignoreBots ?? true;
+    const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+
     for (const id of ids) {
         if (handledMessageIds.has(id)) continue;
         let message: LoggedMessage | LoggedMessageJSON | null = oldGetMessage?.(channelId, id) as any;
@@ -90,6 +114,17 @@ async function messageDeleteBulkHandler({ channelId, guildId, ids }: { channelId
             }
         }
         if (message) {
+            const isBot = Boolean(
+                message?.bot ||
+                message?.author?.bot ||
+                UserStore?.getUser?.(message?.author?.id)?.bot ||
+                (message as any)?.webhookId ||
+                (message as any)?.webhook_id ||
+                message?.author?.discriminator === "0000"
+            );
+            if ((ignoreBots && isBot) || (ignoreWebhooks && ((message as any)?.webhookId || (message as any)?.webhook_id))) {
+                continue;
+            }
             bulkRecordItems.push({ id, channelId, attachments: message.attachments });
             messages.push({ ...message, deleted: true } as LoggedMessageJSON);
         }
@@ -104,23 +139,41 @@ async function messageDeleteBulkHandler({ channelId, guildId, ids }: { channelId
 }
 
 async function messageUpdateHandler(payload: any) {
-    const cachedMessage = cacheSentMessages.get(`${payload.message.channel_id},${payload.message.id}`);
+    const cachedMessage = cacheSentMessages.get(`${payload.message?.channel_id},${payload.message?.id}`);
+    const authorId = payload.message?.author?.id;
+
+    const isBot = Boolean(
+        (payload.message?.author as any)?.bot ||
+        payload.message?.bot ||
+        UserStore?.getUser?.(authorId)?.bot ||
+        payload.message?.webhookId ||
+        payload.message?.webhook_id ||
+        (payload.message?.author as any)?.discriminator === "0000"
+    );
+
+    const ignoreBots = settings.store.ignoreBots ?? true;
+    const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+
+    if ((ignoreBots && isBot) || (ignoreWebhooks && (payload.message?.webhookId || payload.message?.webhook_id))) {
+        return;
+    }
 
     if (shouldIgnore({
         channelId: payload.message?.channel_id,
         guildId: payload.guildId ?? payload?.guild_id,
-        authorId: payload.message?.author?.id,
-        bot: (payload.message?.author as any)?.bot,
+        authorId,
+        bot: isBot,
         flags: payload.message?.flags,
         ghostPinged: isGhostPinged(payload.message as any),
         isCachedByUs: cachedMessage?.ourCache ?? false,
+        webhookId: payload.message?.webhookId || payload.message?.webhook_id,
         content: payload.message?.content
     })) return;
 
-    let message = oldGetMessage?.(payload.message.channel_id, payload.message.id) as LoggedMessage | LoggedMessageJSON | null;
+    let message = oldGetMessage?.(payload.message?.channel_id, payload.message?.id) as LoggedMessage | LoggedMessageJSON | null;
 
     if (message == null) {
-        if (cachedMessage != null && payload.message.content != null && cachedMessage.content !== payload.message.content) {
+        if (cachedMessage != null && payload.message?.content != null && cachedMessage.content !== payload.message?.content) {
             message = {
                 ...cachedMessage,
                 content: payload.message.content,
@@ -143,7 +196,26 @@ async function messageUpdateHandler(payload: any) {
 }
 
 function messageCreateHandler(payload: any) {
-    cacheSentMessages.set(`${payload.message.channel_id},${payload.message.id}`, cleanUpCachedMessage(payload.message));
+    const msg = payload?.message;
+    if (!msg) return;
+
+    const isBot = Boolean(
+        msg.author?.bot ||
+        msg.bot ||
+        UserStore?.getUser?.(msg.author?.id)?.bot ||
+        msg.webhook_id ||
+        msg.webhookId ||
+        msg.author?.discriminator === "0000"
+    );
+
+    const ignoreBots = settings.store.ignoreBots ?? true;
+    const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+
+    if ((ignoreBots && isBot) || (ignoreWebhooks && (msg.webhook_id || msg.webhookId))) {
+        return;
+    }
+
+    cacheSentMessages.set(`${msg.channel_id},${msg.id}`, cleanUpCachedMessage(msg));
 }
 
 /**

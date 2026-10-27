@@ -116,7 +116,9 @@ export function shouldIgnore({ channelId, authorId, guildId, flags, bot, ghostPi
 
     const myId = UserStore.getCurrentUser().id;
     const { ignoreUsers, ignoreChannels, ignoreGuilds } = Settings.plugins.MessageLogger;
-    const { ignoreBots, ignoreSelf, ignoreWebhooks } = settings.store;
+    const ignoreBots = settings.store.ignoreBots ?? true;
+    const ignoreWebhooks = settings.store.ignoreWebhooks ?? true;
+    const { ignoreBots: _b, ignoreSelf, ignoreWebhooks: _w } = settings.store;
 
     if (ignoreSelf && authorId === myId)
         return true; // ignore
