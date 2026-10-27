@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { openSettingsTabModal } from "@components/settings";
-import { Alerts, React, TextInput, Toasts } from "@webpack/common";
+import { Alerts, Button, React, TextInput, Toasts } from "@webpack/common";
 import { t } from "../../autoTranslateNightcord";
 import { settings } from "../index";
 import type { PackageChannel, PurgerState } from "../types";
@@ -185,7 +184,7 @@ export default function DmPurgerSettingsModalPanel() {
                             <FolderIcon width={22} height={22} />
                         </div>
                         <div>
-                            <div style={{ color: "var(--header-primary)", fontWeight: 700, fontSize: 15 }}>
+                            <div style={{ color: "#ffffff", fontWeight: 700, fontSize: 15 }}>
                                 {t("Manual Data Package Loader")}
                             </div>
                             <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 2 }}>
@@ -197,10 +196,10 @@ export default function DmPurgerSettingsModalPanel() {
                         size={Button.Sizes.SMALL}
                         color={Button.Colors.BRAND}
                         onClick={() => openSettingsTabModal(DmPurgerTab)}
-                        style={{ display: "flex", alignItems: "center", gap: 6 }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, whiteSpace: "nowrap", padding: "0 14px", height: 34, minWidth: "fit-content" }}
                     >
                         <ExternalIcon width={14} height={14} />
-                        {t("Open DM Purger Dashboard")}
+                        <span>{t("Open DM Purger Dashboard")}</span>
                     </Button>
                 </div>
 
@@ -248,6 +247,7 @@ export default function DmPurgerSettingsModalPanel() {
                         size={Button.Sizes.MEDIUM}
                         color={Button.Colors.PRIMARY}
                         onClick={handleSelectFileOrFolder}
+                        style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                     >
                         {t("Browse File / Folder")}
                     </Button>
@@ -256,6 +256,7 @@ export default function DmPurgerSettingsModalPanel() {
                         color={Button.Colors.BRAND}
                         onClick={() => handleLoadPackage(manualPath)}
                         disabled={isLoadingPackage || !manualPath}
+                        style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                     >
                         {isLoadingPackage ? t("Analyzing package...") : t("Load & Analyze Package")}
                     </Button>

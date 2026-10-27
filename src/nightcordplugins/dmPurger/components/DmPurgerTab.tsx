@@ -4,11 +4,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { FormSwitch } from "@components/FormSwitch";
 import { TrashIcon } from "@components/Icons";
-import { Alerts, Flex, Forms, React, Slider, TextInput, Toasts, UserStore } from "@webpack/common";
+import { Alerts, Button, Flex, Forms, React, Slider, TextInput, Toasts, UserStore } from "@webpack/common";
 import { t } from "../../autoTranslateNightcord";
 import { settings, requestDiscordData } from "../index";
 import type { PackageChannel, PurgerState } from "../types";
@@ -345,23 +344,32 @@ export default function DmPurgerTab() {
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 20, paddingBottom: 40 }}>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                    <h2 style={{ color: "var(--header-primary)", fontSize: 20, fontWeight: 700, margin: "0 0 6px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20, flexWrap: "wrap", marginBottom: 4 }}>
+                <div style={{ flex: "1 1 340px", minWidth: 260 }}>
+                    <div style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 6px 0", lineHeight: "28px" }}>
                         {t("DM Purger")}
-                    </h2>
-                    <p style={{ color: "var(--text-muted)", fontSize: 14, margin: 0, maxWidth: 600 }}>
+                    </div>
+                    <p style={{ color: "#949ba4", fontSize: 14, margin: 0, lineHeight: "20px" }}>
                         {t("Purge direct messages and group chats from your Discord account data package with automated request, email fetching, resume, whitelists, and logs.")}
                     </p>
                 </div>
                 <Button
                     size={Button.Sizes.SMALL}
-                    color={Button.Colors.PRIMARY}
+                    color={Button.Colors.BRAND}
                     onClick={handleOpenLogs}
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                    style={{
+                        flexShrink: 0,
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "0 16px",
+                        height: 34,
+                        minWidth: "fit-content",
+                    }}
                 >
                     <FolderIcon width={16} height={16} />
-                    {t("Open Deleted Messages Log File")}
+                    <span>{t("Open Deleted Messages Log File")}</span>
                 </Button>
             </div>
 
@@ -371,23 +379,23 @@ export default function DmPurgerTab() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                             <TrashIcon width={20} height={20} style={{ color: "var(--brand-500)" }} />
-                            <span style={{ color: "var(--header-primary)", fontWeight: 700, fontSize: 16 }}>
+                            <span style={{ color: "#ffffff", fontWeight: 700, fontSize: 16 }}>
                                 {purgerState.status === "running" ? t("Purge In Progress") : purgerState.status === "paused" ? t("Purge Paused") : t("Purge Status")}
                             </span>
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
                             {purgerState.status === "running" ? (
-                                <Button size={Button.Sizes.SMALL} color={Button.Colors.PRIMARY} onClick={() => purgerEngine.pausePurge()}>
+                                <Button size={Button.Sizes.SMALL} color={Button.Colors.PRIMARY} onClick={() => purgerEngine.pausePurge()} style={{ whiteSpace: "nowrap" }}>
                                     <PauseIcon width={14} height={14} style={{ marginRight: 6 }} />
                                     {t("Pause Purge")}
                                 </Button>
                             ) : (
-                                <Button size={Button.Sizes.SMALL} color={Button.Colors.BRAND} onClick={() => purgerEngine.resumePurge(s.deleteDelay)}>
+                                <Button size={Button.Sizes.SMALL} color={Button.Colors.BRAND} onClick={() => purgerEngine.resumePurge(s.deleteDelay)} style={{ whiteSpace: "nowrap" }}>
                                     <PlayIcon width={14} height={14} style={{ marginRight: 6 }} />
                                     {t("Resume Purge")}
                                 </Button>
                             )}
-                            <Button size={Button.Sizes.SMALL} color={Button.Colors.RED} onClick={() => purgerEngine.stopPurge()}>
+                            <Button size={Button.Sizes.SMALL} color={Button.Colors.RED} onClick={() => purgerEngine.stopPurge()} style={{ whiteSpace: "nowrap" }}>
                                 <StopIcon width={14} height={14} style={{ marginRight: 6 }} />
                                 {t("Stop Purge")}
                             </Button>
@@ -427,7 +435,7 @@ export default function DmPurgerTab() {
 
             {/* Section 1: Automated Discord Data Request */}
             <Card style={{ backgroundColor: "var(--background-secondary)", padding: 20, borderRadius: 8 }}>
-                <Forms.FormTitle tag="h3" style={{ color: "var(--header-primary)", marginBottom: 12 }}>
+                <Forms.FormTitle tag="h3" style={{ color: "#ffffff", marginBottom: 12, fontSize: 16, fontWeight: 700 }}>
                     {t("Discord Data Request")}
                 </Forms.FormTitle>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -453,6 +461,7 @@ export default function DmPurgerTab() {
                             color={Button.Colors.BRAND}
                             onClick={handleRequestHarvestNow}
                             disabled={isRequestingHarvest}
+                            style={{ flexShrink: 0, whiteSpace: "nowrap", minWidth: "fit-content" }}
                         >
                             {isRequestingHarvest ? t("Requesting data...") : t("Request Data From Discord Now")}
                         </Button>
@@ -462,15 +471,15 @@ export default function DmPurgerTab() {
 
             {/* Section 2: Data Package Retrieval */}
             <Card style={{ backgroundColor: "var(--background-secondary)", padding: 20, borderRadius: 8 }}>
-                <Forms.FormTitle tag="h3" style={{ color: "var(--header-primary)", marginBottom: 12 }}>
+                <Forms.FormTitle tag="h3" style={{ color: "#ffffff", marginBottom: 12, fontSize: 16, fontWeight: 700 }}>
                     {t("Data Package Retrieval")}
                 </Forms.FormTitle>
 
                 {/* Sub-Card A: Automated Email Retrieval */}
                 <div style={{ backgroundColor: "var(--background-floating)", padding: 16, borderRadius: 8, marginBottom: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                        <MailIcon width={18} height={18} style={{ color: "var(--header-primary)" }} />
-                        <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 14 }}>
+                        <MailIcon width={18} height={18} style={{ color: "var(--brand-500)" }} />
+                        <span style={{ color: "#ffffff", fontWeight: 600, fontSize: 14 }}>
                             {t("Email Fetcher (Automatic)")}
                         </span>
                     </div>
@@ -568,7 +577,7 @@ export default function DmPurgerTab() {
                         color={Button.Colors.BRAND}
                         onClick={handleFetchFromEmail}
                         disabled={isFetchingEmail}
-                        style={{ marginTop: 4 }}
+                        style={{ marginTop: 4, whiteSpace: "nowrap", flexShrink: 0 }}
                     >
                         {isFetchingEmail ? t("Fetching email...") : t("Fetch Package From Email")}
                     </Button>
@@ -577,8 +586,8 @@ export default function DmPurgerTab() {
                 {/* Sub-Card B: Manual Zip or Messages Folder Selection */}
                 <div style={{ backgroundColor: "var(--background-floating)", padding: 16, borderRadius: 8, marginBottom: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                        <FolderIcon width={18} height={18} style={{ color: "var(--header-primary)" }} />
-                        <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 14 }}>
+                        <FolderIcon width={18} height={18} style={{ color: "var(--brand-500)" }} />
+                        <span style={{ color: "#ffffff", fontWeight: 600, fontSize: 14 }}>
                             {t("Manual File Selection")}
                         </span>
                     </div>
@@ -627,8 +636,8 @@ export default function DmPurgerTab() {
                         </span>
                     </div>
 
-                    <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                        <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                        <div style={{ flex: "1 1 200px" }}>
                             <TextInput
                                 value={manualPath}
                                 onChange={setManualPath}
@@ -639,6 +648,7 @@ export default function DmPurgerTab() {
                             size={Button.Sizes.MEDIUM}
                             color={Button.Colors.PRIMARY}
                             onClick={handleSelectFileOrFolder}
+                            style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                         >
                             {t("Browse File / Folder")}
                         </Button>
@@ -647,6 +657,7 @@ export default function DmPurgerTab() {
                             color={Button.Colors.BRAND}
                             onClick={() => handleLoadPackage(manualPath)}
                             disabled={isLoadingPackage || !manualPath}
+                            style={{ flexShrink: 0, whiteSpace: "nowrap" }}
                         >
                             {isLoadingPackage ? t("Analyzing package...") : t("Load & Analyze Package")}
                         </Button>
@@ -672,7 +683,7 @@ export default function DmPurgerTab() {
 
             {/* Section 3: Whitelists & Group Filter */}
             <Card style={{ backgroundColor: "var(--background-secondary)", padding: 20, borderRadius: 8 }}>
-                <Forms.FormTitle tag="h3" style={{ color: "var(--header-primary)", marginBottom: 12 }}>
+                <Forms.FormTitle tag="h3" style={{ color: "#ffffff", marginBottom: 12, fontSize: 16, fontWeight: 700 }}>
                     {t("Whitelists & Filters")}
                 </Forms.FormTitle>
 
@@ -790,7 +801,7 @@ export default function DmPurgerTab() {
 
             {/* Section 4: Purge Controls & Settings */}
             <Card style={{ backgroundColor: "var(--background-secondary)", padding: 20, borderRadius: 8 }}>
-                <Forms.FormTitle tag="h3" style={{ color: "var(--header-primary)", marginBottom: 12 }}>
+                <Forms.FormTitle tag="h3" style={{ color: "#ffffff", marginBottom: 12, fontSize: 16, fontWeight: 700 }}>
                     {t("Purge Controls & Progress")}
                 </Forms.FormTitle>
 
