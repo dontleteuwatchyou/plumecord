@@ -75,6 +75,8 @@ const settings = definePluginSettings({
     }
 });
 
+const toIconAccessory = (Comp: any) => typeof Comp === "function" ? { type: "icon", icon: Comp } : undefined;
+
 const openAvatar = (url: string) => openImage(url, 512, 512);
 const openBanner = (url: string) => openImage(url, 1024, 410);
 
@@ -205,10 +207,7 @@ const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, pr
                 label={t("Copy Image")}
                 icon={CopyIconComp}
                 iconLeft={CopyIconComp}
-                leadingAccessory={{
-                    type: "icon",
-                    icon: CopyIconComp
-                }}
+                leadingAccessory={toIconAccessory(CopyIconComp)}
                 action={() => void copyMediaImage(media.url)}
             />
         );
@@ -220,10 +219,7 @@ const mediaDownloadContextMenuPatch: NavContextMenuPatchCallback = (children, pr
             label={t(media.isVideo ? "Save Video" : "Save Image")}
             icon={SaveIconComp}
             iconLeft={SaveIconComp}
-            leadingAccessory={{
-                type: "icon",
-                icon: SaveIconComp
-            }}
+            leadingAccessory={toIconAccessory(SaveIconComp)}
             action={() => void saveMediaFile(media.url, media.filename, media.isVideo)}
         />
     );
@@ -264,10 +260,7 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                         label={t("Copy Image")}
                         icon={CopyIconComp}
                         iconLeft={CopyIconComp}
-                        leadingAccessory={{
-                            type: "icon",
-                            icon: CopyIconComp
-                        }}
+                        leadingAccessory={toIconAccessory(CopyIconComp)}
                         action={() => void copyMediaImage(cleanedUrl)}
                     />
                 )}
@@ -276,10 +269,7 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                     label={t(isVideo ? "Save Video" : "Save Image")}
                     icon={SaveIconComp}
                     iconLeft={SaveIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: SaveIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(SaveIconComp)}
                     action={() => void saveMediaFile(cleanedUrl, undefined, isVideo)}
                 />
                 <Menu.MenuSeparator />
@@ -288,10 +278,7 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                     label={t("Copy Link")}
                     icon={LinkIconComp}
                     iconLeft={LinkIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: LinkIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(LinkIconComp)}
                     action={() => {
                         copyToClipboard(cleanedUrl);
                         Toasts.show(Toasts.create(t("Link copied!"), Toasts.Type.SUCCESS));
@@ -302,10 +289,7 @@ function ImageModalContextMenu({ src, target }: { src: string; target?: HTMLElem
                     label={t("Open Link")}
                     icon={OpenIconComp}
                     iconLeft={OpenIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: OpenIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(OpenIconComp)}
                     action={() => window.open(cleanedUrl, "_blank")}
                 />
             </Menu.MenuGroup>

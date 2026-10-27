@@ -1,4 +1,10 @@
 /*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/*
  * Vencord, a modification for Discord's desktop app
  * Copyright (c) 2023 Vendicated and contributors
  *
@@ -22,8 +28,14 @@ import { filters, mapMangledModuleLazy, waitFor } from "@webpack";
 export const Menu = {} as t.Menu;
 
 waitFor(filters.componentByCode('path:["empty"]'), m => Menu.Menu = m);
-waitFor(filters.componentByCode("SLIDER)", "handleSize:16"), m => Menu.MenuSliderControl = m);
-waitFor(filters.componentByCode(".SEARCH)", ".focus()", "query:"), m => Menu.MenuSearchControl = m);
+waitFor(
+    (m: any) => filters.componentByCode(".SLIDER", "renderValue:")(m) || filters.componentByCode("SLIDER)", "handleSize:16")(m),
+    m => Menu.MenuSliderControl = m
+);
+waitFor(
+    (m: any) => filters.componentByCode(".SEARCH", ".focus()", "query:")(m) || filters.componentByCode(".SEARCH)", ".focus()", "query:")(m),
+    m => Menu.MenuSearchControl = m
+);
 
 export const ContextMenuApi: t.ContextMenuApi = mapMangledModuleLazy('type:"CONTEXT_MENU_OPEN', {
     closeContextMenu: filters.byCode("CONTEXT_MENU_CLOSE"),

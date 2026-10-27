@@ -90,6 +90,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
     if ("href" in props) return;
     // emojis in user statuses
     if (props.target?.classList?.contains("emoji")) return;
+    if (!Menu.MenuGroup || !Menu.MenuCheckboxItem || !Menu.MenuControlItem) return;
 
     const { square, nearestNeighbour } = settings.use(["square", "nearestNeighbour"]);
 
@@ -111,49 +112,61 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     settings.store.nearestNeighbour = !nearestNeighbour;
                 }}
             />
-            <Menu.MenuControlItem
-                id="vc-zoom"
-                label="Zoom"
-                control={(props, ref) => (
-                    <Menu.MenuSliderControl
-                        ref={ref}
-                        {...props}
-                        minValue={1}
-                        maxValue={50}
-                        value={settings.store.zoom}
-                        onChange={debounce((value: number) => settings.store.zoom = value, 100)}
-                    />
-                )}
-            />
-            <Menu.MenuControlItem
-                id="vc-size"
-                label="Lens Size"
-                control={(props, ref) => (
-                    <Menu.MenuSliderControl
-                        ref={ref}
-                        {...props}
-                        minValue={50}
-                        maxValue={1000}
-                        value={settings.store.size}
-                        onChange={debounce((value: number) => settings.store.size = value, 100)}
-                    />
-                )}
-            />
-            <Menu.MenuControlItem
-                id="vc-zoom-speed"
-                label="Zoom Speed"
-                control={(props, ref) => (
-                    <Menu.MenuSliderControl
-                        ref={ref}
-                        {...props}
-                        minValue={0.1}
-                        maxValue={5}
-                        value={settings.store.zoomSpeed}
-                        onChange={debounce((value: number) => settings.store.zoomSpeed = value, 100)}
-                        renderValue={(value: number) => `${value.toFixed(3)}x`}
-                    />
-                )}
-            />
+            {Menu.MenuSliderControl && (
+                <Menu.MenuControlItem
+                    id="vc-zoom"
+                    label="Zoom"
+                    control={(props, ref) => (
+                        Menu.MenuSliderControl ? (
+                            <Menu.MenuSliderControl
+                                ref={ref}
+                                {...props}
+                                minValue={1}
+                                maxValue={50}
+                                value={settings.store.zoom}
+                                onChange={debounce((value: number) => settings.store.zoom = value, 100)}
+                            />
+                        ) : null
+                    )}
+                />
+            )}
+            {Menu.MenuSliderControl && (
+                <Menu.MenuControlItem
+                    id="vc-size"
+                    label="Lens Size"
+                    control={(props, ref) => (
+                        Menu.MenuSliderControl ? (
+                            <Menu.MenuSliderControl
+                                ref={ref}
+                                {...props}
+                                minValue={50}
+                                maxValue={1000}
+                                value={settings.store.size}
+                                onChange={debounce((value: number) => settings.store.size = value, 100)}
+                            />
+                        ) : null
+                    )}
+                />
+            )}
+            {Menu.MenuSliderControl && (
+                <Menu.MenuControlItem
+                    id="vc-zoom-speed"
+                    label="Zoom Speed"
+                    control={(props, ref) => (
+                        Menu.MenuSliderControl ? (
+                            <Menu.MenuSliderControl
+                                ref={ref}
+                                {...props}
+                                minValue={0.1}
+                                maxValue={5}
+                                value={settings.store.zoomSpeed}
+                                onChange={debounce((value: number) => settings.store.zoomSpeed = value, 100)}
+                                renderValue={(value: number) => `${value.toFixed(3)}x`}
+                            />
+                        ) : null
+                    )}
+                />
+            )}
         </Menu.MenuGroup>
     );
 };

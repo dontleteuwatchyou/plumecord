@@ -24,7 +24,7 @@
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { Flex } from "@components/Flex";
-import { OpenExternalIcon } from "@components/Icons";
+import { MagnifyingGlassIcon, OpenExternalIcon } from "@components/Icons";
 import { Devs } from "@utils/constants";
 import definePlugin from "@utils/types";
 import { Menu } from "@webpack/common";
@@ -47,18 +47,18 @@ function search(src: string, engine: string) {
 import { iconsModule } from "@plugins/_core/concatenatedModules";
 
 function makeSearchItem(src: string) {
-    const Icon = iconsModule?.MagnifyingGlassIcon || iconsModule?.SearchIcon || iconsModule?.ImageIcon;
+    const Icon = iconsModule?.MagnifyingGlassIcon || iconsModule?.SearchIcon || iconsModule?.ImageIcon || MagnifyingGlassIcon;
     return (
         <Menu.MenuItem
             label={t("Search Image")}
             key="search-image"
             id="search-image"
-            icon={Icon}
-            iconLeft={Icon}
-            leadingAccessory={{
+            icon={typeof Icon === "function" ? Icon : undefined}
+            iconLeft={typeof Icon === "function" ? Icon : undefined}
+            leadingAccessory={typeof Icon === "function" ? {
                 type: "icon",
                 icon: Icon
-            }}
+            } : undefined}
         >
             {Object.keys(Engines).map((engine, i) => {
                 const key = "search-image-" + engine;

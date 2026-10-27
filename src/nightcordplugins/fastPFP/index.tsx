@@ -46,6 +46,8 @@ const uploadImageToProfile = async (url: string, type: "avatar" | "banner") => {
 import { iconsModule } from "@plugins/_core/concatenatedModules";
 import { ImageIcon } from "@components/Icons";
 
+const toIconAccessory = (Comp: any) => typeof Comp === "function" ? { type: "icon", icon: Comp } : undefined;
+
 const SaveFallbackIcon = () => (
     <svg aria-hidden="true" role="img" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24">
         <path fill="currentColor" d="M12 2a1 1 0 0 1 1 1v10.59l3.3-3.3a1 1 0 1 1 1.4 1.42l-5 5a1 1 0 0 1-1.4 0l-5-5a1 1 0 1 1 1.4-1.42l3.3 3.3V3a1 1 0 0 1 1-1ZM3 20a1 1 0 1 0 0 2h18a1 1 0 1 0 0-2H3Z" />
@@ -133,10 +135,7 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                 id="fastpfp-avatar"
                 icon={UserIconComp}
                 iconLeft={UserIconComp}
-                leadingAccessory={{
-                    type: "icon",
-                    icon: UserIconComp
-                }}
+                leadingAccessory={toIconAccessory(UserIconComp)}
                 action={() => void uploadImageToProfile(url, "avatar")}
             />,
             <Menu.MenuItem
@@ -145,10 +144,7 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                 id="fastpfp-banner"
                 icon={CopyIconComp}
                 iconLeft={CopyIconComp}
-                leadingAccessory={{
-                    type: "icon",
-                    icon: CopyIconComp
-                }}
+                leadingAccessory={toIconAccessory(CopyIconComp)}
                 action={() => void uploadImageToProfile(url, "banner")}
             />
         );
@@ -166,10 +162,7 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     id="fastpfp-copy-image-msg"
                     icon={CopyIconComp}
                     iconLeft={CopyIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: CopyIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(CopyIconComp)}
                     action={() => void copyMediaImage(url)}
                 />
             );
@@ -182,10 +175,7 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     id="fastpfp-save-image-msg"
                     icon={SaveIconComp}
                     iconLeft={SaveIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: SaveIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(SaveIconComp)}
                     action={() => void saveMediaFile(url, filename, isVideo)}
                 />
             );
@@ -198,10 +188,7 @@ const messageContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
                     id="fastpfp-open-link-msg"
                     icon={OpenIconComp}
                     iconLeft={OpenIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: OpenIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(OpenIconComp)}
                     action={() => openLink(url)}
                 />
             );
@@ -270,10 +257,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                 id="fastpfp-avatar"
                 icon={UserIconComp}
                 iconLeft={UserIconComp}
-                leadingAccessory={{
-                    type: "icon",
-                    icon: UserIconComp
-                }}
+                leadingAccessory={toIconAccessory(UserIconComp)}
                 action={() => void uploadImageToProfile(url, "avatar")}
             />,
             <Menu.MenuItem
@@ -282,10 +266,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                 id="fastpfp-banner"
                 icon={CopyIconComp}
                 iconLeft={CopyIconComp}
-                leadingAccessory={{
-                    type: "icon",
-                    icon: CopyIconComp
-                }}
+                leadingAccessory={toIconAccessory(CopyIconComp)}
                 action={() => void uploadImageToProfile(url, "banner")}
             />
         );
@@ -303,10 +284,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     id="fastpfp-copy-image"
                     icon={CopyIconComp}
                     iconLeft={CopyIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: CopyIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(CopyIconComp)}
                     action={() => void copyMediaImage(url)}
                 />
             );
@@ -319,10 +297,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     id="fastpfp-save-image"
                     icon={SaveIconComp}
                     iconLeft={SaveIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: SaveIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(SaveIconComp)}
                     action={() => void saveMediaFile(url, filename, isVideo)}
                 />
             );
@@ -335,10 +310,7 @@ const imageContextMenuPatch: NavContextMenuPatchCallback = (children, props) => 
                     id="fastpfp-open-link"
                     icon={OpenIconComp}
                     iconLeft={OpenIconComp}
-                    leadingAccessory={{
-                        type: "icon",
-                        icon: OpenIconComp
-                    }}
+                    leadingAccessory={toIconAccessory(OpenIconComp)}
                     action={() => openLink(url)}
                 />
             );

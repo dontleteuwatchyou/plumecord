@@ -1,4 +1,10 @@
 /*
+ * Nightcord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+/*
  * Vencord, a modification for Discord's desktop app
  * Copyright (c) 2023 Vendicated and contributors
  *
@@ -168,7 +174,32 @@ export function _usePatchContextMenu(props: ContextMenuProps) {
         }
     }
 
+    props.children = sanitizeMenuChildren(props.children);
+
     return props;
+}
+
+function sanitizeMenuChildren(children: any): any {
+    if (!children) return children;
+    if (Array.isArray(children)) {
+        return children
+            .filter(child => {
+                if (child == null || child === false) return false;
+                if (React.isValidElement(child) && child.type === undefined) return false;
+                return true;
+            })
+            .map(sanitizeMenuChildren);
+    }
+    if (React.isValidElement(children)) {
+        if (children.type === undefined) return null;
+        if (children.props?.children) {
+            const nextChildren = sanitizeMenuChildren(children.props.children);
+            if (nextChildren !== children.props.children) {
+                return React.cloneElement(children, { children: nextChildren });
+            }
+        }
+    }
+    return children;
 }
 
 function cloneMenuChildren(obj: ReactElement<any> | Array<ReactElement<any> | null> | null) {
