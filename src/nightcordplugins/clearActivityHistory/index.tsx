@@ -280,6 +280,10 @@ function ClearActivityHistorySettingsPanel() {
     );
 }
 
+let origRestPost: typeof RestAPI.post | null = null;
+let origGetUserOutbox: any = null;
+let origGetMatchingOutboxEntry: any = null;
+
 export default definePlugin({
     name: "ClearActivityHistory",
     description: "Automatically clear and suppress your Discord activity history (played games, listened music, launched activities).",
@@ -294,33 +298,42 @@ export default definePlugin({
         "user-context": UserContextMenuPatch
     },
 
-    start({ patcher }) {
+    start() {
         // 1. Intercept Spotify tracking POST requests so Spotify history is never uploaded
-        patcher.instead(RestAPI, "post", (args, orig) => {
-            const [options] = args;
-            const url = typeof options === "string" ? options : options?.url;
-            if (settings.store.blockSpotifyTracking && typeof url === "string" && url.includes("/content-inventory/users/@me/spotify")) {
-                return Promise.resolve({ ok: true, status: 200, body: {} } as any);
-            }
-            return orig(...args);
-        });
+        if (RestAPI && RestAPI.post && !origRestPost) {
+            origRestPost = RestAPI.post;
+            RestAPI.post = function (options: any, ...rest: any[]) {
+                const url = typeof options === "string" ? options : options?.url;
+                if (settings.store.blockSpotifyTracking && typeof url === "string" && url.includes("/content-inventory/users/@me/spotify")) {
+                    return Promise.resolve({ ok: true, status: 200, body: {} } as any);
+                }
+                return origRestPost!.call(this, options, ...rest);
+            };
+        }
 
         // 2. Patch local ContentInventoryOutboxStore to immediately hide recent activity from own profile
         const ContentInventoryOutboxStore = findStore("ContentInventoryOutboxStore");
         if (ContentInventoryOutboxStore) {
-            patcher.after(ContentInventoryOutboxStore, "getUserOutbox", (_, [userId], res) => {
-                if (settings.store.hideInLocalProfile && userId === UserStore.getCurrentUser()?.id) {
-                    return { entries: [], lastFetched: Date.now() };
-                }
-                return res;
-            });
+            if (ContentInventoryOutboxStore.getUserOutbox && !origGetUserOutbox) {
+                origGetUserOutbox = ContentInventoryOutboxStore.getUserOutbox;
+                ContentInventoryOutboxStore.getUserOutbox = function (userId: string, ...rest: any[]) {
+                    const res = origGetUserOutbox.call(this, userId, ...rest);
+                    if (settings.store.hideInLocalProfile && userId === UserStore.getCurrentUser()?.id) {
+                        return { entries: [], lastFetched: Date.now() };
+                    }
+                    return res;
+                };
+            }
 
-            patcher.after(ContentInventoryOutboxStore, "getMatchingOutboxEntry", (_, [props], res) => {
-                if (settings.store.hideInLocalProfile && props?.userId === UserStore.getCurrentUser()?.id) {
-                    return undefined;
-                }
-                return res;
-            });
+            if (ContentInventoryOutboxStore.getMatchingOutboxEntry && !origGetMatchingOutboxEntry) {
+                origGetMatchingOutboxEntry = ContentInventoryOutboxStore.getMatchingOutboxEntry;
+                ContentInventoryOutboxStore.getMatchingOutboxEntry = function (props: any, ...rest: any[]) {
+                    if (settings.store.hideInLocalProfile && props?.userId === UserStore.getCurrentUser()?.id) {
+                        return undefined;
+                    }
+                    return origGetMatchingOutboxEntry.call(this, props, ...rest);
+                };
+            }
         }
 
         // 3. Register FluxDispatcher listeners
@@ -342,6 +355,23 @@ export default definePlugin({
     },
 
     stop() {
+        if (origRestPost) {
+            RestAPI.post = origRestPost;
+            origRestPost = null;
+        }
+
+        const ContentInventoryOutboxStore = findStore("ContentInventoryOutboxStore");
+        if (ContentInventoryOutboxStore) {
+            if (origGetUserOutbox) {
+                ContentInventoryOutboxStore.getUserOutbox = origGetUserOutbox;
+                origGetUserOutbox = null;
+            }
+            if (origGetMatchingOutboxEntry) {
+                ContentInventoryOutboxStore.getMatchingOutboxEntry = origGetMatchingOutboxEntry;
+                origGetMatchingOutboxEntry = null;
+            }
+        }
+
         if (wipeTimeout) {
             clearTimeout(wipeTimeout);
             wipeTimeout = null;
