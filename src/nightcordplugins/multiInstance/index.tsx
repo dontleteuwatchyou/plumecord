@@ -16,7 +16,7 @@ import { findByProps, findByPropsSilent, findStore, waitFor } from "@webpack";
 import { AuthenticationStore, ContextMenuApi, FluxDispatcher, Forms, IconUtils, MediaEngineStore, Menu, React, ReactDOM, showToast, Text, TextInput, Toasts, Tooltip, UserStore } from "@webpack/common";
 
 import { t } from "../autoTranslateNightcord";
-import { getAccounts as getTokenImporterAccounts } from "../tokenImporter";
+import { getAccounts as getTokenImporterAccounts, removeAccount as removeTokenImporterAccount } from "../tokenImporter";
 
 const settings = definePluginSettings({
     domain: {
@@ -1403,51 +1403,108 @@ function MultiInstanceModal({ rootProps }: { rootProps: any; }) {
 
     const handleLogout = async (acc: AccountEntry) => {
         ContextMenuApi.closeContextMenu();
-        if (acc.id === currentUser?.id) {
-            try {
-                const authMod = findByProps("logout");
-                if (typeof authMod?.logout === "function") {
-                    authMod.logout();
-                    return;
-                }
-            } catch {}
-        }
+        const isCurrent = acc.id === currentUser?.id;
 
         try {
             delete tokenCache[acc.id];
-            saveTokenCache();
-
-            const saved = await fetchAllAccounts();
-            const filtered = saved.filter(s => s.id !== acc.id);
-            await DataStore.set(STORE_KEY, filtered);
-            if (typeof (Native as any)?.saveSharedAccounts === "function") {
-                (Native as any).saveSharedAccounts(filtered).catch(() => {});
+            if (_saveTokenTimer !== undefined) {
+                clearTimeout(_saveTokenTimer);
+                _saveTokenTimer = undefined;
             }
+            await DataStore.set(MI_TOKEN_CACHE_KEY, tokenCache);
 
-            if (FluxDispatcher?.dispatch) {
-                FluxDispatcher.dispatch({ type: "MULTI_ACCOUNT_REMOVE_ACCOUNT", userId: acc.id });
-            }
+            try {
+                if (typeof (Native as any)?.removeSharedTokenFromCache === "function") {
+                    await (Native as any).removeSharedTokenFromCache(acc.id);
+                }
+                const miHelper = getNativeHelper();
+                if (typeof miHelper?.removeSharedTokenFromCache === "function") {
+                    await miHelper.removeSharedTokenFromCache(acc.id);
+                }
+            } catch {}
 
-            const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens");
-            if (tokenMod?.encryptAndStoreTokens) {
+            await removeTokenImporterAccount(acc.id).catch(() => {});
+
+            try {
+                const dsAccounts = (await DataStore.get<any[]>(STORE_KEY)) ?? [];
+                if (Array.isArray(dsAccounts)) {
+                    const filteredDs = dsAccounts.filter(a => a && String(a.id) !== acc.id);
+                    await DataStore.set(STORE_KEY, filteredDs);
+                }
+            } catch {}
+
+            try {
+                if (typeof (Native as any)?.removeSharedAccount === "function") {
+                    await (Native as any).removeSharedAccount(acc.id);
+                }
+                const miHelper = getNativeHelper();
+                if (typeof miHelper?.removeSharedAccount === "function") {
+                    await miHelper.removeSharedAccount(acc.id);
+                }
+            } catch {}
+
+            try {
+                const ghost = await DataStore.get<any[]>("nightcord-ghost-v2-tokens");
+                if (Array.isArray(ghost)) {
+                    const filteredGhost = ghost.filter(g => g && String(g.id) !== acc.id);
+                    await DataStore.set("nightcord-ghost-v2-tokens", filteredGhost);
+                }
+            } catch {}
+
+            await setAccountAutoLaunch(acc.id, false).catch(() => {});
+            setAutoLaunchIds(prev => prev.filter(id => id !== acc.id));
+
+            try {
+                if (FluxDispatcher?.dispatch) {
+                    FluxDispatcher.dispatch({ type: "MULTI_ACCOUNT_REMOVE_ACCOUNT", userId: acc.id });
+                }
+            } catch {}
+
+            try {
+                const tokenMod = findByPropsSilent("getToken", "encryptAndStoreTokens", "removeToken");
+                if (typeof tokenMod?.removeToken === "function") {
+                    tokenMod.removeToken(acc.id);
+                }
                 const tokensJson = window.localStorage.getItem("tokens");
                 if (tokensJson) {
                     try {
                         const parsed = JSON.parse(tokensJson);
                         delete parsed[acc.id];
                         window.localStorage.setItem("tokens", JSON.stringify(parsed));
-                        window.localStorage.setItem("multiaccount_tokens", JSON.stringify(parsed));
-                        tokenMod.encryptAndStoreTokens(parsed).catch(() => {});
+                        if (typeof tokenMod?.encryptAndStoreTokens === "function") {
+                            tokenMod.encryptAndStoreTokens(parsed).catch(() => {});
+                        }
                     } catch {}
                 }
-            }
+                const multiJson = window.localStorage.getItem("multiaccount_tokens");
+                if (multiJson) {
+                    try {
+                        const parsed = JSON.parse(multiJson);
+                        delete parsed[acc.id];
+                        window.localStorage.setItem("multiaccount_tokens", JSON.stringify(parsed));
+                    } catch {}
+                }
+            } catch {}
 
             if (openInstances.includes(acc.id)) {
                 await Native.closeInstance(acc.id).catch(() => {});
             }
 
+            setSavedAccounts(prev => prev.filter(a => a.id !== acc.id));
+            setNativeAccounts(prev => prev.filter(a => a.id !== acc.id));
+
             showToast(t("Account removed"), Toasts.Type.SUCCESS);
             await refreshAccounts();
+
+            if (isCurrent) {
+                try {
+                    const authMod = findByProps("logout");
+                    if (typeof authMod?.logout === "function") {
+                        authMod.logout();
+                        return;
+                    }
+                } catch {}
+            }
         } catch (e) {
             console.error("[MultiInstance] Logout error:", e);
         }

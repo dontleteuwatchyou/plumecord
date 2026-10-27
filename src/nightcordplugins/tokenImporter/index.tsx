@@ -128,6 +128,44 @@ async function saveAccounts(accounts: SavedAccount[]): Promise<void> {
     } catch {}
 }
 
+export async function removeAccount(id: string): Promise<void> {
+    try {
+        if (!id) return;
+        const strId = String(id);
+        const existing = await getAccounts();
+        const filtered = existing.filter(a => a.id !== strId);
+        accountsCache = filtered;
+
+        const encrypted: SavedAccount[] = [];
+        for (const a of filtered) {
+            let tok = a.token;
+            if (!tok.startsWith("dQw4w9WgXcQ:")) {
+                try {
+                    const enc = await Native.encryptToken(tok);
+                    if (enc) tok = enc;
+                } catch (e) {
+                    console.error("[TokenImporter] Failed to encrypt token for", a.username, e);
+                }
+            }
+            encrypted.push({ ...a, token: tok });
+        }
+        await DataStore.set(STORE_KEY, encrypted);
+
+        const vn = getVencordNative();
+        const miHelper = vn?.pluginHelpers?.MultiInstance;
+        if (typeof miHelper?.removeSharedAccount === "function") {
+            await miHelper.removeSharedAccount(strId).catch(() => {});
+        } else if (typeof miHelper?.saveSharedAccounts === "function") {
+            await miHelper.saveSharedAccounts(filtered, true).catch(() => {});
+        }
+        if (typeof miHelper?.removeSharedTokenFromCache === "function") {
+            await miHelper.removeSharedTokenFromCache(strId).catch(() => {});
+        }
+    } catch (e) {
+        console.error("[TokenImporter] removeAccount error:", e);
+    }
+}
+
 function autoCaptureActiveAccount() {
     try {
         const UserStore = (findStore("UserStore") || findByProps("getCurrentUser", "getUser")) as any;
@@ -405,10 +443,9 @@ function TokenModal({ rootProps }: { rootProps: any; }) {
         }
     }, []);
 
-    async function removeAccount(id: string) {
-        const updated = accounts.filter(a => a.id !== id);
-        setAccounts(updated);
-        await saveAccounts(updated);
+    async function handleDeleteAccount(id: string) {
+        await removeAccount(id);
+        setAccounts(prev => prev.filter(a => a.id !== id));
     }
 
     async function verifyAll() {
@@ -591,7 +628,7 @@ function TokenModal({ rootProps }: { rootProps: any; }) {
                                                                 toastMod.showToast("Token copied!", toastMod.Toasts?.Type?.SUCCESS);
                                                             }
                                                         }}><CopyIcon /></button>
-                                                        <button className="ti-del-btn" title={t("Delete")} onClick={() => removeAccount(a.id)}><TrashIcon /></button>
+                                                        <button className="ti-del-btn" title={t("Delete")} onClick={() => handleDeleteAccount(a.id)}><TrashIcon /></button>
                                                     </div>
                                                 </div>
                                             );

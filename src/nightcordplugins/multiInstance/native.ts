@@ -231,13 +231,15 @@ export async function getSharedAccounts(_?: any): Promise<SharedAccountData[]> {
     }
 }
 
-export async function saveSharedAccounts(_: any, accounts: SharedAccountData[]): Promise<boolean> {
+export async function saveSharedAccounts(_: any, accounts: SharedAccountData[], overwrite = false): Promise<boolean> {
     try {
         if (!Array.isArray(accounts)) return false;
-        const existing = await getSharedAccounts();
         const map = new Map<string, SharedAccountData>();
-        for (const a of existing) {
-            if (a.id) map.set(a.id, a);
+        if (!overwrite) {
+            const existing = await getSharedAccounts();
+            for (const a of existing) {
+                if (a.id) map.set(a.id, a);
+            }
         }
         for (const a of accounts) {
             if (!a || !a.id) continue;
@@ -263,6 +265,26 @@ export async function saveSharedAccounts(_: any, accounts: SharedAccountData[]):
     }
 }
 
+export async function removeSharedAccount(_: any, userId: string): Promise<boolean> {
+    try {
+        if (!userId) return false;
+        const targetId = String(userId);
+        const existing = await getSharedAccounts();
+        const filtered = existing.filter(a => a.id !== targetId);
+        const toSave = filtered.map(acc => ({
+            id: acc.id,
+            username: acc.username,
+            avatar: acc.avatar,
+            token: encryptTokenSync(acc.token),
+        }));
+        await fsPromises.writeFile(SHARED_ACCOUNTS_FILE, JSON.stringify(toSave, null, 2), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] removeSharedAccount error:", e);
+        return false;
+    }
+}
+
 export async function getSharedTokenCache(): Promise<Record<string, string>> {
     try {
         if (!existsSync(SHARED_TOKEN_CACHE_FILE)) return {};
@@ -282,11 +304,10 @@ export async function getSharedTokenCache(): Promise<Record<string, string>> {
     }
 }
 
-export async function saveSharedTokenCache(_: any, cache: Record<string, string>): Promise<boolean> {
+export async function saveSharedTokenCache(_: any, cache: Record<string, string>, overwrite = false): Promise<boolean> {
     try {
         if (!cache || typeof cache !== "object") return false;
-        const existing = await getSharedTokenCache();
-        const merged = { ...existing, ...cache };
+        const merged = overwrite ? { ...cache } : { ...(await getSharedTokenCache()), ...cache };
         const encrypted: Record<string, string> = {};
         for (const [id, tok] of Object.entries(merged)) {
             if (typeof tok === "string" && tok) {
@@ -297,6 +318,26 @@ export async function saveSharedTokenCache(_: any, cache: Record<string, string>
         return true;
     } catch (e) {
         console.warn("[NightcordMI] saveSharedTokenCache error:", e);
+        return false;
+    }
+}
+
+export async function removeSharedTokenFromCache(_: any, userId: string): Promise<boolean> {
+    try {
+        if (!userId) return false;
+        const targetId = String(userId);
+        const existing = await getSharedTokenCache();
+        delete existing[targetId];
+        const encrypted: Record<string, string> = {};
+        for (const [id, tok] of Object.entries(existing)) {
+            if (typeof tok === "string" && tok) {
+                encrypted[id] = encryptTokenSync(tok);
+            }
+        }
+        await fsPromises.writeFile(SHARED_TOKEN_CACHE_FILE, JSON.stringify(encrypted, null, 2), "utf-8");
+        return true;
+    } catch (e) {
+        console.warn("[NightcordMI] removeSharedTokenFromCache error:", e);
         return false;
     }
 }
