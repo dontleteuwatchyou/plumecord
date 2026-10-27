@@ -5,18 +5,14 @@
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
+import { updateMessage } from "@api/MessageUpdater";
 import { definePluginSettings } from "@api/Settings";
 import { openPluginModal } from "@components/settings/tabs/plugins/PluginModal";
 import definePlugin, { OptionType } from "@utils/types";
-import { findByPropsLazy, findStoreLazy } from "@webpack";
-import { React } from "@webpack/common";
+import { findByProps } from "@webpack";
+import { React, RestAPI, UserStore } from "@webpack/common";
 import plugins from "~plugins";
 import { t } from "../autoTranslateNightcord";
-
-// ── Discord internals ──────────────────────────────────────────────────────────
-
-const MessageActions = findByPropsLazy("deleteMessage", "startEditMessage");
-const UserStore = findStoreLazy("UserStore");
 
 // ── Settings ───────────────────────────────────────────────────────────────────
 
@@ -55,21 +51,54 @@ function notifyListeners() {
     }
 }
 
+async function doDeleteMessage(channelId: string, messageId: string) {
+    // 1. Direct Discord REST API deletion (most robust, works in all versions)
+    try {
+        const res = await RestAPI.del({ url: `/channels/${channelId}/messages/${messageId}` });
+        if (res?.ok || res?.status === 204 || res?.status === 200 || res?.status === 404) {
+            return;
+        }
+    } catch (err: any) {
+        if (err?.status === 404 || err?.statusCode === 404) return;
+        console.warn("[SelfDestruct] RestAPI.del encountered error, trying MessageActions fallback:", err);
+    }
+
+    // 2. Discord internal MessageActions fallback
+    try {
+        const actions = (findByProps("deleteMessage", "sendMessage") || findByProps("deleteMessage")) as any;
+        if (typeof actions?.deleteMessage === "function") {
+            await actions.deleteMessage(channelId, messageId);
+        }
+    } catch (e) {
+        console.error("[SelfDestruct] MessageActions.deleteMessage failed:", e);
+    }
+}
+
 function scheduleDelete(channelId: string, messageId: string, delaySec: number) {
+    if (activeTimers.has(messageId)) return;
+
     const expiresAt = Date.now() + delaySec * 1000;
 
-    const timerId = setTimeout(() => {
+    const timerId = setTimeout(async () => {
         try {
-            MessageActions?.deleteMessage(channelId, messageId);
+            await doDeleteMessage(channelId, messageId);
         } catch (e) {
             console.error("[SelfDestruct] Delete failed:", e);
         }
         activeTimers.delete(messageId);
         notifyListeners();
+        try {
+            updateMessage(channelId, messageId);
+        } catch { }
     }, delaySec * 1000);
 
     activeTimers.set(messageId, { channelId, messageId, expiresAt, timerId });
     notifyListeners();
+
+    // Trigger re-render of message so TimerBadge appears immediately
+    try {
+        updateMessage(channelId, messageId);
+    } catch { }
 }
 
 function cancelTimer(messageId: string) {
@@ -78,6 +107,9 @@ function cancelTimer(messageId: string) {
         clearTimeout(entry.timerId);
         activeTimers.delete(messageId);
         notifyListeners();
+        try {
+            updateMessage(entry.channelId, messageId);
+        } catch { }
     }
 }
 
@@ -92,7 +124,11 @@ function cleanup() {
 // ── Timer Badge Component (rendered on messages) ───────────────────────────────
 
 function TimerBadge({ messageId }: { messageId: string; }) {
-    const [remaining, setRemaining] = React.useState<number | null>(null);
+    const [remaining, setRemaining] = React.useState<number | null>(() => {
+        const entry = activeTimers.get(messageId);
+        if (!entry) return null;
+        return Math.max(0, Math.ceil((entry.expiresAt - Date.now()) / 1000));
+    });
 
     React.useEffect(() => {
         function update() {
@@ -106,7 +142,7 @@ function TimerBadge({ messageId }: { messageId: string; }) {
         }
 
         update();
-        const interval = setInterval(update, 1000);
+        const interval = setInterval(update, 500);
 
         const listener = () => update();
         timerListeners.add(listener);
@@ -127,6 +163,7 @@ function TimerBadge({ messageId }: { messageId: string; }) {
 
     return (
         <div
+            className="nc-selfdestruct-timer"
             style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -145,11 +182,11 @@ function TimerBadge({ messageId }: { messageId: string; }) {
             }}
             title={t("SelfDestruct — this message will be deleted automatically")}
         >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
                 <circle cx="12" cy="12" r="10" stroke="#ed4245" strokeWidth="2" fill="none" />
                 <path d="M12 6v6l4 2" stroke="#ed4245" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            {timeStr}
+            <span>{timeStr}</span>
         </div>
     );
 }
@@ -168,7 +205,6 @@ function SelfDestructIcon({ active, width = 20, height = 20 }: { active?: boolea
             viewBox="0 0 24 24"
             style={{ color: active ? "#ed4245" : "currentColor" }}
         >
-            {/* Bombe / timer icon */}
             <circle cx="12" cy="13" r="8" stroke="currentColor" strokeWidth="2" fill="none" />
             <path d="M12 9v4l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             <path d="M12 5V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -216,15 +252,40 @@ const SelfDestructButton: ChatBarButtonFactory = ({ isMainChat }) => {
     );
 };
 
+// ── Message Handlers ───────────────────────────────────────────────────────────
+
+function handleIncomingMessage(event: any) {
+    if (event?.optimistic) return;
+    if (!settings.store.active) return;
+
+    const message = event?.message;
+    const channelId = event?.channelId || message?.channel_id || message?.channelId;
+    const messageId = event?.messageId || message?.id;
+
+    if (!channelId || !messageId) return;
+    if (activeTimers.has(messageId)) return;
+
+    const currentUserId = UserStore?.getCurrentUser?.()?.id;
+    if (!currentUserId) return;
+
+    const authorId = message?.author?.id ?? message?.authorId;
+    if (authorId && authorId !== currentUserId) return;
+
+    const delaySec = settings.store.delay ?? 30;
+    scheduleDelete(channelId, messageId, delaySec);
+}
+
 // ── Plugin ─────────────────────────────────────────────────────────────────────
 
 export default definePlugin({
     name: "SelfDestruct",
     enabledByDefault: true,
     description: "Sends messages that are automatically deleted after a configurable delay. Red timer visible on each message.",
-    authors: [{ name: "Nightcord",
-     id: 0n }],
-    dependencies: ["ChatInputButtonAPI", "MessageAccessoriesAPI"],
+    authors: [{
+        name: "Nightcord",
+        id: 0n
+    }],
+    dependencies: ["ChatInputButtonAPI", "MessageAccessoriesAPI", "MessageUpdaterAPI"],
     settings,
 
     chatBarButton: {
@@ -239,21 +300,20 @@ export default definePlugin({
     },
 
     flux: {
-        MESSAGE_CREATE({ message, optimistic }: { message: any; optimistic?: boolean; }) {
-            if (optimistic) return;
-            if (!settings.store.active) return;
-            if (!message?.id || !message?.channel_id) return;
-
-            const currentUser = UserStore?.getCurrentUser?.();
-            if (!currentUser || message.author?.id !== currentUser.id) return;
-
-            const delaySec = settings.store.delay ?? 30;
-            scheduleDelete(message.channel_id, message.id, delaySec);
+        MESSAGE_CREATE(event: any) {
+            handleIncomingMessage(event);
         },
+        MESSAGE_SEND_SUCCESS(event: any) {
+            handleIncomingMessage(event);
+        },
+        MESSAGE_DELETE(event: any) {
+            const id = event?.id || event?.message?.id;
+            if (id) cancelTimer(id);
+        }
     },
 
     start() {
-        // Reset au démarrage — pas de timers persistants
+        // Clean start - timers are runtime session based
     },
 
     stop() {
