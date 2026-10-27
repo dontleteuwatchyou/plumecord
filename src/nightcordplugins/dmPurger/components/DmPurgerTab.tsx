@@ -33,6 +33,14 @@ function FolderIcon(props: any) {
     );
 }
 
+function UploadIcon(props: any) {
+    return (
+        <svg aria-hidden="true" role="img" width={props.width || 24} height={props.height || 24} fill="none" viewBox="0 0 24 24" {...props}>
+            <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+        </svg>
+    );
+}
+
 function PlayIcon(props: any) {
     return (
         <svg aria-hidden="true" role="img" width={props.width || 16} height={props.height || 16} fill="currentColor" viewBox="0 0 24 24" {...props}>
@@ -111,6 +119,7 @@ export default function DmPurgerTab() {
 
     const [purgerState, setPurgerState] = React.useState<PurgerState>(purgerEngine.getState());
     const [manualPath, setManualPath] = React.useState("");
+    const [isDragging, setIsDragging] = React.useState(false);
     const [isFetchingEmail, setIsFetchingEmail] = React.useState(false);
     const [isLoadingPackage, setIsLoadingPackage] = React.useState(false);
     const [isRequestingHarvest, setIsRequestingHarvest] = React.useState(false);
@@ -571,6 +580,50 @@ export default function DmPurgerTab() {
                         <FolderIcon width={18} height={18} style={{ color: "var(--header-primary)" }} />
                         <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 14 }}>
                             {t("Manual File Selection")}
+                        </span>
+                    </div>
+
+                    {/* Drag and Drop Zone */}
+                    <div
+                        onDragOver={e => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+                        onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+                        onDrop={async e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setIsDragging(false);
+                            const files = e.dataTransfer.files;
+                            if (files && files.length > 0) {
+                                const file = files[0];
+                                const filePath = (file as any).path || (file as any).name;
+                                if (filePath) {
+                                    setManualPath(filePath);
+                                    await handleLoadPackage(filePath);
+                                }
+                            }
+                        }}
+                        onClick={handleSelectFileOrFolder}
+                        style={{
+                            border: `2px dashed ${isDragging ? "var(--brand-500)" : "var(--background-modifier-accent)"}`,
+                            backgroundColor: isDragging ? "rgba(88, 101, 242, 0.12)" : "var(--background-secondary)",
+                            borderRadius: 8,
+                            padding: "20px 16px",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 6,
+                            marginBottom: 12,
+                            transition: "all 0.2s ease"
+                        }}
+                    >
+                        <UploadIcon width={28} height={28} style={{ color: isDragging ? "var(--brand-500)" : "var(--text-muted)" }} />
+                        <span style={{ color: "var(--header-primary)", fontWeight: 600, fontSize: 13 }}>
+                            {t("Drop your Discord package.zip here or click to browse")}
+                        </span>
+                        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                            {t("Supports both .zip packages and extracted messages folders")}
                         </span>
                     </div>
 

@@ -8,6 +8,7 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { RestAPI, showToast, Toasts } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
+import DmPurgerSettingsModalPanel from "./components/DmPurgerSettingsModalPanel";
 import { purgerEngine } from "./utils/purgerEngine";
 
 export const settings = definePluginSettings({
@@ -136,6 +137,7 @@ export default definePlugin({
     authors: [{ name: "Nightcord", id: 0n }],
     enabledByDefault: false,
     settings,
+    settingsAboutComponent: DmPurgerSettingsModalPanel,
 
     start() {
         checkPeriodicHarvest();
