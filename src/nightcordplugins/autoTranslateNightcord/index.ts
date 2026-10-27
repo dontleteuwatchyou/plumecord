@@ -5630,25 +5630,23 @@ export function normalizeLang(lang: string): SupportedLang {
 }
 
 export function getActiveLanguage(): SupportedLang {
-    // 1. If plugin is explicitly disabled, revert to English
-    const pluginEnabled = Settings.plugins?.AutoTranslateNightcord?.enabled ?? true;
-    if (!pluginEnabled) return "en";
+    // 1. Primary Authority: Global Nightcord language setting
+    const globalLang = Settings?.language;
+    if (globalLang && (globalLang as string) !== "auto") {
+        return normalizeLang(globalLang);
+    }
 
-    // 2. Check plugin-specific option if selected
-    const pluginOpt = (Settings.plugins?.AutoTranslateNightcord as any)?.autoTranslate;
+    // 2. Secondary: Plugin-specific option if selected and not auto
+    const pluginOpt = (Settings?.plugins?.AutoTranslateNightcord as any)?.autoTranslate;
     if (pluginOpt && pluginOpt !== "auto") return normalizeLang(pluginOpt);
 
-    // 3. Check global Nightcord setting
-    const globalLang = Settings.language;
-    if (globalLang && globalLang !== "auto") return normalizeLang(globalLang);
-
-    // 4. Auto-detect from Discord client LocaleStore
+    // 3. Auto-detect from Discord client LocaleStore
     try {
         const { LocaleStore } = (typeof Vencord !== "undefined" ? Vencord.Webpack?.Common : {}) as any;
         if (LocaleStore?.locale) return normalizeLang(LocaleStore.locale);
     } catch {}
 
-    // 5. Auto-detect from Discord client DOM / navigator
+    // 4. Auto-detect from Discord client DOM / navigator
     try {
         const discordLocale = (typeof window !== "undefined" && (window as any).DiscordNative?.app?.getLocale?.());
         if (discordLocale) return normalizeLang(discordLocale);

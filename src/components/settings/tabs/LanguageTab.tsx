@@ -5,7 +5,7 @@
  */
 
 import { LANGUAGES, LANGUAGE_FLAGS, Language, t } from "@api/i18n";
-import { useSettings } from "@api/Settings";
+import { flushSettings, useSettings } from "@api/Settings";
 import { Divider } from "@components/Divider";
 import { FormSwitch } from "@components/FormSwitch";
 import { Heading } from "@components/Heading";
@@ -87,21 +87,31 @@ function FlagIcon({ lang }: { lang: Language; }) {
 }
 
 function LanguageTab() {
-    const settings = useSettings(["language", "syncDiscordLanguage"]);
+    const settings = useSettings(["language", "syncDiscordLanguage", "plugins"]);
     const current = (settings.language as Language) ?? "en";
 
     function selectLang(lang: Language) {
         settings.language = lang;
+        if (!settings.plugins) settings.plugins = {} as any;
+        if (!settings.plugins.AutoTranslateNightcord) {
+            settings.plugins.AutoTranslateNightcord = { enabled: true } as any;
+        }
+        settings.plugins.AutoTranslateNightcord.enabled = true;
+        (settings.plugins.AutoTranslateNightcord as any).autoTranslate = lang;
         if (settings.syncDiscordLanguage) {
             syncDiscordLocale(lang);
         }
+        flushSettings();
         
         Alerts.show({
             title: t("Restart required!"),
             body: t("Nightcord language has been changed. Discord must be restarted for all translations to take effect. Restart now?"),
             confirmText: t("Restart now"),
             cancelText: t("Later"),
-            onConfirm: () => location.reload()
+            onConfirm: () => {
+                flushSettings();
+                location.reload();
+            }
         });
     }
 
@@ -142,6 +152,7 @@ function LanguageTab() {
                         if (v) {
                             syncDiscordLocale(current);
                         }
+                        flushSettings();
                     }}
                     hideBorder
                 />
