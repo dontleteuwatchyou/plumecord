@@ -190,15 +190,10 @@ export type VoiceChannelIndicatorProps = {
 const clickTimers = new Map<string, any>();
 
 export const VoiceChannelIndicator = ErrorBoundary.wrap(({ userId, isProfile, isActionButton, shouldHighlight }: VoiceChannelIndicatorProps) => {
-    const channelId = useStateFromStores([VoiceStateStore], () => VoiceStateStore.getVoiceStateForUser(userId)?.channelId);
-
-    const { isMuted, isDeaf } = useStateFromStores([VoiceStateStore], () => {
-        const voiceState = VoiceStateStore.getVoiceStateForUser(userId);
-        return {
-            isMuted: voiceState?.mute || voiceState?.selfMute || false,
-            isDeaf: voiceState?.deaf || voiceState?.selfDeaf || false
-        };
-    });
+    const voiceState = useStateFromStores([VoiceStateStore], () => VoiceStateStore.getVoiceStateForUser(userId));
+    const channelId = voiceState?.channelId;
+    const isMuted = Boolean(voiceState?.mute || voiceState?.selfMute);
+    const isDeaf = Boolean(voiceState?.deaf || voiceState?.selfDeaf);
 
     const channel = channelId == null ? undefined : ChannelStore.getChannel(channelId);
     if (channel == null) return null;

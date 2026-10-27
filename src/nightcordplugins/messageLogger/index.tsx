@@ -61,25 +61,42 @@ for (const [chId, ids] of Object.entries(initialDeletedData.channels)) {
 }
 
 let saveTimeout: any = null;
+const MAX_PERSISTED_IDS = 3000;
+
 function savePersistedDeletedData() {
     if (saveTimeout) return;
     saveTimeout = setTimeout(() => {
         saveTimeout = null;
-        try {
-            const channels: Record<string, string[]> = {};
-            for (const [chId, set] of channelDeletedMap.entries()) {
-                if (set.size > 0) {
-                    channels[chId] = Array.from(set);
+        const doSave = () => {
+            try {
+                let idsToSave = Array.from(deletedMessageIds);
+                if (idsToSave.length > MAX_PERSISTED_IDS) {
+                    idsToSave = idsToSave.slice(idsToSave.length - MAX_PERSISTED_IDS);
                 }
-            }
-            const data: PersistedDeletedData = {
-                ids: Array.from(deletedMessageIds),
-                channels,
-                attachments: Array.from(deletedAttachmentIds)
-            };
-            localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(data));
-        } catch {}
-    }, 200);
+
+                const channels: Record<string, string[]> = {};
+                for (const [chId, set] of channelDeletedMap.entries()) {
+                    if (set.size > 0) {
+                        const arr = Array.from(set);
+                        channels[chId] = arr.length > 500 ? arr.slice(arr.length - 500) : arr;
+                    }
+                }
+                const attachments = Array.from(deletedAttachmentIds);
+                const data: PersistedDeletedData = {
+                    ids: idsToSave,
+                    channels,
+                    attachments: attachments.length > 2000 ? attachments.slice(attachments.length - 2000) : attachments
+                };
+                localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(data));
+            } catch {}
+        };
+
+        if (typeof (window as any).requestIdleCallback === "function") {
+            (window as any).requestIdleCallback(doSave, { timeout: 2000 });
+        } else {
+            doSave();
+        }
+    }, 2500);
 }
 
 export function recordDeleted(id: string, channelId?: string, attachments?: any[]) {
@@ -97,6 +114,28 @@ export function recordDeleted(id: string, channelId?: string, attachments?: any[
         attachments.forEach((a: any) => {
             if (a?.id) deletedAttachmentIds.add(String(a.id));
         });
+    }
+    savePersistedDeletedData();
+}
+
+export function recordDeletedBulk(items: { id: string; channelId?: string; attachments?: any[]; }[]) {
+    if (!items.length) return;
+    for (const item of items) {
+        if (!item.id) continue;
+        deletedMessageIds.add(item.id);
+        if (item.channelId) {
+            let set = channelDeletedMap.get(item.channelId);
+            if (!set) {
+                set = new Set();
+                channelDeletedMap.set(item.channelId, set);
+            }
+            set.add(item.id);
+        }
+        if (Array.isArray(item.attachments)) {
+            for (const a of item.attachments) {
+                if (a?.id) deletedAttachmentIds.add(String(a.id));
+            }
+        }
     }
     savePersistedDeletedData();
 }
@@ -143,13 +182,7 @@ export function isDeleted(id: string): boolean {
 
 export function hasDeletedForChannel(channelId: string): boolean {
     if (!channelId) return false;
-    if ((channelDeletedMap.get(channelId)?.size ?? 0) > 0) return true;
-    if (idbCachedMessages) {
-        for (const msg of idbCachedMessages.values()) {
-            if (msg.channel_id === channelId && msg.deleted) return true;
-        }
-    }
-    return false;
+    return (channelDeletedMap.get(channelId)?.size ?? 0) > 0;
 }
 
 export function isAttachmentDeleted(item: any): boolean {
@@ -163,17 +196,6 @@ export function isAttachmentDeleted(item: any): boolean {
     const msgId = item.message_id || item.originalItem?.message_id || item.messageId || item.originalItem?.messageId;
     if (msgId && isDeleted(msgId)) return true;
 
-    if (idbCachedMessages) {
-        for (const msg of idbCachedMessages.values()) {
-            if (msg.deleted && Array.isArray(msg.attachments)) {
-                if (msg.attachments.some(a => (id && String(a.id) === id) || (origId && String(a.id) === origId))) {
-                    if (id) deletedAttachmentIds.add(id);
-                    if (origId) deletedAttachmentIds.add(origId);
-                    return true;
-                }
-            }
-        }
-    }
     return false;
 }
 
@@ -972,7 +994,12 @@ export default definePlugin({
         isBulk: boolean,
     ) {
         try {
-            if (cache == null || (!isBulk && !cache.has(data.id))) return cache;
+            if (cache == null) return null;
+            if (!isBulk && !cache.has(data.id)) return null;
+            if (isBulk && (!Array.isArray(data.ids) || !data.ids.some(id => cache.has(id)))) return null;
+
+            let modified = false;
+            const bulkRecords: { id: string; channelId?: string; attachments?: any[]; }[] = [];
 
             const mutate = (id: string) => {
                 const msg = cache.get(id);
@@ -987,14 +1014,16 @@ export default definePlugin({
                 if (shouldIgnore) {
                     cache = cache.remove(id);
                     removeDeleted(id, cache?.channel_id || msg.channel_id);
+                    modified = true;
                 } else {
-                    recordDeleted(id, cache?.channel_id || msg.channel_id, msg.attachments);
+                    bulkRecords.push({ id, channelId: cache?.channel_id || msg.channel_id, attachments: msg.attachments });
                     cache = cache.update(id, m =>
                         m.set("deleted", true).set(
                             "attachments",
                             m.attachments.map(a => ((a.deleted = true), a)),
                         ),
                     );
+                    modified = true;
                 }
             };
 
@@ -1003,10 +1032,16 @@ export default definePlugin({
             } else {
                 mutate(data.id);
             }
+
+            if (bulkRecords.length > 0) {
+                recordDeletedBulk(bulkRecords);
+            }
+
+            return modified ? cache : null;
         } catch (e) {
             new Logger("MessageLogger").error("Error during handleDelete", e);
         }
-        return cache;
+        return null;
     },
 
     shouldIgnore(message: any, isEdit = false) {
@@ -1092,8 +1127,8 @@ export default definePlugin({
                     match: /(?<=MESSAGE_DELETE:function\((\i)\)\{)(?=let.{0,100}(\i\.\i)\.getOrCreate)/,
                     replace: `
                         let cache = $2.getOrCreate($1.channelId);
-                        cache = $self.handleDelete(cache, $1, false);
-                        $2.commit(cache);
+                        let next = $self.handleDelete(cache, $1, false);
+                        if (next) $2.commit(next);
                         return;
                     `
                 },
@@ -1102,8 +1137,8 @@ export default definePlugin({
                     match: /(?<=MESSAGE_DELETE_BULK:function\((\i)\){)(?=let.{0,100}(\i\.\i)\.getOrCreate)/,
                     replace: `
                         let cache = $2.getOrCreate($1.channelId);
-                        cache = $self.handleDelete(cache, $1, true);
-                        $2.commit(cache);
+                        let next = $self.handleDelete(cache, $1, true);
+                        if (next) $2.commit(next);
                         return;
                     `
                 },

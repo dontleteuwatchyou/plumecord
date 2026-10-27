@@ -6,7 +6,7 @@
 
 import { FluxDispatcher, MessageStore, SelectedChannelStore } from "@webpack/common";
 
-import { Flogger, settings, recordDeleted } from ".";
+import { Flogger, settings, recordDeleted, recordDeletedBulk } from ".";
 import * as idb from "./db";
 import { addMessage } from "./LoggedMessageManager";
 import { LoggedMessage, LoggedMessageJSON } from "./types";
@@ -76,12 +76,31 @@ async function messageDeleteHandler(payload: any) {
 }
 
 async function messageDeleteBulkHandler({ channelId, guildId, ids }: { channelId: string; guildId?: string; ids: string[]; }) {
+    if (!ids || ids.length === 0) return;
     const messages: LoggedMessageJSON[] = [];
+    const bulkRecordItems: { id: string; channelId?: string; attachments?: any[]; }[] = [];
+
     for (const id of ids) {
-        const msg = await messageDeleteHandler({ type: "MESSAGE_DELETE", channelId, guildId, id, isBulk: true });
-        if (msg) messages.push(msg as LoggedMessageJSON);
+        if (handledMessageIds.has(id)) continue;
+        let message: LoggedMessage | LoggedMessageJSON | null = oldGetMessage?.(channelId, id) as any;
+        if (message == null) {
+            const cachedMessage = cacheSentMessages.get(`${channelId},${id}`);
+            if (cachedMessage) {
+                message = { ...cachedMessage, deleted: true } as LoggedMessageJSON;
+            }
+        }
+        if (message) {
+            bulkRecordItems.push({ id, channelId, attachments: message.attachments });
+            messages.push({ ...message, deleted: true } as LoggedMessageJSON);
+        }
     }
-    await idb.addMessagesBulkIDB(messages);
+
+    if (bulkRecordItems.length > 0) {
+        recordDeletedBulk(bulkRecordItems);
+    }
+    if (messages.length > 0) {
+        await idb.addMessagesBulkIDB(messages);
+    }
 }
 
 async function messageUpdateHandler(payload: any) {

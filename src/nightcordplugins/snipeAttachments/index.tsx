@@ -170,6 +170,12 @@ async function processIncomingMessage(rawMessage: any) {
 
     const channelId = message.channel_id || message.channelId || rawMessage.channelId;
     const channel = channelId ? ChannelStore.getChannel(channelId) : null;
+
+    // In servers, only auto-download media for the currently selected channel to prevent lag
+    const isDM = channel?.isDM?.() || channel?.isMultiUserDM?.();
+    const isSelected = channelId === SelectedChannelStore.getChannelId();
+    if (!isDM && !isSelected) return;
+
     const channelName = channel?.name || (channel?.isDM() ? "DirectMessage" : "Chat");
     const guild = channel?.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
     const guildName = guild?.name || "DirectMessages";

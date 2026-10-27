@@ -34,14 +34,48 @@ const settings = definePluginSettings({
 const STORAGE_PREFIX = "nightcord_lastseen_";
 
 const lastWrittenCache = new Map<string, number>();
+const pendingWrites = new Map<string, number>();
+let flushTimer: any = null;
+
+function flushPendingWrites() {
+    flushTimer = null;
+    if (pendingWrites.size === 0) return;
+
+    const entries = Array.from(pendingWrites.entries());
+    pendingWrites.clear();
+
+    const runBatch = () => {
+        const chunkSize = 25;
+        let index = 0;
+        function nextChunk() {
+            const chunk = entries.slice(index, index + chunkSize);
+            index += chunkSize;
+            for (const [uid, ts] of chunk) {
+                DataStore.set(STORAGE_PREFIX + uid, ts).catch(() => {});
+            }
+            if (index < entries.length) {
+                setTimeout(nextChunk, 40);
+            }
+        }
+        nextChunk();
+    };
+
+    if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(runBatch, { timeout: 3000 });
+    } else {
+        setTimeout(runBatch, 40);
+    }
+}
 
 function setLastSeen(userId: string, ts: number) {
     try {
         const lastWritten = lastWrittenCache.get(userId) || 0;
-        // Only write to IndexedDB if it's been more than 60 seconds since the last write for this user
         if (ts - lastWritten > 60000) {
             lastWrittenCache.set(userId, ts);
-            DataStore.set(STORAGE_PREFIX + userId, ts).catch(() => {});
+            pendingWrites.set(userId, ts);
+            if (!flushTimer) {
+                flushTimer = setTimeout(flushPendingWrites, 3000);
+            }
         }
     } catch (e) {
         console.error(`[LastSeen ERROR] Failed to save timestamp for ${userId}:`, e);
@@ -222,6 +256,11 @@ export default definePlugin({
     },
 
     stop() {
+        if (flushTimer) {
+            clearTimeout(flushTimer);
+            flushTimer = null;
+        }
+        pendingWrites.clear();
         FluxDispatcher.unsubscribe("PRESENCE_UPDATE", onPresenceUpdate);
         FluxDispatcher.unsubscribe("PRESENCE_UPDATES", onPresenceUpdates);
         FluxDispatcher.unsubscribe("MESSAGE_CREATE", onMessageCreate);
