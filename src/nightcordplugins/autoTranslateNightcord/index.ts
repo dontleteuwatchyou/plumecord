@@ -4898,6 +4898,8 @@ export const translations: TranslationMap = {
     "cancelled": {"en":"cancelled","fr":"annulé","ar":"تم الإلغاء","es":"cancelado","ru":"отменен","zh":"取消"},
     "channel not found": {"en":"channel not found","fr":"channel not found","ar":"channel not found","es":"canal no encontrado","ru":"канал не найден","zh":"频道未找到"},
     "click to disable": {"en":"click to disable","fr":"cliquez pour désactiver","ar":"انقر للتعطيل","es":"haga clic para desactivar","ru":"нажмите, чтобы отключить","zh":"单击以禁用"},
+    "click to cancel": {"en":"click to cancel","fr":"cliquer pour annuler","ar":"انقر للإلغاء","es":"haga clic para cancelar","ru":"нажмите, чтобы отменить","zh":"点击取消"},
+    "Delay before deletion (up to 3 hours)": {"en":"Delay before deletion (up to 3 hours)","fr":"Délai avant suppression (jusqu'à 3 heures)","ar":"تأخير قبل الحذف (حتى 3 ساعات)","es":"Retraso antes de la eliminación (hasta 3 horas)","ru":"Задержка перед удалением (до 3 часов)","zh":"删除前延迟（最多3小时）"},
     "conversations exported": {"en":"conversations exported","fr":"conversations exportées","ar":"المحادثات المصدرة","es":"conversaciones exportadas","ru":"разговоры экспортированы","zh":"导出的对话"},
     "convertio web converter": {"en":"convertio web converter","fr":"convertisseur Web converti","ar":"تحويل الويب المحول","es":"convertidor web convertio","ru":"веб-конвертер Convertio","zh":"convertio web converter"},
     "d left": {"en":"d left","fr":"je suis parti","ar":"د اليسار","es":"se fue","ru":"я ушел","zh":"d 离开"},
