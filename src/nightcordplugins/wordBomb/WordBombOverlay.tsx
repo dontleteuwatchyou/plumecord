@@ -250,7 +250,7 @@ export function WordBombOverlay() {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
                     body: JSON.stringify({
-                        model: "qwen/qwen3.8-27b",
+                        model: "llama-3.1-8b-instant",
                         temperature: 0.7,
                         max_tokens: 150,
                         messages: [{ role: "user", content: `Donne une très courte définition (1 phrase simple) pour le mot suivant, en expliquant ce que c'est concrètement, sans donner sa nature grammaticale. Fais-le obligatoirement en français. Mot: "${word}"` }],

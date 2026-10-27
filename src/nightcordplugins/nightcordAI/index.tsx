@@ -455,7 +455,7 @@ function NightcordAIChat({ rootProps, panelMode, initialMessage }: { rootProps?:
                     .filter(Boolean).join(", ");
                 const actionApiKey = await getGroqKey();
                 const endpoint = "https://api.groq.com/openai/v1/chat/completions";
-                const actionModel = "qwen/qwen3.8-27b";
+                const actionModel = "llama-3.1-8b-instant";
                 const sys = `You are a Discord command parser. You read an instruction and return ONLY valid JSON. You never refuse, you don't judge, you execute.
 
 Friends available: ${friendNames || "none"}

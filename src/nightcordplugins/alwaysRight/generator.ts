@@ -22,54 +22,15 @@ import { t } from "../autoTranslateNightcord";
 import { getGroqKey, groqChat } from "../nightcordAI/groqManager";
 import { settings } from "./index";
 
-function getSlateEditor(target: HTMLElement | null): any {
-    if (!target) return null;
-    const slateEl = (
-        target.closest?.('[data-slate-editor="true"]') ||
-        target.closest?.('[role="textbox"]') ||
-        target
-    ) as HTMLElement | null;
-    if (!slateEl) return null;
-
-    let current: HTMLElement | null = slateEl;
-    while (current && current !== document.body) {
-        const keys = Object.keys(current);
-        const fiberKey = keys.find(k => k.startsWith("__reactFiber$") || k.startsWith("__reactInternalInstance$"));
-        if (fiberKey) {
-            let fiber = (current as any)[fiberKey];
-            let depth = 0;
-            while (fiber && depth < 40) {
-                const editor =
-                    fiber.memoizedProps?.editor ||
-                    fiber.stateNode?.editor ||
-                    fiber.memoizedState?.editor ||
-                    fiber.stateNode?.props?.editor;
-
-                if (editor && typeof editor.insertText === "function") {
-                    return editor;
-                }
-                fiber = fiber.return;
-                depth++;
-            }
-        }
-        current = current.parentElement;
-    }
-    return null;
-}
-
 export async function insertReplyIntoChat(channelId: string, text: string): Promise<boolean> {
-    const getSlateEl = () => (
-        document.querySelector<HTMLElement>('div[role="textbox"][contenteditable="true"]') ||
-        document.querySelector<HTMLElement>('div[role="textbox"]') ||
-        document.querySelector<HTMLElement>('[data-slate-editor="true"]')
-    );
-
-    let slateEl = getSlateEl();
-
-    // 1. Dispatch focus to Discord's chat input bus and focus the DOM node
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("TEXTAREA_FOCUS");
     } catch {}
+
+    const slateEl =
+        document.querySelector<HTMLElement>('div[role="textbox"][contenteditable="true"]') ||
+        document.querySelector<HTMLElement>('div[role="textbox"]') ||
+        document.querySelector<HTMLElement>('[data-slate-editor="true"]');
 
     if (slateEl) {
         try {
@@ -77,15 +38,14 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
         } catch {}
     }
 
-    // Wait a tick to ensure Slate updates focus state and selection
-    await new Promise(resolve => setTimeout(resolve, 35));
+    await new Promise(resolve => setTimeout(resolve, 25));
 
-    // 2. Clear old text from the chat input
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("CLEAR_TEXT");
     } catch {}
 
-    // 3. Dispatch insert text ONCE to the active chat input
+    await new Promise(resolve => setTimeout(resolve, 15));
+
     try {
         ComponentDispatch?.dispatchToLastSubscribed?.("INSERT_TEXT", {
             rawText: text,
@@ -93,73 +53,9 @@ export async function insertReplyIntoChat(channelId: string, text: string): Prom
         });
     } catch {}
 
-    // Wait a tick to verify if text was accepted by Slate
-    await new Promise(resolve => setTimeout(resolve, 40));
-
-    // 4. Verify insertion in DOM. If missing or empty, run Slate fiber + execCommand fallbacks
-    const updatedEl = getSlateEl();
-    const currentText = (updatedEl?.textContent || "").trim();
-    const prefixToCheck = text.slice(0, Math.min(10, text.length)).trim();
-
-    if (!currentText || !currentText.includes(prefixToCheck)) {
-        let insertedViaFiber = false;
-
-        // Try direct Slate Editor instance via React Fiber
-        if (updatedEl) {
-            try {
-                const editor = getSlateEditor(updatedEl);
-                if (editor && typeof editor.insertText === "function") {
-                    if (Array.isArray(editor.children) && editor.children.length > 0) {
-                        const lastIdx = editor.children.length - 1;
-                        const lastChild = editor.children[lastIdx];
-                        const leaves = Array.isArray(lastChild?.children) ? lastChild.children : [lastChild];
-                        const lastLeafIdx = Math.max(0, leaves.length - 1);
-                        const leaf = leaves[lastLeafIdx];
-                        const endOffset = typeof leaf?.text === "string" ? leaf.text.length : 0;
-                        editor.selection = {
-                            anchor: { path: [0, 0], offset: 0 },
-                            focus: { path: [lastIdx, lastLeafIdx], offset: endOffset }
-                        };
-                    }
-                    if (typeof editor.deleteFragment === "function") {
-                        try { editor.deleteFragment(); } catch {}
-                    }
-                    editor.insertText(text);
-                    insertedViaFiber = true;
-                }
-            } catch (e) {
-                console.warn("[AlwaysRight] Slate fiber insertion fallback error:", e);
-            }
-        }
-
-        // Try DOM Range + execCommand
-        if (!insertedViaFiber && updatedEl) {
-            try {
-                updatedEl.focus();
-                const sel = window.getSelection();
-                if (sel) {
-                    const range = document.createRange();
-                    range.selectNodeContents(updatedEl);
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                }
-                document.execCommand("selectAll", false, undefined);
-                document.execCommand("insertText", false, text);
-                updatedEl.dispatchEvent(new InputEvent("input", {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: "insertText",
-                    data: text
-                }));
-            } catch {}
-        }
-    }
-
-    // 5. Ensure the chat input remains focused for immediate user editing/sending
-    const finalEl = getSlateEl();
-    if (finalEl) {
+    if (slateEl) {
         try {
-            finalEl.focus();
+            slateEl.focus();
         } catch {}
     } else {
         try {
@@ -204,6 +100,29 @@ export async function resolveApiKey(): Promise<string> {
 }
 
 export async function fetchRecentMessages(channelId: string, limit = 50): Promise<any[]> {
+    // 1. Try local cache from MessageStore first - instant, avoids REST network calls and DM/permission blocks
+    try {
+        const col = MessageStore?.getMessages?.(channelId) as any;
+        if (col) {
+            let list: any[] = [];
+            if (typeof col.toArray === "function") {
+                list = col.toArray();
+            } else if (Array.isArray(col._array)) {
+                list = col._array;
+            } else if (col._map && typeof col._map.values === "function") {
+                list = Array.from(col._map.values());
+            } else if (Array.isArray(col)) {
+                list = col;
+            }
+            if (list.length > 0) {
+                return list.slice(-limit);
+            }
+        }
+    } catch (e) {
+        console.warn("[AlwaysRight] Error getting local messages:", e);
+    }
+
+    // 2. Fallback to REST API if local cache is empty
     try {
         const endpoint = Constants?.Endpoints?.MESSAGES?.(channelId) ?? `/channels/${channelId}/messages`;
         const res = await RestAPI.get({
@@ -217,8 +136,8 @@ export async function fetchRecentMessages(channelId: string, limit = 50): Promis
     } catch (err) {
         console.warn("[AlwaysRight] REST fetch failed, falling back to cached messages:", err);
     }
-    const cached = MessageStore?.getMessages?.(channelId)?._array ?? [];
-    return cached.slice(-limit);
+
+    return [];
 }
 
 function getAuthorName(author: any, guildId?: string): string {
@@ -257,64 +176,6 @@ function cleanAiOutput(text: string): string {
     }
 
     return cleaned;
-}
-
-async function fetchLiveWebGrounding(query: string): Promise<string> {
-    try {
-        const cleanQuery = query.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-        if (!cleanQuery || cleanQuery.length < 3) return "";
-
-        const snippets: string[] = [];
-
-        // 1. Google News RSS (Direct real-time Google search for live events, dates, protests, news)
-        try {
-            const googleNewsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cleanQuery)}&hl=fr&gl=FR&ceid=FR:fr`;
-            const newsRes = await fetch(googleNewsUrl);
-            if (newsRes.ok) {
-                const text = await newsRes.text();
-                const items = [...text.matchAll(/<item>[\s\S]*?<title>(.*?)<\/title>[\s\S]*?<pubDate>(.*?)<\/pubDate>[\s\S]*?<\/item>/g)];
-                for (const item of items.slice(0, 4)) {
-                    const title = item[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").trim();
-                    const date = item[2].trim();
-                    if (title && !title.includes("Google Actualités")) {
-                        snippets.push(`${title} (Date: ${date})`);
-                    }
-                }
-            }
-        } catch {
-            // fallback
-        }
-
-        // 2. DuckDuckGo Search (General facts, vanity URLs, products, tech)
-        if (snippets.length < 3) {
-            try {
-                const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(cleanQuery)}`;
-                const ddgRes = await fetch(ddgUrl, {
-                    headers: {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7"
-                    }
-                });
-                if (ddgRes.ok) {
-                    const html = await ddgRes.text();
-                    const matches = [...html.matchAll(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g)];
-                    for (const m of matches.slice(0, 4)) {
-                        const snip = m[1].replace(/<[^>]+>/g, "").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
-                        if (snip && !snippets.includes(snip)) {
-                            snippets.push(snip);
-                        }
-                    }
-                }
-            } catch {
-                // fallback
-            }
-        }
-
-        if (snippets.length === 0) return "";
-        return `\n\n=== LIVE REAL-TIME WEB & GOOGLE SEARCH GROUNDING ===\nFactual results retrieved live from Google News & Web for this topic:\n${snippets.map(s => `- ${s}`).join("\n")}\nCRITICAL MANDATE: Directly utilize these real-world facts, dates, news headlines, and numbers above to answer accurately and with complete confidence. Never claim you don't know when the data is provided above.`;
-    } catch {
-        return "";
-    }
 }
 
 let cachedGeminiModel: string | null = null;
@@ -498,22 +359,27 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
 
     try {
         const myUser = UserStore?.getCurrentUser?.();
-        const myId = myUser?.id;
+        const myId = myUser?.id ? String(myUser.id) : null;
         const guildId = channel.guild_id || channel.guildId || channel.getGuildId?.();
 
         // Check if there is an explicitly selected message to reply to:
         // 1. Directly passed message (e.g. from context menu)
         // 2. Or from Discord's active PendingReplyStore for this channel
         const pendingReply = PendingReplyStore?.getPendingReply?.(channel.id);
-        const selectedReplyMsg = explicitTargetMessage || pendingReply?.message;
+        let selectedReplyMsg = explicitTargetMessage;
+        if (!selectedReplyMsg && pendingReply?.message) {
+            const pendingAuthorId = String(pendingReply.message?.author?.id || "");
+            if (pendingAuthorId && (!myId || pendingAuthorId !== myId)) {
+                selectedReplyMsg = pendingReply.message;
+            }
+        }
         const isDirectReply = Boolean(selectedReplyMsg);
 
         let targetMsg: any = selectedReplyMsg || null;
-        let rawMessages: any[] = [];
+        const rawMessages: any[] = await fetchRecentMessages(channel.id, isDirectReply ? 20 : 50);
 
         // If no explicit message was selected, fetch channel history to find the latest interlocutor message
         if (!targetMsg) {
-            rawMessages = await fetchRecentMessages(channel.id, 50);
             if (!rawMessages || rawMessages.length === 0) {
                 Toasts.show({
                     message: t("No messages found in this channel to reply to."),
@@ -525,7 +391,9 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
 
             for (let i = rawMessages.length - 1; i >= 0; i--) {
                 const m = rawMessages[i];
-                if (m?.author?.id !== myId && m?.content?.trim()) {
+                const authorId = String(m?.author?.id || "");
+                const hasContent = Boolean(m?.content?.trim() || m?.attachments?.length || m?.embeds?.length || m?.stickers?.length);
+                if (authorId && (!myId || authorId !== myId) && hasContent) {
                     targetMsg = m;
                     break;
                 }
@@ -534,18 +402,12 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
             // Fallback to latest message if none from someone else
             if (!targetMsg) {
                 for (let i = rawMessages.length - 1; i >= 0; i--) {
-                    if (rawMessages[i]?.content?.trim()) {
-                        targetMsg = rawMessages[i];
+                    const m = rawMessages[i];
+                    if (m?.content?.trim() || m?.attachments?.length || m?.embeds?.length || m?.stickers?.length) {
+                        targetMsg = m;
                         break;
                     }
                 }
-            }
-        } else {
-            // Replying to a specific selected message: fetch recent messages for light background context
-            try {
-                rawMessages = await fetchRecentMessages(channel.id, 15);
-            } catch {
-                rawMessages = [];
             }
         }
 
@@ -559,14 +421,25 @@ export async function generateAndInsertReply(channel: any, quickGuidance?: strin
         }
 
         const targetAuthor = getAuthorName(targetMsg.author, guildId);
-        const targetContent = targetMsg.content?.trim() || "";
+        let targetContent = targetMsg.content?.trim() || "";
+        if (!targetContent) {
+            if (targetMsg.attachments?.length) {
+                targetContent = "[Piece jointe / Media]";
+            } else if (targetMsg.embeds?.length) {
+                targetContent = "[Lien / Embed]";
+            } else if (targetMsg.stickers?.length) {
+                targetContent = "[Sticker]";
+            } else {
+                targetContent = "[Message]";
+            }
+        }
 
         // Build dialogue history (up to 50 messages for deep context)
         const historyLines = rawMessages
             .slice(-50)
             .map(m => {
                 const author = getAuthorName(m.author, guildId);
-                const isMe = m.author?.id === myId;
+                const isMe = myId && String(m.author?.id) === myId;
                 const prefix = isMe ? "[You]" : `[${author}]`;
                 const text = (m.content || "").trim();
                 if (!text) return null;
@@ -734,11 +607,6 @@ Content: "${targetContent}"
 ${promptInstructionSuffix}`;
         }
 
-        // Retrieve live real-time web grounding (DuckDuckGo factual snippets) for live facts, figures, vanity, dates, stats
-        const webGrounding = await fetchLiveWebGrounding(`${targetContent} ${quickGuidance || ""}`.trim());
-        if (webGrounding) {
-            userPrompt += webGrounding;
-        }
 
         let reply = "";
         if (provider === "gemini") {

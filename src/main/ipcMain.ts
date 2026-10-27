@@ -1045,7 +1045,7 @@ input:checked + .nc-wb-switch-slider:before {
                         Authorization: "Bearer " + groqKey,
                     },
                     body: JSON.stringify({
-                        model: "qwen/qwen3.8-27b",
+                        model: "llama-3.1-8b-instant",
                         temperature: 0.7,
                         max_tokens: 150,
                         messages: [{

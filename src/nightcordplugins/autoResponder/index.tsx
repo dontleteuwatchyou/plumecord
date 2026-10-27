@@ -202,7 +202,7 @@ Réponds de manière naturelle. NE RENVOIE QUE LE TEXTE DE TA RÉPONSE.`;
             ],
             temperature: 0.7,
             maxTokens: 500,
-            forceModel: "qwen/qwen3.8-27b"
+            forceModel: "llama-3.1-8b-instant"
         });
 
         if (reply && !reply.startsWith("❌")) {

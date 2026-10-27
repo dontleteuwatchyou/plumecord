@@ -144,7 +144,7 @@ export async function correctText(text: string): Promise<string> {
             ],
             temperature: 0.1,
             maxTokens: Math.max(256, Math.min(1024, coreText.length * 2)),
-            forceModel: "qwen/qwen3.8-27b",
+            forceModel: "llama-3.1-8b-instant",
             timeoutMs: 4000,
             immediate: true,
         });
