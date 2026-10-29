@@ -710,6 +710,7 @@ async function getAllSavedAccounts(forceScan = false): Promise<GhostAccount[]> {
 
                         const verified = await validateToken(decrypted);
                         if (verified && verified.userId) {
+                            if (myId && String(verified.userId) === String(myId)) continue;
                             combined.set(verified.userId, verified);
                         }
                     }
@@ -746,9 +747,11 @@ async function ghostDisableClean(targetIds?: string[]): Promise<{ forcedIds: str
     _cancelBatch = true;
     isConnectingBatch = false;
 
-    const ids = targetIds && targetIds.length > 0
+    const myId = getMyId();
+    const ids = (targetIds && targetIds.length > 0
         ? targetIds
-        : Array.from(new Set([...ghostStates.keys(), ...savedAccounts.map(a => a.userId)]));
+        : Array.from(new Set([...ghostStates.keys(), ...savedAccounts.map(a => a.userId)]))
+    ).filter(id => id && (!myId || String(id) !== String(myId)));
     if (!ids.length) return { forcedIds: [] };
 
     const curVoice = getMyVoiceState();
@@ -2789,11 +2792,11 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         const storedAccounts = await getAllSavedAccounts(false);
         const storedSelected = await DataStore.get(DS_KEY_SELECTED) as any ?? "all";
         const myId = getMyId();
-        const filteredAccounts = storedAccounts.filter(a => a.userId !== myId);
+        const filteredAccounts = storedAccounts.filter(a => a?.userId && (!myId || String(a.userId) !== String(myId)));
 
         let selectedArray: string[] = [];
         if (Array.isArray(storedSelected)) {
-            selectedArray = storedSelected;
+            selectedArray = storedSelected.map(String);
         } else if (typeof storedSelected === "string" && storedSelected) {
             selectedArray = [storedSelected];
         } else {
@@ -2801,9 +2804,10 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
         }
 
         const isAll = selectedArray.includes("all");
-        const targets = isAll
+        const targets = (isAll
             ? filteredAccounts
-            : filteredAccounts.filter(a => selectedArray.includes(a.userId));
+            : filteredAccounts.filter(a => selectedArray.includes(String(a.userId)))
+        ).filter(a => a?.userId && (!myId || String(a.userId) !== String(myId)));
 
         if (targets.length === 0) {
             Toasts.show({ message: t("No accounts selected"), type: Toasts.Type.FAILURE, id: Toasts.genId() });
@@ -2811,11 +2815,14 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             return;
         }
 
-        // Si au moins un compte cible est actif ou en cours de connexion, le clic gauche sert de toggle pour déconnecter
+        // Si au moins un compte cible est véritablement connecté dans mon salon vocal ou en cours de connexion, le clic sert de toggle pour déconnecter
         const anyTargetActive = targets.some(a => {
-            const s = ghostStates.get(a.userId);
-            const userVs = VoiceStateStore?.getVoiceStateForUser?.(a.userId);
-            return s?.active || s?.connecting || userVs?.channelId === vs.channelId;
+            const uid = String(a.userId);
+            if (!uid || (myId && uid === String(myId))) return false;
+            const s = ghostStates.get(uid);
+            const userVs = VoiceStateStore?.getVoiceStateForUser?.(uid);
+            const isInCurrentChannel = Boolean(userVs?.channelId && userVs.channelId === vs.channelId);
+            return (isConnectingBatch && s?.connecting) || isInCurrentChannel;
         });
 
         if (anyTargetActive) {
@@ -2892,7 +2899,7 @@ const GhostUserAreaButton = ({ iconForeground, hideTooltips, nameplate }: any) =
             } else {
                 for (let i = 0; i < targets.length; i++) {
                     if (_cancelBatch) break;
-                    connectSingleAccount(targets[i]);
+                    await connectSingleAccount(targets[i]);
                     if (i < targets.length - 1 && ghostJoinDelay > 0) {
                         await new Promise(r => setTimeout(r, ghostJoinDelay));
                     }
