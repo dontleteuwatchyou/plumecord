@@ -11,15 +11,69 @@ const logger = new Logger("GroqManager");
 
 const DS_API_KEY = "groq-shared-api-key";
 
-const GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
+const DEFAULT_GROQ_MODELS = [
     "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it",
+    "llama-3.3-70b-versatile",
+    "llama-3.2-3b-preview",
+    "llama-3.2-1b-preview",
 ] as const;
 
-let currentModelIdx = 0;
+let knownValidModels: string[] = [...DEFAULT_GROQ_MODELS];
+let lastModelFetch = 0;
+const permanentlyUnavailableModels = new Set<string>();
 const modelCooldown: Record<string, number> = {};
+let currentModelIdx = 0;
+
+async function refreshGroqModels(apiKey: string): Promise<string[]> {
+    const now = Date.now();
+    if (now - lastModelFetch < 300_000 && knownValidModels.length > 0) {
+        return knownValidModels.filter(m => !permanentlyUnavailableModels.has(m));
+    }
+    try {
+        const res = await fetch("https://api.groq.com/openai/v1/models", {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+            },
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data?.data)) {
+                const apiModels: string[] = data.data
+                    .map((m: any) => m?.id)
+                    .filter((id: string) =>
+                        typeof id === "string" &&
+                        !id.includes("whisper") &&
+                        !id.includes("prompt-guard") &&
+                        !id.includes("embed")
+                    );
+                if (apiModels.length > 0) {
+                    const preferredOrder = [
+                        "llama-3.1-8b-instant",
+                        "llama-3.3-70b-versatile",
+                        "llama-3.2-3b-preview",
+                        "llama-3.2-1b-preview",
+                        "qwen-2.5-32b",
+                        "qwen-qwq-32b",
+                        "deepseek-r1-distill-llama-70b",
+                    ];
+                    apiModels.sort((a, b) => {
+                        const idxA = preferredOrder.indexOf(a);
+                        const idxB = preferredOrder.indexOf(b);
+                        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                        if (idxA !== -1) return -1;
+                        if (idxB !== -1) return 1;
+                        return a.localeCompare(b);
+                    });
+                    knownValidModels = apiModels;
+                    lastModelFetch = now;
+                }
+            }
+        }
+    } catch (e) {
+        logger.warn("Could not query Groq models list:", e);
+    }
+    return knownValidModels.filter(m => !permanentlyUnavailableModels.has(m));
+}
 
 let _settingsFallback: (() => string) | null = null;
 
@@ -52,11 +106,18 @@ export async function setGroqKey(key: string): Promise<void> {
     await DataStore.set(DS_API_KEY, key.trim());
 }
 
-function getAvailableModel(): string {
+function getAvailableModel(candidatePool?: string[]): string {
+    const pool = (candidatePool && candidatePool.length > 0 ? candidatePool : knownValidModels)
+        .filter(m => !permanentlyUnavailableModels.has(m));
+
+    if (pool.length === 0) {
+        return DEFAULT_GROQ_MODELS[0];
+    }
+
     const now = Date.now();
-    for (let i = 0; i < GROQ_MODELS.length; i++) {
-        const idx = (currentModelIdx + i) % GROQ_MODELS.length;
-        const model = GROQ_MODELS[idx];
+    for (let i = 0; i < pool.length; i++) {
+        const idx = (currentModelIdx + i) % pool.length;
+        const model = pool[idx];
         const cooldownUntil = modelCooldown[model] ?? 0;
         if (now >= cooldownUntil) {
             currentModelIdx = idx;
@@ -66,21 +127,28 @@ function getAvailableModel(): string {
 
     let minCooldown = Infinity;
     let bestIdx = 0;
-    for (let i = 0; i < GROQ_MODELS.length; i++) {
-        const cd = modelCooldown[GROQ_MODELS[i]] ?? 0;
+    for (let i = 0; i < pool.length; i++) {
+        const cd = modelCooldown[pool[i]] ?? 0;
         if (cd < minCooldown) {
             minCooldown = cd;
             bestIdx = i;
         }
     }
     currentModelIdx = bestIdx;
-    return GROQ_MODELS[bestIdx];
+    return pool[bestIdx];
 }
 
 function markModelRateLimited(model: string, retryAfterMs = 60_000): void {
     modelCooldown[model] = Date.now() + retryAfterMs;
     logger.warn(`Model ${model} in cooldown for ${retryAfterMs / 1000}s`);
-    currentModelIdx = (currentModelIdx + 1) % GROQ_MODELS.length;
+    currentModelIdx = (currentModelIdx + 1) % knownValidModels.length;
+}
+
+function markModelPermanentlyUnavailable(model: string): void {
+    permanentlyUnavailableModels.add(model);
+    modelCooldown[model] = Date.now() + 86400_000;
+    logger.warn(`Model ${model} marked permanently unavailable for this session`);
+    currentModelIdx = (currentModelIdx + 1) % knownValidModels.length;
 }
 
 let queue = Promise.resolve();
@@ -108,6 +176,7 @@ export interface GroqCallOptions {
     maxRetries?: number;
     timeoutMs?: number;
     immediate?: boolean;
+    triedModels?: Set<string>;
 }
 
 export async function groqChat(opts: GroqCallOptions): Promise<string> {
@@ -135,14 +204,23 @@ export async function groqChat(opts: GroqCallOptions): Promise<string> {
 }
 
 async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 3, timeoutMs = 30_000 } = opts;
+    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 4, timeoutMs = 30_000 } = opts;
 
     const apiKey = await getGroqKey();
     if (!apiKey) {
         throw new Error("Groq API key missing — configure it in Settings → NightcordAI");
     }
 
-    const model = forceModel ?? getAvailableModel();
+    const availablePool = await refreshGroqModels(apiKey);
+    const tried = opts.triedModels ?? new Set<string>();
+
+    let model = forceModel;
+    if (!model || tried.has(model)) {
+        const untried = availablePool.filter(m => !tried.has(m));
+        model = getAvailableModel(untried.length > 0 ? untried : availablePool);
+    }
+    tried.add(model);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -177,17 +255,23 @@ async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
             }
 
             markModelRateLimited(model, retryAfterMs);
-            return _groqChat({ ...opts, forceModel: undefined }, attempt + 1);
+            return _groqChat({ ...opts, forceModel: undefined, triedModels: tried }, attempt + 1);
         }
 
         if (!res.ok) {
             const body = await res.text().catch(() => "");
-            // Handle model decommissioned or model not found error
-            if (res.status === 400 || res.status === 404 || body.includes("model_not_found") || body.includes("model_decommissioned")) {
+            // Handle model decommissioned or model not found / no access error
+            if (
+                res.status === 400 ||
+                res.status === 404 ||
+                body.includes("model_not_found") ||
+                body.includes("model_decommissioned") ||
+                body.includes("does not exist or you do not have access")
+            ) {
                 logger.warn(`Model ${model} is not available on Groq (${res.status}). Switching to next model...`);
-                markModelRateLimited(model, 3600_000); // 1 hour cooldown for unavailable model
+                markModelPermanentlyUnavailable(model);
                 if (attempt < maxRetries) {
-                    return _groqChat({ ...opts, forceModel: undefined }, attempt + 1);
+                    return _groqChat({ ...opts, forceModel: undefined, triedModels: tried }, attempt + 1);
                 }
             }
             throw new Error(`Groq API ${res.status}: ${body.slice(0, 200)}`);
@@ -215,5 +299,5 @@ async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
 }
 
 export function getCurrentModel(): string {
-    return GROQ_MODELS[currentModelIdx] ?? GROQ_MODELS[0];
+    return knownValidModels.find(m => !permanentlyUnavailableModels.has(m)) ?? DEFAULT_GROQ_MODELS[0];
 }
