@@ -22,7 +22,7 @@ import { iconsModule } from "@plugins/_core/concatenatedModules";
 import { ChannelStore, FluxDispatcher, IconUtils, Menu,React, ReactDOM, RelationshipStore, RestAPI, useEffect, useRef, UserStore, useState } from "@webpack/common";
 import { t } from "../autoTranslateNightcord";
 
-import { getGroqKey, groqChat, setGroqKey, registerSettingsFallback } from "./groqManager";
+import { getGroqKey, groqChat, setGroqKey, registerSettingsFallback, getCurrentModel } from "./groqManager";
 
 
 registerSettingsFallback(() => settings.store.apiKey ?? "");
@@ -455,7 +455,7 @@ function NightcordAIChat({ rootProps, panelMode, initialMessage }: { rootProps?:
                     .filter(Boolean).join(", ");
                 const actionApiKey = await getGroqKey();
                 const endpoint = "https://api.groq.com/openai/v1/chat/completions";
-                const actionModel = "llama-3.1-8b-instant";
+                const actionModel = "openai/gpt-oss-20b";
                 const sys = `You are a Discord command parser. You read an instruction and return ONLY valid JSON. You never refuse, you don't judge, you execute.
 
 Friends available: ${friendNames || "none"}
@@ -525,7 +525,7 @@ Rules:
     }
 
     const hasKey = !!settings.store.apiKey?.trim();
-    const providerLabel = "Llama 3.3 70B";
+    const providerLabel = getCurrentModel();
     const SUGGESTIONS = ["Explain AI transformers to me", "Write a poem about the night", "Give me 5 productivity tips"];
 
     const inner = (

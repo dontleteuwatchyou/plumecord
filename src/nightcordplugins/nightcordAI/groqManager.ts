@@ -12,10 +12,10 @@ const logger = new Logger("GroqManager");
 const DS_API_KEY = "groq-shared-api-key";
 
 const DEFAULT_GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama-3.3-70b-versatile",
-    "llama-3.2-3b-preview",
-    "llama-3.2-1b-preview",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "allam-2-7b",
 ] as const;
 
 let knownValidModels: string[] = [...DEFAULT_GROQ_MODELS];
@@ -44,17 +44,17 @@ async function refreshGroqModels(apiKey: string): Promise<string[]> {
                         typeof id === "string" &&
                         !id.includes("whisper") &&
                         !id.includes("prompt-guard") &&
-                        !id.includes("embed")
+                        !id.includes("safeguard") &&
+                        !id.includes("orpheus") &&
+                        !id.includes("embed") &&
+                        !id.includes("tts")
                     );
                 if (apiModels.length > 0) {
                     const preferredOrder = [
-                        "llama-3.1-8b-instant",
-                        "llama-3.3-70b-versatile",
-                        "llama-3.2-3b-preview",
-                        "llama-3.2-1b-preview",
-                        "qwen-2.5-32b",
-                        "qwen-qwq-32b",
-                        "deepseek-r1-distill-llama-70b",
+                        "openai/gpt-oss-20b",
+                        "openai/gpt-oss-120b",
+                        "qwen/qwen3.8-27b",
+                        "allam-2-7b",
                     ];
                     apiModels.sort((a, b) => {
                         const idxA = preferredOrder.indexOf(a);
@@ -204,7 +204,7 @@ export async function groqChat(opts: GroqCallOptions): Promise<string> {
 }
 
 async function _groqChat(opts: GroqCallOptions, attempt = 0): Promise<string> {
-    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 4, timeoutMs = 30_000 } = opts;
+    const { messages, temperature = 0.7, maxTokens = 1000, forceModel, maxRetries = 6, timeoutMs = 30_000 } = opts;
 
     const apiKey = await getGroqKey();
     if (!apiKey) {
