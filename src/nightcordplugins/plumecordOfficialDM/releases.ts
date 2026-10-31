@@ -15,8 +15,8 @@ const REPOS = [
 ];
 const CACHE_KEY = "plumecord_official_dm_releases";
 // L'API de GitHub accepte 60 requêtes par heure et par adresse sans compte :
-// une lecture toutes les 30 minutes au plus, pour tous les onglets.
-const MAX_AGE = 30 * 60 * 1000;
+// deux requêtes toutes les 10 minutes au plus, pour tous les onglets.
+const MAX_AGE = 10 * 60 * 1000;
 
 interface Release {
     id: number;
@@ -29,35 +29,38 @@ interface Release {
     prerelease: boolean;
 }
 
+/** Pour les boutons sous chaque message (index.tsx) : quel logiciel, quelle page. */
+export const releaseInfo = new Map<string, { product: string; url: string; }>();
+
 export interface ReleasePost {
     id: string;
     created_at: string;
     content: string;
     markdown: string;
-    components: unknown[];
     media_attachments: unknown[];
 }
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 function toPost(r: Release, name: string): ReleasePost {
-    const title = `${name} ${r.tag_name}${r.name && r.name !== r.tag_name ? ` : ${r.name}` : ""}`;
+    const title = `${name} ${r.tag_name}${r.name && r.name !== r.tag_name && r.name !== `${name} ${r.tag_name}` ? ` : ${r.name}` : ""}`;
     // Notes trop longues : la page GitHub a le reste.
     const notes = (r.body || "").trim();
     const short = notes.length > 1500 ? `${notes.slice(0, 1500).trimEnd()}…` : notes;
-    const markdown = `## Nouvelle version : ${title}\n\n${short || "Pas de notes de version."}\n\n[Voir la mise à jour sur GitHub](${r.html_url})`;
+    const how = name === "Plume"
+        ? "Clique sur **Mettre à jour Plume** juste en dessous (ou Paramètres Plume → Mises à jour)."
+        : "Rien à faire : Plume installe la nouvelle version de Plumecord tout seul au prochain lancement.";
+    releaseInfo.set(String(r.id), { product: name, url: r.html_url });
     return {
         id: String(r.id),
         created_at: r.published_at || new Date().toISOString(),
         content: `<p>${escapeHtml(`Nouvelle version : ${title}`)}</p>`,
-        markdown,
-        // Bouton lien de Discord (rangée d'actions → bouton de style « lien »).
-        components: [{ type: 1, id: 1, components: [{ type: 2, id: 2, style: 5, label: "Voir la mise à jour", url: r.html_url }] }],
+        markdown: `## Nouvelle version : ${title}\n\n${short || "Pas de notes de version."}\n\n${how}`,
         media_attachments: [],
     };
 }
 
-function readCache(): { at: number; posts: ReleasePost[]; } | null {
+function readCache(): { at: number; posts: ReleasePost[]; info?: [string, { product: string; url: string; }][]; } | null {
     try {
         const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
         return c && Array.isArray(c.posts) ? c : null;
@@ -68,7 +71,10 @@ function readCache(): { at: number; posts: ReleasePost[]; } | null {
 
 export async function fetchReleases(): Promise<ReleasePost[]> {
     const cached = readCache();
-    if (cached && Date.now() - cached.at < MAX_AGE) return cached.posts;
+    if (cached && Date.now() - cached.at < MAX_AGE) {
+        for (const [id, info] of cached.info ?? []) releaseInfo.set(id, info);
+        return cached.posts;
+    }
 
     const posts: ReleasePost[] = [];
     let ok = false;
@@ -85,8 +91,11 @@ export async function fetchReleases(): Promise<ReleasePost[]> {
         } catch { }
     }
     // GitHub injoignable : on garde ce qu'on avait plutôt que de tout effacer.
-    if (!ok) return cached?.posts ?? [];
+    if (!ok) {
+        for (const [id, info] of cached?.info ?? []) releaseInfo.set(id, info);
+        return cached?.posts ?? [];
+    }
     posts.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), posts })); } catch { }
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), posts, info: [...releaseInfo] })); } catch { }
     return posts;
 }

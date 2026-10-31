@@ -18,7 +18,8 @@ import ErrorBoundary from "@components/ErrorBoundary";
 import { BaseText } from "@components/BaseText";
 import { t } from "../autoTranslateNightcord";
 import { PLUMECORD_AVATAR_BASE64 } from "./avatarData";
-import { fetchReleases } from "./releases";
+import { Button } from "@components/Button";
+import { fetchReleases, releaseInfo } from "./releases";
 
 export const PLUMECORD_USER_ID = "999999999999999988";
 export const PLUMECORD_CHANNEL_ID = "999999999999999980";
@@ -89,11 +90,11 @@ function triggerPlumecordNotification(post: any): void {
     } catch {}
 
     try {
-        const bodyText = htmlToMarkdown(post?.content || "").slice(0, 120) || t("There's an official message from the Plumecord team that needs your attention.");
+        const bodyText = htmlToMarkdown(post?.content || "").slice(0, 120) || t("There's an official message from the Plumecord team that needs your attention.").replace(/\bPlumecord\b/g, "Plume");
         const Notifications = (window as any).Vencord?.Api?.Notifications;
         if (Notifications?.showNotification) {
             Notifications.showNotification({
-                title: "Plumecord",
+                title: "Plume",
                 body: bodyText,
                 icon: plumecordAvatarUrl,
                 onClick: () => {
@@ -103,7 +104,7 @@ function triggerPlumecordNotification(post: any): void {
                 }
             });
         } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            const notif = new Notification("Plumecord", {
+            const notif = new Notification("Plume", {
                 body: bodyText,
                 icon: plumecordAvatarUrl
             });
@@ -138,18 +139,18 @@ const createMessageRecord = findByCodeLazy(".createFromServer(", ".isBlockedForM
 function replaceDiscordWithPlumecord(text: string): string {
     if (!text || typeof text !== "string") return text;
     return text
-        .replace(/Official Discord Message/gi, "Official Plumecord Message")
-        .replace(/Message officiel de Discord/gi, "Message officiel de Plumecord")
-        .replace(/Message de discorde officiel/gi, "Message officiel de Plumecord")
-        .replace(/Team Discord/gi, "Team Plumecord")
-        .replace(/l'équipe Discord/gi, "l'équipe Plumecord")
-        .replace(/official Discord notifications/gi, "official Plumecord notifications")
-        .replace(/notifications officielles de Discord/gi, "notifications officielles de Plumecord")
-        .replace(/Discord ne vous demandera/gi, "Plumecord ne vous demandera")
-        .replace(/Discord ne te demandera/gi, "Plumecord ne te demandera")
-        .replace(/Discord will never ask/gi, "Plumecord will never ask")
-        .replace(/Official Discord/gi, "Official Plumecord")
-        .replace(/Discord Official/gi, "Plumecord Official");
+        .replace(/Official Discord Message/gi, "Official Plume Message")
+        .replace(/Message officiel de Discord/gi, "Message officiel de Plume")
+        .replace(/Message de discorde officiel/gi, "Message officiel de Plume")
+        .replace(/Team Discord/gi, "Team Plume")
+        .replace(/l'équipe Discord/gi, "l'équipe Plume")
+        .replace(/official Discord notifications/gi, "official Plume notifications")
+        .replace(/notifications officielles de Discord/gi, "notifications officielles de Plume")
+        .replace(/Discord ne vous demandera/gi, "Plume ne vous demandera")
+        .replace(/Discord ne te demandera/gi, "Plume ne te demandera")
+        .replace(/Discord will never ask/gi, "Plume will never ask")
+        .replace(/Official Discord/gi, "Official Plume")
+        .replace(/Discord Official/gi, "Plume Official");
 }
 
 function isPlumecordContext(node: Node): boolean {
@@ -170,7 +171,7 @@ function isPlumecordContext(node: Node): boolean {
                 const href = curr.getAttribute("href");
                 if (href && (href.includes(PLUMECORD_CHANNEL_ID) || href.includes(PLUMECORD_USER_ID))) return true;
                 const ariaLabel = curr.getAttribute("aria-label");
-                if (ariaLabel && ariaLabel.toLowerCase().includes("plumecord")) return true;
+                if (ariaLabel && ariaLabel.toLowerCase().includes("plume")) return true;
                 const dataId = curr.getAttribute("data-list-item-id") || curr.getAttribute("data-channel-id");
                 if (dataId && (dataId.includes(PLUMECORD_CHANNEL_ID) || dataId.includes(PLUMECORD_USER_ID))) return true;
             }
@@ -180,7 +181,7 @@ function isPlumecordContext(node: Node): boolean {
                 if (hasPlumecord) return true;
             }
 
-            if (curr.textContent && curr.textContent.includes("Plumecord") && (curr.classList?.contains?.("channel") || curr.getAttribute?.("role") === "listitem" || curr.classList?.contains?.("interactive") || curr.classList?.contains?.("layout"))) {
+            if (curr.textContent && curr.textContent.includes("Plume") && (curr.classList?.contains?.("channel") || curr.getAttribute?.("role") === "listitem" || curr.classList?.contains?.("interactive") || curr.classList?.contains?.("layout"))) {
                 return true;
             }
 
@@ -197,13 +198,13 @@ function scanAndFixPlumecordDmElements() {
     if (isUpdatingDom) return;
     isUpdatingDom = true;
     try {
-        // 1. Target specifically the Plumecord DM list item
+        // 1. Target specifically the Plume DM list item
         const plumecordDmElements = document.querySelectorAll(
             `[href*="${PLUMECORD_CHANNEL_ID}"], [href*="${PLUMECORD_USER_ID}"], [data-list-item-id*="${PLUMECORD_CHANNEL_ID}"]`
         );
 
         for (const el of Array.from(plumecordDmElements)) {
-            // Fix subtext inside this specific Plumecord DM element
+            // Fix subtext inside this specific Plume DM element
             const subtexts = el.querySelectorAll('[class*="subtext"], [class*="activityText"]');
             for (const sub of Array.from(subtexts)) {
                 if (sub.textContent && /Official Discord Message|Message officiel de Discord|Message de discorde officiel/i.test(sub.textContent)) {
@@ -224,7 +225,7 @@ function scanAndFixPlumecordDmElements() {
                 el.addEventListener("mouseleave", () => { hoveredIsPlumecord = false; });
             }
 
-            // 3. Ensure red ping badge is rendered inside the Plumecord DM list item when unreadCount > 0
+            // 3. Ensure red ping badge is rendered inside the Plume DM list item when unreadCount > 0
             const existingCustomBadge = el.querySelector(".plumecord-dm-ping-badge") as HTMLElement | null;
             const hasNativeBadge = el.querySelector('[class*="numberBadge"], [class*="mentionsBadge"]');
             if (unreadCount > 0 && SelectedChannelStore?.getChannelId?.() !== PLUMECORD_CHANNEL_ID) {
@@ -246,7 +247,7 @@ function scanAndFixPlumecordDmElements() {
             }
         }
 
-        // 2. If tooltip is visible and hovered element is Plumecord, fix tooltip text
+        // 2. If tooltip is visible and hovered element is Plume, fix tooltip text
         if (hoveredIsPlumecord) {
             const tooltips = document.querySelectorAll('[role="tooltip"], [class*="tooltip"]');
             for (const tip of Array.from(tooltips)) {
@@ -309,10 +310,10 @@ function handleGlobalClick(e: MouseEvent) {
 
 const rawPlumecordUser = {
     id: PLUMECORD_USER_ID,
-    username: "plumecord",
+    username: "plume",
     discriminator: "0",
-    globalName: "Plumecord",
-    global_name: "Plumecord",
+    globalName: "Plume",
+    global_name: "Plume",
     avatar: "plumecord_avatar",
     avatarURL: plumecordAvatarUrl,
     accentColor: 5793266, // #5865F2 Blue
@@ -371,10 +372,10 @@ export const PLUMECORD_USER = proxyLazy(() => {
         if (URec) {
             const u = new URec({
                 id: PLUMECORD_USER_ID,
-                username: "plumecord",
+                username: "plume",
                 discriminator: "0",
-                globalName: "Plumecord",
-                global_name: "Plumecord",
+                globalName: "Plume",
+                global_name: "Plume",
                 avatar: "plumecord_avatar",
                 accent_color: 5793266,
                 accentColor: 5793266,
@@ -408,7 +409,7 @@ export const PLUMECORD_USER = proxyLazy(() => {
 const rawPlumecordChannel = {
     id: PLUMECORD_CHANNEL_ID,
     type: 1, // DM
-    name: "Plumecord",
+    name: "Plume",
     guild_id: null,
     guildId: null,
     lastMessageId: lastSeenPostId || null,
@@ -481,7 +482,7 @@ export const PLUMECORD_CHANNEL = proxyLazy(() => {
             const ch = createChannelRecordFromServer({
                 id: PLUMECORD_CHANNEL_ID,
                 type: 1, // DM
-                name: "Plumecord",
+                name: "Plume",
                 recipients: [PLUMECORD_USER],
                 rawRecipients: [PLUMECORD_USER],
                 is_spam: false,
@@ -584,9 +585,9 @@ function convertPostToMessage(post: any): any {
 
     const rawAuthor = {
         id: PLUMECORD_USER_ID,
-        username: "plumecord",
+        username: "plume",
         discriminator: "0",
-        global_name: "Plumecord",
+        global_name: "Plume",
         avatar: "plumecord_avatar",
         bot: true,
         system: true,
@@ -599,7 +600,6 @@ function convertPostToMessage(post: any): any {
         channel_id: PLUMECORD_CHANNEL_ID,
         author: rawAuthor,
         content: post.markdown ?? htmlToMarkdown(post.content),
-        components: post.components ?? [],
         timestamp: new Date(post.created_at).toISOString(),
         edited_timestamp: null,
         tts: false,
@@ -754,7 +754,7 @@ async function fetchMastodonFeed(): Promise<any[]> {
     return fetchReleases();
 }
 
-// ─── Urgent Message Modal (System Alert for Plumecord Messages) ──────────────
+// ─── Urgent Message Modal (System Alert for Plume Messages) ──────────────
 
 interface UrgentMessageModalProps extends ModalProps {
     onClose: () => void;
@@ -804,7 +804,7 @@ export function UrgentMessageModal({ onClose, transitionState }: UrgentMessageMo
                             </h1>
                             <div className="headerSubtitleWrapper__8a031">
                                 <div className="plumecord-urgent-subtitle text-md/normal_cf4812 headerSubtitle__8a031" data-text-variant="text-md/normal" style={{ color: "var(--text-subtle, #dbdee1)" }}>
-                                    {t("There's an official message from the Plumecord team that needs your attention.")}
+                                    {t("There's an official message from the Plumecord team that needs your attention.").replace(/\bPlumecord\b/g, "Plume")}
                                 </div>
                             </div>
                         </div>
@@ -1064,10 +1064,10 @@ export function PlumecordSystemBanner() {
                 </svg>
                 <div>
                     <div className="plumecord-official-banner-title">
-                        Ce salon est réservé aux notifications officielles de Plumecord.
+                        Ce salon est réservé aux notifications officielles de Plume.
                     </div>
                     <div className="plumecord-official-banner-sub">
-                        Plumecord ne te demandera jamais ton mot de passe ou ton token de compte.
+                        Plume ne te demandera jamais ton mot de passe ou ton token de compte.
                     </div>
                 </div>
             </div>
@@ -1081,13 +1081,32 @@ export function PlumecordSystemBanner() {
     );
 }
 
+function UpdateButtons({ id }: { id: string; }) {
+    const info = releaseInfo.get(id);
+    if (!info) return null;
+    const openPanel = (window as any).__plumeOpenPanel as ((section?: string) => void) | undefined;
+    return (
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            {info.product === "Plume" && openPanel && (
+                <Button size="small" onClick={() => openPanel("update")}>Mettre à jour Plume</Button>
+            )}
+            <Button size="small" variant="secondary" onClick={() => window.open(info.url, "_blank")}>Voir sur GitHub</Button>
+        </div>
+    );
+}
+
 export default definePlugin({
     name: "PlumecordOfficialDM",
-    description: "MP officiel de Plumecord : prévient des nouvelles versions de Plume et de Plumecord (releases GitHub), avec un bouton vers la mise à jour.",
+    description: "MP officiel de Plume : prévient des nouvelles versions de Plume et de Plume (releases GitHub), avec un bouton vers la mise à jour.",
     enabledByDefault: true,
     required: true,
     startAt: StartAt.WebpackReady,
     authors: [{ name: "dontleteuwatchyou", id: 0n }],
+
+    renderMessageAccessory({ message }) {
+        if (message.channel_id !== PLUMECORD_CHANNEL_ID) return null;
+        return <ErrorBoundary noop><UpdateButtons id={String(message.id)} /></ErrorBoundary>;
+    },
     settings,
 
     flux: {
@@ -1129,7 +1148,7 @@ export default definePlugin({
                 replace: "$1,$self.renderPlumecordProfileSections({userId:$2,isSideBar:false}),"
             }
         },
-        // Direct React Component patch for DM list — filters out Plumecord DM when closed
+        // Direct React Component patch for DM list — filters out Plume DM when closed
         {
             find: '"dm-quick-launcher"===',
             replacement: {
@@ -1162,14 +1181,14 @@ export default definePlugin({
     isPlumecordChannel(props: any) {
         const id = props?.channel?.id || props?.id;
         if (id === PLUMECORD_CHANNEL_ID) return true;
-        if (props?.channel?.name === "Plumecord" || props?.name === "Plumecord") return true;
+        if (props?.channel?.name === "Plume" || props?.name === "Plume") return true;
         if (props?.channel?.recipients?.includes?.(PLUMECORD_USER_ID)) return true;
         if (SelectedChannelStore.getChannelId() === PLUMECORD_CHANNEL_ID) return true;
         return false;
     },
 
     getPlumecordSystemText() {
-        return "Official Plumecord Message";
+        return "Official Plume Message";
     },
 
     renderBanner() {
@@ -1332,7 +1351,7 @@ export default definePlugin({
             }
         } catch {}
 
-        // Patch UserProfileStore to return Staff badge, blue banner and Plumecord profile
+        // Patch UserProfileStore to return Staff badge, blue banner and Plume profile
         try {
             const UserProfileStore = (findStore("UserProfileStore") || findByProps("getUserProfile")) as any;
             if (UserProfileStore) {
@@ -1406,7 +1425,7 @@ export default definePlugin({
             }
         } catch {}
 
-        // Patch i18n intl methods for Plumecord official strings (only when in Plumecord context)
+        // Patch i18n intl methods for Plume official strings (only when in Plume context)
         try {
             if (i18n?.intl?.string) {
                 const origString = i18n.intl.string;
@@ -1482,7 +1501,7 @@ export default definePlugin({
         }
         waitFor(filters.byStoreName("GuildReadStateStore"), patchGuildReadStateStore);
 
-        // Patch ReadStateStore comprehensively to show red ping badge for new unread Plumecord posts
+        // Patch ReadStateStore comprehensively to show red ping badge for new unread Plume posts
         const patchReadStateStore = (RSStore: any) => {
             if (!RSStore || (RSStore as any).__plumecordPatched) return;
             (RSStore as any).__plumecordPatched = true;
@@ -1608,8 +1627,8 @@ export default definePlugin({
                                     body: {
                                         user: {
                                             id: PLUMECORD_USER_ID,
-                                            username: "plumecord",
-                                            global_name: "Plumecord",
+                                            username: "plume",
+                                            global_name: "Plume",
                                             avatar: "plumecord_avatar",
                                             bot: true,
                                             system: true,
