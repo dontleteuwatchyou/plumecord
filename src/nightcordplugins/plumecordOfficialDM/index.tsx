@@ -973,7 +973,11 @@ async function checkAndInjectPosts(isInitialLoad = false) {
             messageRecords.push(msgRecord);
         }
 
-        if (isInitialLoad && hasNewWhileOffline && SelectedChannelStore.getChannelId() !== PLUMECORD_CHANNEL_ID) {
+        // Au lancement, comme la notice de mise à jour de Nightcord : la carte
+        // s'affiche tant qu'il reste un message pas encore LU (MP pas ouvert
+        // depuis), même si un Plume ouvert plus tôt l'avait déjà reçu.
+        const newestUnread = sortedPosts.length > 0 && new Date(sortedPosts[0].created_at).getTime() > lastAckTimestamp;
+        if (isInitialLoad && (hasNewWhileOffline || newestUnread) && SelectedChannelStore.getChannelId() !== PLUMECORD_CHANNEL_ID) {
             if (unreadCount === 0) unreadCount = 1;
             setTimeout(() => {
                 triggerPlumecordNotification(sortedPosts[0]);
