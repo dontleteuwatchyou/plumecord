@@ -65,6 +65,13 @@ function setItemSafe(key: string, val: string): void {
 let lastSeenPostId = getItemSafe(LS_LAST_SEEN) || "";
 let lastPostTimestamp = Number(getItemSafe(LS_LAST_TS) || 0);
 let lastAckTimestamp = Number(getItemSafe(LS_LAST_ACK) || 0);
+// Les messages étaient numérotés par l'identifiant GitHub de la release ; ils le
+// sont maintenant par leur date (releases.ts). La date du dernier message vu
+// est justement son nouveau numéro : personne ne reçoit de fausse alerte.
+if (lastSeenPostId && Number(lastSeenPostId) < 1e11 && lastPostTimestamp > 0) {
+    lastSeenPostId = String(lastPostTimestamp);
+    setItemSafe(LS_LAST_SEEN, lastSeenPostId);
+}
 if (!lastAckTimestamp && lastPostTimestamp > 0) {
     lastAckTimestamp = lastPostTimestamp;
     setItemSafe(LS_LAST_ACK, String(lastAckTimestamp));
@@ -1100,7 +1107,11 @@ function UpdateButtons({ id }: { id: string; }) {
             {info.product === "Plume" && openPanel && (
                 <Button size="small" onClick={() => openPanel("update")}>Mettre à jour Plume</Button>
             )}
-            <Button size="small" variant="secondary" onClick={() => window.open(info.url, "_blank")}>Voir sur GitHub</Button>
+            {info.url && (
+                <Button size="small" variant="secondary" onClick={() => window.open(info.url, "_blank")}>
+                    {info.product === "Annonce" ? "Ouvrir le lien" : "Voir sur GitHub"}
+                </Button>
+            )}
         </div>
     );
 }
