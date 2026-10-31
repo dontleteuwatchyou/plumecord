@@ -1,96 +1,60 @@
 <div align="center">
-  <img src="https://nightcord.st/image.png" width="96" height="96" alt="Nightcord Logo">
 
-# Nightcord
+<img src="https://raw.githubusercontent.com/dontleteuwatchyou/plume/main/assets/icon.svg" width="96" alt="Plume">
 
-**A custom Discord client built for people who actually care about how Discord runs.**
+# Plumecord
 
-[![Telegram](https://img.shields.io/badge/Telegram-Join%20us-26A5E4?logo=telegram&logoColor=white)](https://t.me/nightcordoff)
-[![License](https://img.shields.io/badge/license-GPL%20v3-a855f7)](./LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows-3b82f6.svg?logo=windows\&logoColor=white)](https://source.nightcord.st/nightcord/nightcord)
-[![Website](https://img.shields.io/badge/website-nightcord.st-5865F2?logo=googlechrome\&logoColor=white)](https://nightcord.st)
+**Le mod Discord de [Plume](https://github.com/dontleteuwatchyou/plume) : tous les plugins, aucun d'imposé.**
 
----
+![Plume](https://img.shields.io/badge/pour-Plume-8b7cf6)
+![Licence](https://img.shields.io/badge/licence-GPL--3.0-6b5ce0)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-soutenir-ff5e5b?logo=kofi&logoColor=white)](https://ko-fi.com/forsakengh)
 
 </div>
 
-Nightcord is a fork of Equicord, which itself builds on top of Vencord. We stripped out the obfuscation, cleaned things up, added our own improvements, and kept what works. No bloat, no nonsense.
-
 ---
 
-## What's in it
+## C'est quoi
 
-* **Faster startup** — no obfuscation means the client loads noticeably quicker and sits lighter on your CPU and RAM.
-* **Auto-updates** — checks for updates in the background on launch and applies them silently.
-* **Plugin support** — compatible with the existing plugin ecosystem. Install community plugins straight from Git links.
-* **Better audio** — hardware-optimized voice modules for cleaner, louder audio out of the box.
-* **Custom styling** — smoother UI, custom icons, and various quality-of-life improvements.
+Plumecord est le mod livré avec Plume, le client Discord léger. Il part de **Nightcord**, qui réunit déjà **Vencord** et **Equicord** : près de 490 plugins au total. Plumecord garde tout ça, et change ce qui gênait.
 
----
+| | Nightcord | Plumecord |
+|---|---|---|
+| Plugins disponibles | ~490 | ~490 |
+| Plugins **impossibles à désactiver** | une quinzaine (MusicControls, StealthMode, CompactMode…) | seulement les briques internes du mod |
+| Plugins **activés d'office** à l'installation | des dizaines | **aucun** : tu actives ceux que tu veux |
+| Tes réglages après une mise à jour | 8 plugins remis sur « désactivé » à chaque démarrage | **gardés** |
+| Interface | Nightcord | **Plumecord**, en français |
+| MP officiel | actus de Nightcord | **MP Plume** : nouvelles versions de Plume et Plumecord, et annonces |
+| Notifications | logo Nightcord | logo Plume, carte avec bouton |
 
-## Installation (Windows)
+Et aussi, dans la version web : ScreenRecorder, AutoCallRecorder (avec la voix des autres, grâce à Plume), StreamProof et VoiceDictation inclus ; FixScreenshare, WordBomb et DMBomb exclus.
 
-1. Download **`nightcord-install.ps1`**
-2. Right-click → **Run with PowerShell**
-3. Follow the steps, restart Discord, done.
+## Installer
 
----
+**Avec Plume** : rien à faire, c'est le mod par défaut. Plume le télécharge, l'installe et le met à jour tout seul (*Paramètres Plume → Mod client* pour changer).
 
-## Building from source
+**Dans Chrome ou Edge** :
+1. Télécharge `plumecord.zip` dans la [dernière release](../../releases/latest) et décompresse-le.
+2. Ouvre `chrome://extensions` (ou `edge://extensions`) et active le **mode développeur**.
+3. **Charger l'extension non empaquetée** → choisis le dossier décompressé.
+4. Ouvre [discord.com/app](https://discord.com/app).
 
-### Requirements
+Retire Nightcord ou Equicord avant : deux mods en même temps se marchent dessus. Tes réglages sont gardés, ils sont stockés par Discord, pas par le mod.
 
-* Git
-* Node.js (LTS)
-* pnpm
+## Compiler
 
 ```bash
-npm install -g pnpm
+corepack pnpm install --frozen-lockfile
+corepack pnpm buildWeb
 ```
 
-### Clone & Build
+L'extension est dans `dist/browser/chromium-unpacked` (et `dist/extension-chrome.zip`).
 
-```bash
-git clone https://source.nightcord.st/nightcord/nightcord.git
-cd nightcord
-pnpm install
-pnpm build
-```
+Les nouvelles versions de Nightcord se fusionnent depuis le dépôt d'origine (remote `upstream`) ; les changements de Plumecord restent dans des fichiers à part autant que possible, pour que ces fusions restent simples.
 
-### Inject into Discord
+## Crédits et licence
 
-```bash
-pnpm inject
-```
+Plumecord n'existerait pas sans [Vencord](https://github.com/Vendicated/Vencord), [Equicord](https://github.com/Equicord/Equicord) et [Nightcord](https://source.nightcord.st/nightcord/nightcord), dont il reprend le code et les plugins. Merci à leurs auteurs et contributeurs.
 
-### Restore stock Discord
-
-```bash
-pnpm uninject
-```
-
----
-
-## Repository
-
-Source code:
-
-https://source.nightcord.st/nightcord/nightcord
-
----
-
-## Credits
-
-Nightcord wouldn't exist without [Equicord](https://github.com/Equicord/Equicord) and [Vencord](https://github.com/Vendicated/Vencord). A huge chunk of what makes this work comes directly from their projects. We're fully aware of that and genuinely appreciate everything they've built — we're just taking it in a different direction. Big thanks to everyone who's contributed to both.
-
-### Special Thanks
-A massive thank you to the owner of **Illegalcord**, with whom we are proudly partnered. They have been incredibly helpful in brainstorming, sharing ideas, and collaborating on plugins. Our smooth and constructive exchanges have been invaluable, and we want to highlight their exemplary, minimalist work that very few can match. 
-➡️ [Check out Illegalcord here](https://github.com/ImHisako/Illegalcord)
-
----
-
-## Disclaimer
-
-*Nightcord is not affiliated with Discord Inc. in any way.*
-
-Using third-party clients is technically against Discord's Terms of Service. Use at your own risk.
+GPL-3.0, comme eux. Projet non officiel, sans lien avec Discord, Vencord, Equicord ni Nightcord.
