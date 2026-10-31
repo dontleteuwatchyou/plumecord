@@ -199,10 +199,9 @@ if (!IS_REPORTER && settings.plugins && plugins) {
             FORCE_DISABLED_DEFAULT_PLUGIN_KEYS.has(pluginKey.toLowerCase())
             || FORCE_DISABLED_DEFAULT_PLUGIN_KEYS.has(String(pluginDef?.name ?? "").toLowerCase());
 
-        if (forceOff) {
-            if (settings.plugins[pluginKey]) settings.plugins[pluginKey].enabled = false;
-            continue;
-        }
+        // Plume : désactivés par défaut seulement — le choix de l'utilisateur
+        // n'est plus écrasé à chaque démarrage.
+        if (forceOff) continue;
 
         const isRequired = Boolean(pluginDef?.required);
         const isDefault = Boolean(pluginDef?.enabledByDefault);
@@ -246,9 +245,6 @@ export const SettingsStore = new SettingsStoreClass(settings, {
             // Force required plugins on, force disabled list off
             if (isRequired && target[key].enabled === false) {
                 target[key].enabled = true;
-            }
-            if (forceOff) {
-                target[key].enabled = false;
             }
 
             return target[key];

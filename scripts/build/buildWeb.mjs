@@ -43,22 +43,7 @@ import { BUILD_TIMESTAMP, commonOpts, globPlugins, IS_DEV, IS_REPORTER, IS_COMPA
 const extensionStubPlugin = {
     name: "extension-heavy-module-stubs",
     setup(build) {
-        // ── autoTranslateNightcord ──────────────────────────────────────────
-        build.onResolve({ filter: /autoTranslateNightcord/ }, args => ({
-            path: args.path,
-            namespace: "ext-stub-autoTranslate"
-        }));
-        build.onLoad({ filter: /.*/, namespace: "ext-stub-autoTranslate" }, () => ({
-            loader: "js",
-            contents: `
-export function getActiveLanguage() { return "en"; }
-export function t(key) { return key; }
-export function tPlugin(key) { return key; }
-export function useTranslation() { return { t: (key) => key, lang: "en" }; }
-export const translations = {};
-export default {};
-`
-        }));
+        // Plume : traductions gardées (Nightcord en français comme l’appli).
 
         // ── nightcordNews/icon.ts ───────────────────────────────────────────
         // The import is `from "../icon"` so args.path = "../icon" — we must

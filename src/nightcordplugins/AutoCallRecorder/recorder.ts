@@ -39,6 +39,7 @@ let pendingChunkPromises: Promise<any>[] = [];
 const CHUNK_TIME_MS = 5000;
 let startTimeMs = 0;
 let memoryCheckInterval: any;
+let remoteTimer: any;
 
 export function getRecordingDurationMs(): number {
     if (!isRecording) return 0;
@@ -188,6 +189,39 @@ export async function startRecording(opts: RecordingOptions): Promise<boolean> {
             }
         } catch (e) {
             console.warn("[AutoCallRecorder] Desktop loopback capture failed:", e);
+        }
+
+        // Plume (Discord web) : pas de capture du bureau. Les voix des autres
+        // arrivent par la connexion vocale de la page, que Plume expose ; on
+        // les mélange au micro, y compris celles de ceux qui rejoignent en route.
+        const plumeRemote = (window as any).__plumeRemoteAudio as (() => MediaStreamTrack[]) | undefined;
+        if (!capturedSystem && plumeRemote) {
+            const ctx = recordCtx, dest = recordDest;
+            const mixed = new Set<string>();
+            const mixRemote = () => {
+                for (const track of plumeRemote()) {
+                    if (mixed.has(track.id)) continue;
+                    mixed.add(track.id);
+                    ctx.createMediaStreamSource(new MediaStream([track])).connect(dest);
+                }
+            };
+            mixRemote();
+            remoteTimer = setInterval(mixRemote, 1000);
+            capturedSystem = true;
+
+            if (opts.mode === "video") {
+                try {
+                    // La fenêtre de Plume elle-même : acceptée sans sélecteur, quel que soit l'écran.
+                    systemStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: { frameRate: { ideal: opts.videoQuality === "1080p60" ? 60 : 30 } },
+                        audio: false,
+                        preferCurrentTab: true,
+                        selfBrowserSurface: "include"
+                    } as any);
+                } catch (e) {
+                    console.warn("[AutoCallRecorder] Screen capture failed, voice only:", e);
+                }
+            }
         }
 
         // Failsafe: if neither mic nor system audio could be captured, attach a silent oscillator so recorder runs reliably
@@ -367,6 +401,7 @@ function cleanup() {
     isStopping = false;
     isStreamMode = false;
     clearInterval(memoryCheckInterval);
+    clearInterval(remoteTimer);
     if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
     if (systemStream) { systemStream.getTracks().forEach(t => t.stop()); systemStream = null; }
     if (recordCtx) { recordCtx.close(); recordCtx = null; }
