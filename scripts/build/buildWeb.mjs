@@ -20,6 +20,7 @@
 // @ts-check
 
 import { readFileSync } from "fs";
+import ts from "typescript";
 import { appendFile, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
 import path, { join } from "path";
 import Zip from "zip-local";
@@ -101,6 +102,50 @@ const extensionStubPlugin = {
 /**
  * @type {import("esbuild").BuildOptions}
  */
+// Plumecord : le nom affiché remplace celui de Nightcord partout à l'écran
+// (textes, traductions, titres), sans toucher au source. Seul le mot entier
+// « Nightcord » dans les chaînes et le texte JSX change : les noms de code
+// (NightcordHelper, autoTranslateNightcord…), les adresses (nightcord.st) et
+// les clés en minuscules restent tels quels. Clés et textes de traduction
+// passent par la même règle, donc les traductions se retrouvent toujours.
+const BRAND = /\bNightcord\b/g;
+// Les morceaux de texte d'un fichier, tels que TypeScript les voit : chaînes,
+// gabarits (hors ${…}) et texte JSX. Jamais les identifiants ni les commentaires.
+const TEXT_KINDS = new Set([
+    ts.SyntaxKind.StringLiteral, ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+    ts.SyntaxKind.TemplateHead, ts.SyntaxKind.TemplateMiddle, ts.SyntaxKind.TemplateTail,
+    ts.SyntaxKind.JsxText,
+]);
+function brand(path, src) {
+    const file = ts.createSourceFile(path, src, ts.ScriptTarget.Latest, false, path.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+    const spans = [];
+    (function walk(node) {
+        if (TEXT_KINDS.has(node.kind)) {
+            const start = node.getStart(file), end = node.getEnd();
+            if (src.slice(start, end).includes("Nightcord")) spans.push([start, end]);
+        }
+        ts.forEachChild(node, walk);
+    })(file);
+    let out = "", last = 0;
+    for (const [start, end] of spans) {
+        out += src.slice(last, start) + src.slice(start, end).replace(BRAND, "Plumecord");
+        last = end;
+    }
+    return out + src.slice(last);
+}
+
+/** @type {import("esbuild").Plugin} */
+const brandPlugin = {
+    name: "plumecord-brand",
+    setup(build) {
+        build.onLoad({ filter: /[\\/]src[\\/].*\.tsx?$/ }, async ({ path }) => {
+            const src = await readFile(path, "utf-8");
+            if (!src.includes("Nightcord")) return;
+            return { contents: brand(path, src), loader: path.endsWith("x") ? "tsx" : "ts" };
+        });
+    }
+};
+
 const commonOptions = {
     ...commonOpts,
     entryPoints: ["browser/Vencord.ts"],
@@ -109,6 +154,7 @@ const commonOptions = {
     external: ["~plugins", "~git-hash", "/assets/*"],
     target: ["esnext"],
     plugins: [
+        brandPlugin,
         globPlugins("web"),
         ...commonRendererPlugins
     ],
@@ -165,6 +211,7 @@ const buildConfigs = [
         outfile: "dist/browser/extension.js",
         minify: true,
         plugins: [
+            brandPlugin,
             extensionStubPlugin,
             globPlugins("web"),
             ...commonRendererPlugins
