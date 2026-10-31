@@ -101,8 +101,13 @@ function triggerPlumecordNotification(post: any): void {
 
     try {
         const bodyText = htmlToMarkdown(post?.content || "").slice(0, 120) || t("There's an official message from the Plumecord team that needs your attention.").replace(/\bPlumecord\b/g, "Plume");
+        // Dans Plume : vraie notification Windows, par Plume lui-même. Celles
+        // du moteur web (Notification, et donc celles du mod) n'y apparaissent pas.
+        const plume = (window as any).__TAURI_INTERNALS__?.invoke;
         const Notifications = (window as any).Vencord?.Api?.Notifications;
-        if (Notifications?.showNotification) {
+        if (typeof plume === "function") {
+            plume("notify", { title: "Plume t'a envoyé un message", body: bodyText }).catch(() => { });
+        } else if (Notifications?.showNotification) {
             Notifications.showNotification({
                 title: "Plume",
                 body: bodyText,
