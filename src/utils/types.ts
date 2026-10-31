@@ -32,8 +32,17 @@ import type { Command, FluxEvents } from "@vencord/discord-types";
 import type { ReactNode } from "react";
 import type { LiteralUnion } from "type-fest";
 
+// Plumecord : aucun plugin actif d'office. Restent obligatoires les plugins
+// internes (_core, _api) et quelques correctifs invisibles (traduction de
+// l'interface du mod, liens profonds, avertissement de la console) ; les
+// plugins que Nightcord imposait deviennent un choix de l'utilisateur.
+const DEMOTED = new Set(["CustomCommands", "GoogleThat", "InRole", "MoreCommands", "BigFileUpload", "CompactMode", "MusicControls", "StealthMode", "SongLink"]);
+
 // exists to export default definePlugin({...})
 export default function definePlugin<P extends PluginDef>(p: P & Record<PropertyKey, any>) {
+    const def: PluginDef = p;
+    if (def.required && DEMOTED.has(def.name)) def.required = false;
+    if (!def.required) def.enabledByDefault = false;
     return p as typeof p & Plugin;
 }
 

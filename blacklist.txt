@@ -13,3 +13,4 @@ Nightcordnews
 
 fixScreenshare
 DMBomb
+nightcordOfficialDM
