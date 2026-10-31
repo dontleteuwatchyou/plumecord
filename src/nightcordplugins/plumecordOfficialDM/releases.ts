@@ -9,6 +9,8 @@
 // (id, created_at, content), avec le texte en Markdown et un bouton vers la
 // page de la mise à jour.
 
+import { localStorage } from "@utils/localStorage";
+
 const REPOS = [
     { repo: "dontleteuwatchyou/plume", name: "Plume" },
     { repo: "dontleteuwatchyou/plumecord", name: "Plumecord" },
@@ -72,7 +74,15 @@ function readCache(): { at: number; posts: ReleasePost[]; info?: [string, { prod
     }
 }
 
-export async function fetchReleases(): Promise<ReleasePost[]> {
+// Une seule lecture de GitHub à la fois : le sondage, l'ouverture du MP et le
+// démarrage peuvent la demander en même temps.
+let inFlight: Promise<ReleasePost[]> | null = null;
+
+export function fetchReleases(): Promise<ReleasePost[]> {
+    return inFlight ??= load().finally(() => { inFlight = null; });
+}
+
+async function load(): Promise<ReleasePost[]> {
     const cached = readCache();
     if (cached && Date.now() - cached.at < MAX_AGE) {
         for (const [id, info] of cached.info ?? []) releaseInfo.set(id, info);

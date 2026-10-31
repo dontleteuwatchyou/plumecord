@@ -20,6 +20,7 @@ import { t } from "../autoTranslateNightcord";
 import { PLUMECORD_AVATAR_BASE64 } from "./avatarData";
 import { Button } from "@components/Button";
 import { fetchReleases, releaseInfo } from "./releases";
+import { localStorage as savedLocalStorage } from "@utils/localStorage";
 
 export const PLUMECORD_USER_ID = "999999999999999988";
 export const PLUMECORD_CHANNEL_ID = "999999999999999980";
@@ -46,16 +47,18 @@ export const settings = definePluginSettings({
     }
 });
 
+// Discord retire `window.localStorage` de la page : on passe par la copie que
+// le mod garde au démarrage, sinon rien n'est retenu d'un lancement à l'autre.
 function getItemSafe(key: string): string | null {
     try {
-        if (typeof localStorage !== "undefined") return localStorage.getItem(key);
+        return savedLocalStorage?.getItem(key) ?? null;
     } catch {}
     return null;
 }
 
 function setItemSafe(key: string, val: string): void {
     try {
-        if (typeof localStorage !== "undefined") localStorage.setItem(key, val);
+        savedLocalStorage?.setItem(key, val);
     } catch {}
 }
 
@@ -855,7 +858,14 @@ export function openUrgentMessageModal() {
 async function checkAndInjectPosts(isInitialLoad = false) {
     try {
         const posts = await fetchMastodonFeed();
-        if (!Array.isArray(posts) || posts.length === 0) return;
+        if (!Array.isArray(posts) || posts.length === 0) {
+            // GitHub injoignable et rien en cache : la conversation finit quand
+            // même de charger (vide) au lieu de tourner sans fin.
+            try {
+                FluxDispatcher.dispatch({ type: "LOAD_MESSAGES_SUCCESS", channelId: PLUMECORD_CHANNEL_ID, messages: [], isBefore: false, isAfter: false, hasMoreBefore: false, hasMoreAfter: false, limit: 50 });
+            } catch {}
+            return;
+        }
 
         const previousLastTs = Number(getItemSafe(LS_LAST_TS) || 0);
         const previousLastSeenId = getItemSafe(LS_LAST_SEEN);
