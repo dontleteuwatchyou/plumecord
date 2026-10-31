@@ -187,18 +187,7 @@ function ReloadRequiredCard({ required, enabledPlugins, openWarningModal, resetC
                         {t("Disable All Plugins")}
                     </Button>
                 )}
-                {!required && (
-                    <Button
-                        variant="secondary"
-                        size="small"
-                        className={"vc-plugins-disable-warning vc-modal-align-reset"}
-                        onClick={() => {
-                            return openResetDefaultsModal(applyDefaultConfigCheckAndDo);
-                        }}
-                    >
-                        {t("Apply Default Config")}
-                    </Button>
-                )}
+                {/* Plumecord : pas de « config par défaut » (= aucun plugin), le bouton coupait tout. */}
             </div>
         </Card>
     );
@@ -889,13 +878,6 @@ export default function PluginSettings({ premiumOnly = false }: PluginSettingsPr
                                     {t("Log in to like")}
                                 </Button>
                             )}
-                            <Button
-                                variant="secondary"
-                                size="small"
-                                onClick={() => openResetDefaultsModal(applyDefaultConfigCheckAndDo)}
-                            >
-                                {t("APPLY DEFAULT CONFIG")}
-                            </Button>
                             <Button
                                 variant="secondary"
                                 size="small"

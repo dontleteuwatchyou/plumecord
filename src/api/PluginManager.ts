@@ -404,14 +404,9 @@ export const initPluginManager = onlyOnce(function init() {
 
     // Migration: force tous les plugins a OFF sauf required/enabledByDefault
     const MIGRATION_FLAG = "__nightcord_default_off_v1__";
+    // Plumecord : on pose seulement la marque. Aucun plugin n'est « par défaut »
+    // ici : cette migration couperait tous les plugins que la personne a choisis.
     if (!(SettingsStore.plain as any)[MIGRATION_FLAG]) {
-        for (const p of pluginsValues) {
-            const shouldBeOn = p.required || p.enabledByDefault;
-            if (!shouldBeOn) {
-                const s = SettingsStore.plain.plugins[p.name];
-                if (s) s.enabled = false;
-            }
-        }
         (SettingsStore.plain as any)[MIGRATION_FLAG] = true;
         SettingsStore.markAsChanged();
     }
