@@ -235,35 +235,6 @@ async function init() {
         setInterval(runUpdateCheck, 1000 * 60 * 30); // 30 minutes
     }
 
-    // Only notify when an update has actually been applied / on new version
-    try {
-        const currentVersion = `v1.27.4`;
-        const LS_KEY = "nightcord_installed_version";
-        const lastVersion = localStorage.getItem(LS_KEY);
-
-        if (lastVersion !== currentVersion) {
-            localStorage.setItem(LS_KEY, currentVersion);
-            setTimeout(() => {
-                showNotification({
-                    id: "nightcord-update-notify",
-                    title: "Nightcord Updated",
-                    body: `Nightcord updated to ${currentVersion}. Open settings to discover what's new.`,
-                    icon: "nightcord",
-                    type: "success",
-                    duration: 6000,
-                    actions: [
-                        {
-                            label: "Settings",
-                            onClick: () => {
-                                try { SettingsRouter.open("equicord_general"); } catch {}
-                            }
-                        }
-                    ]
-                });
-            }, 1200);
-        }
-    } catch {}
-
     if (IS_DEV) {
         const pendingPatches = patches.filter(p => !p.all && p.predicate?.() !== false);
         if (pendingPatches.length)

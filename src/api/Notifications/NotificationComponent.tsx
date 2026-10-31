@@ -14,12 +14,15 @@ import { Button, React, useEffect, useRef, useState } from "@webpack/common";
 
 import { NotificationData } from "./Notifications";
 
+// Plumecord : logo de Plume (plume blanche sur fond violet).
+const PLUME_ICON = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b7cf6"/><stop offset="1" stop-color="#5b4bd0"/></linearGradient></defs><rect width="1024" height="1024" rx="230" fill="url(#g)"/><path d="M742 236c-148 18-286 112-354 260-38 82-54 170-56 256l-60 92 34 22 58-88c84-6 170-30 244-80 140-94 196-272 134-462z" fill="#fff"/></svg>');
+
 export function NightcordLogoIcon(props: any) {
     return (
         <img
             className="nc-notif-custom-icon"
-            src={NIGHTCORD_IMAGE_ICON}
-            alt="Nightcord"
+            src={PLUME_ICON}
+            alt="Plume"
             width={props?.width ?? 22}
             height={props?.height ?? 22}
             style={{

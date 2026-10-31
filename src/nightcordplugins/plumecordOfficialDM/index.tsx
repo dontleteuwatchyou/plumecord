@@ -107,16 +107,23 @@ function triggerPlumecordNotification(post: any): void {
         const Notifications = (window as any).Vencord?.Api?.Notifications;
         if (typeof plume === "function") {
             plume("notify", { title: "Plume t'a envoyé un message", body: bodyText }).catch(() => { });
-        } else if (Notifications?.showNotification) {
+        }
+        // Carte dans Discord (en bas à droite), même si la bulle Windows est
+        // masquée par Windows (mode Ne pas déranger, notifications coupées…).
+        if (Notifications?.showNotification) {
             Notifications.showNotification({
-                title: "Plume",
+                title: "Plume t'a envoyé un message",
                 body: bodyText,
                 icon: plumecordAvatarUrl,
-                onClick: () => {
-                    try {
-                        NavigationRouter.transitionTo(`/channels/@me/${PLUMECORD_CHANNEL_ID}`);
-                    } catch {}
-                }
+                type: "info",
+                duration: 15000,
+                inApp: true,
+                actions: [{
+                    label: "Voir le message",
+                    onClick: () => {
+                        try { NavigationRouter.transitionTo(`/channels/@me/${PLUMECORD_CHANNEL_ID}`); } catch {}
+                    }
+                }]
             });
         } else if (typeof Notification !== "undefined" && Notification.permission === "granted") {
             const notif = new Notification("Plume", {

@@ -65,6 +65,8 @@ export interface NotificationData {
     onClose?(): void;
     color?: string;
     permanent?: boolean;
+    /** Toujours affichée dans Discord, même fenêtre en arrière-plan. */
+    inApp?: boolean;
     noPersist?: boolean;
     dismissOnClick?: boolean;
 }
@@ -106,7 +108,7 @@ export async function showNotification(data: NotificationData) {
     if (Settings.enableInAppNotifications === false) return;
     persistNotification(data);
 
-    if (shouldBeNative() && await requestPermission()) {
+    if (!data.inApp && shouldBeNative() && await requestPermission()) {
         const { title, body, icon, image, onClick = null, onClose = null } = data;
         const n = new Notification(title, {
             body,
