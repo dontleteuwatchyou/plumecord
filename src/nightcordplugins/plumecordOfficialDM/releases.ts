@@ -43,7 +43,10 @@ export interface ReleasePost {
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 
 function toPost(r: Release, name: string): ReleasePost {
-    const title = `${name} ${r.tag_name}${r.name && r.name !== r.tag_name && r.name !== `${name} ${r.tag_name}` ? ` : ${r.name}` : ""}`;
+    // « Plume v0.3.12 », plus le nom de la release seulement s'il dit autre chose
+    // que le numéro (« Plume 0.3.12 » ferait doublon).
+    const version = r.tag_name.replace(/^v/, "");
+    const title = `${name} ${r.tag_name}${r.name && !r.name.includes(version) ? ` : ${r.name}` : ""}`;
     // Notes trop longues : la page GitHub a le reste.
     const notes = (r.body || "").trim();
     const short = notes.length > 1500 ? `${notes.slice(0, 1500).trimEnd()}…` : notes;
