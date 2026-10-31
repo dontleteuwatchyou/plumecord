@@ -116,8 +116,13 @@ function triggerPlumecordNotification(post: any): void {
                 body: bodyText,
                 icon: plumecordAvatarUrl,
                 type: "info",
-                duration: 15000,
+                // Reste affichée jusqu'à ce qu'on la ferme : si le message
+                // arrive pendant que Plume est derrière un jeu, on la voit en
+                // revenant au lieu qu'elle ait disparu entre-temps.
+                permanent: true,
                 inApp: true,
+                // Le journal des notifications ne sait pas garder un bouton.
+                noPersist: true,
                 actions: [{
                     label: "Voir le message",
                     onClick: () => {
