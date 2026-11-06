@@ -445,6 +445,7 @@ function runFactoryWithWrap(patchedFactory: PatchedModuleFactory, thisArg: unkno
     }
 
     exports = module.exports;
+    module.loaded = true;
 
     if (typeof require === "function" && require.c) {
         if (_blacklistBadModules(require.c, exports, module.id)) {
