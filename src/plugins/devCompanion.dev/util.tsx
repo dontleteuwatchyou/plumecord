@@ -201,7 +201,7 @@ export function findAllModuleIds(filter: FilterFn, { topLevelOnly = false }: { t
 
     outer: for (const key in c) {
         const mod: Module | undefined = c[key];
-        if (!mod?.loaded || mod.exports == null) {
+        if (mod?.loaded === false || mod.exports == null) {
             continue;
         }
         if (filter(mod.exports)) {
